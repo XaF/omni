@@ -1,0 +1,58 @@
+#!/usr/bin/env ruby
+#
+# category: Git commands
+# help: Change directory to the git directory of the specified repository
+# help:
+# help: If no repository is specified, change to the git directory of the
+# help: main org as specified by \e[3mOMNI_ORG\e[0m, if specified, or errors out if
+# help: not specified.
+# help:
+# help: \033[1m\e[3mUsage\e[0m\033[1m: omni cd \e[36m[repo]\e[0m
+# help:
+# help:   \e[36mrepo\e[0m      The name of the repo to change directory to; this
+# help:             can be in the format <org>>/<repo>, or just <repo>,
+# help:             in which case the repo will be searched for in all
+# help:             the organizations, trying to use \e[3mOMNI_ORG\e[0m if it is
+# help:             set, and then trying all the other organizations
+# help:             alphabetically.
+
+require 'colorize'
+require 'uri'
+require 'shellwords'
+
+RSYNC_ADDRESS_PATTERN = %r{^(([^@]+@)?([^:]+)):(.+)$}
+OMNI_GIT = ENV['OMNI_GIT'] || "#{ENV['HOME']}/git"
+
+# Acceptable paths formats: https://, ssh://, git://, user@host:path
+def repo_address?(input)
+  return URI.parse(input) if input =~ %r{^(https?|git|ssh)://}
+  return false unless input =~ RSYNC_ADDRESS_PATTERN
+
+  input = "ssh://#{input.sub(RSYNC_ADDRESS_PATTERN, '\1/\4')}"
+  URI.parse(input)
+end
+
+def omni_cmd(cmd)
+  raise 'OMNI_CMD_FILE not set' unless ENV['OMNI_CMD_FILE']
+  File.open(ENV['OMNI_CMD_FILE'], 'w') { |f| f.write("#{cmd}\n") }
+end
+
+repo = ARGV[0]
+
+address = repo_address?(repo)
+if address
+  path = "#{address.host}#{address.path.sub(/\.git$/, '')}"
+  full_path = "#{OMNI_GIT}/#{path}"
+
+  unless File.directory?(full_path)
+    STDERR.puts "#{"omni:".light_cyan} #{"cd command failed:".red} #{repo}: No such repository"
+    exit 1
+  end
+
+  # Shell escape full_path using ruby lib
+  omni_cmd(Shellwords.join(['cd', full_path]))
+
+  exit 0
+end
+
+puts "repo: #{repo}"
