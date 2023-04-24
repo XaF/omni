@@ -19,25 +19,29 @@
 require 'colorize'
 
 require_relative '../lib/env'
-require_relative '../lib/git'
+require_relative '../lib/omniorg'
 require_relative '../lib/utils'
 
+error('too many argument') if ARGV[1]
 repo = ARGV[0]
 
-address = repo_address?(repo)
-if address
-  path = "#{address.host}#{address.path.sub(/\.git$/, '')}"
-  full_path = "#{OmniEnv::OMNI_GIT}/#{path}"
+paths = []
 
-  unless File.directory?(full_path)
-    STDERR.puts "#{"omni:".light_cyan} #{"cd command failed:".red} #{repo}: No such repository"
-    exit 1
-  end
+OmniOrgs.each do |org|
+  paths << org.path?(repo)
+end
 
-  # Shell escape full_path using ruby lib
-  omni_cmd(['cd', full_path])
+paths << OmniEnv::OMNI_GIT unless repo
 
+paths.compact!
+paths.uniq!
+
+paths.each do |path|
+  next unless File.directory?(path)
+
+  omni_cmd(['cd', path])
   exit 0
 end
 
-puts "repo: #{repo}"
+error("#{repo.yellow}: No such repository") if repo
+error('no path found')

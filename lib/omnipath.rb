@@ -33,11 +33,12 @@ class OmniPath
   end
 
   def each(&block)
+    @each.each { |command| yield command } if block_given? && @each
+
     @each ||= begin
       each_commands = []
 
-      omni_cmd_paths = OmniEnv::OMNIPATH.split(':')
-      omni_cmd_paths.each do |dirpath|
+      OmniEnv::OMNIPATH.each do |dirpath|
         next unless File.directory?(dirpath)
 
         Find.find(dirpath) do |filepath|
@@ -48,6 +49,7 @@ class OmniPath
 
           # Create and yield the OmniCommand object
           omniCmd = OmniCommand.new(cmd, filepath)
+          yield omniCmd if block_given?
 
           each_commands << omniCmd
         end
@@ -55,8 +57,6 @@ class OmniPath
 
       each_commands
     end
-
-    @each.each { |command| yield command } if block_given?
 
     @each
   end

@@ -14,47 +14,42 @@
 require 'colorize'
 
 require_relative '../lib/env'
-require_relative '../lib/git'
+require_relative '../lib/omniorg'
 require_relative '../lib/utils'
 
 error('no repository specified') unless ARGV[0]
+error('too many argument') if ARGV[1]
 
-repositories = [ARGV[0]]
+repo = ARGV[0]
 
-address = repo_address?(repositories.first)
-unless address
-  if repositories.first.include?('/')
-    repositories = ["${OMNI_ORG}/#{repositories.first}"]
-  else
-    error("#{repositories.first.yellow}: unable to resolve repository (OMNI_ORG is not defined)") \
-      unless OmniEnv::OMNI_ORG
-
-    repositories = OmniEnv::OMNI_ORG.split(':').map(&:strip).map do |org|
-      "#{OmniEnv::OMNI_GIT_HOST}#{org}/#{repositories.first}.git"
-    end
+omniRepo = OmniRepo.new(repo)
+locations = [omniRepo]
+unless omniRepo.remote?
+  locations = []
+  OmniOrgs.each do |org|
+    locations << org if org.remote?(repo)
   end
 end
 
-repositories.each do |repo|
-  # Try to parse the repository as a URI
-  address = repo_address?(repo)
-  next unless address
+error("#{repo.yellow}: No such repository") if locations.empty?
 
-  # Check using git ls-remote if the repository exists
-  git_ls_remote = system('git', 'ls-remote', repo, '>/dev/null', '2>&1')
-  next unless git_ls_remote
-
+locations.each do |location|
   # Compute the path that we will use for the repository
-  path = "#{address.host}#{address.path.sub(/\.git$/, '')}"
-  full_path = "#{OmniEnv::OMNI_GIT}/#{path}"
-
+  full_path = location.path?(repo)
   error("#{repo.yellow}: repository already exists") if File.directory?(full_path)
 
+  # Compute the remote address of the repository
+  remote = location.remote?(repo)
+
+  # Check using git ls-remote if the repository exists
+  git_ls_remote = command_line('git', 'ls-remote', remote, '>/dev/null', '2>&1', timeout: 5)
+  next unless git_ls_remote
+
   # Execute git command line from ruby
-  git_clone = system('git', 'clone', repo, full_path)
+  git_clone = command_line('git', 'clone', remote, full_path)
   error("#{repo.yellow}: git clone failed") unless git_clone
 
-  # Shell escape full_path using ruby lib
+  # Request omni to change directory to the newly-cloned repository
   omni_cmd(['cd', full_path])
 
   exit 0
