@@ -53,8 +53,12 @@ OmniPath.sorted do |command|
     cat = 'Uncategorized'.bold
     if !command.category.nil? && command.category.length > 0
       cat_elems = command.category.dup
-      cat_elems[-1] = cat_elems[-1].bold
-      cat = cat_elems.join(' > ')
+      last_elem = cat_elems.pop
+      cat_elems.map! { |elem| elem.light_black.bold }
+      cat_elems << last_elem.bold
+
+      cat_elems.reverse!
+      cat = cat_elems.join(' < ')
     end
 
     STDERR.puts cat
