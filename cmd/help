@@ -10,56 +10,17 @@
 # help:   \e[36mcommand\e[0m      The command to get help for
 
 require 'colorize'
-require 'find'
 
-COLOR_PATTERN = /\\(e|033)(\[(\d+)(;\d+)*m)/
+require_relative '../lib/omnipath'
 
-commands = []
 
-omni_cmd_paths = ENV['OMNIPATH'].split(':')
-omni_cmd_paths.each do |path|
-  next unless File.directory?(path)
-
-  Find.find(path) do |f|
-    next unless File.executable?(f) && File.file?(f)
-
-    # Read the first few lines of the file, looking for lines starting with '# help:'
-    category = nil
-    help_lines = []
-    File.open(f, 'r') do |file|
-      reading_help = false
-      file.each_line do |line|
-        break if line !~ /^#/ || (reading_help && line !~ /^# help:/)
-        category = line.sub(/^# category:\s?/, '').chomp if line =~ /^# category:/
-        reading_help = true if line =~ /^# help:/
-        next unless reading_help
-
-        line = line.gsub(COLOR_PATTERN) { |m| eval("\"#{m}\"") }
-        help_lines << line
-      end
-    end
-
-    # help_short is the help until the first empty help line
-    help_long = help_lines.map { |l| l.sub(/^# help:\s?/, '').chomp }
-    help_short = help_long.take_while { |l| l !~ /^\s*$/ }.join("\n")
-    help_long = help_long.join("\n")
-
-    # remove the path from the command as prefix
-    cmd = f.sub(/^#{Regexp.escape(path)}\//, '').split('/')
-    commands << {
-      cmd: cmd,
-      category: category,
-      help_short: help_short,
-      help_long: help_long,
-    }
-  end
-end
-
+# If a specific command was passed as argument, show help
+# for that command
 if ARGV.length > 0
   search = ARGV.dup
   command = nil
   while command.nil? && search.length > 0
-    command = commands.find { |c| c[:cmd] == search }
+    command = OmniPath.find { |c| c.cmd == search }
     search.pop
   end
 
@@ -70,30 +31,14 @@ if ARGV.length > 0
 
   STDERR.puts "#{"omni".bold} - omnipotent tool"
   STDERR.puts ""
-  STDERR.puts command[:help_long]
+  STDERR.puts command.help_long
   STDERR.puts ""
 
   exit 0
 end
 
-# Sort the commands, first by category, then by command
-commands.sort_by! do |c|
-  sorting_cmd = c[:cmd].map(&:downcase)
-  sorting_cat = if c[:category].nil?
-    # Downcase is always sorted after upcase, so by
-    # using downcase for uncategorized, we make sure
-    # that they will always end-up at the end!
-    'uncategorized'
-  else
-    c[:category].upcase
-  end
-
-  [sorting_cat, sorting_cmd]
-end
-
 # find longest command
-longest_cmd_chars = commands.map { |c| c[:cmd].join(' ').length }.max
-ljust = [longest_cmd_chars + 2, 15].max
+ljust = [OmniPath.max_command_length + 2, 15].max
 
 # print help
 STDERR.puts "#{"omni".bold} - omnipotent tool"
@@ -101,14 +46,15 @@ STDERR.puts ""
 STDERR.puts "#{"Usage".italic}: omni #{"<command>".cyan} [options] ARG..."
 
 last_cat = -1
-commands.each do |c|
-  if c[:category] != last_cat
+OmniPath.sorted do |command|
+  if command.category != last_cat
     STDERR.puts ""
-    STDERR.puts (c[:category] || 'Uncategorized').bold
-    last_cat = c[:category]
+    STDERR.puts (command.category || 'Uncategorized').bold
+    last_cat = command.category
   end
-  help_short = c[:help_short].split("\n")
-  STDERR.puts "  #{c[:cmd].join(' ').ljust(ljust).cyan} #{help_short.first}"
+
+  help_short = command.help_short.split("\n")
+  STDERR.puts "  #{command.cmd.join(' ').ljust(ljust).cyan} #{help_short.first}"
   STDERR.puts "  #{" " * ljust} #{help_short[1..-1].join("\n" + " " * ljust)}" if help_short.length > 1
 end
 

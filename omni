@@ -4,31 +4,15 @@
 # and provide autocompletion for them
 
 require 'colorize'
-require 'shellwords'
-require 'find'
+
+require_relative 'lib/omnipath'
 
 
 # complete_omni_subcommand is a function that will be called
 # when the --complete flag is passed to omni. It will provide
 # autocompletion for the subcommands
 def complete_omni_subcommand(argv)
-  commands = []
-
-  omni_cmd_paths = ENV['OMNIPATH'].split(':')
-  omni_cmd_paths.each do |path|
-    next unless File.directory?(path)
-
-    Find.find(path) do |f|
-      next unless File.executable?(f) && File.file?(f)
-
-      # remove the path from the command as prefix
-      cmd = f.sub(/^#{Regexp.escape(path)}\//, '').split('/')
-      commands << {
-        cmd: cmd,
-        path: f,
-      }
-    end
-  end
+  commands = OmniPath.each.to_a
 
   # Check if we have the COMP_CWORD variable, which means
   # that we can know where the matching needs to happen
@@ -43,56 +27,44 @@ def complete_omni_subcommand(argv)
 
   # If we have full subcommands in the argv, we only want to
   # show the subcommands that match what's already provided
-  commands.select! do |cmd|
-    cmd[:cmd][0..match_pos - 1] == argv[0..match_pos - 1]
+  commands.select! do |omniCmd|
+    omniCmd.cmd[0..match_pos - 1] == argv[0..match_pos - 1]
   end if match_pos > 0
 
   # For the last value in argv, we need to use more of a
   # matching with the start of the command
-  commands.select! do |cmd|
-    cmd[:cmd][match_pos].start_with?(argv[match_pos])
+  commands.select! do |omniCmd|
+    omniCmd.cmd[match_pos].start_with?(argv[match_pos])
   end if argv.length > match_pos
 
-  if commands.length == 1 && commands[0][:cmd].length <= match_pos
+  if commands.length == 1 && commands[0].cmd.length <= match_pos
+    omniCmd = commands[0]
+
     # If we get there, let's try and delegate calling --complete
     # to the underlying function in case it provides more
     # autocompletion...
 
     # Open the file and check the headers to see if it supports
     # autocompletion
-    autocompletion_supported = false
-    File.open(commands[0][:path], 'r') do |file|
-      file.each_line do |line|
-        break if line !~ /^#/
-        if line =~ /^# \s+autocompletion:\s+true$/
-          autocompletion_supported = true
-          break
-        end
-      end
-    end
-
-    if autocompletion_supported
+    if omniCmd.autocompletion?
       # Set the environment variables that we need to pass to the
       # subcommand
-      ENV['OMNI_SUBCOMMAND'] = commands[0][:cmd].join(' ')
-      ENV['COMP_CWORD'] = (comp_cword - commands[0][:cmd].length + 1).to_s
+      ENV['OMNI_SUBCOMMAND'] = omniCmd.cmd.join(' ')
+      ENV['COMP_CWORD'] = (comp_cword - omniCmd.cmd.length + 1).to_s
 
       # We need to shift the argv to remove the subcommand
       # that we are autocompleting
       passed_argv = argv.dup
-      passed_argv.shift(commands[0][:cmd].length)
+      passed_argv.shift(omniCmd.cmd.length)
 
       # Call the subcommand with the --complete flag, we delegate
       # the answer to it
-      exec(commands[0][:path], '--complete', *passed_argv)
-
-      # If we get here, there was an error launching the subcommand
-      exit 1
+      omniCmd.autocomplete(*passed_argv)
     end
   end
 
   # Extract the values at the expected position
-  commands.map! { |cmd| cmd[:cmd][match_pos] }
+  commands.map! { |omniCmd| omniCmd.cmd[match_pos] }
   commands.compact!
   commands.uniq!
   commands.sort!
@@ -109,51 +81,21 @@ end
 # run_omni_subcommand is a function that will be called
 # to run the subcommand that was passed to omni
 def run_omni_subcommand(argv)
-  # Go over all the directories in the OMNIPATH variable
-  omni_cmd_paths = ENV['OMNIPATH'].split(':')
-  omni_cmd_paths.each do |path|
-    next unless File.directory?(path)
-
-    # We will use this array to store the path of the command
-    # that we are looking for, so that we can easily shift
-    # the right number of parameters when we call the command
-    command_name = []
-
-    # Try and find the command recursively
-    argv.each do |subcommand|
-      command_name.push(subcommand)
-      subcmd = File.join(path, *command_name)
-
-      # If it's neither a file nor a directory, try the next path
-      break unless File.exist?(subcmd)
-
-      # If it's a file and executable, run the subcommand with the
-      # parameters, and return the exit code
-      if File.file?(subcmd) && File.executable?(subcmd)
-        # Prepare the arguments to pass to the subcommand
-        argv.shift(command_name.length)
-
-        # Set the environment variables
-        ENV['OMNI_SUBCOMMAND'] = command_name.join(' ')
-
-        # Call the subcommand
-        exec(subcmd, *argv)
-
-        # If we get here, there was an error launching the subcommand
-        exit 1
-      end
-
-      # If it's a directory, continue the search
-    end
-
-    # If we got here, it means that we didn't find the command
-    # in this directory, so try the next one
-  end
+  omniCmd = OmniPath.find { |omniCmd| omniCmd.serves?(argv) }
+  omniCmd.exec(*argv) unless omniCmd.nil?
 
   # If we got here, it means that we didn't find the command
   # in any of the directories, so print an error message
   # and return an error code
   STDERR.puts "#{"omni:".light_cyan} #{"command not found:".red} #{ARGV.join(' ')}"
+
+  # Check if we have a command that starts with the same
+  # characters, and if so, print it as a suggestion
+  omniCmd = OmniPath.find { |omniCmd| omniCmd.start_with?(argv) }
+  STDERR.puts "#{"omni:".light_cyan} Did you mean? #{omniCmd.cmd_s.yellow}" unless omniCmd.nil?
+
+  # Return an error code since we didn't find the command
+  # to execute
   exit 1
 end
 
