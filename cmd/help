@@ -49,7 +49,15 @@ last_cat = -1
 OmniPath.sorted do |command|
   if command.category != last_cat
     STDERR.puts ""
-    STDERR.puts (command.category || 'Uncategorized').bold
+
+    cat = 'Uncategorized'.bold
+    if !command.category.nil? && command.category.length > 0
+      cat_elems = command.category.dup
+      cat_elems[-1] = cat_elems[-1].bold
+      cat = cat_elems.join(' > ')
+    end
+
+    STDERR.puts cat
     last_cat = command.category
   end
 

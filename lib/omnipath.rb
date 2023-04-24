@@ -1,6 +1,111 @@
 require 'find'
+require 'pathname'
 
 require_relative 'env'
+
+
+class OmniPathForMakefiles
+  TARGET_REGEX=%r{^([a-zA-Z_0-9\-\/\/]+):(.*?##\s*(.*))?$}
+
+  @@instance = nil
+
+  def self.instance
+    @@instance ||= OmniPathForMakefiles.new
+  end
+
+  def self.each(&block)
+    self.instance.each(&block)
+  end
+
+  def each(&block)
+    @each.each { |command| yield command } if block_given? && @each
+
+    @each ||= begin
+      each_commands = []
+
+      locate_files.each do |makefile|
+        extract_targets(makefile) do |target, extra|
+          omniCmd =  OmniCommandForMakefile.new(
+            target,
+            makefile,
+            **extra,
+          )
+
+          yield omniCmd if block_given?
+
+          each_commands << omniCmd
+        end
+      end
+
+      each_commands
+    end
+
+    @each
+  end
+
+  private
+
+  def locate_files
+    @makefiles ||= begin
+      makefiles = []
+
+      current_dir = Dir.pwd
+
+      # If we are in a git repository, we stop searching when
+      # reaching the top level
+      top_level = `git rev-parse --show-toplevel 2>/dev/null`.chomp
+      if top_level.empty?
+        top_level = Dir.home
+      end
+
+      begin
+        while Dir.pwd != '/'
+          Dir.entries(Dir.pwd).each do |filename|
+            next unless filename =~ /^(GNU)?Makefile(\..*)?$/
+            makefiles << File.join(Dir.pwd, filename)
+          end
+
+          break if Dir.pwd == top_level
+
+          Dir.chdir('..')
+        end
+      ensure
+        Dir.chdir(current_dir)
+      end
+
+      makefiles
+    end
+  end
+
+  def extract_targets(filepath)
+    File.open(filepath, 'r') do |file|
+      category = nil
+
+      file.each_line.with_index do |line, lineno|
+        category = $1 if line =~ /^##@\s*(.*)$/
+        next unless line =~ TARGET_REGEX
+
+        target = $1
+        help = $3
+
+        yield target, {help: help, lineno: lineno, category: category}
+      end
+    end
+  end
+end
+
+
+class OmniCommandCollection < Array
+  def push(command)
+    return if find { |cmd| cmd.cmd == command.cmd }
+    super(command)
+  end
+
+  def <<(command)
+    return if find { |cmd| cmd.cmd == command.cmd }
+    super(command)
+  end
+end
 
 
 class OmniPath
@@ -36,7 +141,10 @@ class OmniPath
     @each.each { |command| yield command } if block_given? && @each
 
     @each ||= begin
-      each_commands = []
+      # By using this data structure, we make sure that no two commands
+      # can have the same command call name; the second one will be
+      # ignored.
+      each_commands = OmniCommandCollection.new
 
       OmniEnv::OMNIPATH.each do |dirpath|
         next unless File.directory?(dirpath)
@@ -53,6 +161,11 @@ class OmniPath
 
           each_commands << omniCmd
         end
+      end
+
+      OmniPathForMakefiles.each do |omniCmd|
+        yield omniCmd if block_given?
+        each_commands << omniCmd
       end
 
       each_commands
@@ -78,13 +191,13 @@ class OmniPath
       # Order the commands by category and then by command
       commands.sort_by! do |command|
         sorting_cmd = command.cmd.map(&:downcase)
-        sorting_cat = if command.category.nil?
+        sorting_cat = if command.category.nil? || command.category.empty?
           # Downcase is always sorted after upcase, so by
           # using downcase for uncategorized, we make sure
           # that they will always end-up at the end!
-          'uncategorized'
+          ['uncategorized']
         else
-          command.category.upcase
+          command.category.map(&:upcase)
         end
 
         [sorting_cat, sorting_cmd]
@@ -191,10 +304,9 @@ class OmniCommand
       # Prepare variables
       category = nil
       autocompletion = false
+      help_lines = []
 
       # Read the first few lines of the file, looking for lines starting with '# help:'
-      category = nil
-      help_lines = []
       File.open(@path, 'r') do |file|
         reading_help = false
         file.each_line do |line|
@@ -227,11 +339,77 @@ class OmniCommand
 
       # Return the file details
       {
-        category: category,
+        category: split_path(category || '', split_by: ','),
         help_short: help_short,
         help_long: help_long,
         autocompletion: autocompletion,
       }
     end
   end
+end
+
+
+class OmniCommandForMakefile < OmniCommand
+  def initialize(target, makefile, help: nil, lineno: nil, category: nil)
+    @target = target
+    @path = makefile
+
+    @cmd = if target.include?('/')
+      target.split('/')
+    elsif target.include?('-')
+      target.split('-')
+    else
+      [target]
+    end
+
+    cat = ['Makefile']
+
+    # To make it clean, we can add the relative path to the
+    # category in case the Makefile is not in the current
+    # directory, so we can clearly see which makefile it is for
+    relpath = Pathname.new(makefile).
+      relative_path_from(Pathname.new(Dir.pwd)).
+      to_s
+    cat << relpath if relpath != cat[0]
+
+    cat << category unless category.nil?
+
+
+    # Prepare the short help, if any help was provided in the
+    # Makefile for the target, which we consider being a
+    # comment starting by '##'
+    help_short = help || ''
+
+    help_long = "#{help_short}"
+    help_long << "\n\n"
+    help_long << "\e[1m\e[3mUsage\e[0m\e[1m: omni #{@cmd.join(' ')}\e[0m"
+    help_long << "\n\n"
+    help_long << "Imported from ".light_black
+    help_long << relpath
+    help_long << ":".light_black if lineno
+    help_long << "#{lineno.to_s}" if lineno
+    help_long.strip!
+
+    @file_details = {
+      category: cat,
+      help_short: help_short,
+      help_long: help_long,
+      autocompletion: false,
+    }
+  end
+
+  def exec(*argv, shift_argv: true)
+    # Shift the argv if needed
+    if shift_argv
+      argv = argv.dup
+      argv.shift(@cmd.length)
+    end
+
+    # Execute the command
+    Kernel.exec('make', '-f', @path, @target)
+
+    # If we get here, the command failed
+    exit 1
+  end
+
 end

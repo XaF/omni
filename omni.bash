@@ -8,6 +8,12 @@ if [[ -z "$OMNIDIR" ]]; then
 	# if OMNI_GIT is setup, it will try to use that path instead;
 	# you can override this by setting OMNIDIR to a different path
 	export OMNIDIR="${OMNI_GIT:-${HOME}/git}/github.org/XaF/omni"
+
+	altdir="${OMNI_GIT:-${HOME}/git}/omni"
+	if [ ! -d "$OMNIDIR" ] && [ -d "$altdir" ]; then
+		export OMNIDIR="$altdir"
+	fi
+	unset altdir
 fi
 if [[ "$OMNIPATH" != *"${OMNIDIR}/cmd"* ]]; then
 	# OMNIPATH is the list of directories in which omni will look
@@ -45,7 +51,7 @@ function omni() {
 
 	# Run the command
 	EXIT_CODE=0
-	bundle exec "${omnidir}/omni" "$@"
+	"${omnidir}/omni" "$@"
 	EXIT_CODE=$?
 
 	# Check if OMNI_CMD_FILE exists, and if it does, run the commands
