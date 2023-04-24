@@ -80,6 +80,9 @@ end
 # run_omni_subcommand is a function that will be called
 # to run the subcommand that was passed to omni
 def run_omni_subcommand(argv)
+  argv = ['help'] if argv.length == 0
+  argv[0] = 'help' if argv[0] == '--help'
+
   omniCmd = OmniPath.find { |omniCmd| omniCmd.serves?(argv) }
   omniCmd.exec(*argv) unless omniCmd.nil?
 

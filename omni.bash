@@ -41,14 +41,6 @@ function omni() {
 	#export OMNI_HELPERS_FILE="${TMPDIR}/${OMNI_FILE_PREFIX}.helpers"
 	local omnidir="${OMNIDIR:-${OMNI_GIT:-${HOME}/git}/github.org/XaF/omni}"
 
-	# Export the omni_cmd function, so that it can be called from
-	# the subshell if needed
-	#omni_cmd() { echo "$@" >> $OMNI_CMD_FILE; }
-	#declare -f omni_cmd >> $OMNI_HELPERS_FILE
-
-	# If no arguments are given, run the help command
-	if [[ -z "$@" ]]; then set -- "help"; fi
-
 	# Run the command
 	EXIT_CODE=0
 	"${omnidir}/omni" "$@"
