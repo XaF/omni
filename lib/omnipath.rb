@@ -406,7 +406,7 @@ class OmniCommandForMakefile < OmniCommand
     end
 
     # Execute the command
-    Kernel.exec('make', '-f', @path, @target)
+    Kernel.exec('make', '-f', @path, @target, *argv)
 
     # If we get here, the command failed
     exit 1
