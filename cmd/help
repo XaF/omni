@@ -5,7 +5,7 @@
 # help:
 # help: If no command is given, show a list of all available commands.
 # help:
-# help: \e[3mUsage\e[0m: omni help \e[36m[command]\e[0m
+# help: \033[1m\e[3mUsage\e[0m\033[1m: omni help \e[36m[command]\e[0m
 # help:
 # help:   \e[36mcommand\e[0m      The command to get help for
 
