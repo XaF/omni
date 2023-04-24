@@ -1,5 +1,7 @@
 require 'find'
 
+require_relative 'env'
+
 
 class OmniPath
   include Enumerable
@@ -34,7 +36,7 @@ class OmniPath
     @each ||= begin
       each_commands = []
 
-      omni_cmd_paths = ENV['OMNIPATH'].split(':')
+      omni_cmd_paths = OmniEnv::OMNIPATH.split(':')
       omni_cmd_paths.each do |dirpath|
         next unless File.directory?(dirpath)
 
@@ -145,9 +147,18 @@ class OmniCommand
     file_details[:autocompletion]
   end
 
-  def autocomplete(*argv)
+  def autocomplete(*argv, shift_argv: true)
+    # Shift the argv if needed
+    if shift_argv
+      argv = argv.dup
+      argv.shift(@cmd.length)
+    end
+
+    # Prepare the environment variables
     ENV['OMNI_SUBCOMMAND'] = @cmd.join(' ')
-    exec(@path, '--complete', *argv)
+
+    # Execute the command
+    Kernel.exec(@path, '--complete', *argv)
 
     # If we get here, the command failed
     exit 1

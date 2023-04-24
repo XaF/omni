@@ -12,33 +12,10 @@
 # help:             repository to clone.
 
 require 'colorize'
-require 'uri'
-require 'shellwords'
 
-RSYNC_ADDRESS_PATTERN = %r{^(([^@]+@)?([^:]+)):(.+)$}
-OMNI_GIT = ENV['OMNI_GIT'] || "#{ENV['HOME']}/git"
-OMNI_ORG = ENV['OMNI_ORG']
-OMNI_GIT_HOST = ENV['OMNI_GIT_HOST'] || 'git@github.com:'
-
-# Acceptable paths formats: https://, ssh://, git://, user@host:path
-def repo_address?(input)
-  return URI.parse(input) if input =~ %r{^(https?|git|ssh)://}
-  return false unless input =~ RSYNC_ADDRESS_PATTERN
-
-  input = "ssh://#{input.sub(RSYNC_ADDRESS_PATTERN, '\1/\4')}"
-  URI.parse(input)
-end
-
-def omni_cmd(*cmd)
-  raise 'OMNI_CMD_FILE not set' unless ENV['OMNI_CMD_FILE']
-  cmd = Shellwords.join(*cmd)
-  File.open(ENV['OMNI_CMD_FILE'], 'w') { |f| f.write("#{cmd}\n") }
-end
-
-def error(msg)
-  STDERR.puts "#{"omni:".light_cyan} #{"cd command failed:".red} #{msg}"
-  exit 1
-end
+require_relative '../lib/env'
+require_relative '../lib/git'
+require_relative '../lib/utils'
 
 error('no repository specified') unless ARGV[0]
 
@@ -49,10 +26,11 @@ unless address
   if repositories.first.include?('/')
     repositories = ["${OMNI_ORG}/#{repositories.first}"]
   else
-    error("#{repositories.first.yellow}: unable to resolve repository (OMNI_ORG is not defined)") unless OMNI_ORG
+    error("#{repositories.first.yellow}: unable to resolve repository (OMNI_ORG is not defined)") \
+      unless OmniEnv::OMNI_ORG
 
-    repositories = OMNI_ORG.split(':').map(&:strip).map do |org|
-      "#{OMNI_GIT_HOST}#{org}/#{repositories.first}.git"
+    repositories = OmniEnv::OMNI_ORG.split(':').map(&:strip).map do |org|
+      "#{OmniEnv::OMNI_GIT_HOST}#{org}/#{repositories.first}.git"
     end
   end
 end
@@ -68,7 +46,7 @@ repositories.each do |repo|
 
   # Compute the path that we will use for the repository
   path = "#{address.host}#{address.path.sub(/\.git$/, '')}"
-  full_path = "#{OMNI_GIT}/#{path}"
+  full_path = "#{OmniEnv::OMNI_GIT}/#{path}"
 
   error("#{repo.yellow}: repository already exists") if File.directory?(full_path)
 

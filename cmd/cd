@@ -17,32 +17,17 @@
 # help:             alphabetically.
 
 require 'colorize'
-require 'uri'
-require 'shellwords'
 
-RSYNC_ADDRESS_PATTERN = %r{^(([^@]+@)?([^:]+)):(.+)$}
-OMNI_GIT = ENV['OMNI_GIT'] || "#{ENV['HOME']}/git"
-
-# Acceptable paths formats: https://, ssh://, git://, user@host:path
-def repo_address?(input)
-  return URI.parse(input) if input =~ %r{^(https?|git|ssh)://}
-  return false unless input =~ RSYNC_ADDRESS_PATTERN
-
-  input = "ssh://#{input.sub(RSYNC_ADDRESS_PATTERN, '\1/\4')}"
-  URI.parse(input)
-end
-
-def omni_cmd(cmd)
-  raise 'OMNI_CMD_FILE not set' unless ENV['OMNI_CMD_FILE']
-  File.open(ENV['OMNI_CMD_FILE'], 'w') { |f| f.write("#{cmd}\n") }
-end
+require_relative '../lib/env'
+require_relative '../lib/git'
+require_relative '../lib/utils'
 
 repo = ARGV[0]
 
 address = repo_address?(repo)
 if address
   path = "#{address.host}#{address.path.sub(/\.git$/, '')}"
-  full_path = "#{OMNI_GIT}/#{path}"
+  full_path = "#{OmniEnv::OMNI_GIT}/#{path}"
 
   unless File.directory?(full_path)
     STDERR.puts "#{"omni:".light_cyan} #{"cd command failed:".red} #{repo}: No such repository"
@@ -50,7 +35,7 @@ if address
   end
 
   # Shell escape full_path using ruby lib
-  omni_cmd(Shellwords.join(['cd', full_path]))
+  omni_cmd(['cd', full_path])
 
   exit 0
 end

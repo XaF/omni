@@ -49,17 +49,16 @@ def complete_omni_subcommand(argv)
     if omniCmd.autocompletion?
       # Set the environment variables that we need to pass to the
       # subcommand
-      ENV['OMNI_SUBCOMMAND'] = omniCmd.cmd.join(' ')
       ENV['COMP_CWORD'] = (comp_cword - omniCmd.cmd.length + 1).to_s
 
       # We need to shift the argv to remove the subcommand
       # that we are autocompleting
-      passed_argv = argv.dup
-      passed_argv.shift(omniCmd.cmd.length)
+      # passed_argv = argv.dup
+      # passed_argv.shift(omniCmd.cmd.length)
 
       # Call the subcommand with the --complete flag, we delegate
       # the answer to it
-      omniCmd.autocomplete(*passed_argv)
+      omniCmd.autocomplete(*argv)
     end
   end
 
