@@ -51,11 +51,6 @@ def complete_omni_subcommand(argv)
       # subcommand
       ENV['COMP_CWORD'] = (comp_cword - omniCmd.cmd.length + 1).to_s
 
-      # We need to shift the argv to remove the subcommand
-      # that we are autocompleting
-      # passed_argv = argv.dup
-      # passed_argv.shift(omniCmd.cmd.length)
-
       # Call the subcommand with the --complete flag, we delegate
       # the answer to it
       omniCmd.autocomplete(*argv)
@@ -77,12 +72,87 @@ def complete_omni_subcommand(argv)
 end
 
 
+# prompt_similar_commands is a function that will be called
+# when the command passed to omni is not found. It will
+# prompt the user with a list of similar commands
+# and run the one that the user selects, if any
+def prompt_similar_commands(argv)
+  # We do require here because we don't want to load it
+  # if we don't need it, as it's a bit heavy
+  require 'fuzzy_match'
+  require 'amatch'
+
+  # We want to use amatch to make string similarity calculations
+  # in a C extension, which is faster than the pure ruby version
+  FuzzyMatch.engine = :amatch
+
+  # We want to find and sort the available commands by similarity
+  # to the one that was requested
+  fuzzy = FuzzyMatch.new(OmniPath)
+  matching_commands = fuzzy.find_all(argv.join(' '))
+
+  # If we don't have any matching command, we can just exit early
+  return if matching_commands.empty?
+
+  # If we don't have a tty, we can't prompt the user, so we
+  # just print the first matching command and exit
+  unless STDOUT.tty?
+    STDERR.puts "#{"omni:".light_cyan} #{"Did you mean?".yellow} #{matching_commands.first}"
+    return
+  end
+
+  # If we get there, we want to prompt the user with a list or
+  # a yes/no question, in order to run the command that the user
+  # wanted to run in the first place
+  require 'tty-prompt'
+
+  # If we only have one matching command, we can offer it as a
+  # yes/no question instead of a list, as there is not much
+  # of any other choice
+  if matching_commands.length == 1
+    run_command = begin
+      TTY::Prompt.new
+        .yes?("#{"omni:".light_cyan} #{"Did you mean?".yellow} #{matching_commands.first}")
+    rescue TTY::Reader::InputInterrupt
+      nil
+    end
+
+    # Add a line return to make it look nicer, we want
+    # to catch 'true' or 'nil' here, as 'false' means
+    # that the user said no (and pressed 'enter') and
+    # we don't need an extra line return in that case
+    puts if run_command != false
+
+    # If the user said yes, we want to run the command
+    matching_commands.first.exec(*argv) if run_command
+
+    return
+  end
+
+  # If we get there, we have multiple matching commands, so we
+  # want to prompt the user with a list of commands to choose from
+  begin
+    TTY::Prompt.new
+      .select("#{"omni:".light_cyan} #{"Did you mean?".yellow}", matching_commands)
+      .exec(*argv)
+  rescue TTY::Reader::InputInterrupt
+    # Just a line return to make it look nicer, since we get here
+    # in case of interrupt, and the prompt doesn't do it
+    puts
+  end
+end
+
+
 # run_omni_subcommand is a function that will be called
 # to run the subcommand that was passed to omni
 def run_omni_subcommand(argv)
+  # If no command was passed, we want to run the help command
+  # instead; if the command is --help, we also want to run
+  # the help command
   argv = ['help'] if argv.length == 0
   argv[0] = 'help' if argv[0] == '--help'
 
+  # Try to find the requested command
   omniCmd = OmniPath.find { |omniCmd| omniCmd.serves?(argv) }
   omniCmd.exec(*argv) unless omniCmd.nil?
 
@@ -91,10 +161,8 @@ def run_omni_subcommand(argv)
   # and return an error code
   STDERR.puts "#{"omni:".light_cyan} #{"command not found:".red} #{ARGV.join(' ')}"
 
-  # Check if we have a command that starts with the same
-  # characters, and if so, print it as a suggestion
-  omniCmd = OmniPath.find { |omniCmd| omniCmd.start_with?(argv) }
-  STDERR.puts "#{"omni:".light_cyan} Did you mean? #{omniCmd.cmd_s.yellow}" unless omniCmd.nil?
+  # Prompt the user with a list of similar commands
+  prompt_similar_commands(argv)
 
   # Return an error code since we didn't find the command
   # to execute

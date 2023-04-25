@@ -127,6 +127,10 @@ class OmniPath
     self.instance.find(&block)
   end
 
+  def self.select(&block)
+    self.instance.select(&block)
+  end
+
   def self.sorted(&block)
     self.instance.sorted(&block)
   end
@@ -183,26 +187,7 @@ class OmniPath
   end
 
   def sorted(&block)
-    @sorted ||= begin
-      commands = each.to_a
-
-      # Order the commands by category and then by command
-      commands.sort_by! do |command|
-        sorting_cmd = command.cmd.map(&:downcase)
-        sorting_cat = if command.category.nil? || command.category.empty?
-          # Downcase is always sorted after upcase, so by
-          # using downcase for uncategorized, we make sure
-          # that they will always end-up at the end!
-          ['uncategorized']
-        else
-          command.category.map(&:upcase)
-        end
-
-        [sorting_cat, sorting_cmd]
-      end
-
-      commands
-    end
+    @sorted ||= each.to_a.sort
 
     @sorted.each { |command| yield command } if block_given?
 
@@ -302,19 +287,43 @@ class OmniCommand
   end
 
   def start_with?(cmd_arr)
-    @cmd[0...cmd_arr.length] == cmd_arr
+    @cmd[0...cmd_arr.length] == cmd_arr || (
+      @cmd[0...cmd_arr.length - 1] == cmd_arr[0...cmd_arr.length - 1] &&
+      @cmd[cmd_arr.length - 1].start_with?(cmd_arr.last)
+    )
   end
 
   def serves?(cmd_arr)
     @cmd.length <= cmd_arr.length && cmd_arr[0...@cmd.length] == @cmd
   end
 
-  def to_s
+  def to_s_with_path
     "'#{@cmd.join(' ')}' (#{@path})"
   end
 
-  def cmd_s
+  def to_s
     @cmd.join(' ')
+  end
+
+  def <=>(other)
+    sort_key <=> other.sort_key
+  end
+
+  protected
+
+  def sort_key
+    sorting_cmd = cmd.map(&:downcase)
+    sorting_cat = if category.nil? || category.empty?
+      # Downcase is always sorted after upcase, so by
+      # using downcase for uncategorized, we make sure
+      # that they will always end-up at the end!
+      ['uncategorized']
+    else
+      category.map(&:upcase)
+    end
+
+    # We want to sort by category first, then by command
+    [sorting_cat, sorting_cmd]
   end
 
   private
