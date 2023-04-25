@@ -35,14 +35,11 @@ function omni() {
 	# Prepare the environment for omni
 	export OMNI_UUID=$(uuidgen)
 	local tmpdir=${TMPDIR:-/tmp}
-	# export TMPDIR=/tmp
 	OMNI_FILE_PREFIX="omni_${OMNI_UUID}"
 	export OMNI_CMD_FILE="${tmpdir}/${OMNI_FILE_PREFIX}.cmd"
-	#export OMNI_HELPERS_FILE="${TMPDIR}/${OMNI_FILE_PREFIX}.helpers"
 	local omnidir="${OMNIDIR:-${OMNI_GIT:-${HOME}/git}/github.org/XaF/omni}"
 
 	# Run the command
-	EXIT_CODE=0
 	"${omnidir}/omni" "$@"
 	EXIT_CODE=$?
 
