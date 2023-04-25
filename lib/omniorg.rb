@@ -144,7 +144,7 @@ class OmniRepo
     return parsed unless parsed.nil? || (parsed.host.nil? && parsed.path.nil?)
 
     path = "ssh://#{path}" unless path =~ %r{^[^:]+://}
-    path.sub!(OmniOrg::RSYNC_ADDRESS_PATTERN, '\1/\4')
+    path.sub!(OmniRepo::RSYNC_ADDRESS_PATTERN, '\1/\4')
 
     begin
       URI.parse(path)
@@ -156,8 +156,6 @@ end
 
 
 class OmniOrg
-  RSYNC_ADDRESS_PATTERN = %r{^(([^@]+@)?([^:]+)):(.*)$}
-
   attr_reader :path, :repo
 
   def initialize(path)
