@@ -54,9 +54,7 @@ class OmniPathForMakefiles
       # If we are in a git repository, we stop searching when
       # reaching the top level
       top_level = `git rev-parse --show-toplevel 2>/dev/null`.chomp
-      if top_level.empty?
-        top_level = Dir.home
-      end
+      top_level = Dir.home if top_level.empty?
 
       begin
         while Dir.pwd != '/'
@@ -222,8 +220,30 @@ class OmniCommand
 
   attr_reader :cmd, :path
 
+  def self.cleanup_command(cmd)
+    # Duplicate the command to avoid modifying the original
+    cmd = cmd.dup
+
+    # Split the directories and the file from the command
+    last = cmd.pop
+
+    # Remove the .d extension from the directories if present
+    cmd.map! do |part|
+      part.gsub(/\.d$/, '')
+    end
+
+    # Remove the extension from the file if present
+    last = File.basename(last, File.extname(last))
+
+    # Add back the file to the command
+    cmd << last
+
+    # Return the cleaned up command
+    cmd
+  end
+
   def initialize(cmd, path)
-    @cmd = cmd
+    @cmd = OmniCommand.cleanup_command(cmd)
     @path = path
   end
 
