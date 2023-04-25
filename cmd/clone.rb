@@ -11,8 +11,7 @@
 # help:             \e[3mOMNI_ORG\e[0m will be used to search for the
 # help:             repository to clone.
 
-require 'colorize'
-
+require_relative '../lib/colorize'
 require_relative '../lib/env'
 require_relative '../lib/omniorg'
 require_relative '../lib/utils'

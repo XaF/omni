@@ -354,7 +354,11 @@ class OmniCommand
           next unless reading_help
 
           # Handle the color codes to make the colors appear
-          line = line.gsub(OmniCommand::COLOR_PATTERN) { |m| eval("\"#{m}\"") }
+          if String.disable_colorization
+            line = line.gsub(OmniCommand::COLOR_PATTERN, '')
+          else
+            line = line.gsub(OmniCommand::COLOR_PATTERN) { |m| eval("\"#{m}\"") }
+          end
 
           # Add the line to the help lines
           help_lines << line

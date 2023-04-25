@@ -9,10 +9,12 @@
 # help:
 # help:   \e[36mcommand\e[0m      The command to get help for
 
-require 'colorize'
-
+require_relative '../lib/colorize'
 require_relative '../lib/omnipath'
 
+
+# If we don't have a tty, we want to disable colorization
+String.disable_colorization = true unless STDERR.tty?
 
 # If a specific command was passed as argument, show help
 # for that command
@@ -74,7 +76,7 @@ OmniPath.sorted do |command|
   help_short = command.help_short.split("\n").join(' ')
   help_short = help_short.scan(/\S.{0,#{help_short_width}}\S(?=\s|$)|\S+/)
 
-  STDERR.puts "  #{command.cmd.join(' ').ljust(ljust).cyan} #{help_short.first}"
+  STDERR.puts "  #{command.to_s.ljust(ljust).cyan} #{help_short.first}"
   STDERR.puts "  #{" " * ljust} #{help_short[1..-1].join("\n   " + " " * ljust)}" if help_short.length > 1
 end
 

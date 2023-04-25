@@ -3,10 +3,12 @@
 # Main omni command, which is used to run the other commands
 # and provide autocompletion for them
 
-require 'colorize'
-
+require_relative 'lib/colorize'
 require_relative 'lib/omnipath'
 
+
+# If we don't have a tty, we want to disable colorization
+String.disable_colorization = true unless STDERR.tty?
 
 # complete_omni_subcommand is a function that will be called
 # when the --complete flag is passed to omni. It will provide
@@ -168,7 +170,6 @@ def run_omni_subcommand(argv)
   # to execute
   exit 1
 end
-
 
 # If the --complete flag is passed, we want to provide
 # autocompletion for the subcommands

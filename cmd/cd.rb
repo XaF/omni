@@ -16,8 +16,7 @@
 # help:             set, and then trying all the other organizations
 # help:             alphabetically.
 
-require 'colorize'
-
+require_relative '../lib/colorize'
 require_relative '../lib/env'
 require_relative '../lib/omniorg'
 require_relative '../lib/utils'
