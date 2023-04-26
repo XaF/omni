@@ -252,6 +252,8 @@ class OmniCommand
     end
 
     # Prepare the environment variables
+    OmniEnv::set_env_vars
+    ENV['OMNI_RUN_FROM'] = Dir.pwd
     ENV['OMNI_SUBCOMMAND'] = @cmd.join(' ')
 
     # Execute the command
@@ -437,6 +439,14 @@ class OmniCommandForMakefile < OmniCommand
       argv = argv.dup
       argv.shift(@cmd.length)
     end
+
+    # Prepare the environment variables
+    OmniEnv::set_env_vars
+    ENV['OMNI_RUN_FROM'] = Dir.pwd
+    ENV['OMNI_SUBCOMMAND'] = @cmd.join(' ')
+
+    # Switch to the Makefile directory
+    Dir.chdir(File.dirname(@path))
 
     # Execute the command
     Kernel.exec('make', '-f', @path, @target, *argv)

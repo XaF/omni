@@ -16,26 +16,23 @@ require_relative '../lib/env'
 require_relative '../lib/omniorg'
 require_relative '../lib/utils'
 
+
 error('no repository specified') unless ARGV[0]
 error('too many argument') if ARGV[1]
 
 repo = ARGV[0]
 
 omniRepo = OmniRepo.new(repo)
+
 locations = [omniRepo]
-unless omniRepo.remote?
-  locations = []
-  OmniOrgs.each do |org|
-    locations << org if org.remote?(repo)
-  end
-end
+locations = OmniOrgs.select { |org| org.remote?(repo) } unless omniRepo.remote?
 
 error("#{repo.yellow}: No such repository") if locations.empty?
 
 locations.each do |location|
   # Compute the path that we will use for the repository
   full_path = location.path?(repo)
-  error("#{repo.yellow}: repository already exists") if File.directory?(full_path)
+  error("#{repo.yellow}: repository already exists #{"(#{full_path})".light_black}") if File.directory?(full_path)
 
   # Compute the remote address of the repository
   remote = location.remote?(repo)

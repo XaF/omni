@@ -14,6 +14,14 @@ class OmniOrgs
     self.instance.each(&block)
   end
 
+  def self.map(&block)
+    self.instance.map(&block)
+  end
+
+  def self.select(&block)
+    self.instance.select(&block)
+  end
+
   def self.any?
     self.instance.any?
   end
@@ -35,10 +43,23 @@ class OmniOrgs
         each_orgs << omniOrg
       end
 
+      # Add the base git path as repo org
+      omniOrg = OmniRepoBase.new
+      yield omniOrg if block_given?
+      each_orgs << omniOrg
+
       each_orgs
     end
 
     @each
+  end
+
+  def map(&block)
+    each.map(&block)
+  end
+
+  def select(&block)
+    each.select(&block)
   end
 
   def any?
@@ -58,26 +79,48 @@ class OmniRepo
 
   def initialize(path)
     @uri = repo_uri(path)
-    raise "Invalid repo path: #{path}" if @uri == nil
+    raise "Invalid repo path: #{path}" if @uri == nil && check_path
   end
 
   def path?(repo = nil)
     r = repo_in_repo(repo)
     r.path.sub!(/\.git$/, '')
 
-    return "#{OmniEnv::OMNI_GIT}/#{r.host}#{r.path}"
+    full_repo = r.path&.sub(%r{^/}, '')
+    org_name, repo_name = full_repo.split('/', 2) if full_repo
+
+    template_values = {
+      host: r.host,
+      org: org_name,
+      repo: repo_name,
+    }
+
+    repo_reldir = OmniEnv::OMNI_REPO_FORMAT % template_values
+    repo_absdir = "#{OmniEnv::OMNI_GIT}/#{repo_reldir}"
+
+    repo_absdir.gsub!(%r{/+}, '/')
+    repo_absdir.gsub!(%r{/$}, '')
+
+    repo_absdir
   end
 
   def remote?(repo = nil)
     uri = repo_in_repo(repo)
 
-    return if uri.host.nil? || uri.path.nil? || uri.path.empty?
+    return if uri.host.nil? || uri.path.nil? || uri.path.empty? || uri.path == '/'
 
+    # Clean-up the repeated '/' in the path
+    uri.path.gsub!(%r{/+}, '/')
+
+    # Now get things as a string
     uri_s = uri.to_s
+
+    # If SSH, apply a few changes to make it rsync-styled
     if uri.scheme == 'ssh'
       uri_s.sub!(%r{^ssh://}, '')
       uri_s.sub!(%r{#{Regexp.escape(uri.path)}$}, ":#{uri.path[1..-1]}")
     end
+
     uri_s
   end
 
@@ -102,10 +145,7 @@ class OmniRepo
       path = path[1..-1] if n_repo.uri.path.start_with?('/')
       path = path[0..-5] if path.end_with?('.git')
 
-      unless path.include?('/')
-        raise "Org unknown and repo path #{repo} does not include an org" if org.nil?
-        path = "#{org}/#{path}"
-      end
+      path = "#{org}/#{path}" unless path.include?('/')
 
       new_uri.path = "/#{path}.git"
 
@@ -135,22 +175,49 @@ class OmniRepo
   end
 
   def repo_uri(path)
+    return URI.parse('') if path.nil? || path.empty?
+
+    # If the string does contain : or @ and does not contain ://, then
+    # assume it is a ssh path and add it right now or the value will be
+    # interpreted as path by URI.parse
+    if path !~ %r{^[^:]+://}
+      path = if path =~ %r{[@:]}
+        "ssh://#{path}"
+      elsif path =~ %r{\.}
+        "https://#{path}"
+      else
+        path
+      end
+    end
+
+    # Try parsing the URI without any more modifications
     parsed = begin
       URI.parse(path)
     rescue URI::InvalidURIError
       nil
     end
 
+    # Return the parsed URI if it is valid and has a host or path
     return parsed unless parsed.nil? || (parsed.host.nil? && parsed.path.nil?)
 
+    # Otherwise, try another time after converting the URI from
+    # potentially an rsync-formatted URI to a regular one
     path = "ssh://#{path}" unless path =~ %r{^[^:]+://}
     path.sub!(OmniRepo::RSYNC_ADDRESS_PATTERN, '\1/\4')
 
+    # Try parsing the URI again, but this time if it fails, return nil
     begin
       URI.parse(path)
     rescue URI::InvalidURIError
       nil
     end
+  end
+end
+
+
+class OmniRepoBase < OmniRepo
+  def initialize
+    @uri = URI.parse('')
   end
 end
 
