@@ -10,7 +10,7 @@
 # help:   \e[36mcommand\e[0m      The command to get help for
 
 require_relative '../lib/colorize'
-require_relative '../lib/omnipath'
+require_relative '../lib/path'
 
 
 # If we don't have a tty, we want to disable colorization

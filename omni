@@ -4,7 +4,7 @@
 # and provide autocompletion for them
 
 require_relative 'lib/colorize'
-require_relative 'lib/omnipath'
+require_relative 'lib/path'
 require_relative 'lib/updater'
 require_relative 'lib/utils'
 
