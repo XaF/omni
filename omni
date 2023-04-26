@@ -5,6 +5,7 @@
 
 require_relative 'lib/colorize'
 require_relative 'lib/omnipath'
+require_relative 'lib/updater'
 require_relative 'lib/utils'
 
 
@@ -78,6 +79,9 @@ end
 # run_omni_subcommand is a function that will be called
 # to run the subcommand that was passed to omni
 def run_omni_subcommand(argv)
+  # Run updates if delay has passed
+  Updater.update
+
   # If no command was passed, we want to run the help command
   # instead; if the command is --help, we also want to run
   # the help command

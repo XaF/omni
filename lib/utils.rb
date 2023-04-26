@@ -4,13 +4,13 @@ require 'timeout'
 require_relative 'env'
 
 
-def error(msg, cmd: nil)
+def error(msg, cmd: nil, print_only: false)
   cmd = cmd || OmniEnv::OMNI_SUBCOMMAND
   command_failed = cmd ? "#{cmd} command failed:" : 'command failed:'
 
   STDERR.puts "#{"omni:".light_cyan} #{command_failed.red} #{msg}"
 
-  exit 1
+  exit 1 unless print_only
 end
 
 
@@ -25,9 +25,15 @@ def omni_cmd(*cmd)
 end
 
 
-def command_line(*cmd, timeout: nil)
-  msg = "\n$ #{cmd.join(' ')}".light_black
-  msg = "#{msg} #{"(timeout: #{timeout}s)".light_blue}" if timeout
+def command_line(*cmd, timeout: nil, chdir: nil, context: nil)
+  Dir.chdir(chdir) do
+    return command_line(*cmd, timeout: timeout, context: context)
+  end if chdir
+
+  msg = +""
+  msg << "#{context.light_blue} " if context
+  msg << "$ #{cmd.join(' ')}".light_black
+  msg << " #{"(timeout: #{timeout}s)".light_blue}" if timeout
   STDERR.puts msg
 
   if timeout
@@ -44,6 +50,8 @@ def command_line(*cmd, timeout: nil)
   else
     system(*cmd)
   end
+ensure
+  STDERR.puts unless chdir
 end
 
 

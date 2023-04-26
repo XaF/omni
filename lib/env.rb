@@ -10,7 +10,6 @@ class OmniEnv
   OMNI_GIT = ENV['OMNI_GIT'] || "#{ENV['HOME']}/git"
   OMNI_ORG = split_path(ENV['OMNI_ORG'] || '', split_by: ',')
   OMNI_SUBCOMMAND = ENV['OMNI_SUBCOMMAND'] || nil
-  OMNI_REPO_FORMAT = "%{host}/%{org}/%{repo}"
 
   def self.set_env_vars
     ENV['OMNIPATH'] = OMNIPATH.join(':')

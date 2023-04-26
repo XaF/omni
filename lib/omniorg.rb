@@ -95,7 +95,7 @@ class OmniRepo
       repo: repo_name,
     }
 
-    repo_reldir = OmniEnv::OMNI_REPO_FORMAT % template_values
+    repo_reldir = Config.omni_repo_path_format % template_values
     repo_absdir = "#{OmniEnv::OMNI_GIT}/#{repo_reldir}"
 
     repo_absdir.gsub!(%r{/+}, '/')
