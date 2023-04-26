@@ -46,7 +46,7 @@ ljust = [OmniPath.max_command_length + 2, 15].max
 tty_current_width = `tput cols`.to_i
 
 # Compute short help width
-help_short_width = tty_current_width - ljust - 2
+help_short_width = tty_current_width - ljust - 4
 
 # print help
 STDERR.puts "#{"omni".bold} - omnipotent tool"
@@ -74,7 +74,7 @@ OmniPath.sorted do |command|
   end
 
   help_short = command.help_short.split("\n").join(' ')
-  help_short = help_short.scan(/\S.{0,#{help_short_width}}\S(?=\s|$)|\S+/)
+  help_short = help_short.scan(/(?:\A|\G(?<=\s)).{1,#{help_short_width}}(?=\s|$)|\S+/)
 
   STDERR.puts "  #{command.to_s.ljust(ljust).cyan} #{help_short.first}"
   STDERR.puts "  #{" " * ljust} #{help_short[1..-1].join("\n   " + " " * ljust)}" if help_short.length > 1
