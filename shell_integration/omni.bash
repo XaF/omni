@@ -40,7 +40,7 @@ function omni() {
 	local omnidir="${OMNIDIR:-${OMNI_GIT:-${HOME}/git}/github.org/XaF/omni}"
 
 	# Run the command
-	"${omnidir}/omni" "$@"
+	"${omnidir}/omni.rb" "$@"
 	EXIT_CODE=$?
 
 	# Check if OMNI_CMD_FILE exists, and if it does, run the commands
