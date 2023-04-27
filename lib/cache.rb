@@ -10,9 +10,9 @@ class Cache
   include Singleton
   include Enumerable
 
-  def self.method_missing(method, *args, &block)
+  def self.method_missing(method, *args, **kwargs, &block)
     if self.instance.respond_to?(method)
-      self.instance.send(method, *args, &block)
+      self.instance.send(method, *args, **kwargs, &block)
     else
       super
     end

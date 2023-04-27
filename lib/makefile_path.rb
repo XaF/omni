@@ -1,19 +1,24 @@
+require 'singleton'
+
 require_relative 'makefile_command'
 
 
 class MakefilePath
+  include Singleton
   include Enumerable
 
   TARGET_REGEX=%r{^([a-zA-Z_0-9\-\/\/]+):(.*?##\s*(.*))?$}
 
-  @@instance = nil
-
-  def self.instance
-    @@instance ||= MakefilePath.new
+  def self.method_missing(method, *args, **kwargs, &block)
+    if self.instance.respond_to?(method)
+      self.instance.send(method, *args, **kwargs, &block)
+    else
+      super
+    end
   end
 
-  def self.each(&block)
-    self.instance.each(&block)
+  def self.respond_to_missing?(method, include_private = false)
+    self.instance.respond_to?(method, include_private) || super
   end
 
   def each(&block)

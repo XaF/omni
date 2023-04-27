@@ -149,9 +149,9 @@ class TTYProgressBar
     @bar = TTY::ProgressBar.new(*args, **kwargs)
   end
 
-  def method_missing(method, *args, &block)
+  def method_missing(method, *args, **kwargs, &block)
     return unless STDOUT.tty?
 
-    @bar.send(method, *args, &block)
+    @bar.send(method, *args, **kwargs, &block)
   end
 end

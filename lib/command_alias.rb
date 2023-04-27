@@ -7,9 +7,9 @@ class OmniCommandWithAliases
     @aliases = aliases
   end
 
-  def method_missing(method, *args, &block)
+  def method_missing(method, *args, **kwargs, &block)
     if @cmd.respond_to?(method)
-      @cmd.send(method, *args, &block)
+      @cmd.send(method, *args, **kwargs, &block)
     else
       super
     end
