@@ -1,28 +1,24 @@
 require 'json'
 require 'time'
+require 'singleton'
 
 require_relative 'env'
 require_relative 'config'
 
 
 class Cache
+  include Singleton
 
-  @@instance = nil
-
-  def self.instance
-    @@instance ||= Cache.new
+  def self.method_missing(method, *args, &block)
+    if self.instance.respond_to?(method)
+      self.instance.send(method, *args, &block)
+    else
+      super
+    end
   end
 
-  def self.get(key, default = nil)
-    self.instance.get(key, default)
-  end
-
-  def self.set(key, value, expires_in: nil, expires_at: nil)
-    self.instance.set(key, value, expires_in: expires_in, expires_at: expires_at)
-  end
-
-  def self.clear
-    self.instance.clear
+  def self.respond_to_missing?(method, include_private = false)
+    self.instance.respond_to?(method, include_private) || super
   end
 
   def initialize
