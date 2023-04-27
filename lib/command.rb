@@ -49,16 +49,16 @@ class OmniCommand
     # Shift the argv if needed
     if shift_argv
       argv = argv.dup
-      argv.shift(@cmd.length)
+      argv.shift(cmd.length)
     end
 
     # Prepare the environment variables
     OmniEnv::set_env_vars
     ENV['OMNI_RUN_FROM'] = Dir.pwd
-    ENV['OMNI_SUBCOMMAND'] = @cmd.join(' ')
+    ENV['OMNI_SUBCOMMAND'] = cmd.join(' ')
 
     # Execute the command
-    Kernel.exec(@path, *argv)
+    Kernel.exec(path, *argv)
 
     # If we get here, the command failed
     exit 1
@@ -72,47 +72,45 @@ class OmniCommand
     # Shift the argv if needed
     if shift_argv
       argv = argv.dup
-      argv.shift(@cmd.length)
+      argv.shift(cmd.length)
     end
 
     # Prepare the environment variables
-    ENV['OMNI_SUBCOMMAND'] = @cmd.join(' ')
+    ENV['OMNI_SUBCOMMAND'] = cmd.join(' ')
 
     # Execute the command
-    Kernel.exec(@path, '--complete', *argv)
+    Kernel.exec(path, '--complete', *argv)
 
     # If we get here, the command failed
     exit 1
   end
 
   def length
-    @cmd.join(' ').length
+    cmd.join(' ').length
   end
 
   def start_with?(cmd_arr)
-    @cmd[0...cmd_arr.length] == cmd_arr || (
-      @cmd[0...cmd_arr.length - 1] == cmd_arr[0...cmd_arr.length - 1] &&
-      @cmd[cmd_arr.length - 1].start_with?(cmd_arr.last)
+    cmd[0...cmd_arr.length] == cmd_arr || (
+      cmd[0...cmd_arr.length - 1] == cmd_arr[0...cmd_arr.length - 1] &&
+      cmd[cmd_arr.length - 1].start_with?(cmd_arr.last)
     )
   end
 
   def serves?(cmd_arr)
-    @cmd.length <= cmd_arr.length && cmd_arr[0...@cmd.length] == @cmd
+    cmd.length <= cmd_arr.length && cmd_arr[0...cmd.length] == cmd
   end
 
   def to_s_with_path
-    "'#{@cmd.join(' ')}' (#{@path})"
+    "'#{cmd.join(' ')}' (#{path})"
   end
 
   def to_s
-    @cmd.join(' ')
+    cmd.join(' ')
   end
 
   def <=>(other)
     sort_key <=> other.sort_key
   end
-
-  protected
 
   def sort_key
     sorting_cmd = cmd.map(&:downcase)

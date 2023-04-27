@@ -1,14 +1,10 @@
 require_relative 'command'
 
 
-class OmniCommandWithAliases < OmniCommand
+class OmniCommandWithAliases
   def initialize(command, aliases)
     @cmd = command
     @aliases = aliases
-  end
-
-  def path
-    @cmd.path
   end
 
   def method_missing(method, *args, &block)
@@ -31,7 +27,9 @@ class OmniCommandWithAliases < OmniCommand
     @cmds_s ||= cmds.sort_by(&:cmd).map { |c| c.cmd.join(' ') }
   end
 
-  protected
+  def <=>(other)
+    sort_key <=> other.sort_key
+  end
 
   def sort_key
     key = @cmd.sort_key
