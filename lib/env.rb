@@ -17,4 +17,14 @@ class OmniEnv
     ENV['OMNI_GIT'] = OMNI_GIT
     ENV['OMNI_ORG'] = OMNI_ORG.join(',')
   end
+
+  def self.env
+    {
+      OMNIPATH: OMNIPATH,
+      OMNI_CMD_FILE: OMNI_CMD_FILE,
+      OMNI_GIT: OMNI_GIT,
+      OMNI_ORG: OMNI_ORG,
+      OMNI_SUBCOMMAND: OMNI_SUBCOMMAND,
+    }
+  end
 end

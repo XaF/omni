@@ -1,34 +1,23 @@
+require 'singleton'
+
 require_relative 'config'
 require_relative 'env'
 
 
 class OmniOrgs
+  include Singleton
   include Enumerable
 
-  @@instance = nil
-
-  def self.instance
-    @@instance ||= OmniOrgs.new
+  def self.method_missing(method, *args, &block)
+    if self.instance.respond_to?(method)
+      self.instance.send(method, *args, &block)
+    else
+      super
+    end
   end
 
-  def self.each(&block)
-    self.instance.each(&block)
-  end
-
-  def self.map(&block)
-    self.instance.map(&block)
-  end
-
-  def self.select(&block)
-    self.instance.select(&block)
-  end
-
-  def self.any?
-    self.instance.any?
-  end
-
-  def self.first
-    self.instance.first
+  def self.respond_to_missing?(method, include_private = false)
+    self.instance.respond_to?(method, include_private) || super
   end
 
   def each(&block)
@@ -105,10 +94,10 @@ class OmniRepo
     repo_absdir
   end
 
-  def remote?(repo = nil)
+  def remote?(repo = nil, force: false)
     uri = repo_in_repo(repo)
 
-    return if uri.host.nil? || uri.path.nil? || uri.path.empty? || uri.path == '/'
+    return if !force && ( uri.host.nil? || uri.path.nil? || uri.path.empty? || uri.path == '/')
 
     # Clean-up the repeated '/' in the path
     uri.path.gsub!(%r{/+}, '/')
@@ -131,6 +120,10 @@ class OmniRepo
 
   def org=(org)
     @org = org
+  end
+
+  def to_s
+    remote?(force: true)
   end
 
   private
@@ -220,6 +213,10 @@ class OmniRepoBase < OmniRepo
   def initialize
     @uri = URI.parse('')
   end
+
+  def to_s
+    'default'
+  end
 end
 
 
@@ -238,6 +235,10 @@ class OmniOrg
 
   def remote?(repo = nil)
     @repo.remote?(repo)
+  end
+
+  def to_s
+    @repo.to_s
   end
 end
 

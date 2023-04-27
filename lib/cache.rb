@@ -8,6 +8,7 @@ require_relative 'config'
 
 class Cache
   include Singleton
+  include Enumerable
 
   def self.method_missing(method, *args, &block)
     if self.instance.respond_to?(method)
@@ -33,6 +34,14 @@ class Cache
     expires_at = Time.now + expires_in if expires_at.nil? && !expires_in.nil?
     @cache[key] = CachedValue.new(value, expires_at: expires_at)
     write_cache
+  end
+
+  def each(&block)
+    @cache.reject { |_, value| value.expired? }.each(&block)
+  end
+
+  def any?
+    @cache.reject { |_, value| value.expired? }.any?
   end
 
   def clear
@@ -77,6 +86,10 @@ class CachedValue
 
   def value
     expired? ? nil : @value
+  end
+
+  def expire_at
+    @expires_at
   end
 
   def expired?
