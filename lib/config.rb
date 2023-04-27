@@ -1,9 +1,12 @@
+require 'singleton'
 require 'yaml'
 
 require_relative 'env'
 
 
 class Config
+  include Singleton
+
   def self.default_config
     {
       omni_cache_file: "#{ENV['HOME']}/.cache/omni",
@@ -13,36 +16,32 @@ class Config
     }
   end
 
-  @@instance = nil
-
-  def self.instance
-    @@instance ||= begin
-      instance = Config.new
-
-      instance.import("#{ENV['HOME']}/.omni")
-      instance.import("#{ENV['HOME']}/.config/omni")
-      instance.import(ENV['OMNI_CONFIG']) if ENV['OMNI_CONFIG']
-
-      instance
-    end
+  def self.config_files
+    [
+      "#{ENV['HOME']}/.omni",
+      "#{ENV['HOME']}/.config/omni",
+      ENV['OMNI_CONFIG'],
+    ].compact
   end
 
   def self.method_missing(method, *args, &block)
-    if instance.respond_to?(method)
-      instance.send(method, *args, &block)
+    if self.instance.respond_to?(method)
+      self.instance.send(method, *args, &block)
     else
       super
     end
   end
 
   def self.respond_to_missing?(method, include_private = false)
-    instance.respond_to?(method, include_private) || super
+    self.instance.respond_to?(method, include_private) || super
   end
 
-  def initialize(yaml_file = nil)
+  def initialize
     parse_config(self.class.default_config)
 
-    import(yaml_file) if !yaml_file.nil?
+    self.class.config_files.each do |config_file|
+      import(config_file)
+    end
   end
 
   def import(yaml_file)

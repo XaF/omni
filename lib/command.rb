@@ -139,7 +139,7 @@ class OmniCommand
       help_lines = []
 
       # Read the first few lines of the file, looking for lines starting with '# help:'
-      File.open(@path, 'r') do |file|
+      File.open(path, 'r') do |file|
         reading_help = false
         file.each_line do |line|
           # Stop reading if the line does not start with '#' or if we started

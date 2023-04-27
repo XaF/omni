@@ -1,4 +1,5 @@
 require 'find'
+require 'singleton'
 
 require_relative 'command'
 require_relative 'command_collection'
@@ -7,36 +8,19 @@ require_relative 'makefile_path'
 
 
 class OmniPath
+  include Singleton
   include Enumerable
 
-  @@instance = nil
-
-  def self.instance
-    @@instance ||= OmniPath.new
+  def self.method_missing(method, *args, &block)
+    if self.instance.respond_to?(method)
+      self.instance.send(method, *args, &block)
+    else
+      super
+    end
   end
 
-  def self.each(&block)
-    self.instance.each(&block)
-  end
-
-  def self.map(&block)
-    self.instance.map(&block)
-  end
-
-  def self.find(&block)
-    self.instance.find(&block)
-  end
-
-  def self.select(&block)
-    self.instance.select(&block)
-  end
-
-  def self.sorted(&block)
-    self.instance.sorted(&block)
-  end
-
-  def self.max_command_length
-    self.instance.max_command_length
+  def self.respond_to_missing?(method, include_private = false)
+    self.instance.respond_to?(method, include_private) || super
   end
 
   def each(&block)

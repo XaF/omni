@@ -10,7 +10,7 @@
 # help:   \e[36mcommand\e[0m      The command to get help for
 
 require_relative '../lib/colorize'
-require_relative '../lib/path'
+require_relative '../lib/path_alias'
 
 
 # If we don't have a tty, we want to disable colorization
@@ -40,7 +40,7 @@ if ARGV.length > 0
 end
 
 # find longest command
-ljust = [OmniPath.max_command_length + 2, 15].max
+ljust = [OmniPathWithAliases.max_command_length + 2, 15].max
 
 # Find current width of the TTY
 tty_current_width = `tput cols`.to_i
@@ -54,7 +54,7 @@ STDERR.puts ""
 STDERR.puts "#{"Usage".italic}: omni #{"<command>".cyan} [options] ARG..."
 
 last_cat = -1
-OmniPath.sorted do |command|
+OmniPathWithAliases.each do |command|
   if command.category != last_cat
     STDERR.puts ""
 
@@ -76,7 +76,18 @@ OmniPath.sorted do |command|
   help_short = command.help_short.split("\n").join(' ')
   help_short = help_short.scan(/(?:\A|\G(?<=\s)).{1,#{help_short_width}}(?=\s|$)|\S+/)
 
-  STDERR.puts "  #{command.to_s.ljust(ljust).cyan} #{help_short.first}"
+  # It's nicer to have the comma in the default color
+  # while the commands are colored, so we need to color
+  # _before_ joining the commands together
+  cmd_str = "#{command.cmds_s.map { |cmd| cmd.cyan }.join(', ')}"
+
+  # Since we added colorization, we cannot simply use ljust
+  # to justify the strings, we need to add the missing
+  # characters to the string length, which we'll compute
+  # from the string without colorization
+  cmd_str << ' ' * (ljust - command.cmds_s.join(', ').length)
+
+  STDERR.puts "  #{cmd_str} #{help_short.first}"
   STDERR.puts "  #{" " * ljust} #{help_short[1..-1].join("\n   " + " " * ljust)}" if help_short.length > 1
 end
 
