@@ -30,16 +30,30 @@ def complete_omni_subcommand(argv)
   end
 
   # If we have full subcommands in the argv, we only want to
-  # show the subcommands that match what's already provided
-  commands.select! do |omniCmd|
-    omniCmd.cmd[0..match_pos - 1] == argv[0..match_pos - 1]
-  end if match_pos > 0
+  # show the subcommands that match what's already provided,
+  # but since we can delegate autocomplete, if this is not a
+  # direct match, we will try reducing the constraints one
+  # argument at a time and see if we can still get to something
+  skip_elems = 0
+  match = nil
 
-  # For the last value in argv, we need to use more of a
-  # matching with the start of the command
-  commands.select! do |omniCmd|
-    omniCmd.cmd[match_pos].start_with?(argv[match_pos])
-  end if argv.length > match_pos
+  until match&.any? || skip_elems > match_pos
+    skip_elems += 1
+
+    match = commands.select do |omniCmd|
+      omniCmd.cmd[0..match_pos - skip_elems] == argv[0..match_pos - skip_elems]
+    end if match_pos > 0
+  end
+  commands = match
+
+  if skip_elems == 1
+    # For the last value in argv, we need to use more of a
+    # matching with the start of the command
+    match_last_val = commands.select do |omniCmd|
+      omniCmd.cmd[match_pos]&.start_with?(argv[match_pos])
+    end if argv.length > match_pos
+    commands = match_last_val if match_last_val&.any?
+  end
 
   if commands.length == 1 && commands[0].cmd.length <= match_pos
     omniCmd = commands[0]
@@ -60,6 +74,13 @@ def complete_omni_subcommand(argv)
       omniCmd.autocomplete(*argv)
     end
   end
+
+  # If skip_elems is greater than 1, it means that we had to
+  # go backward in our matching, and since we got here, it means
+  # that we either didn't delegate the autocompletion process
+  # to a subcommand or that the subcommand returned without
+  # providing any autocompletion; we can thus exit here
+  exit 0 if skip_elems > 1
 
   # Extract the values at the expected position
   commands.map! { |omniCmd| omniCmd.cmd[match_pos] }
