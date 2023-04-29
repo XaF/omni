@@ -59,6 +59,29 @@ class OmniOrgs
   def first
     each.first
   end
+
+  def repos(dedup: true)
+    seen_paths = Set.new if dedup
+    all_repos = []
+
+    OmniOrgs.map(&:path?).uniq.each do |base_path|
+      Dir.chdir(base_path) do |dir|
+        Dir.glob("**/.git").each do |path|
+          next unless File.directory?(path)
+
+          path = File.dirname(path)
+          dir_path = File.join(dir, path)
+
+          next if dedup && !seen_paths.add?(dir_path)
+
+          yield [dir, path, dir_path] if block_given?
+          all_repos << [dir, path, dir_path]
+        end
+      end
+    end
+
+    all_repos
+  end
 end
 
 
@@ -196,15 +219,18 @@ class OmniRepo
 
     # Otherwise, try another time after converting the URI from
     # potentially an rsync-formatted URI to a regular one
+    path = path.sub(%r{^ssh://}, '')
+    path = path.sub(OmniRepo::RSYNC_ADDRESS_PATTERN, '\1/\4')
     path = "ssh://#{path}" unless path =~ %r{^[^:]+://}
-    path.sub!(OmniRepo::RSYNC_ADDRESS_PATTERN, '\1/\4')
 
     # Try parsing the URI again, but this time if it fails, return nil
-    begin
+    parsed = begin
       URI.parse(path)
     rescue URI::InvalidURIError
       nil
     end
+
+    parsed
   end
 end
 
@@ -239,6 +265,24 @@ class OmniOrg
 
   def to_s
     @repo.to_s
+  end
+
+  def repos
+    all_repos = []
+
+    Dir.chdir(path?) do |dir|
+      Dir.glob("**/.git").each do |path|
+        next unless File.directory?(path)
+
+        path = File.dirname(path)
+        dir_path = File.join(dir, path)
+
+        yield [dir, path, dir_path] if block_given?
+        all_repos << [dir, path, dir_path]
+      end
+    end
+
+    all_repos
   end
 end
 
