@@ -55,6 +55,15 @@ end
 STDERR.puts "#{"omni".bold} - omnipotent tool"
 
 STDERR.puts ""
+STDERR.puts "Shell integration".bold
+if OmniEnv::OMNI_CMD_FILE
+  STDERR.puts "  #{'loaded'.green}"
+else
+  STDERR.puts "  #{'not loaded'.red}"
+end
+
+
+STDERR.puts ""
 STDERR.puts "Configuration".bold
 recursive_dump_hash(Config.config, indent = 2)
 
