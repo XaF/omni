@@ -2,6 +2,7 @@ require 'singleton'
 
 require_relative 'command'
 require_relative 'command_collection'
+require_relative 'config'
 require_relative 'env'
 require_relative 'makefile_path'
 
@@ -31,7 +32,12 @@ class OmniPath
       # ignored.
       each_commands = OmniCommandCollection.new
 
-      OmniEnv::OMNIPATH.each do |dirpath|
+      paths = OmniEnv::OMNIPATH.dup
+      if Config.enable_git_repo_commands && OmniEnv.in_git_repo?
+        paths.unshift(File.join(OmniEnv.git_repo_root, '.omni', 'cmd'))
+      end
+
+      paths.each do |dirpath|
         next unless File.directory?(dirpath)
 
         Dir.chdir(dirpath) do |dir|
@@ -53,7 +59,7 @@ class OmniPath
       MakefilePath.each do |omniCmd|
         yield omniCmd if block_given?
         each_commands << omniCmd
-      end
+      end if Config.enable_makefile_commands
 
       each_commands
     end

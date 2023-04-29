@@ -22,6 +22,8 @@ class Config
       path_repo_updates_enabled: true,
       path_repo_updates_interval: 12 * 60 * 60, # 12 hours
       repo_path_format: "%{host}/%{org}/%{repo}",
+      enable_makefile_commands: true,
+      enable_git_repo_commands: true,
     })
   end
 
@@ -65,6 +67,10 @@ class Config
 
     self.class.config_files.each do |config_file|
       import(config_file)
+    end
+
+    if self.enable_git_repo_commands && OmniEnv.in_git_repo?
+      import("#{OmniEnv.git_repo_root}/.omni/config")
     end
   end
 

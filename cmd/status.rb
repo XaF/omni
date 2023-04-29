@@ -17,7 +17,7 @@ require_relative '../lib/omniorg'
 
 
 def recursive_dump(hash, indent: 0, valid_keys: nil)
-  hash.each do |key, value|
+  hash.sort.each do |key, value|
     if value.is_a?(Hash)
       STDERR.puts "#{" " * indent}#{key}:"
       recursive_dump_hash(value, indent + 2)

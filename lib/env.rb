@@ -18,6 +18,14 @@ class OmniEnv
     ENV['OMNI_ORG'] = OMNI_ORG.join(',')
   end
 
+  def self.git_repo_root
+    @@git_repo_root ||= `git rev-parse --show-toplevel 2>/dev/null`.strip
+  end
+
+  def self.in_git_repo?
+    self.git_repo_root != ''
+  end
+
   def self.env
     {
       OMNIPATH: OMNIPATH,
@@ -25,6 +33,8 @@ class OmniEnv
       OMNI_GIT: OMNI_GIT,
       OMNI_ORG: OMNI_ORG,
       OMNI_SUBCOMMAND: OMNI_SUBCOMMAND,
+      in_git_repo?: in_git_repo?,
+      git_repo_root: git_repo_root,
     }
   end
 end
