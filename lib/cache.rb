@@ -53,14 +53,14 @@ class Cache
 
   def write_cache
     @cache.reject! { |_, value| value.expired? }
-    File.write(Config.omni_cache_file, @cache.to_json)
+    File.write(Config.cache_file, @cache.to_json)
   end
 
   def read_cache
     @cache ||= {}
-    return unless File.exist?(Config.omni_cache_file)
+    return unless File.exist?(Config.cache_file)
 
-    cache = JSON.parse(File.read(Config.omni_cache_file))
+    cache = JSON.parse(File.read(Config.cache_file))
 
     cache.each do |key, value|
       cached_value = CachedValue.new(

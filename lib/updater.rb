@@ -10,7 +10,7 @@ class Updater
   OMNI_PATH_UPDATE_CACHE_KEY = 'omni-path-updates'
 
   def self.update
-    return unless Config.omni_path_repo_updates_enabled
+    return unless Config.path_repo_updates_enabled
     return if Cache.get(OMNI_PATH_UPDATE_CACHE_KEY, false)
 
     # Add first Omni's directory to the paths to update
@@ -48,7 +48,7 @@ class Updater
       error("#{path.yellow}: git pull failed", cmd: 'updater', print_only: true) unless git_pull
     end
 
-    Cache.set(OMNI_PATH_UPDATE_CACHE_KEY, true, expires_in: Config.omni_path_repo_updates_interval)
+    Cache.set(OMNI_PATH_UPDATE_CACHE_KEY, true, expires_in: Config.path_repo_updates_interval)
   end
 end
 
