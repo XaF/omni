@@ -16,16 +16,23 @@ require_relative '../lib/env'
 require_relative '../lib/omniorg'
 
 
-def recursive_dump_hash(hash, indent = 0)
+def recursive_dump(hash, indent: 0, valid_keys: nil)
   hash.each do |key, value|
     if value.is_a?(Hash)
       STDERR.puts "#{" " * indent}#{key}:"
       recursive_dump_hash(value, indent + 2)
     else
-      STDERR.puts "#{" " * indent}#{key.to_s.cyan}: #{value.inspect}"
+      key_s = if valid_keys && !valid_keys.has_key?(key)
+        key.to_s.red
+      else
+        key.to_s.cyan
+      end
+
+      STDERR.puts "#{" " * indent}#{key_s}: #{value.inspect}"
     end
   end
 end
+
 
 def expires_in(expires_at, round = 2)
     expires_in = expires_at - Time.now
@@ -65,7 +72,7 @@ end
 
 STDERR.puts ""
 STDERR.puts "Configuration".bold
-recursive_dump_hash(Config.config, indent = 2)
+recursive_dump(Config.config, indent: 2, valid_keys: Config.default_config)
 
 STDERR.puts ""
 STDERR.puts "Loaded configuration files".bold
@@ -95,7 +102,7 @@ end
 
 STDERR.puts ""
 STDERR.puts "Environment".bold
-recursive_dump_hash(OmniEnv.env, indent = 2)
+recursive_dump(OmniEnv.env, indent: 2)
 
 STDERR.puts ""
 STDERR.puts "Git Orgs".bold

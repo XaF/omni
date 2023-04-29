@@ -17,12 +17,12 @@ class Config
   include Singleton
 
   def self.default_config
-    {
+    stringify_keys({
       cache_file: "#{ENV['HOME']}/.cache/omni",
       path_repo_updates_enabled: true,
       path_repo_updates_interval: 12 * 60 * 60, # 12 hours
       repo_path_format: "%{host}/%{org}/%{repo}",
-    }
+    })
   end
 
   def self.config_files
