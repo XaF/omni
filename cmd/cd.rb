@@ -7,7 +7,7 @@
 # help: main org as specified by \e[3mOMNI_ORG\e[0m, if specified, or errors out if
 # help: not specified.
 # help:
-# help: \033[1m\e[3mUsage\e[0m\033[1m: omni cd \e[36m[repo]\e[0m
+# help: \e[1m\e[3mUsage\e[0m\e[1m: omni cd \e[36m[repo]\e[0m
 # help:
 # help:   \e[36mrepo\e[0m      The name of the repo to change directory to; this
 # help:             can be in the format <org>>/<repo>, or just <repo>,

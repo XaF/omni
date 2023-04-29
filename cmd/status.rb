@@ -7,7 +7,7 @@
 # help: it is being called, which includes the configuration files
 # help: but also the current cached information.
 # help:
-# help: \033[1m\e[3mUsage\e[0m\033[1m: omni cache\e[0m
+# help: \e[1m\e[3mUsage\e[0m\e[1m: omni status\e[0m
 
 require_relative '../lib/colorize'
 require_relative '../lib/cache'
