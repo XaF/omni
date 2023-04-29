@@ -1,4 +1,3 @@
-require 'find'
 require 'singleton'
 
 require_relative 'command'
@@ -35,17 +34,19 @@ class OmniPath
       OmniEnv::OMNIPATH.each do |dirpath|
         next unless File.directory?(dirpath)
 
-        Find.find(dirpath) do |filepath|
-          next unless File.executable?(filepath) && File.file?(filepath)
+        Dir.chdir(dirpath) do |dir|
+          Dir.glob('**/*').each do |filepath|
+            next unless File.executable?(filepath) && File.file?(filepath)
 
-          # remove the path from the command as prefix
-          cmd = filepath.sub(/^#{Regexp.escape(dirpath)}\//, '').split('/')
+            # remove the path from the command as prefix
+            cmd = filepath.split('/')
 
-          # Create and yield the OmniCommand object
-          omniCmd = OmniCommand.new(cmd, filepath)
-          yield omniCmd if block_given?
+            # Create and yield the OmniCommand object
+            omniCmd = OmniCommand.new(cmd, File.join(dirpath, filepath))
+            yield omniCmd if block_given?
 
-          each_commands << omniCmd
+            each_commands << omniCmd
+          end
         end
       end
 

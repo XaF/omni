@@ -20,7 +20,7 @@ def complete_omni_subcommand(argv)
 
   # Check if we have the COMP_CWORD variable, which means
   # that we can know where the matching needs to happen
-  comp_cword = ENV['COMP_CWORD'].to_i - 1
+  comp_cword = (ENV['COMP_CWORD'] || '0').to_i - 1
 
   # Prepare until which word we need to match
   match_pos = if comp_cword >= 0
