@@ -38,7 +38,7 @@ class OmniPath
       end
 
       paths.each do |dirpath|
-        next unless File.directory?(dirpath)
+        next unless File.directory?(dirpath) && File.readable?(dirpath)
 
         Dir.chdir(dirpath) do |dir|
           Dir.glob('**/*').each do |filepath|

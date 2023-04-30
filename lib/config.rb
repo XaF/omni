@@ -2,6 +2,7 @@ require 'singleton'
 require 'yaml'
 
 require_relative 'env'
+require_relative 'utils'
 
 
 def stringify_keys(hash)
@@ -70,12 +71,13 @@ class Config
     end
 
     if self.enable_git_repo_commands && OmniEnv.in_git_repo?
+      import("#{OmniEnv.git_repo_root}/.omni")
       import("#{OmniEnv.git_repo_root}/.omni/config")
     end
   end
 
   def import(yaml_file)
-    return if yaml_file.nil? || !File.exist?(yaml_file)
+    return if yaml_file.nil? || !File.file?(yaml_file) || !File.readable?(yaml_file)
 
     config = YAML::load(File.open(yaml_file))
 
@@ -85,6 +87,8 @@ class Config
     end
 
     @loaded_files << yaml_file
+  rescue Psych::SyntaxError
+    error("invalid configuration file: #{yaml_file.yellow}", print_only: true)
   end
 
   private
