@@ -44,7 +44,7 @@ def complete_omni_subcommand(argv)
       omniCmd.cmd[0..match_pos - skip_elems] == argv[0..match_pos - skip_elems]
     end if match_pos > 0
   end
-  commands = match
+  commands = match if match&.any?
 
   if skip_elems == 1
     # For the last value in argv, we need to use more of a
