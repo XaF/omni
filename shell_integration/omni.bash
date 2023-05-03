@@ -2,29 +2,44 @@
 
 # Setup the environment for omni, to make sure
 # we have the required environment variables setup
-if [[ -z "$OMNIDIR" ]]; then
-	# OMNIDIR is the directory in which omni is located; by default
-	# it will assume the path where omni would clone itself, but
-	# if OMNI_GIT is setup, it will try to use that path instead;
-	# you can override this by setting OMNIDIR to a different path
-	export OMNIDIR="${OMNI_GIT:-${HOME}/git}/github.org/XaF/omni"
+function find_omnidir() {
+	if [[ -z "${OMNIDIR}" ]]; then
+		# OMNIDIR is the directory in which omni is located; by default
+		# it will assume the path where omni would clone itself, but
+		# if OMNI_GIT is setup, it will try to use that path instead;
+		# you can override this by setting OMNIDIR to a different path
+		lookup_omnidir=(
+			"${OMNI_GIT:-${HOME}/git}/github.com/XaF/omni"
+			"${OMNI_GIT:-${HOME}/git}/XaF/omni"
+			"${OMNI_GIT:-${HOME}/git}/omni"
+		)
+		for lookup in "${lookup_omnidir[@]}"; do
+			if ! [ -d "$lookup" ]; then
+				continue
+			fi
 
-	altdir="${OMNI_GIT:-${HOME}/git}/omni"
-	if [ ! -d "$OMNIDIR" ] && [ -d "$altdir" ]; then
-		export OMNIDIR="$altdir"
+			export OMNIDIR="$lookup"
+			break
+		done
+		unset lookup_omnidir
 	fi
-	unset altdir
-fi
-if [[ "$OMNIPATH" != *"${OMNIDIR}/cmd"* ]]; then
-	# OMNIPATH is the list of directories in which omni will look
-	# for commands; omni will make sure to add its own cmd directory
-	# to the list, so that it can find the default commands, but
-	# you can override this by setting OMNIPATH to a different path
-	# or by adding a any path you want to the list. Note that the
-	# paths are separated by a colon (:), just like the PATH variable,
-	# and that they are considered in order
-	export OMNIPATH="${OMNIPATH:+$OMNIPATH:}${OMNIDIR}/cmd"
-fi
+
+	if [[ -z "$OMNIDIR" ]]; then
+		echo -e >&2 "\033[96momni:\033[0m \033[31mfailed to find omni directory, please set OMNIDIR\033[0m"
+		return 1
+	fi
+
+	if [[ -n "${OMNIDIR}" ]] && [[ "$OMNIPATH" != *"${OMNIDIR}/cmd"* ]]; then
+		# OMNIPATH is the list of directories in which omni will look
+		# for commands; omni will make sure to add its own cmd directory
+		# to the list, so that it can find the default commands, but
+		# you can override this by setting OMNIPATH to a different path
+		# or by adding a any path you want to the list. Note that the
+		# paths are separated by a colon (:), just like the PATH variable,
+		# and that they are considered in order
+		export OMNIPATH="${OMNIPATH:+$OMNIPATH:}${OMNIDIR}/cmd"
+	fi
+}
 
 # This function is used to run the omni command, and then operate on
 # the requested shell changes from the command (changing current
@@ -32,15 +47,16 @@ fi
 # a shell function for this, instead of simply calling the omni
 # command from the path
 function omni() {
+	[[ -n "${OMNIDIR}" ]] || find_omnidir || return 1
+
 	# Prepare the environment for omni
 	export OMNI_UUID=$(uuidgen)
 	local tmpdir=${TMPDIR:-/tmp}
 	OMNI_FILE_PREFIX="omni_${OMNI_UUID}"
 	export OMNI_CMD_FILE="${tmpdir}/${OMNI_FILE_PREFIX}.cmd"
-	local omnidir="${OMNIDIR:-${OMNI_GIT:-${HOME}/git}/github.org/XaF/omni}"
 
 	# Run the command
-	BUNDLE_GEMFILE="${omnidir}/Gemfile" bundle exec "${omnidir}/omni.rb" "$@"
+	BUNDLE_GEMFILE="${OMNIDIR}/Gemfile" bundle exec "${OMNIDIR}/omni.rb" "$@"
 	EXIT_CODE=$?
 
 	# Check if OMNI_CMD_FILE exists, and if it does, run the commands
