@@ -195,6 +195,9 @@ class OmniRepo
   def repo_uri(path)
     return URI.parse('') if path.nil? || path.empty?
 
+    # Clean up the path from any trailing spaces
+    path = path.strip
+
     # If the string does contain : or @ and does not contain ://, then
     # assume it is a ssh path and add it right now or the value will be
     # interpreted as path by URI.parse
