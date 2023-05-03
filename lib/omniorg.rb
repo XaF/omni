@@ -65,8 +65,9 @@ class OmniOrgs
     all_repos = []
 
     OmniOrgs.map(&:path?).uniq.each do |base_path|
+      next unless File.directory?(base_path)
       Dir.chdir(base_path) do |dir|
-        Dir.glob("**/.git").each do |path|
+        Dir.glob("**/*/**/.git").each do |path|
           next unless File.directory?(path)
 
           path = File.dirname(path)
