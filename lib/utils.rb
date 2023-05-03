@@ -63,6 +63,51 @@ class UserInterraction
   class InterruptedError < StoppedByUserError; end
   class RefusedError < StoppedByUserError; end
 
+  def self.confirm?(message = "Proceed?", extra = nil, default_yes: true)
+    require 'tty-prompt'
+
+    confirm = begin
+      TTY::Prompt.new.method(default_yes ? :yes? : :no?).
+        call("#{"omni:".light_cyan} #{message.yellow}#{" #{extra}" if extra}")
+    rescue TTY::Reader::InputInterrupt
+      # Just a line return to make it look nicer, since we get here
+      # in case of interrupt, and the prompt doesn't do it
+      puts
+      raise InterruptedError
+    end
+
+    confirm = !confirm unless default_yes
+    raise RefusedError unless confirm
+    true
+  end
+
+  def self.which_ones?(message = "Which ones?", choices, **options)
+    require 'tty-prompt'
+
+    options = {
+      default: nil,
+      show_help: :always,
+      echo: false,
+      quiet: true,
+    }.merge(options)
+
+    choices = begin
+      TTY::Prompt.new.multi_select(
+        "#{"omni:".light_cyan} #{message.yellow}",
+        choices,
+        **options,
+      )
+    rescue TTY::Reader::InputInterrupt
+      # Just a line return to make it look nicer, since we get here
+      # in case of interrupt, and the prompt doesn't do it
+      puts
+      raise InterruptedError
+    end
+
+    raise RefusedError if choices.empty?
+    return choices
+  end
+
   def self.did_you_mean?(available, search)
     # We do require here because we don't want to load it
     # if we don't need it, as it's a bit heavy
@@ -96,31 +141,9 @@ class UserInterraction
     # If we only have one matching command, we can offer it as a
     # yes/no question instead of a list, as there is not much
     # of any other choice
-    if matching_commands.length == 1
-      run_command = begin
-        TTY::Prompt.new
-          .yes?("#{"omni:".light_cyan} #{"Did you mean?".yellow} #{matching_commands.first}")
-      rescue TTY::Reader::InputInterrupt
-        # Just a line return to make it look nicer, since we get here
-        # in case of interrupt, and the prompt doesn't do it
-        puts
-        raise InterruptedError
-      end
-
-      raise RefusedError unless run_command
-      return matching_commands.first
-
-      # Add a line return to make it look nicer, we want
-      # to catch 'true' or 'nil' here, as 'false' means
-      # that the user said no (and pressed 'enter') and
-      # we don't need an extra line return in that case
-      # puts if run_command != false
-
-      # If the user said yes, we want to return the match
-      # return matching_commands.first if run_command
-
-      # return
-    end
+    return matching_commands.first \
+      if matching_commands.length == 1 && \
+        confirm?("Did you mean?", matching_commands.first)
 
     # If we get there, we have multiple matching commands, so we
     # want to prompt the user with a list of commands to choose from
