@@ -92,7 +92,7 @@ class OmniRepo
 
   def initialize(path)
     @uri = repo_uri(path)
-    raise "Invalid repo path: #{path}" if @uri == nil && check_path
+    raise "Invalid repo path: #{path}" if @uri == nil
   end
 
   def path?(repo = nil)
