@@ -14,22 +14,66 @@ require_relative '../lib/cache'
 require_relative '../lib/config'
 require_relative '../lib/env'
 require_relative '../lib/omniorg'
+require_relative '../lib/path'
 
 
-def recursive_dump(hash, indent: 0, valid_keys: nil)
-  hash.sort.each do |key, value|
-    if value.is_a?(Hash)
-      STDERR.puts "#{" " * indent}#{key}:"
-      recursive_dump_hash(value, indent + 2)
-    else
-      key_s = if valid_keys && !valid_keys.has_key?(key)
+def recursive_dump(obj, indent: 0, valid_keys: nil, indent_first_line: true)
+  if obj.is_a?(Hash)
+    obj.sort.each_with_index do |(key, value), idx|
+      key_s = if valid_keys == false || (valid_keys && valid_keys != :all_valid_keys && !valid_keys.has_key?(key))
         key.to_s.red
       else
         key.to_s.cyan
       end
 
-      STDERR.puts "#{" " * indent}#{key_s}: #{value.inspect}"
+      STDERR.print "#{" " * indent}" if idx > 0 || (idx == 0 && indent_first_line)
+      STDERR.print "#{key_s}: "
+
+      indent_first_line = value.is_a?(Hash) || value.is_a?(Array)
+      STDERR.puts if indent_first_line
+
+      valid_keys = if !valid_keys || valid_keys == :all_valid_keys
+        valid_keys
+      elsif valid_keys.is_a?(Hash)
+        if valid_keys[key].is_a?(Hash)
+          valid_keys[key]
+        else
+          nil
+        end
+      else
+        false
+      end
+
+      recursive_dump(
+        value,
+        indent: indent + 2,
+        valid_keys: valid_keys,
+        indent_first_line: indent_first_line,
+      )
     end
+  elsif obj.is_a?(Array)
+    obj.each_with_index do |value, idx|
+
+      STDERR.print "#{" " * indent}" if idx > 0 || (idx == 0 && indent_first_line)
+      STDERR.print "#{"- ".yellow}"
+
+      recursive_dump(
+        value,
+        indent: indent + 2,
+        valid_keys: valid_keys == false ? false : nil,
+        indent_first_line: false,
+      )
+    end
+  else
+    obj_s = obj.inspect
+    if obj.is_a?(TrueClass) || obj.is_a?(FalseClass) || obj.is_a?(NilClass)
+      obj_s = obj_s.light_blue
+    elsif obj.is_a?(Integer) || obj.is_a?(Float)
+      obj_s = obj_s.light_magenta
+    end
+
+    STDERR.print "#{" " * indent}" if indent_first_line
+    STDERR.puts obj_s
   end
 end
 
@@ -72,7 +116,11 @@ end
 
 STDERR.puts ""
 STDERR.puts "Configuration".bold
-recursive_dump(Config.config, indent: 2, valid_keys: Config.default_config)
+valid_keys = OmniPath.map(&:config_fields).
+  flatten.map { |f| { f => :all_valid_keys } }.
+  reduce({}, :merge)
+valid_keys.merge!(Config.default_config)
+recursive_dump(Config.config, indent: 2, valid_keys: valid_keys)
 
 STDERR.puts ""
 STDERR.puts "Loaded configuration files".bold

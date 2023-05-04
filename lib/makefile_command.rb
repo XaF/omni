@@ -50,6 +50,7 @@ class MakefileCommand < OmniCommand
       help_short: help_short,
       help_long: help_long,
       autocompletion: false,
+      config_fields: Set.new,
     }
   end
 

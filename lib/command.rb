@@ -53,6 +53,7 @@ class OmniCommand
     end
 
     # Prepare the environment variables
+    Config.env.each { |key, value| ENV[key] = value.to_s }
     OmniEnv::set_env_vars
     ENV['OMNI_RUN_FROM'] = Dir.pwd
     ENV['OMNI_SUBCOMMAND'] = cmd.join(' ')
@@ -83,6 +84,10 @@ class OmniCommand
 
     # If we get here, the command failed
     exit 1
+  end
+
+  def config_fields
+    file_details[:config_fields].to_a
   end
 
   def length
@@ -135,6 +140,7 @@ class OmniCommand
       category = nil
       autocompletion = false
       help_lines = []
+      config_fields = []
 
       # Read the first few lines of the file, looking for lines starting with '# help:'
       File.open(path, 'r') do |file|
@@ -149,6 +155,9 @@ class OmniCommand
 
           # Set autocompletion to true if the line '# autocompletion: true' is found
           autocompletion = true if line =~ /^#\s+autocompletion:\s+true$/
+
+          # Set the config fields if the line '# config: <field1>, <field2>, ...' is found
+          config_fields.concat(line.sub(/^# config:\s?/, '').chomp.split(',').map(&:strip)) if line =~ /^# config:/
 
           # Check if we are reading the help
           reading_help = true if line =~ /^# help:/
@@ -177,6 +186,7 @@ class OmniCommand
         help_short: help_short,
         help_long: help_long,
         autocompletion: autocompletion,
+        config_fields: Set.new(config_fields),
       }
     end
   end
