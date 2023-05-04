@@ -24,7 +24,7 @@ function find_omnidir() {
 		unset lookup_omnidir
 	fi
 
-	if [[ -z "$OMNIDIR" ]]; then
+	if [[ -z "${OMNIDIR}" ]]; then
 		echo -e >&2 "\033[96momni:\033[0m \033[31mfailed to find omni directory, please set OMNIDIR\033[0m"
 		return 1
 	fi
