@@ -32,11 +32,11 @@ def recursive_dump(obj, indent: 0, valid_keys: nil, indent_first_line: true)
       indent_first_line = value.is_a?(Hash) || value.is_a?(Array)
       STDERR.puts if indent_first_line
 
-      valid_keys = if !valid_keys || valid_keys == :all_valid_keys
-        valid_keys
+      valid_keys_dup = if !valid_keys || valid_keys == :all_valid_keys
+        valid_keys.dup
       elsif valid_keys.is_a?(Hash)
         if valid_keys[key].is_a?(Hash)
-          valid_keys[key]
+          valid_keys[key].dup
         else
           nil
         end
@@ -47,7 +47,7 @@ def recursive_dump(obj, indent: 0, valid_keys: nil, indent_first_line: true)
       recursive_dump(
         value,
         indent: indent + 2,
-        valid_keys: valid_keys,
+        valid_keys: valid_keys_dup,
         indent_first_line: indent_first_line,
       )
     end
