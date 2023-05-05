@@ -53,7 +53,7 @@ def autocomplete(argv)
   potential_matches = []
   OmniOrgs.repos(dedup: false) do |dir, path, dir_path|
     split_path = path.split('/')
-    cmp_part = split_path[-split_repo.length..-1]
+    cmp_part = split_path[-split_repo.length..-1] || []
 
     next unless cmp_part[0..-2] == split_repo[0..-2] && cmp_part[-1].start_with?(split_repo[-1])
 
