@@ -1,0 +1,14 @@
+#!/usr/bin/env bash
+
+# Resolve the path to the omni directory
+BINFILE=${BASH_SOURCE[0]}
+while [ -L "$BINFILE" ]; do
+  BINDIR=$(cd -P "$(dirname "$BINFILE")" >/dev/null 2>&1 && pwd)
+  BINFILE=$(readlink "$BINFILE")
+  [[ $BINFILE != /* ]] && BINFILE=$BINDIR/$BINFILE
+done
+BINDIR=$(cd -P "$(dirname "$BINFILE")" >/dev/null 2>&1 && pwd)
+OMNIDIR=$(cd -P "$(dirname "$BINDIR")" >/dev/null 2>&1 && pwd)
+
+# Run omni
+BUNDLE_GEMFILE="${OMNIDIR}/Gemfile" bundle exec "${OMNIDIR}/omni.rb" "$@"

@@ -29,17 +29,26 @@ function find_omnidir() {
 		return 1
 	fi
 
-	if [[ -n "${OMNIDIR}" ]] && [[ "$OMNIPATH" != *"${OMNIDIR}/cmd"* ]]; then
-		# OMNIPATH is the list of directories in which omni will look
-		# for commands; omni will make sure to add its own cmd directory
-		# to the list, so that it can find the default commands, but
-		# you can override this by setting OMNIPATH to a different path
-		# or by adding a any path you want to the list. Note that the
-		# paths are separated by a colon (:), just like the PATH variable,
-		# and that they are considered in order
-		export OMNIPATH="${OMNIPATH:+$OMNIPATH:}${OMNIDIR}/cmd"
+	if [[ -n "${OMNIDIR}" ]]; then
+		if [[ "$OMNIPATH" != *"${OMNIDIR}/cmd"* ]]; then
+			# OMNIPATH is the list of directories in which omni will look
+			# for commands; omni will make sure to add its own cmd directory
+			# to the list, so that it can find the default commands, but
+			# you can override this by setting OMNIPATH to a different path
+			# or by adding a any path you want to the list. Note that the
+			# paths are separated by a colon (:), just like the PATH variable,
+			# and that they are considered in order
+			export OMNIPATH="${OMNIPATH:+$OMNIPATH:}${OMNIDIR}/cmd"
+		fi
+
+		if [[ "$PATH" != *"${OMNIDIR}/bin"* ]]; then
+			export PATH="${PATH:+$PATH:}${OMNIDIR}/bin"
+		fi
 	fi
 }
+
+# Run the `find_omnidir` call when being sourced
+find_omnidir
 
 # This function is used to run the omni command, and then operate on
 # the requested shell changes from the command (changing current
@@ -47,7 +56,7 @@ function find_omnidir() {
 # a shell function for this, instead of simply calling the omni
 # command from the path
 function omni() {
-	[[ -n "${OMNIDIR}" ]] || find_omnidir || return 1
+	find_omnidir || return 1
 
 	# Prepare the environment for omni
 	export OMNI_UUID=$(uuidgen)
