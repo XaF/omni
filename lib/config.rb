@@ -32,7 +32,9 @@ class Config
   def self.config_files
     [
       "#{ENV['HOME']}/.omni",
+      "#{ENV['HOME']}/.omni.yaml",
       "#{ENV['HOME']}/.config/omni",
+      "#{ENV['HOME']}/.config/omni.yaml",
       ENV['OMNI_CONFIG'],
     ].compact
   end
@@ -73,7 +75,9 @@ class Config
 
     if self.enable_git_repo_commands && OmniEnv.in_git_repo?
       import("#{OmniEnv.git_repo_root}/.omni")
+      import("#{OmniEnv.git_repo_root}/.omni.yaml")
       import("#{OmniEnv.git_repo_root}/.omni/config")
+      import("#{OmniEnv.git_repo_root}/.omni/config.yaml")
     end
   end
 
