@@ -6,10 +6,10 @@ end
 
 class OmniEnv
   OMNIPATH = split_path(ENV['OMNIPATH'] || File.expand_path(File.join(File.dirname(__FILE__), '..', 'cmd')))
-  OMNI_CMD_FILE = ENV['OMNI_CMD_FILE'] || nil
+  OMNI_CMD_FILE = (ENV['OMNI_CMD_FILE'] || '').empty? ? nil : ENV['OMNI_CMD_FILE']
   OMNI_GIT = ENV['OMNI_GIT'] || "#{ENV['HOME']}/git"
   OMNI_ORG = split_path(ENV['OMNI_ORG'] || '', split_by: ',')
-  OMNI_SUBCOMMAND = ENV['OMNI_SUBCOMMAND'] || nil
+  OMNI_SUBCOMMAND = (ENV['OMNI_SUBCOMMAND'] || '').empty? ? nil : ENV['OMNI_SUBCOMMAND']
 
   def self.set_env_vars
     ENV['OMNIPATH'] = OMNIPATH.join(':')
