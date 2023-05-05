@@ -1,6 +1,6 @@
 #!/usr/bin/env ruby
 #
-# category: General
+# category: Git commands
 # config: up
 # help: Sets up or tear down a repository depending on its \e[3mup\e[0m configuration
 # help:
