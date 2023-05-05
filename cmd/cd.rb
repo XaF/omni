@@ -45,29 +45,25 @@ def autocomplete(argv)
     exit 0
   end
 
-  # We can try and fetch all the repositories that could start
-  # with the value provided so far
-  split_repo = (repo || '').split('/', -1)
-  split_repo << '' if split_repo.empty?
+  # We can try and fetch all the repositories, or part of repository
+  # paths, that could start with the value provided so far
+  match_repo = Regexp.new(%r{(^|/)(?<match>#{Regexp.escape(repo)}.*)$})
 
   potential_matches = []
   OmniOrgs.repos(dedup: false) do |dir, path, dir_path|
-    split_path = path.split('/')
-    cmp_part = split_path[-split_repo.length..-1] || []
-
-    next unless cmp_part[0..-2] == split_repo[0..-2] && cmp_part[-1].start_with?(split_repo[-1])
-
-    match = if repo
-      cmp_part.join('/')
-    elsif dir == OmniEnv::OMNI_GIT
-      path
+    # Trim prefix from dir_path
+    rel_path = if dir_path.start_with?("#{OmniEnv::OMNI_GIT}/")
+      dir_path[OmniEnv::OMNI_GIT.length + 1..-1]
     else
-      Pathname.new(dir_path).relative_path_from(Pathname.new(OmniEnv::OMNI_GIT)).to_s
+      dir_path
     end
+
+    match = match_repo.match(rel_path)
+    next unless match
 
     potential_matches << [
       dir_path,
-      match,
+      match[:match],
     ]
   end
 
