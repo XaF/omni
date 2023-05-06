@@ -25,7 +25,7 @@ def omni_cmd(*cmd)
 end
 
 
-def command_line(*cmd, timeout: nil, chdir: nil, context: nil)
+def command_line(*cmd, timeout: nil, chdir: nil, context: nil, env: nil)
   Dir.chdir(chdir) do
     return command_line(*cmd, timeout: timeout, context: context)
   end if chdir
@@ -37,7 +37,11 @@ def command_line(*cmd, timeout: nil, chdir: nil, context: nil)
   STDERR.puts msg
 
   if timeout
-    pid = Process.spawn(*cmd)
+    pid = if env.nil?
+      Process.spawn(*cmd)
+    else
+      Process.spawn(env, *cmd)
+    end
     begin
       Timeout.timeout(timeout) do
         Process.wait(pid)
@@ -47,8 +51,10 @@ def command_line(*cmd, timeout: nil, chdir: nil, context: nil)
       Process.kill('TERM', pid)
       false
     end
-  else
+  elsif env.nil?
     system(*cmd)
+  else
+    system(env, *cmd)
   end
 ensure
   STDERR.puts unless chdir

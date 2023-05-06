@@ -11,6 +11,7 @@ class Updater
 
   def self.update
     return unless Config.path_repo_updates_enabled
+    return if OmniEnv::OMNI_SKIP_UPDATE
     return if Cache.get(OMNI_PATH_UPDATE_CACHE_KEY, false)
 
     # Add first Omni's directory to the paths to update
@@ -44,8 +45,16 @@ class Updater
 
     # Update the repositories
     update_paths.each do |path|
-      git_pull = command_line('git', 'pull', chdir: path, context: path)
-      error("#{path.yellow}: git pull failed", cmd: 'updater', print_only: true) unless git_pull
+      Dir.chdir(path) do
+        git_pull = command_line('git', 'pull', context: path)
+        unless git_pull
+          error("#{path.yellow}: git pull failed", cmd: 'updater', print_only: true)
+          next
+        end
+
+        omni_up = command_line('omni', 'up', context: path, env: { 'OMNI_SKIP_UPDATE' => 'true' })
+        error("#{path.yellow}: omni up failed", cmd: 'updater', print_only: true) unless omni_up
+      end
     end
 
     Cache.set(OMNI_PATH_UPDATE_CACHE_KEY, true, expires_in: Config.path_repo_updates_interval)
