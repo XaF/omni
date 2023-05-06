@@ -20,7 +20,12 @@ class HomebrewOperation < Operation
       pkgname, data = pkg.first
       version = data['version'] if data
 
-      next if pkg_installed?(pkgname, version)
+      if pkg_installed?(pkgname, version)
+        unless version
+          command_line('brew', 'upgrade', pkgname) || run_error("brew upgrade #{pkgname}")
+        end
+        next
+      end
 
       if version
         unless local_tap_formula_exists?(pkgname, version)
