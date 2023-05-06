@@ -7,6 +7,8 @@ require_relative 'operation'
 
 class HomebrewOperation < Operation
   def up
+    return unless brew_installed?
+
     if met?
       STDERR.puts "# Homebrew dependencies already installed".light_yellow
       return
@@ -42,6 +44,7 @@ class HomebrewOperation < Operation
   end
 
   def down
+    return unless brew_installed?
     return unless partial_met?
 
     STDERR.puts "# Uninstalling Homebrew dependencies".light_blue
@@ -58,6 +61,11 @@ class HomebrewOperation < Operation
   end
 
   private
+
+  def brew_installed?
+    return @brew_installed unless @brew_installed.nil?
+    @brew_installed = system('command -v brew >/dev/null')
+  end
 
   def met?
     config.all? do |pkg|
