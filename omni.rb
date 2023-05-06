@@ -9,9 +9,6 @@ require_relative 'lib/updater'
 require_relative 'lib/utils'
 
 
-# If we don't have a tty, we want to disable colorization
-String.disable_colorization = true unless STDERR.tty?
-
 # complete_omni_subcommand is a function that will be called
 # when the --complete flag is passed to omni. It will provide
 # autocompletion for the subcommands

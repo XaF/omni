@@ -1,6 +1,7 @@
 #!/usr/bin/env ruby
 #
 # category: General
+# autocompletion: true
 # help: Show help for omni commands
 # help:
 # help: If no command is given, show a list of all available commands.
@@ -13,8 +14,54 @@ require_relative '../lib/colorize'
 require_relative '../lib/path_alias'
 
 
-# If we don't have a tty, we want to disable colorization
-String.disable_colorization = true unless STDERR.tty?
+# autocomplete is a function that will be called when the --complete
+# flag is passed to omni. It will provide autocompletion for the
+# subcommands
+def autocomplete(argv)
+  commands = OmniPath.each.to_a
+
+  # Check if we have the COMP_CWORD variable, which means
+  # that we can know where the matching needs to happen
+  comp_cword = (ENV['COMP_CWORD'] || '0').to_i - 1
+
+  # Prepare until which word we need to match
+  match_pos = if comp_cword >= 0
+    comp_cword
+  else
+    argv.length - 1
+  end
+
+  commands.select! do |omniCmd|
+    omniCmd.cmd[0..match_pos - 1] == argv[0..match_pos - 1]
+  end if match_pos > 0
+
+  # For the last value in argv, we need to use more of a
+  # matching with the start of the command
+  commands.select! do |omniCmd|
+    omniCmd.cmd[match_pos]&.start_with?(argv[match_pos])
+  end if argv.length > match_pos
+
+  # If we have no commands, we can exit
+  exit 0 if commands.length == 0
+
+  # Extract the values at the expected position
+  commands.map! { |omniCmd| omniCmd.cmd[match_pos] }
+  commands.compact!
+  commands.uniq!
+  commands.sort!
+
+  # Print the commands, one per line
+  commands.each do |cmd|
+    puts cmd
+  end
+
+  exit 0
+end
+
+
+# If the --complete flag is passed, we need to provide
+# autocompletion for the subcommands
+autocomplete(ARGV[1..-1]) if ARGV[0] == '--complete'
 
 # If a specific command was passed as argument, show help
 # for that command
