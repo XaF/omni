@@ -25,6 +25,8 @@ class Config
       repo_path_format: "%{host}/%{org}/%{repo}",
       enable_makefile_commands: true,
       enable_git_repo_commands: true,
+      makefile_commands_split_on_slash: true,
+      makefile_commands_split_on_dash: true,
       env: [],
     })
   end

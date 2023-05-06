@@ -1,6 +1,7 @@
 require 'pathname'
 
 require_relative 'command'
+require_relative 'config'
 require_relative 'env'
 
 
@@ -9,13 +10,10 @@ class MakefileCommand < OmniCommand
     @target = target
     @path = makefile
 
-    @cmd = if target.include?('/')
-      target.split('/')
-    elsif target.include?('-')
-      target.split('-')
-    else
-      [target]
-    end
+    @cmd = target.dup
+    @cmd = [target] unless @cmd.is_a?(Array)
+    @cmd.map! { |t| t.split('/') }.flatten! if Config.makefile_commands_split_on_slash
+    @cmd.map! { |t| t.split('-') }.flatten! if Config.makefile_commands_split_on_dash
 
     cat = ['Makefile']
 
