@@ -5,7 +5,7 @@ require_relative 'operation'
 
 class BundlerOperation < Operation
   def up
-    STDERR.puts "#{"# Installing Gemfile dependencies with bundler".light_blue}#{" (#{path})".light_black if path}"
+    STDERR.puts "#{"# Install Gemfile dependencies with bundler".light_blue}#{" (#{path})".light_black if path}"
 
     if path
       bundle_config = ['bundle', 'config', 'set', '--local', 'path', path]
