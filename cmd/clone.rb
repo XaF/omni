@@ -45,6 +45,12 @@ locations.each do |location|
   git_clone = command_line('git', 'clone', remote, full_path)
   error("#{repo.yellow}: git clone failed") unless git_clone
 
+  # Execute omni up from the repository directory if auto-up is enabled
+  Dir.chdir(full_path) do
+    omni_up = command_line('omni', 'up', env: { 'OMNI_SKIP_UPDATE' => 'true' })
+    error("#{repo.yellow}: omni up failed") unless omni_up
+  end if Config.auto_up_on_clone
+
   # Request omni to change directory to the newly-cloned repository
   omni_cmd(['cd', full_path])
 

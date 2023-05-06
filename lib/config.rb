@@ -19,15 +19,16 @@ class Config
 
   def self.default_config
     stringify_keys({
+      auto_up_on_clone: true,
       cache_file: "#{ENV['HOME']}/.cache/omni",
+      enable_git_repo_commands: true,
+      enable_makefile_commands: true,
+      env: [],
+      makefile_commands_split_on_dash: true,
+      makefile_commands_split_on_slash: true,
       path_repo_updates_enabled: true,
       path_repo_updates_interval: 12 * 60 * 60, # 12 hours
       repo_path_format: "%{host}/%{org}/%{repo}",
-      enable_makefile_commands: true,
-      enable_git_repo_commands: true,
-      makefile_commands_split_on_slash: true,
-      makefile_commands_split_on_dash: true,
-      env: [],
     })
   end
 
