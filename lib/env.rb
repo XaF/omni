@@ -5,6 +5,7 @@ def split_path(path, split_by: ':')
 end
 
 class OmniEnv
+  OMNIDIR = ENV['OMNIDIR'] || File.expand_path(File.join(File.dirname(__FILE__), '..'))
   OMNIPATH = split_path(ENV['OMNIPATH'] || File.expand_path(File.join(File.dirname(__FILE__), '..', 'cmd')))
   OMNI_CMD_FILE = (ENV['OMNI_CMD_FILE'] || '').empty? ? nil : ENV['OMNI_CMD_FILE']
   OMNI_GIT = ENV['OMNI_GIT'] || "#{ENV['HOME']}/git"
