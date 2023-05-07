@@ -53,6 +53,10 @@ class OmniCommand
     file_details[:optionals]
   end
 
+  def env
+    file_details[:env] || {}
+  end
+
   def src
     file_details[:src] ||= begin
       relpath = Pathname.new(path).
@@ -104,15 +108,21 @@ class OmniCommand
 
     # Prepare the environment variables
     Config.env.each { |key, value| ENV[key] = value.to_s }
+    env.each { |key, value| ENV[key] = value.to_s }
     OmniEnv::set_env_vars
     ENV['OMNI_RUN_FROM'] = Dir.pwd
     ENV['OMNI_SUBCOMMAND'] = cmd.join(' ')
 
     # Execute the command
-    Kernel.exec(path, *argv)
+    exec_command(*argv)
 
     # If we get here, the command failed
     exit 1
+  end
+
+  def exec_command(*argv)
+    # Execute the command
+    Kernel.exec(path, *argv)
   end
 
   def autocompletion?
@@ -195,6 +205,8 @@ class OmniCommand
       autocompletion = false
       category = nil
       config_fields = []
+      env = {}
+      env_reg = /^# env:(?<name>[^:]+):\s?(?<val>.*)$/
       help_lines = []
       params = {arg: {}, opt: {}}
       params_reg = /^# (?<type>arg|opt):(?<name>[^:]+):(?<desc>.*)$/
@@ -223,6 +235,15 @@ class OmniCommand
           # Set the config fields if the line '# config: <field1>, <field2>, ...' is found
           if line =~ /^# config:/
             config_fields.concat(line.sub(/^# config:\s?/, '').chomp.split(',').map(&:strip))
+            next
+          end
+
+          # Set the env variables if the line '# env:<name>: <value>' is found
+          if line =~ /^# env:/
+            env_match = env_reg.match(line)
+            next unless env_match
+
+            env[env_match[:name]] = env_match[:val]
             next
           end
 

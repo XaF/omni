@@ -47,25 +47,11 @@ class MakefileCommand < OmniCommand
     }
   end
 
-  def exec(*argv, shift_argv: true)
-    # Shift the argv if needed
-    if shift_argv
-      argv = argv.dup
-      argv.shift(@cmd.length)
-    end
-
-    # Prepare the environment variables
-    OmniEnv::set_env_vars
-    ENV['OMNI_RUN_FROM'] = Dir.pwd
-    ENV['OMNI_SUBCOMMAND'] = @cmd.join(' ')
-
+  def exec_command(*argv)
     # Switch to the Makefile directory
     Dir.chdir(File.dirname(@path))
 
     # Execute the command
     Kernel.exec('make', '-f', @path, @target, *argv)
-
-    # If we get here, the command failed
-    exit 1
   end
 end

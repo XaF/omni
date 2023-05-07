@@ -76,31 +76,16 @@ class ConfigCommand < OmniCommand
       usage: usage,
       arguments: arguments,
       optionals: optionals,
+      env: config['env'] || {},
     }
   end
 
-  def exec(*argv, shift_argv: true)
-    # Shift the argv if needed
-    if shift_argv
-      argv = argv.dup
-      argv.shift(@cmd.length)
-    end
-
-    # Prepare the environment variables
-    Config.env.each { |key, value| ENV[key] = value.to_s }
-    env.each { |key, value| ENV[key] = value.to_s }
-    OmniEnv::set_env_vars
-    ENV['OMNI_RUN_FROM'] = Dir.pwd
-    ENV['OMNI_SUBCOMMAND'] = @cmd.join(' ')
-
+  def exec_command(*argv)
     # Switch to the directory containing the config file
     Dir.chdir(File.dirname(@path)) unless @path.nil?
 
     # Execute the command
     Kernel.exec('bash', '-c', @config['run'], @path, *argv)
-
-    # If we get here, the command failed
-    exit 1
   end
 
   def sort_category
