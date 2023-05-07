@@ -41,24 +41,20 @@ class ConfigCommand < OmniCommand
 
     usage = nil
     arguments = []
-    optionals = []
+    options = []
     if config.has_key?('syntax')
       syntax = config['syntax']
 
       if syntax.is_a?(String)
         usage = syntax
       elsif syntax.is_a?(Hash)
-        if syntax.has_key?('arguments') || syntax.has_key?('argument')
-          arguments = syntax['arguments'] || syntax['argument'] || []
-          arguments = [arguments] unless arguments.is_a?(Array)
-          arguments.map! { |arg| arg.is_a?(Hash) ? arg.first : [arg, ""] }
-        end
+        arguments = syntax['arguments'] || syntax['argument'] || []
+        arguments = [arguments] unless arguments.is_a?(Array)
+        arguments.map! { |arg| arg.is_a?(Hash) ? arg.first : [arg, ""] }
 
-        if syntax.has_key?('optionals') || syntax.has_key?('optional')
-          optionals = syntax['optionals'] || syntax['optional'] || []
-          optionals = [optionals] unless optionals.is_a?(Array)
-          optionals.map! { |arg| arg.is_a?(Hash) ? arg.first : [arg, ""] }
-        end
+        options = syntax['options'] || syntax['option'] || syntax['optional'] || []
+        options = [options] unless options.is_a?(Array)
+        options.map! { |arg| arg.is_a?(Hash) ? arg.first : [arg, ""] }
       end
     end
 
@@ -70,7 +66,7 @@ class ConfigCommand < OmniCommand
       config_fields: Set.new,
       usage: usage,
       arguments: arguments,
-      optionals: optionals,
+      options: options,
       env: config['env'] || {},
     }
   end

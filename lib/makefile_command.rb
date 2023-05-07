@@ -42,7 +42,7 @@ class MakefileCommand < OmniCommand
       config_fields: Set.new,
       usage: nil,
       arguments: [],
-      optionals: [],
+      options: [],
       src: "#{relpath}:#{lineno}",
     }
   end

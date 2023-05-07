@@ -49,8 +49,8 @@ class OmniCommand
     file_details[:arguments]
   end
 
-  def optionals
-    file_details[:optionals]
+  def options
+    file_details[:options]
   end
 
   def env
@@ -82,14 +82,14 @@ class OmniCommand
         if arguments.any?
           arguments.each do |arg|
             arg, desc = arg.first
-            usage << " #{"<#{arg}>".light_cyan}"
+            usage << " #{"<#{arg}>".cyan}"
           end
         end
 
-        if optionals.any?
-          optionals.each do |opt|
+        if options.any?
+          options.each do |opt|
             opt, desc = opt.first
-            usage << " #{"[#{opt}]".light_cyan}"
+            usage << " #{"[#{opt}]".cyan}"
           end
         end
       end
@@ -298,7 +298,7 @@ class OmniCommand
         arguments: params[:arg].to_a.
           sort_by { |k, v| v[:pos] }.
           map { |k, v| [k, v[:desc]] },
-        optionals: params[:opt].to_a.
+        options: params[:opt].to_a.
           sort_by { |k, v| v[:pos] }.
           map { |k, v| [k, v[:desc]] },
         usage: usage,

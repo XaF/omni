@@ -105,7 +105,7 @@ if ARGV.length > 0
     "\e[1m\e[3mUsage\e[0m\e[1m"
   end
 
-  all_params = command.arguments + command.optionals
+  all_params = command.arguments + command.options
   params_ljust = [
     (all_params.map(&:first).map(&:length).max || 0) + 2,
     10,
