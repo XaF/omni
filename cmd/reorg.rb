@@ -8,8 +8,6 @@
 # help: cloned using \e[3momni clone\e[0m. This is useful if you have a bunch of
 # help: repositories that you have cloned manually, and you want to start
 # help: using \e[3momni\e[0m.
-# help:
-# help: \033[1m\e[3mUsage\e[0m\033[1m: omni reorg\e[0m
 
 require_relative '../lib/colorize'
 require_relative '../lib/omniorg'

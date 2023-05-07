@@ -39,33 +39,29 @@ class ConfigCommand < OmniCommand
     help_long = config['desc'] || ''
     help_short = help_long.split("\n").take_while { |l| l !~ /^\s*$/ }.join("\n")
 
-    usage = "omni #{@cmd.join(' ')}"
+    usage = nil
+    arguments = []
+    optionals = []
     if config.has_key?('syntax')
       syntax = config['syntax']
 
-      if syntax.is_a?(Hash)
+      if syntax.is_a?(String)
+        usage = syntax
+      elsif syntax.is_a?(Hash)
         if syntax.has_key?('arguments') || syntax.has_key?('argument')
           arguments = syntax['arguments'] || syntax['argument'] || []
           arguments = [arguments] unless arguments.is_a?(Array)
-          arguments.each do |arg|
-            usage << " #{"<#{arg}>".light_cyan}"
-          end
+          arguments.map! { |arg| arg.is_a?(Hash) ? arg.first : [arg, ""] }
         end
 
         if syntax.has_key?('optionals') || syntax.has_key?('optional')
           optionals = syntax['optionals'] || syntax['optional'] || []
           optionals = [optionals] unless optionals.is_a?(Array)
-          optionals.each do |optional|
-            usage << " #{"[#{optional}]".light_cyan}"
-          end
+          optionals.map! { |arg| arg.is_a?(Hash) ? arg.first : [arg, ""] }
         end
-      elsif syntax.is_a?(String)
-        usage << " #{syntax.light_cyan}"
       end
     end
 
-    help_long << "\n\n"
-    help_long << "\e[1m\e[3mUsage\e[0m\e[1m: #{usage}\e[0m"
     help_long << "\n\n"
     help_long << "Imported from ".light_black
     help_long << relpath || 'default configuration'
@@ -77,6 +73,9 @@ class ConfigCommand < OmniCommand
       help_long: help_long,
       autocompletion: false,
       config_fields: Set.new,
+      usage: usage,
+      arguments: arguments,
+      optionals: optionals,
     }
   end
 

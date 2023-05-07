@@ -3,8 +3,6 @@
 # category: Git commands
 # config: up
 # help: Sets up or tear down a repository depending on its \e[3mup\e[0m configuration
-# help:
-# help: \e[1m\e[3mUsage\e[0m\e[1m: omni \e[36m[\e[0m\e[1mup\e[36m|\e[0m\e[1mdown\e[36m]\e[0m
 
 require_relative '../lib/colorize'
 require_relative '../lib/config'

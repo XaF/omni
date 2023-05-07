@@ -2,13 +2,10 @@
 #
 # category: General
 # autocompletion: true
+# opt:command: The command to get help for
 # help: Show help for omni commands
 # help:
 # help: If no command is given, show a list of all available commands.
-# help:
-# help: \e[1m\e[3mUsage\e[0m\e[1m: omni help \e[36m[command]\e[0m
-# help:
-# help:   \e[36mcommand\e[0m      The command to get help for
 
 require_relative '../lib/colorize'
 require_relative '../lib/path_alias'
@@ -63,6 +60,30 @@ end
 # autocompletion for the subcommands
 autocomplete(ARGV[1..-1]) if ARGV[0] == '--complete'
 
+# Find current width of the TTY
+tty_current_width = `tput cols`.to_i
+
+# Define the max width we want to use on the screen
+max_width = [tty_current_width - 4, 80].min
+
+# format size allows to split a string at a given size
+def format_size(str, size, return_split: false)
+  str_split = str.split("\n\n")
+  str_split.map! do |block|
+    block.gsub("\n", ' ').
+      scan(/(?<=\s|\A)(?:(?:\e(?:\[(?:\d+)(?:;\d+)*m))*.){1,#{size}}(?=\s|\z)/).
+      map(&:strip).
+      join("\n")
+  end
+
+  return str_split.join("\n\n") unless return_split
+
+  str_split.map! { |block| block.split("\n") + [''] }
+  str_split.flatten!
+  str_split.pop if str_split.last == ''
+  str_split
+end
+
 # If a specific command was passed as argument, show help
 # for that command
 if ARGV.length > 0
@@ -78,19 +99,41 @@ if ARGV.length > 0
     exit 1
   end
 
+  usage_prefix = if String.disable_colorization
+    'Usage'
+  else
+    "\e[1m\e[3mUsage\e[0m\e[1m"
+  end
+
+  all_params = command.arguments + command.optionals
+  params_ljust = [
+    (all_params.map(&:first).map(&:length).max || 0) + 2,
+    10,
+  ].max
+
   STDERR.puts "#{"omni".bold} - omnipotent tool"
   STDERR.puts ""
-  STDERR.puts command.help_long
+  STDERR.puts format_size(command.help_long, max_width)
   STDERR.puts ""
+  STDERR.puts "#{usage_prefix}: #{"#{command.usage}".bold}"
+  STDERR.puts ""
+  all_params.each do |param, desc|
+    next unless desc != ''
+    desc = format_size(desc, max_width - params_ljust - 4, return_split: true)
+    STDERR.puts "  #{param.ljust(params_ljust).cyan} #{desc.first}"
+    STDERR.puts "  #{" " * params_ljust} #{desc[1..-1].join("\n   " + " " * params_ljust)}" if desc.length > 1
+    STDERR.puts ""
+  end
+
+  if command.src && command.src.length > 0
+    STDERR.puts "#{"Source:".light_black} #{command.src.underline}"
+  end
 
   exit 0
 end
 
 # find longest command
 ljust = [OmniPathWithAliases.max_command_length + 2, 15].max
-
-# Find current width of the TTY
-tty_current_width = `tput cols`.to_i
 
 # Compute short help width
 help_short_width = tty_current_width - ljust - 4
@@ -120,9 +163,6 @@ OmniPathWithAliases.each do |command|
     last_cat = command.category
   end
 
-  help_short = command.help_short.split("\n").join(' ')
-  help_short = help_short.scan(/(?:\A|\G(?<=\s)).{1,#{help_short_width}}(?=\s|$)|\S+/)
-
   # It's nicer to have the comma in the default color
   # while the commands are colored, so we need to color
   # _before_ joining the commands together
@@ -134,6 +174,7 @@ OmniPathWithAliases.each do |command|
   # from the string without colorization
   cmd_str << ' ' * (ljust - command.cmds_s.join(', ').length)
 
+  help_short = format_size(command.help_short, help_short_width, return_split: true)
   STDERR.puts "  #{cmd_str} #{help_short.first}"
   STDERR.puts "  #{" " * ljust} #{help_short[1..-1].join("\n   " + " " * ljust)}" if help_short.length > 1
 end

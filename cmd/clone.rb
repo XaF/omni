@@ -1,15 +1,12 @@
 #!/usr/bin/env ruby
 #
 # category: Git commands
+# arg:repo: The repository to clone; this can be in
+# arg:repo: format <org>/<repo>, just <repo>, or the full URL.
+# arg:repo: If the case where only the repo name is specified,
+# arg:repo: \e[3mOMNI_ORG\e[0m will be used to search for the
+# arg:repo: repository to clone.
 # help: Clone the specified repository
-# help:
-# help: \e[1m\e[3mUsage\e[0m\e[1m: omni clone \e[36m<repo>\e[0m
-# help:
-# help:   \e[36mrepo\e[0m      The repository to clone; this can be in
-# help:             format <org>/<repo>, just <repo>, or the full URL.
-# help:             If the case where only the repo name is specified,
-# help:             \e[3mOMNI_ORG\e[0m will be used to search for the
-# help:             repository to clone.
 
 require_relative '../lib/colorize'
 require_relative '../lib/env'

@@ -45,6 +45,56 @@ class OmniCommand
     file_details[:category]
   end
 
+  def arguments
+    file_details[:arguments]
+  end
+
+  def optionals
+    file_details[:optionals]
+  end
+
+  def src
+    file_details[:src] ||= begin
+      relpath = Pathname.new(path).
+        relative_path_from(Pathname.new(Dir.pwd)).
+        to_s
+
+      if relpath.length < path.length
+        relpath
+      else
+        path
+      end
+    end
+  end
+
+  def usage
+    @usage ||= begin
+      # Prepare the usage
+      usage = "omni #{cmd.join(' ')}"
+
+      if file_details[:usage]
+        usage << " #{file_details[:usage]}"
+      else
+        if arguments.any?
+          arguments.each do |arg|
+            arg, desc = arg.first
+            usage << " #{"<#{arg}>".light_cyan}"
+          end
+        end
+
+        if optionals.any?
+          optionals.each do |opt|
+            opt, desc = opt.first
+            usage << " #{"[#{opt}]".light_cyan}"
+          end
+        end
+      end
+
+      # Return the usage
+      usage
+    end
+  end
+
   def exec(*argv, shift_argv: true)
     # Shift the argv if needed
     if shift_argv
@@ -142,10 +192,13 @@ class OmniCommand
   def file_details
     @file_details ||= begin
       # Prepare variables
-      category = nil
       autocompletion = false
-      help_lines = []
+      category = nil
       config_fields = []
+      help_lines = []
+      params = {arg: {}, opt: {}}
+      params_reg = /^# (?<type>arg|opt):(?<name>[^:]+):(?<desc>.*)$/
+      usage = nil
 
       # Read the first few lines of the file, looking for lines starting with '# help:'
       File.open(path, 'r') do |file|
@@ -156,17 +209,22 @@ class OmniCommand
           break if line !~ /^#/ || (reading_help && line !~ /^# help:/)
 
           # Set the category if the line '# category: <category>' is found
-          category = line.sub(/^# category:\s?/, '').chomp if line =~ /^# category:/
+          if line =~ /^# category:/
+            category = line.sub(/^# category:\s?/, '').chomp
+            next
+          end
 
           # Set autocompletion to true if the line '# autocompletion: true' is found
-          autocompletion = true if line =~ /^#\s+autocompletion:\s+true$/
+          if line =~ /^#\s+autocompletion:/
+            autocompletion = true if line =~ /^#\s+autocompletion:\s+true$/
+            next
+          end
 
           # Set the config fields if the line '# config: <field1>, <field2>, ...' is found
-          config_fields.concat(line.sub(/^# config:\s?/, '').chomp.split(',').map(&:strip)) if line =~ /^# config:/
-
-          # Check if we are reading the help
-          reading_help = true if line =~ /^# help:/
-          next unless reading_help
+          if line =~ /^# config:/
+            config_fields.concat(line.sub(/^# config:\s?/, '').chomp.split(',').map(&:strip))
+            next
+          end
 
           # Handle the color codes to make the colors appear
           if String.disable_colorization
@@ -174,6 +232,30 @@ class OmniCommand
           else
             line = line.gsub(OmniCommand::COLOR_PATTERN) { |m| eval("\"#{m}\"") }
           end
+
+          # Parse arguments and options
+          if line =~ /^# (arg|opt):/
+            param = params_reg.match(line)
+            next unless param
+
+            type, name, desc = param[:type].to_sym, param[:name], param[:desc].strip
+            if params[type][name]
+              params[type][name][:desc] += "\n#{desc}"
+            else
+              params[type][name] = {desc: desc, pos: params[type].length}
+            end
+            next
+          end
+
+          # In case the usage was passed directly
+          if line =~ /^# usage:/
+            usage = line.sub(/^# usage:\s?/, '').chomp.strip
+            next
+          end
+
+          # Check if we are reading the help
+          reading_help = true if line =~ /^# help:/
+          next unless reading_help
 
           # Add the line to the help lines
           help_lines << line
@@ -192,6 +274,13 @@ class OmniCommand
         help_long: help_long,
         autocompletion: autocompletion,
         config_fields: Set.new(config_fields),
+        arguments: params[:arg].to_a.
+          sort_by { |k, v| v[:pos] }.
+          map { |k, v| [k, v[:desc]] },
+        optionals: params[:opt].to_a.
+          sort_by { |k, v| v[:pos] }.
+          map { |k, v| [k, v[:desc]] },
+        usage: usage,
       }
     end
   end

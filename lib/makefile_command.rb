@@ -32,16 +32,7 @@ class MakefileCommand < OmniCommand
     # Makefile for the target, which we consider being a
     # comment starting by '##'
     help_short = help || ''
-
-    help_long = "#{help_short}"
-    help_long << "\n\n"
-    help_long << "\e[1m\e[3mUsage\e[0m\e[1m: omni #{@cmd.join(' ')}\e[0m"
-    help_long << "\n\n"
-    help_long << "Imported from ".light_black
-    help_long << relpath
-    help_long << ":".light_black if lineno
-    help_long << "#{lineno.to_s}" if lineno
-    help_long.strip!
+    help_long = help_short
 
     @file_details = {
       category: cat,
@@ -49,6 +40,10 @@ class MakefileCommand < OmniCommand
       help_long: help_long,
       autocompletion: false,
       config_fields: Set.new,
+      usage: nil,
+      arguments: [],
+      optionals: [],
+      src: "#{relpath}:#{lineno}",
     }
   end
 

@@ -136,7 +136,7 @@ class Config
   end
 
   def commands
-    @commands ||= (@config['commands'].value || {}).map do |command, config|
+    @commands ||= (@config['commands']&.value || {}).map do |command, config|
       ConfigCommand.new(command, config.to_value, path: config.path)
     rescue ArgumentError => e
       error(e.message, print_only: true)
