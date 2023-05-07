@@ -12,7 +12,7 @@ class ConfigCommand < OmniCommand
     raise ArgumentError, 'config must contain \'run\'' unless config.has_key?('run')
 
     @target = target
-    @path = path
+    @path = path || 'default configuration'
     @config = config
 
     @cmd = target.dup
@@ -61,11 +61,6 @@ class ConfigCommand < OmniCommand
         end
       end
     end
-
-    help_long << "\n\n"
-    help_long << "Imported from ".light_black
-    help_long << relpath || 'default configuration'
-    help_long.strip!
 
     @file_details = {
       category: cat,

@@ -15,9 +15,28 @@ require_relative '../lib/omniorg'
 require_relative '../lib/path'
 
 
-def recursive_dump(obj, indent: 0, valid_keys: nil, indent_first_line: true)
+def recursive_dump(obj, indent: 0, valid_keys: nil, indent_first_line: true, parent_path: nil)
+  path = nil
+  orig_obj = obj
+  if obj.is_a?(ConfigValue)
+    path = obj.path
+    obj = obj.value
+  end
+
   if obj.is_a?(Hash)
     obj.sort.each_with_index do |(key, value), idx|
+      subpath = nil
+      orig_value = value
+      if value.is_a?(ConfigValue)
+        subpath = value.path
+        value = value.value
+      end
+
+      show_path = if path != subpath && (path || subpath)
+        relpath = Pathname.new(subpath).relative_path_from(Pathname.new(Dir.pwd)).to_s
+        " (#{relpath.length < subpath.length ? relpath : subpath})".light_black
+      end
+
       key_s = if valid_keys == false || (valid_keys && valid_keys != :all_valid_keys && !valid_keys.has_key?(key))
         key.to_s.red
       else
@@ -28,7 +47,11 @@ def recursive_dump(obj, indent: 0, valid_keys: nil, indent_first_line: true)
       STDERR.print "#{key_s}: "
 
       indent_first_line = value.is_a?(Hash) || value.is_a?(Array)
-      STDERR.puts if indent_first_line
+      if indent_first_line && value.empty?
+        STDERR.puts "#{"#{value}".light_black}#{show_path}"
+        next
+      end
+      STDERR.puts show_path if indent_first_line
 
       valid_keys_dup = if !valid_keys || valid_keys == :all_valid_keys
         valid_keys.dup
@@ -43,10 +66,11 @@ def recursive_dump(obj, indent: 0, valid_keys: nil, indent_first_line: true)
       end
 
       recursive_dump(
-        value,
+        orig_value,
         indent: indent + 2,
         valid_keys: valid_keys_dup,
         indent_first_line: indent_first_line,
+        parent_path: path,
       )
     end
   elsif obj.is_a?(Array)
@@ -63,15 +87,25 @@ def recursive_dump(obj, indent: 0, valid_keys: nil, indent_first_line: true)
       )
     end
   else
+    show_path = if path != parent_path && (path || parent_path)
+      relpath = Pathname.new(path).relative_path_from(Pathname.new(Dir.pwd)).to_s
+      "  (#{relpath.length < path.length ? relpath : path})".light_black
+    end
+
     obj_s = obj.inspect
     if obj.is_a?(TrueClass) || obj.is_a?(FalseClass) || obj.is_a?(NilClass)
       obj_s = obj_s.light_blue
     elsif obj.is_a?(Integer) || obj.is_a?(Float)
       obj_s = obj_s.light_magenta
+    elsif obj.is_a?(String) && obj.include?("\n")
+      STDERR.puts "|#{show_path}"
+      show_path = nil
+
+      obj_s = obj.split("\n").map { |line| "#{" " * indent}#{line}" }.join("\n")
     end
 
     STDERR.print "#{" " * indent}" if indent_first_line
-    STDERR.puts obj_s
+    STDERR.puts "#{obj_s}#{show_path}"
   end
 end
 
@@ -118,7 +152,7 @@ valid_keys = OmniPath.map(&:config_fields).
   flatten.map { |f| { f => :all_valid_keys } }.
   reduce({}, :merge)
 valid_keys.merge!(Config.default_config)
-recursive_dump(Config.config, indent: 2, valid_keys: valid_keys)
+recursive_dump(Config.with_src, indent: 2, valid_keys: valid_keys)
 
 STDERR.puts ""
 STDERR.puts "Loaded configuration files".bold

@@ -40,6 +40,8 @@ class ConfigValue
       value.map do |key, item|
         [key, item.is_a?(ConfigValue) ? item.to_value : item]
       end.to_h
+    elsif value.is_a?(ConfigValue)
+      value.to_value
     else
       value
     end
@@ -122,12 +124,12 @@ class Config
   def import(yaml_file)
     return if yaml_file.nil? || !File.file?(yaml_file) || !File.readable?(yaml_file)
 
-    config = YAML::load(File.open(yaml_file))
+    yaml = YAML::load(File.open(yaml_file))
 
-    unless config.nil?
-      error("invalid configuration file: #{yaml_file}") unless config.is_a?(Hash)
+    unless yaml.nil?
+      error("invalid configuration file: #{yaml_file}") unless yaml.is_a?(Hash)
       #@config = recursive_merge_hashes(@config, stringify_keys(config))
-      @config = import_values(config, file_path: yaml_file)
+      @config = import_values(yaml, file_path: yaml_file)
     end
 
     @loaded_files << yaml_file
@@ -145,7 +147,7 @@ class Config
   end
 
   def config
-    @cleaned_config ||= @config.map do |key, value|
+    @config.map do |key, value|
       [key, value.to_value]
     end.to_h
   end
