@@ -3,6 +3,7 @@ require 'yaml'
 
 require_relative 'env'
 require_relative 'utils'
+require_relative 'config_command'
 
 
 def stringify_keys(hash)
@@ -14,6 +15,38 @@ def stringify_keys(hash)
 end
 
 
+class ConfigValue
+  attr_reader :value, :path
+
+  def initialize(value, path)
+    @value = value
+    @path = path
+  end
+
+  def to_s
+    to_value.to_s
+  end
+
+  def to_value
+    if value.is_a?(Array)
+      value.map do |item|
+        if item.is_a?(ConfigValue)
+          item.to_value
+        else
+          item
+        end
+      end
+    elsif value.is_a?(Hash)
+      value.map do |key, item|
+        [key, item.is_a?(ConfigValue) ? item.to_value : item]
+      end.to_h
+    else
+      value
+    end
+  end
+end
+
+
 class Config
   include Singleton
 
@@ -21,6 +54,8 @@ class Config
     stringify_keys({
       auto_up_on_clone: true,
       cache_file: "#{ENV['HOME']}/.cache/omni",
+      config_commands_split_on_dash: true,
+      config_commands_split_on_slash: true,
       enable_git_repo_commands: true,
       enable_makefile_commands: true,
       env: [],
@@ -54,23 +89,23 @@ class Config
     self.instance.respond_to?(method, include_private) || super
   end
 
-  attr_reader :loaded_files, :config
+  attr_reader :loaded_files
 
   def method_missing(method, *args, **kwargs, &block)
-    if args.empty? && kwargs.empty? && block.nil? && @config.has_key?(method.to_s)
-      @config[method.to_s]
+    if args.empty? && kwargs.empty? && block.nil? && config.has_key?(method.to_s)
+      config[method.to_s]
     else
       super
     end
   end
 
   def respond_to_missing?(method, include_private = false)
-    @config.has_key?(method.to_s) || super
+    config.has_key?(method.to_s) || super
   end
 
   def initialize
     @loaded_files = []
-    @config = stringify_keys(self.class.default_config)
+    @config = import_values(self.class.default_config)
 
     self.class.config_files.each do |config_file|
       import(config_file)
@@ -91,7 +126,8 @@ class Config
 
     unless config.nil?
       error("invalid configuration file: #{yaml_file}") unless config.is_a?(Hash)
-      @config = recursive_merge_hashes(@config, stringify_keys(config))
+      #@config = recursive_merge_hashes(@config, stringify_keys(config))
+      @config = import_values(config, file_path: yaml_file)
     end
 
     @loaded_files << yaml_file
@@ -99,7 +135,37 @@ class Config
     error("invalid configuration file: #{yaml_file.yellow}", print_only: true)
   end
 
+  def commands
+    @commands ||= (@config['commands'].value || {}).map do |command, config|
+      ConfigCommand.new(command, config.to_value, path: config.path)
+    rescue ArgumentError => e
+      error(e.message, print_only: true)
+      nil
+    end.compact
+  end
+
+  def config
+    @cleaned_config ||= @config.map do |key, value|
+      [key, value.to_value]
+    end.to_h
+  end
+
+  def with_src
+    @config
+  end
+
   private
+
+  def import_values(values, file_path: nil, config: nil)
+    config = @config&.dup || {} if config.nil?
+
+    values.each do |key, value|
+      value = import_values(value, file_path: file_path, config: config[key.to_s] || {}) if value.is_a?(Hash)
+      config[key.to_s] = ConfigValue.new(value, file_path)
+    end
+
+    config
+  end
 
   def recursive_merge_hashes(current_hash, added_hash)
     current_hash.merge(added_hash) do |key, current_val, added_val|

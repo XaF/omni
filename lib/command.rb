@@ -117,9 +117,8 @@ class OmniCommand
     sort_key <=> other.sort_key
   end
 
-  def sort_key
-    sorting_cmd = cmd.map(&:downcase)
-    sorting_cat = if category.nil? || category.empty?
+  def sort_category
+    if category.nil? || category.empty?
       # Downcase is always sorted after upcase, so by
       # using downcase for uncategorized, we make sure
       # that they will always end-up at the end!
@@ -127,9 +126,15 @@ class OmniCommand
     else
       category.map(&:upcase)
     end
+  end
 
+  def sort_command
+    cmd.map(&:downcase)
+  end
+
+  def sort_key
     # We want to sort by category first, then by command
-    [sorting_cat, sorting_cmd]
+    [sort_category, sort_command]
   end
 
   private

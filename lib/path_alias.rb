@@ -27,7 +27,14 @@ class OmniPathWithAliases
       paths = Set.new
       realpaths = OmniPath.map do |command|
         paths.add(command.path)
-        [Pathname.new(command.path).realpath.to_s, command]
+
+        realpath = begin
+          Pathname.new(command.path).realpath.to_s
+        rescue Errno::ENOENT
+          command.path
+        end
+
+        [realpath, command]
       end
 
       # Find all the aliases for each command
