@@ -3,183 +3,438 @@
 # Identify location of this current script
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" >/dev/null 2>&1 && pwd)"
 
+function print_logo() {
+	cat <<EOF
+     @@@@@
+ @@@@@@@@@@@
+ @@@@@   @@@@
+ @@@@      @@@
+ @@@@@      @@    OMNI
+@@@ @@@     @@@
+@@   @@@     @@     THE OMNIPOTENT
+@@    @@@    @@        DEV TOOL
+@@   @@@     @@
+@@@ @@@     @@@
+ @@@@@      @@
+ @@@@      @@@
+ @@@@@   @@@@
+ @@@@@@@@@@@
+     @@@@@
+EOF
+}
+
+function print_msg() { echo -e >&2 "\e[96momni:\e[0m \e[93minstall:\e[0m $@"; }
+function print_ok() { print_msg "\e[92m[OK]\e[0m      $@"; }
+function print_failed() { print_msg "\e[91m[FAILED]\e[0m  $@"; }
+function print_pending() { print_msg "\e[90m[--]\e[0m      $@"; }
+function print_query() { echo -en >&2 "$(print_msg "\e[90m[??]\e[0m      $*" 2>&1) "; }
+function print_action() { print_msg "\e[90m[!!]\e[0m      $@"; }
+function print_issue() { print_msg "\e[93m[~~]\e[0m      $@"; }
+
+# Usage function
+function usage() {
+	echo -e >&2 "usage: $0 [options]"
+	echo -e >&2 "  -h, --help			Show this help message"
+	echo -e >&2 "  --repo-path-format		Format of the repository path, default is 'github.com/{user}/{repo}'"
+	echo -e >&2 "  --git-dir			Directory where to clone the omni git repository, default is '~/.omni'"
+	echo -e >&2 "  --bashrc			Setup bashrc, default is '~/.bashrc'"
+	echo -e >&2 "  --zshrc			Setup zshrc, default is '~/.zshrc'"
+	echo -e >&2 "  --no-interactive		Do not ask for confirmation before installing"
+	exit $1
+}
+
+# Return invalid option error
+function invalid_option() {
+	print_msg "Unknown option '$1'"
+	usage 1
+}
+
+# Parse long option and return bash code to set the variable
+function parse_long_option() {
+	local ARGNAME="$1"
+	local VALUE_TYPE="$2" # optional, required, none
+	local OPTARG="$3"
+	local NEXTVAL="$4"
+
+	local val=
+	local opt=
+
+	if [[ "$VALUE_TYPE" == "none" ]] && [[ "${OPTARG}" == *"="* ]]; then
+		print_msg "Option '--${OPTARG}' does not take a value"
+		echo "exit 1"
+		usage 1
+	elif [[ "${OPTARG}" == *"="* ]]; then
+		val=${OPTARG#*=}
+		opt=${OPTARG%=$val}
+	elif [[ "${OPTARG}" != "$ARGNAME" ]]; then
+		echo "exit 1"
+		invalid_option "--${OPTARG}"
+	elif [[ "$VALUE_TYPE" != "none" ]] && [[ "${NEXTVAL}" != "-"* ]]; then
+		val="${NEXTVAL}";
+		echo "OPTIND=\$((\$OPTIND + 1))"
+		opt="${OPTARG}"
+	else
+		val=""
+		opt="${OPTARG}"
+	fi
+
+	if [[ "$VALUE_TYPE" == "required" ]] && [[ -z "$val" ]]; then
+		print_msg "Option '--${OPTARG}' requires an argument"
+		echo "exit 1"
+		usage 1
+	fi
+
+	echo "val=${val}"
+	echo "opt=${opt}"
+}
+
+# Handle options in a way compatible with linux and macos
+INTERACTIVE=${INTERACTIVE:-true}
+while getopts -- ":h-:" optchar; do
+	case "${optchar}" in
+	-)
+		case "${OPTARG}" in
+		repo-path-format*)
+			eval "$(parse_long_option "repo-path-format" "required" "${OPTARG}" "${!OPTIND}")"
+			REPO_PATH_FORMAT="${val}"
+			;;
+		git-dir*)
+			eval "$(parse_long_option "git-dir" "required" "${OPTARG}" "${!OPTIND}")"
+			OMNI_GIT="${val}"
+			;;
+		bashrc*)
+			eval "$(parse_long_option "bashrc" "optional" "${OPTARG}" "${!OPTIND}")"
+			SETUP_BASHRC=true
+			BASHRC_PATH="${val}"
+			;;
+		zshrc*)
+			eval "$(parse_long_option "zshrc" "optional" "${OPTARG}" "${!OPTIND}")"
+			SETUP_ZSHRC=true
+			ZSHRC_PATH="${val}"
+			;;
+		no-interactive*)
+			eval "$(parse_long_option "no-interactive" "none" "${OPTARG}" "${!OPTIND}")"
+			INTERACTIVE=false
+			;;
+		*)
+			invalid_option "--${OPTARG}"
+			;;
+		esac;;
+	h)
+		usage 0
+		;;
+	*)
+		invalid_option "-${OPTARG}"
+		;;
+	esac
+done
+
 # Check if we are currently in the omni git repository
 in_omni_dir=false
 if [[ -d "$SCRIPT_DIR/.git" ]] && [[ -d "$SCRIPT_DIR/shell_integration" ]] && [[ -d "$SCRIPT_DIR/bin" ]]; then
-        in_omni_dir=true
+	in_omni_dir=true
 fi
 
 function search_config() {
-        local param=$1
+	local param=$1
 
-        local config_files=(
-              "${HOME}/.omni"
-              "${HOME}/.omni.yaml"
-              "${HOME}/.config/omni"
-              "${HOME}/.config/omni.yaml"
-              "${OMNI_CONFIG}"
-        )
-        for file in "${config_files[@]}"; do
-                # If file does not exist or is not readable, go to next file
-                ([[ -f "$file" ]] && [[ -r "$file" ]]) || continue
+	local config_files=(
+		"${HOME}/.omni"
+		"${HOME}/.omni.yaml"
+		"${HOME}/.config/omni"
+		"${HOME}/.config/omni.yaml"
+		"${OMNI_CONFIG}"
+	)
+	for file in "${config_files[@]}"; do
+		# If file does not exist or is not readable, go to next file
+		([[ -f "$file" ]] && [[ -r "$file" ]]) || continue
 
-                # Try and find if there is a line following the format 'param: value'
-                # in the file, we want the lookup to be compatible both for macos and linux, so
-                # we choose the right command line for that research, knowing that even on macos
-                # someone might have installed gnu grep
-                local matching_line=$(grep -E "^${param}:" "$file")
-                [[ -n "$matching_line" ]] || continue
+		# Try and find if there is a line following the format 'param: value'
+		# in the file, we want the lookup to be compatible both for macos and linux, so
+		# we choose the right command line for that research, knowing that even on macos
+		# someone might have installed gnu grep
+		local matching_line=$(grep -E "^${param}:" "$file")
+		[[ -n "$matching_line" ]] || continue
 
-                # Use awk to extract the parameter value, and remove the potential quotes, single or double, around it
-                local matching_value=$(echo "$matching_line" | \
-                        sed -E "s/^${param}:\s*//" | \
-                        sed -E 's/^"(.*)"/\1/' | \
-                        sed -E "s/^'(.*)'/\1/")
-                [[ -n "$matching_value" ]] || continue
+		# Use awk to extract the parameter value, and remove the potential quotes, single or double, around it
+		local matching_value=$(echo "$matching_line" | \
+			sed -E "s/^${param}:\s*//" | \
+			sed -E 's/^"(.*)"/\1/' | \
+			sed -E "s/^'(.*)'/\1/")
+		[[ -n "$matching_value" ]] || continue
 
-                # If we found a value, just return it
-                echo $matching_value
-                break
-        done
+		# If we found a value, just return it
+		echo $matching_value
+		break
+	done
 }
 
 function query_omni_git() {
-        echo -en >&2 "\e[96momni:\e[0m \e[93minstall:\e[0m What is your git base directory? \e[90m(default: ${HOME}/git)\e[0m "
-        read git_base_dir
-        git_base_dir="${git_base_dir:-${HOME}/git}"
-        git_base_dir="$(eval "echo $git_base_dir")"
-        echo "$git_base_dir"
+	if [[ "$INTERACTIVE" == "false" ]]; then
+		print_failed "Missing git base directory, set OMNI_GIT environment variable or use --git-dir option"
+		exit 1
+	fi
+
+	print_failed "What is your git base directory? \e[90m(default: ${HOME}/git)\e[0m "
+	read git_base_dir
+	git_base_dir="${git_base_dir:-${HOME}/git}"
+	git_base_dir="$(eval "echo $git_base_dir")"
+	echo "$git_base_dir"
 }
 
 function query_repo_path_format() {
-        echo -e >&2 "\e[96momni:\e[0m \e[93minstall:\e[0m Which repository path format do you wish to use?"
+	if [[ -z "$REPO_PATH_FORMAT" ]]; then
+		if [[ "$INTERACTIVE" == "false" ]]; then
+			print_failed "Missing repo path format, use --repo-path-format option"
+			exit 1
+		fi
 
-        local PS3="Format index: "
-        select repo_path_format in "%{host}/%{org}/%{repo}" "%{org}/%{repo}" "%{repo}" "other (custom)"; do
-                if [[ "$repo_path_format" == "other (custom)" ]]; then
-                        echo -e >&2 "\e[96momni:\e[0m \e[93minstall:\e[0m Enter the format to use for repositories"
-                        echo -e >&2 "\e[90m  %{host}    registry (e.g. github.com)\e[0m"
-                        echo -e >&2 "\e[90m  %{org}     repository owner (e.g. XaF)\e[0m"
-                        echo -e >&2 "\e[90m  %{repo}    repository name (e.g. omni)\e[0m"
-                        echo -en >&2 "Format: "
-                        read repo_path_format
-                        break
-                elif [[ "$repo_path_format" != "" ]]; then
-                        break
-                fi
-        done
+		print_query "Which repository path format do you wish to use?"
 
-        if [[ -z "$repo_path_format" ]]; then
-                echo -e >&2 "\e[96momni:\e[0m \e[93minstall:\e[0m No repository format provided  \e[91m[FAILED]\e[0"
-                exit 1
-        fi
+		local PS3="Format index: "
+		select REPO_PATH_FORMAT in "%{host}/%{org}/%{repo}" "%{org}/%{repo}" "%{repo}" "other (custom)"; do
+			if [[ "$REPO_PATH_FORMAT" == "other (custom)" ]]; then
+				print_msg "Enter the format to use for repositories"
+				echo -e >&2 "\e[90m  %{host}	registry (e.g. github.com)\e[0m"
+				echo -e >&2 "\e[90m  %{org}	 repository owner (e.g. XaF)\e[0m"
+				echo -e >&2 "\e[90m  %{repo}	repository name (e.g. omni)\e[0m"
+				echo -en >&2 "Format: "
+				read REPO_PATH_FORMAT
+				break
+			elif [[ "$REPO_PATH_FORMAT" != "" ]]; then
+				break
+			fi
+		done
+	fi
 
-        # Write repo path format to configuration file (at default location)
-        local config_file="${HOME}/.config/omni.yaml"
-        mkdir -p "$(dirname "$config_file")"
-        echo "repo_path_format: \"${repo_path_format}\"" >> "${config_file}"
-        echo -e >&2 "\e[96momni:\e[0m \e[93minstall:\e[0m Saved repository path format to ${config_file}  \e[92m[OK]\e[0m"
+	if [[ -z "$REPO_PATH_FORMAT" ]]; then
+		print_failed "No repository format provided"
+		exit 1
+	fi
 
-        echo $repo_path_format
+	# Write repo path format to configuration file (at default location)
+	local config_file="${HOME}/.config/omni.yaml"
+	mkdir -p "$(dirname "$config_file")"
+	echo "repo_path_format: \"${REPO_PATH_FORMAT}\"" >> "${config_file}"
+	print_ok "Saved repository path format to ${config_file}"
+
+	echo $REPO_PATH_FORMAT
 }
 
 function git_clone() {
-        local repo_path_format
-        local clone_location
-        local repo_location="git@github.com:XaF/omni.git"
+	local repo_path_format
+	local clone_location
+	local repo_location="git@github.com:XaF/omni.git"
 
-        # We need the base location for git repositories
-        [[ -n "$OMNI_GIT" ]] || OMNI_GIT=$(query_omni_git)
+	# We need the base location for git repositories
+	[[ -n "$OMNI_GIT" ]] || OMNI_GIT=$(query_omni_git)
 
-        # We need the format the user wants for repo paths
-        repo_path_format=$(search_config "repo_path_format")
-        [[ -n "$repo_path_format" ]] || repo_path_format=$(query_repo_path_format)
+	# We need the format the user wants for repo paths
+	repo_path_format=$(search_config "repo_path_format")
+	[[ -n "$repo_path_format" ]] || repo_path_format=$(query_repo_path_format)
 
-        # We can then convert that to what would be the clone
-        # location of the omni repository, since we know the
-        # different parts of it
-        clone_location="${OMNI_GIT}/"
-        clone_location+=$(echo "$repo_path_format" | \
-                sed -E "s/%\{host\}/github.com/" | \
-                sed -E "s/%\{org\}/XaF/" | \
-                sed -E "s/%\{repo\}/omni/")
+	# We can then convert that to what would be the clone
+	# location of the omni repository, since we know the
+	# different parts of it
+	clone_location="${OMNI_GIT}/"
+	clone_location+=$(echo "$repo_path_format" | \
+		sed -E "s/%\{host\}/github.com/" | \
+		sed -E "s/%\{org\}/XaF/" | \
+		sed -E "s/%\{repo\}/omni/")
 
-        # If the expected clone location already exists, we raise
-        # an error since we won't be able to clone the omni repository
-        # there
-        if [[ -e "$clone_location" ]]; then
-                echo -e >&2 "\e[96momni:\e[0m \e[93minstall:\e[0m $clone_location already exists  \e[91m[FAILED]\e[0m"
-                echo -e >&2 "\e[96momni:\e[0m \e[93minstall:\e[0m if this is a clone of omni, either remove it"
-                echo -e >&2 "\e[96momni:\e[0m \e[93minstall:\e[0m or run install.sh from there"
-                exit 1
-        fi
+	# If the expected clone location already exists, we raise
+	# an error since we won't be able to clone the omni repository
+	# there
+	if [[ -e "$clone_location" ]]; then
+		print_failed "$clone_location already exists, if this is a clone of omni, either remove it, or run $clone_location/install.sh"
+		exit 1
+	fi
 
-        # We make sure the path up to the directory in which we want to
-        # clone do exist, or git clone will complain
-        mkdir -p "$(dirname "$clone_location")"
+	# We make sure the path up to the directory in which we want to
+	# clone do exist, or git clone will complain
+	mkdir -p "$(dirname "$clone_location")"
 
-        # Then we can clone the repository
-        echo -e >&2 "\e[90m$ git clone \"${repo_location}\" \"${clone_location}\" --depth 1\e[0m"
-        git clone "${repo_location}" "${clone_location}" --depth 1
-        if [ $? -ne 0 ]; then
-                echo -e >&2 "\e[96momni:\e[0m \e[93minstall:\e[0m clone omni repository in $clone_location  \e[91m[FAILED]\e[0m"
-                exit 1  # Fail fast
-        else
-                echo -e >&2 "\e[96momni:\e[0m \e[93minstall:\e[0m clone omni repository in $clone_location  \e[92m[OK]\e[0m"
-        fi
+	# Then we can clone the repository
+	echo -e >&2 "\e[90m$ git clone \"${repo_location}\" \"${clone_location}\" --depth 1\e[0m"
+	git clone "${repo_location}" "${clone_location}" --depth 1
+	if [ $? -ne 0 ]; then
+		print_failed "clone omni repository in $clone_location"
+		exit 1  # Fail fast
+	else
+		print_ok "clone omni repository in $clone_location"
+	fi
 
-        # Finally, we echo the clone location so the caller can use it
-        echo $clone_location
+	# Finally, we echo the clone location so the caller can use it
+	echo $clone_location
 }
 
 if ! $in_omni_dir; then
-        clone_location=$(git_clone)
-        if [[ -z "$clone_location" ]]; then
-                echo -e >&2 "\e[96momni:\e[0m \e[93minstall:\e[0m weird error, clone_location is empty but shouldn't be  \e[91m[FAILED]\e[0m"
-                exit 1
-        fi
+	clone_location=$(git_clone)
+	if [[ -z "$clone_location" ]]; then
+		print_failed "weird error, clone_location is empty but shouldn't be"
+		exit 1
+	fi
 
+	# Now call the install script from the newly cloned repo
+	$clone_location/install.sh
 
-        # Now call the install script from the newly cloned repo
-        $clone_location/install.sh
-
-        # And exit with the exit code of that command
-        exit $?
+	# And exit with the exit code of that command
+	exit $?
 fi
+
+print_logo
+
+# Switch directory to the omni repository
+cd "$SCRIPT_DIR"
+
+function install_dependencies() {
+	# rbenv might be installed in the user's home, so we add it to the path to make
+	# sure that it's found even if it's not in the user's configured path
+	export PATH="$HOME/.rbenv/bin:$PATH"
+
+	# If rbenv is not installed, we try to install it
+	if command -v rbenv >/dev/null; then
+		print_ok "rbenv found"
+	else
+		print_issue "rbenv not found"
+		if command -v brew >/dev/null; then
+			print_ok "brew found"
+			echo -e >&2 "\e[90m$ brew install rbenv\e[0m"
+			brew install rbenv || exit 1
+		elif command -v apt-get >/dev/null; then
+			print_ok "apt-get found"
+
+			echo -e >&2 "\e[33m[sudo]\e[0m \e[90m$ apt-get update\e[0m"
+			sudo apt-get update || exit 1
+
+			echo -e >&2 "\e[33m[sudo]\e[0m \e[90m$ apt-get --yes install libssl-dev libreadline-dev zlib1g-dev autoconf bison build-essential libyaml-dev libreadline-dev libncurses5-dev libffi-dev libgdbm-dev\e[0m"
+			sudo apt-get --yes install libssl-dev libreadline-dev zlib1g-dev autoconf bison build-essential libyaml-dev libreadline-dev libncurses5-dev libffi-dev libgdbm-dev || exit 1
+
+			echo -e >&2 "\e[90m$ curl -fsSL https://github.com/rbenv/rbenv-installer/raw/HEAD/bin/rbenv-installer | bash\e[0m"
+			curl -fsSL https://github.com/rbenv/rbenv-installer/raw/HEAD/bin/rbenv-installer | bash || exit 1
+		elif command -v yum >/dev/null; then
+			print_ok "yum found"
+			echo -e >&2 "\e[90m$ yum install rbenv\e[0m"
+			yum install rbenv || exit 1
+		elif command -v pacman >/dev/null; then
+			print_ok "pacman found"
+			echo -e >&2 "\e[90m$ pacman -S rbenv ruby-build\e[0m"
+			pacman -S rbenv ruby-build || exit 1
+		else
+			print_issue "No package manager found"
+			if [[ "$INTERACTIVE" == "true" ]]; then
+				print_query "Please install rbenv manually, and press enter when ready to pursue"
+				read
+			fi
+		fi
+	fi
+
+	if ! command -v rbenv >/dev/null; then
+		print_failed "rbenv still not found"
+		exit 1
+	fi
+
+	# Make sure rbenv is currently loaded, just in case
+	eval "$(rbenv init - bash)" || exit 1
+
+	# We then make sure the right ruby version is installed and being used from the repo
+	local ruby_version=$(<"${SCRIPT_DIR}/.ruby-version")
+	if (cd "$SCRIPT_DIR" && rbenv version | cut -d' ' -f1 | grep -q "$ruby_version"); then
+		print_ok "ruby $ruby_version found"
+	else
+		if [[ ! -d "$HOME/.rbenv/plugins/rvm-download" ]]; then
+			# Get rvm-download so that the installation can be faster
+			print_pending "Installing rvm-download plugin for rbenv"
+			git clone https://github.com/garnieretienne/rvm-download.git "$HOME/.rbenv/plugins/rvm-download" || exit 1
+			print_ok "Installed rvm-download plugin for rbenv"
+		fi
+
+		print_pending "Installing ruby $ruby_version"
+		# RUBY_CONFIGURE_OPTS=--disable-install-doc rbenv install --verbose --skip-existing $ruby_version || exit 1
+		(rbenv download $ruby_version && rbenv rehash) || exit 1
+		print_ok "Installed ruby $ruby_version"
+	fi
+
+	if ! (cd "$SCRIPT_DIR" && rbenv version | cut -d' ' -f1 | grep -q "$ruby_version"); then
+		print_failed "ruby $ruby_version still not found"
+		exit 1
+	fi
+
+	# We then check that bundler is installed, that should be automated, but just in case
+	if command -v bundle >/dev/null; then
+		print_ok "bundler found"
+	else
+		print_pending "Installing bundler"
+		echo -e >&2 "\e[90m$ gem install bundler\e[0m"
+		gem install bundler || exit 1
+		print_ok "Installed bundler"
+	fi
+
+	if ! command -v bundle >/dev/null; then
+		print_failed "bundler still not found"
+		exit 1
+	fi
+
+	# Finally, we can go into the repository and run the bundle install from there
+	print_pending "Installing Gemfile dependencies"
+	{
+		cd "$SCRIPT_DIR"
+		bundle config set path 'vendor/bundle'
+		bundle install
+	} || exit 1
+	print_ok "Installed Gemfile dependencies"
+}
+
+install_dependencies
 
 CURRENT_SHELL=$(basename -- "$(ps -p $PPID -o command=)" | sed 's/^-//')
 
 function setup_shell_integration() {
-        local shell="$1"
-        local skip_confirmation=$([[ "$CURRENT_SHELL" == "$shell" ]] && echo "y" || echo "n")
-        local setup_shell="N"
-        local rc_file=""
+	local shell="$1"
+	local skip_confirmation=$([[ "$CURRENT_SHELL" == "$shell" ]] && echo "y" || echo "n")
+	local setup_shell_var="SETUP_${shell^^}RC"
+	local setup_shell="${!setup_shell_var:-false}"
+	local rc_file_var="${shell^^}RC_PATH"
+	local rc_file="${!rc_file_var}"
 
-        if [[ "$skip_confirmation" != "y" ]] && [[ "$skip_confirmation" != "Y" ]]; then
-                echo -en >&2 "\e[96momni:\e[0m \e[93minstall:\e[0m Do you want to setup the $shell integration? \e[90m[y/N]\e[0m "
-                read setup_shell
-                [[ "$setup_shell" == "y" ]] || [[ "$setup_shell" == "Y" ]] || return 0
-        fi
+	[[ "$skip_confirmation" =~ ^[yY]$ ]] && setup_shell="true"
 
-        echo -en >&2 "\e[96momni:\e[0m \e[93minstall:\e[0m Location of the .${shell}rc file to edit? \e[90m(default: ${HOME}/.${shell}rc)\e[0m "
-        read rc_file
-        rc_file="${rc_file:-${HOME}/.${shell}rc}"
-        rc_file="$(eval "echo $rc_file")"
+	if [[ "$setup_shell" != "true" ]] && [[ "$INTERACTIVE" == "true" ]]; then
+		print_query "Do you want to setup the $shell integration? \e[90m[y/N]\e[0m "
+		read setup_shell
+		[[ "$setup_shell" =~ ^[yY]$ ]] && setup_shell="true"
+	fi
 
-        echo "[[ -x \"${SCRIPT_DIR}/shell_integration/omni.${shell}\" ]] && source \"${SCRIPT_DIR}/shell_integration/omni.${shell}\"" >> "$rc_file"
-        if [ $? -ne 0 ]; then
-                echo -e >&2 "\e[96momni:\e[0m \e[93minstall:\e[0m setup $shell integration in $rc_file  \e[91m[FAILED]\e[0m"
-        else
-                echo -e >&2 "\e[96momni:\e[0m \e[93minstall:\e[0m setup $shell integration in $rc_file  \e[92m[OK]\e[0m"
-        fi
+	if [[ "$setup_shell" != "true" ]]; then
+		print_action "Skipping $shell integration"
+		return 0
+	fi
+
+	if [[ -z "$rc_file" ]] && [[ "$INTERACTIVE" == "true" ]]; then
+		print_query "Location of the .${shell}rc file to edit? \e[90m(default: ${HOME}/.${shell}rc)\e[0m "
+		read rc_file
+		rc_file="${rc_file:-${HOME}/.${shell}rc}"
+		rc_file="$(eval "echo $rc_file")"
+	fi
+
+	[[ -z "$rc_file" ]] && rc_file="${HOME}/.${shell}rc"
+
+	print_action "Setting up shell integration in $rc_file"
+
+	echo "[[ -x \"${SCRIPT_DIR}/shell_integration/omni.${shell}\" ]] && source \"${SCRIPT_DIR}/shell_integration/omni.${shell}\"" >> "$rc_file"
+	if [ $? -ne 0 ]; then
+		print_failed "Setup $shell integration in $rc_file"
+	else
+		print_ok "Setup $shell integration in $rc_file"
+	fi
 }
 
 SUPPORTED_SHELLS=("bash" "zsh")
 # Setup firt the integration for the current shell
 for shell in "${SUPPORTED_SHELLS[@]}"; do
-        [[ "$CURRENT_SHELL" == "$shell" ]] && setup_shell_integration "$shell"
+	[[ "$CURRENT_SHELL" == "$shell" ]] && setup_shell_integration "$shell"
 done
 # Then offer to setup the other shell integrations
 for shell in "${SUPPORTED_SHELLS[@]}"; do
-        [[ "$CURRENT_SHELL" == "$shell" ]] || setup_shell_integration "$shell"
+	[[ "$CURRENT_SHELL" == "$shell" ]] || setup_shell_integration "$shell"
 done
