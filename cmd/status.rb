@@ -84,6 +84,7 @@ def recursive_dump(obj, indent: 0, valid_keys: nil, indent_first_line: true, par
         indent: indent + 2,
         valid_keys: valid_keys == false ? false : nil,
         indent_first_line: false,
+        parent_path: path,
       )
     end
   else

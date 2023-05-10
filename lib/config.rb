@@ -16,32 +16,59 @@ end
 
 
 class ConfigValue
+  def self.unwrap(value)
+    return value unless value.is_a?(ConfigValue)
+    value.unwrap
+  end
+
+  def self.wrap(value, path, wrap_obj: true)
+    if value.is_a?(ConfigValue)
+      value
+    elsif value.is_a?(Hash)
+      value.map do |key, item|
+        [key, ConfigValue.new(item, path)]
+      end.to_h
+    elsif value.is_a?(Array)
+      value.map do |item|
+        ConfigValue.new(item, path)
+      end
+    elsif !wrap_obj
+      value
+    else
+      ConfigValue.new(value, path)
+    end
+  end
+
   attr_reader :value, :path
 
   def initialize(value, path)
-    @value = value
+    @value = self.class.wrap(value, path, wrap_obj: false)
     @path = path
   end
 
-  def to_s
-    to_value.to_s
+  def []=(key, value)
+    @value[key] = self.class.wrap(value, path)
   end
 
-  def to_value
+  def to_s
+    unwrap.to_s
+  end
+
+  def unwrap
     if value.is_a?(Array)
       value.map do |item|
         if item.is_a?(ConfigValue)
-          item.to_value
+          item.unwrap
         else
           item
         end
       end
     elsif value.is_a?(Hash)
       value.map do |key, item|
-        [key, item.is_a?(ConfigValue) ? item.to_value : item]
+        [key, item.is_a?(ConfigValue) ? item.unwrap : item]
       end.to_h
     elsif value.is_a?(ConfigValue)
-      value.to_value
+      value.unwrap
     else
       value
     end
@@ -128,7 +155,6 @@ class Config
 
     unless yaml.nil?
       error("invalid configuration file: #{yaml_file}") unless yaml.is_a?(Hash)
-      #@config = recursive_merge_hashes(@config, stringify_keys(config))
       @config = import_values(yaml, file_path: yaml_file)
     end
 
@@ -139,7 +165,7 @@ class Config
 
   def commands
     @commands ||= (@config['commands']&.value || {}).map do |command, config|
-      ConfigCommand.new(command, config.to_value, path: config.path)
+      ConfigCommand.new(command, config.unwrap, path: config.path)
     rescue ArgumentError => e
       error(e.message, print_only: true)
       nil
@@ -148,7 +174,7 @@ class Config
 
   def config
     @config.map do |key, value|
-      [key, value.to_value]
+      [key, value.unwrap]
     end.to_h
   end
 
@@ -162,7 +188,9 @@ class Config
     config = @config&.dup || {} if config.nil?
 
     values.each do |key, value|
-      value = import_values(value, file_path: file_path, config: config[key.to_s] || {}) if value.is_a?(Hash)
+      if value.is_a?(Hash) && config[key.to_s].is_a?(Hash)
+        value = import_values(value, file_path: file_path, config: config[key.to_s] || {})
+      end
       config[key.to_s] = ConfigValue.new(value, file_path)
     end
 
