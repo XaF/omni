@@ -6,24 +6,24 @@ require_relative 'operation'
 class CustomOperation < Operation
   def up
     if met?
-      STDERR.puts "# Skipping #{name || config_meet} (already met)".light_yellow
+      STDERR.puts "# Skipping #{name || meet_cmd} (already met)".light_yellow
       return
     end
 
     STDERR.puts "# #{name}".light_blue if name
-    meet || run_error(name || config_meet)
+    meet || run_error(name || meet_cmd)
   end
 
   def down
     return unless unmeet_cmd
 
     unless met?
-      STDERR.puts "# Skipping revert of #{name || config_meet} (not met)".light_yellow
+      STDERR.puts "# Skipping revert of #{name || unmeet_cmd} (not met)".light_yellow
       return
     end
 
     STDERR.puts "# Revert: #{name}".light_blue if name
-    unmeet || run_error(name || config_unmeet)
+    unmeet || run_error(name || unmeet_cmd)
   end
 
   private
