@@ -10,8 +10,9 @@ class OmniEnv
   OMNI_CMD_FILE = (ENV['OMNI_CMD_FILE'] || '').empty? ? nil : ENV['OMNI_CMD_FILE']
   OMNI_GIT = ENV['OMNI_GIT'] || "#{ENV['HOME']}/git"
   OMNI_ORG = split_path(ENV['OMNI_ORG'] || '', split_by: ',')
-  OMNI_SUBCOMMAND = (ENV['OMNI_SUBCOMMAND'] || '').empty? ? nil : ENV['OMNI_SUBCOMMAND']
   OMNI_SKIP_UPDATE = ENV['OMNI_SKIP_UPDATE'] == 'true'
+  OMNI_SUBCOMMAND = (ENV['OMNI_SUBCOMMAND'] || '').empty? ? nil : ENV['OMNI_SUBCOMMAND']
+  OMNI_UUID = (ENV['OMNI_UUID'] || '').empty? ? nil : ENV['OMNI_UUID']
 
   def self.set_env_vars
     ENV['OMNIPATH'] = OMNIPATH.join(':')
@@ -35,6 +36,7 @@ class OmniEnv
       OMNI_GIT: OMNI_GIT,
       OMNI_ORG: OMNI_ORG,
       OMNI_SUBCOMMAND: OMNI_SUBCOMMAND,
+      OMNI_UUID: OMNI_UUID,
       in_git_repo?: in_git_repo?,
       git_repo_root: git_repo_root,
     }
