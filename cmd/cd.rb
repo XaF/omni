@@ -44,7 +44,7 @@ def autocomplete(argv)
 
   # We can try and fetch all the repositories, or part of repository
   # paths, that could start with the value provided so far
-  match_repo = Regexp.new(%r{(^|/)(?<match>#{Regexp.escape(repo)}.*)$})
+  match_repo = Regexp.new(%r{(^|/)(?<match>#{Regexp.escape(repo || '')}.*)$})
 
   potential_matches = []
   OmniOrgs.repos(dedup: false) do |dir, path, dir_path|
