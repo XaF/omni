@@ -87,7 +87,7 @@ class Config
       config_commands_split_on_slash: true,
       enable_git_repo_commands: true,
       enable_makefile_commands: true,
-      env: [],
+      env: {},
       makefile_commands_split_on_dash: true,
       makefile_commands_split_on_slash: true,
       path_repo_updates_enabled: true,
