@@ -46,7 +46,7 @@ class Updater
     # Update the repositories
     update_paths.each do |path|
       Dir.chdir(path) do
-        git_pull = command_line('git', 'pull', context: path)
+        git_pull = command_line('git', 'pull', '--ff-only', context: path)
         unless git_pull
           error("#{path.yellow}: git pull failed", cmd: 'updater', print_only: true)
           next
