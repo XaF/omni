@@ -53,6 +53,7 @@ class Cache
 
   def write_cache
     @cache.reject! { |_, value| value.expired? }
+    FileUtils.mkdir_p(File.dirname(Config.cache_file))
     File.write(Config.cache_file, @cache.to_json)
   end
 

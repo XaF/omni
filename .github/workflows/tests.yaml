@@ -1,0 +1,60 @@
+name: Run tests
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.run_id }}
+  cancel-in-progress: true
+
+
+jobs:
+  install-script:
+    name: Automated installation on ${{ matrix.os }}
+
+    strategy:
+      matrix:
+        os:
+          - ubuntu-latest
+          # - macos-latest
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - name: Checkout current commit
+        uses: actions/checkout@v3
+
+      - name: Set OMNIDIR
+        run: |
+          echo "OMNIDIR=${GITHUB_WORKSPACE}" | tee -a "$GITHUB_ENV"
+
+      - name: Run install script
+        run: |
+          ./install.sh \
+            --no-interactive \
+            --git-dir "$HOME/git" \
+            --repo-path-format "%{host}/%{org}/%{repo}" \
+            --bashrc "$HOME/omni.bashrc" \
+            --zshrc "$HOME/omni.zshrc"
+
+      - name: Try and run omni with bash
+        shell: bash
+        run: |
+          source "$HOME/omni.bashrc"
+          omni status
+
+      - name: Install zsh
+        if: runner.os != 'macos'
+        run: |
+          sudo apt-get install zsh
+
+      - name: Try and run omni with zsh
+        shell: zsh {0}
+        run: |
+          source "$HOME/omni.zshrc"
+          omni status
+

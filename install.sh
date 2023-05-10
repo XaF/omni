@@ -4,30 +4,27 @@
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" >/dev/null 2>&1 && pwd)"
 
 function print_logo() {
-	cat <<EOF
-     @@@@@
- @@@@@@@@@@@
- @@@@@   @@@@
- @@@@      @@@
- @@@@@      @@    OMNI
-@@@ @@@     @@@
-@@   @@@     @@     THE OMNIPOTENT
-@@    @@@    @@        DEV TOOL
-@@   @@@     @@
-@@@ @@@     @@@
- @@@@@      @@
- @@@@      @@@
- @@@@@   @@@@
- @@@@@@@@@@@
-     @@@@@
+	cat >&2 <<EOF
+  :?:.!YG#&@@@&#GJ~.
+ 7#@&#@@@&#BGB#&@@@#Y^
+ ^&@@@@&?.     :~Y#@@@Y
+.G@@&#@@&5^       .J@@@G.   OMNI
+P@@@! 7B@@@P~       7@@@5
+@@@P    !B@@@G~      G@@&     THE OMNIPOTENT
+@@@P    !B@@@B!      G@@&        DEV TOOL
+P@@@~ 7B@@@P~       !@@@5
+.G@@&B@@&P~       .?@@@G.
+ ^#@@@@&?.     .~J#@@@Y.
+ 7&@&#@@@&BGGGB&@@@#5^
+  :?^.!YG#@@@@@#GY!.
 EOF
 }
 
-function print_msg() { echo -e >&2 "\e[96momni:\e[0m \e[93minstall:\e[0m $@"; }
+function print_msg() { printf >&2 "\e[96momni:\e[0m \e[93minstall:\e[0m $@\n"; }
 function print_ok() { print_msg "\e[92m[OK]\e[0m      $@"; }
 function print_failed() { print_msg "\e[91m[FAILED]\e[0m  $@"; }
 function print_pending() { print_msg "\e[90m[--]\e[0m      $@"; }
-function print_query() { echo -en >&2 "$(print_msg "\e[90m[??]\e[0m      $*" 2>&1) "; }
+function print_query() { printf >&2 "$(print_msg "\e[90m[??]\e[0m      $*" 2>&1) "; }
 function print_action() { print_msg "\e[90m[!!]\e[0m      $@"; }
 function print_issue() { print_msg "\e[93m[~~]\e[0m      $@"; }
 
@@ -37,8 +34,8 @@ function usage() {
 	echo -e >&2 "  -h, --help			Show this help message"
 	echo -e >&2 "  --repo-path-format		Format of the repository path, default is 'github.com/{user}/{repo}'"
 	echo -e >&2 "  --git-dir			Directory where to clone the omni git repository, default is '~/.omni'"
-	echo -e >&2 "  --bashrc			Setup bashrc, default is '~/.bashrc'"
-	echo -e >&2 "  --zshrc			Setup zshrc, default is '~/.zshrc'"
+	echo -e >&2 "  --bashrc			Setup bashrc. If a path is not provided, default is '~/.bashrc'"
+	echo -e >&2 "  --zshrc			Setup zshrc. If a path is not provided, default is '~/.zshrc'"
 	echo -e >&2 "  --no-interactive		Do not ask for confirmation before installing"
 	exit $1
 }
@@ -90,10 +87,16 @@ function parse_long_option() {
 
 # Handle options in a way compatible with linux and macos
 INTERACTIVE=${INTERACTIVE:-true}
+SETUP_RBENV_PATH=false
+SETUP_RBENV_INTEGRATION=false
 while getopts -- ":h-:" optchar; do
 	case "${optchar}" in
 	-)
 		case "${OPTARG}" in
+		help*)
+			eval "$(parse_long_option "help" "none" "${OPTARG}" "${!OPTIND}")"
+			usage 0
+			;;
 		repo-path-format*)
 			eval "$(parse_long_option "repo-path-format" "required" "${OPTARG}" "${!OPTIND}")"
 			REPO_PATH_FORMAT="${val}"
@@ -287,45 +290,79 @@ print_logo
 # Switch directory to the omni repository
 cd "$SCRIPT_DIR"
 
-function install_dependencies() {
+function install_dependencies_packages() {
+	local missing=()
+
 	# rbenv might be installed in the user's home, so we add it to the path to make
 	# sure that it's found even if it's not in the user's configured path
-	export PATH="$HOME/.rbenv/bin:$PATH"
+	if [[ ! ":$PATH:" =~ ":$HOME/.rbenv/bin:" ]]; then
+		SETUP_RBENV_PATH=true
+		export PATH="$HOME/.rbenv/bin:$PATH"
+	fi
 
-	# If rbenv is not installed, we try to install it
+	# Now we check if rbenv is found, otherwise we add it to missing commands
 	if command -v rbenv >/dev/null; then
 		print_ok "rbenv found"
 	else
 		print_issue "rbenv not found"
-		if command -v brew >/dev/null; then
-			print_ok "brew found"
-			echo -e >&2 "\e[90m$ brew install rbenv\e[0m"
-			brew install rbenv || exit 1
-		elif command -v apt-get >/dev/null; then
-			print_ok "apt-get found"
+		missing+=("rbenv")
+	fi
 
-			echo -e >&2 "\e[33m[sudo]\e[0m \e[90m$ apt-get update\e[0m"
-			sudo apt-get update || exit 1
+	# Check if uuidgen is found, otherwise we add it to missing commands
+	if command -v uuidgen >/dev/null; then
+		print_ok "uuidgen found"
+	else
+		print_issue "uuidgen not found"
+		missing+=("uuidgen")
+	fi
 
-			echo -e >&2 "\e[33m[sudo]\e[0m \e[90m$ apt-get --yes install libssl-dev libreadline-dev zlib1g-dev autoconf bison build-essential libyaml-dev libreadline-dev libncurses5-dev libffi-dev libgdbm-dev\e[0m"
-			sudo apt-get --yes install libssl-dev libreadline-dev zlib1g-dev autoconf bison build-essential libyaml-dev libreadline-dev libncurses5-dev libffi-dev libgdbm-dev || exit 1
+	# If packages is empty, we can return early
+	if [[ ${#missing[@]} -eq 0 ]]; then
+		return
+	fi
 
+	if command -v brew >/dev/null; then
+		print_ok "brew found"
+		echo -e >&2 "\e[90m$ brew install ${missing[@]}\e[0m"
+		brew install "${missing[@]}" || exit 1
+	elif command -v apt-get >/dev/null; then
+		print_ok "apt-get found"
+
+		echo -e >&2 "\e[33m[sudo]\e[0m \e[90m$ apt-get update\e[0m"
+		sudo apt-get update || exit 1
+
+		local apt_packages=()
+		if [[ " ${missing[@]} " =~ " rbenv " ]]; then
+			apt_packages+=(
+				"libssl-dev"
+				"libreadline-dev"
+				"zlib1g-dev"
+				"autoconf"
+				"bison"
+				"build-essential"
+				"libyaml-dev"
+				"libreadline-dev"
+				"libncurses5-dev"
+				"libffi-dev"
+				"libgdbm-dev"
+			)
+		fi
+		if [[ " ${missing[@]} " =~ " uuidgen " ]]; then
+			apt_packages+=("uuid-runtime")
+		fi
+
+		echo -e >&2 "\e[33m[sudo]\e[0m \e[90m$ apt-get --yes install ${apt_packages[@]}\e[0m"
+		sudo apt-get --yes install "${apt_packages[@]}" || exit 1
+
+		if [[ " ${missing[@]} " =~ " rbenv " ]]; then
 			echo -e >&2 "\e[90m$ curl -fsSL https://github.com/rbenv/rbenv-installer/raw/HEAD/bin/rbenv-installer | bash\e[0m"
 			curl -fsSL https://github.com/rbenv/rbenv-installer/raw/HEAD/bin/rbenv-installer | bash || exit 1
-		elif command -v yum >/dev/null; then
-			print_ok "yum found"
-			echo -e >&2 "\e[90m$ yum install rbenv\e[0m"
-			yum install rbenv || exit 1
-		elif command -v pacman >/dev/null; then
-			print_ok "pacman found"
-			echo -e >&2 "\e[90m$ pacman -S rbenv ruby-build\e[0m"
-			pacman -S rbenv ruby-build || exit 1
-		else
-			print_issue "No package manager found"
-			if [[ "$INTERACTIVE" == "true" ]]; then
-				print_query "Please install rbenv manually, and press enter when ready to pursue"
-				read
-			fi
+		fi
+	else
+		print_issue "No package manager found"
+		if [[ "$INTERACTIVE" == "true" ]]; then
+			print_query "Please install rbenv manually, and press enter when ready to pursue"
+			read
 		fi
 	fi
 
@@ -334,9 +371,15 @@ function install_dependencies() {
 		exit 1
 	fi
 
+	if [[ " ${missing[@]} " =~ " rbenv " ]]; then
+		SETUP_RBENV_INTEGRATION=true
+	fi
+
 	# Make sure rbenv is currently loaded, just in case
 	eval "$(rbenv init - bash)" || exit 1
+}
 
+function install_dependencies_ruby() {
 	# We then make sure the right ruby version is installed and being used from the repo
 	local ruby_version=$(<"${SCRIPT_DIR}/.ruby-version")
 	if (cd "$SCRIPT_DIR" && rbenv version | cut -d' ' -f1 | grep -q "$ruby_version"); then
@@ -349,9 +392,15 @@ function install_dependencies() {
 			print_ok "Installed rvm-download plugin for rbenv"
 		fi
 
-		print_pending "Installing ruby $ruby_version"
-		# RUBY_CONFIGURE_OPTS=--disable-install-doc rbenv install --verbose --skip-existing $ruby_version || exit 1
-		(rbenv download $ruby_version && rbenv rehash) || exit 1
+		{
+			print_pending "Installing ruby $ruby_version from rvm sources"
+			rbenv download $ruby_version && rbenv rehash
+		} || {
+			print_failed "Installing ruby $ruby_version from rvm sources"
+			print_pending "Installing ruby $ruby_version from ruby-build"
+			RUBY_CONFIGURE_OPTS=--disable-install-doc \
+				rbenv install --verbose --skip-existing $ruby_version
+		} || exit 1
 		print_ok "Installed ruby $ruby_version"
 	fi
 
@@ -359,7 +408,9 @@ function install_dependencies() {
 		print_failed "ruby $ruby_version still not found"
 		exit 1
 	fi
+}
 
+function install_dependencies_bundler() {
 	# We then check that bundler is installed, that should be automated, but just in case
 	if command -v bundle >/dev/null; then
 		print_ok "bundler found"
@@ -374,7 +425,9 @@ function install_dependencies() {
 		print_failed "bundler still not found"
 		exit 1
 	fi
+}
 
+function install_dependencies_gemfile() {
 	# Finally, we can go into the repository and run the bundle install from there
 	print_pending "Installing Gemfile dependencies"
 	{
@@ -385,6 +438,13 @@ function install_dependencies() {
 	print_ok "Installed Gemfile dependencies"
 }
 
+function install_dependencies() {
+	install_dependencies_packages
+	install_dependencies_ruby
+	install_dependencies_bundler
+	install_dependencies_gemfile
+}
+
 install_dependencies
 
 CURRENT_SHELL=$(basename -- "$(ps -p $PPID -o command=)" | sed 's/^-//')
@@ -392,9 +452,9 @@ CURRENT_SHELL=$(basename -- "$(ps -p $PPID -o command=)" | sed 's/^-//')
 function setup_shell_integration() {
 	local shell="$1"
 	local skip_confirmation=$([[ "$CURRENT_SHELL" == "$shell" ]] && echo "y" || echo "n")
-	local setup_shell_var="SETUP_${shell^^}RC"
+	local setup_shell_var="$(echo SETUP_${shell}RC | tr '[:lower:]' '[:upper:]')"
 	local setup_shell="${!setup_shell_var:-false}"
-	local rc_file_var="${shell^^}RC_PATH"
+	local rc_file_var="$(echo ${shell}RC_PATH | tr '[:lower:]' '[:upper:]')"
 	local rc_file="${!rc_file_var}"
 
 	[[ "$skip_confirmation" =~ ^[yY]$ ]] && setup_shell="true"
@@ -420,6 +480,24 @@ function setup_shell_integration() {
 	[[ -z "$rc_file" ]] && rc_file="${HOME}/.${shell}rc"
 
 	print_action "Setting up shell integration in $rc_file"
+
+	if [[ "$SETUP_RBENV_PATH" == "true" ]]; then
+		echo 'export PATH="$HOME/.rbenv/bin:$PATH"' >> "$rc_file"
+		if [ $? -ne 0 ]; then
+			print_failed "Setup rbenv path in $rc_file"
+		else
+			print_ok "Setup rbenv path in $rc_file"
+		fi
+	fi
+
+	if [[ "$SETUP_RBENV_INTEGRATION" == "true" ]]; then
+		echo 'eval "$(rbenv init - '"${shell}"')"' >> "$rc_file"
+		if [ $? -ne 0 ]; then
+			print_failed "Setup rbenv integration in $rc_file"
+		else
+			print_ok "Setup rbenv integration in $rc_file"
+		fi
+	fi
 
 	echo "[[ -x \"${SCRIPT_DIR}/shell_integration/omni.${shell}\" ]] && source \"${SCRIPT_DIR}/shell_integration/omni.${shell}\"" >> "$rc_file"
 	if [ $? -ne 0 ]; then

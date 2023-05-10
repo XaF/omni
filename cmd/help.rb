@@ -61,7 +61,7 @@ end
 autocomplete(ARGV[1..-1]) if ARGV[0] == '--complete'
 
 # Find current width of the TTY
-tty_current_width = `tput cols`.to_i
+tty_current_width = `tput cols 2>/dev/null || echo 100`.to_i
 
 # Define the max width we want to use on the screen
 max_width = [tty_current_width - 4, 80].min
