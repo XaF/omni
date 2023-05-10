@@ -1,13 +1,14 @@
 #!/usr/bin/env ruby
 #
 # category: Git commands
-# help: Reorganize your git repositories
+# help: Organize your git repositories using the configured format
 # help:
 # help: This will offer to organize your git repositories, moving them from
-# help: one their current path to the path they should be at if they had been
+# help: their current path to the path they should be at if they had been
 # help: cloned using \e[3momni clone\e[0m. This is useful if you have a bunch of
 # help: repositories that you have cloned manually, and you want to start
-# help: using \e[3momni\e[0m.
+# help: using \e[3momni\e[0m, or if you changed your mind on the repo path format
+# help: you wish to use.
 
 require_relative '../lib/colorize'
 require_relative '../lib/omniorg'
