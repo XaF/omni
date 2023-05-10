@@ -85,7 +85,7 @@ def list_file_system_repos(skip_confirmation: false)
   begin
     reorg = []
 
-    OmniOrgs.repos(dedup: true) do |dir, path, dir_path|
+    OmniOrgs.all_repos do |dir, path, dir_path|
       progress_bar.advance
 
       git_repo = GitRepo.new(dir_path)

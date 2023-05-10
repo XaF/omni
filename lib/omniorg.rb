@@ -83,6 +83,25 @@ class OmniOrgs
 
     all_repos
   end
+
+  def all_repos
+    all_repos = []
+
+    Dir.chdir(OmniEnv::OMNI_GIT) do |dir|
+      return [] unless File.directory?(dir)
+      Dir.glob("**/*/**/.git").each do |path|
+        next unless File.directory?(path)
+
+        path = File.dirname(path)
+        dir_path = File.join(dir, path)
+
+        yield [dir, path, dir_path] if block_given?
+        all_repos << [dir, path, dir_path]
+      end
+    end
+
+    all_repos
+  end
 end
 
 
@@ -111,6 +130,14 @@ class OmniRepo
 
     repo_reldir = Config.repo_path_format % template_values
     repo_absdir = "#{OmniEnv::OMNI_GIT}/#{repo_reldir}"
+
+    if repo.nil?
+      # If we didn't pass a repo as argument, we want the root path
+      # of the org, so we remove everything after the first "empty"
+      # path component and we return the resulting value
+      repo_absdir.gsub!(%r{/{2,}.*$}, '')
+      return repo_absdir
+    end
 
     repo_absdir.gsub!(%r{/+}, '/')
     repo_absdir.gsub!(%r{/$}, '')
