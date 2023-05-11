@@ -7,6 +7,7 @@
 # arg:repo: If the case where only the repo name is specified,
 # arg:repo: \e[3mOMNI_ORG\e[0m will be used to search for the
 # arg:repo: repository to clone.
+# opt:options...: Any additional options to pass to git clone.
 # help: Clone the specified repository
 
 require_relative '../lib/colorize'
@@ -17,9 +18,9 @@ require_relative '../lib/utils'
 
 
 error('no repository specified') unless ARGV[0]
-error('too many argument') if ARGV[1]
 
 repo = ARGV[0]
+options = ARGV[1..-1]
 
 omniRepo = OmniRepo.new(repo)
 
@@ -41,7 +42,7 @@ locations.each do |location|
   next unless git_ls_remote
 
   # Execute git command line from ruby
-  git_clone = command_line('git', 'clone', remote, full_path)
+  git_clone = command_line('git', 'clone', remote, full_path, *options)
   error("#{repo.yellow}: git clone failed") unless git_clone
 
   # Execute omni up from the repository directory if auto-up is enabled
