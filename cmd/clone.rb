@@ -47,7 +47,7 @@ locations.each do |location|
 
   # Execute omni up from the repository directory if auto-up is enabled
   Dir.chdir(full_path) do
-    omni_up = command_line('omni', 'up', env: { 'OMNI_SKIP_UPDATE' => 'true' })
+    omni_up = command_line('omni', 'up', '--handle-path', env: { 'OMNI_SKIP_UPDATE' => 'true' })
     error("#{repo.yellow}: omni up failed") unless omni_up
   end if Config.dig('clone', 'auto_up').nil? || Config.dig('clone', 'auto_up')
 

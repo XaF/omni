@@ -219,6 +219,24 @@ class Config
     stringify_keys(ConfigValue.new(@path, nil).unwrap)
   end
 
+  def path_from_repo
+    @path_from_repo ||= begin
+      return {} unless OmniEnv.in_git_repo?
+      git_repo_path = Pathname.new(OmniEnv.git_repo_root)
+
+      path = [:prepend, :append].map do |key|
+        values = @path[key].select do |path|
+          Pathname.new(path.unwrap).ascend do |path_parent|
+            break true if path_parent == git_repo_path
+          end
+        end
+        [key, values.map(&:unwrap)]
+      end.to_h
+
+      stringify_keys(path)
+    end
+  end
+
   def config
     @config.map do |key, value|
       [key, value.unwrap]
@@ -229,6 +247,66 @@ class Config
     config_copy = @config.dup
     config_copy['path'] = ConfigValue.new(stringify_keys(@path), nil)
     config_copy
+  end
+
+  def user_config_file(operation = :readonly, &block)
+    # We check the files in reverse order as files are loaded in reverse
+    # order of importance.
+    user_config_files = self.class.config_files.reverse
+
+    # We try and find first a config file that already exists and that is
+    # writable, so that we can put our new user configuration in it.
+    config_file = user_config_files.find do |config_file|
+      File.file?(config_file) && File.readable?(config_file) && File.writable?(config_file)
+    end
+
+    # If we can't find a config file that already exists and that is writable,
+    # and if the operation is not :readwrite, we can simply return an empty
+    # config file here.
+    if config_file.nil? && operation != :readwrite
+      yield Hash.new
+      return Hash.new
+    end
+
+    # If we can't find a config file that already exists and that is writable,
+    # we try and find a config file that doesn't exist yet, but that is
+    # writable, so that we can create it and put our new user configuration in it.
+    config_file = user_config_files.find do |config_file|
+      Pathname.new(config_file).ascend do |path|
+        break File.writable?(path) if File.exist?(path)
+      end
+    end if config_file.nil?
+
+    # If we can't find a config file that already exists and that is writable,
+    FileUtils.mkdir_p(File.dirname(config_file))
+    File.open(config_file, File::RDWR|File::CREAT, 0644) do |file|
+      # Put a shared lock on the file
+      file.flock(File::LOCK_EX)
+
+      # Load the current configuration
+      config = begin
+        YAML::load(file)
+      rescue Psych::SyntaxError
+        {}
+      end
+
+      # Yield the current configuration so that the caller
+      # can read / update it
+      new_config = yield config
+
+      if operation == :readwrite
+        return if new_config.nil?
+
+        # Write the new configuration to the file
+        file.rewind
+        file.write(new_config.to_yaml)
+        file.flush
+        file.truncate(file.pos)
+      end
+
+      # Return the new configuration
+      new_config
+    end
   end
 
   private
