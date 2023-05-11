@@ -46,7 +46,7 @@ locations.each do |location|
   Dir.chdir(full_path) do
     omni_up = command_line('omni', 'up', env: { 'OMNI_SKIP_UPDATE' => 'true' })
     error("#{repo.yellow}: omni up failed") unless omni_up
-  end if Config.auto_up_on_clone
+  end if Config.clone['auto_up']
 
   # Request omni to change directory to the newly-cloned repository
   omni_cmd(['cd', full_path])

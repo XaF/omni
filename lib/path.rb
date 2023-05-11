@@ -38,7 +38,7 @@ class OmniPath
       end
 
       paths = OmniEnv::OMNIPATH.dup
-      if Config.enable_git_repo_commands && OmniEnv.in_git_repo?
+      if Config.git_repo_commands['enabled'] && OmniEnv.in_git_repo?
         paths.unshift(File.join(OmniEnv.git_repo_root, '.omni', 'cmd'))
       end
 
@@ -64,7 +64,7 @@ class OmniPath
       MakefilePath.each do |omniCmd|
         yield omniCmd if block_given?
         each_commands << omniCmd
-      end if Config.enable_makefile_commands
+      end if Config.makefile_commands['enabled']
 
       each_commands
     end

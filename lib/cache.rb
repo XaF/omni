@@ -53,15 +53,15 @@ class Cache
 
   def write_cache
     @cache.reject! { |_, value| value.expired? }
-    FileUtils.mkdir_p(File.dirname(Config.cache_file))
-    File.write(Config.cache_file, @cache.to_json)
+    FileUtils.mkdir_p(File.dirname(Config.cache['path']))
+    File.write(Config.cache['path'], @cache.to_json)
   end
 
   def read_cache
     @cache ||= {}
-    return unless File.exist?(Config.cache_file)
+    return unless File.exist?(Config.cache['path'])
 
-    cache = JSON.parse(File.read(Config.cache_file))
+    cache = JSON.parse(File.read(Config.cache['path']))
 
     cache.each do |key, value|
       cached_value = CachedValue.new(

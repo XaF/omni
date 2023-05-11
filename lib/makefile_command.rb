@@ -12,8 +12,8 @@ class MakefileCommand < OmniCommand
 
     @cmd = target.dup
     @cmd = [target] unless @cmd.is_a?(Array)
-    @cmd.map! { |t| t.split('/') }.flatten! if Config.makefile_commands_split_on_slash
-    @cmd.map! { |t| t.split('-') }.flatten! if Config.makefile_commands_split_on_dash
+    @cmd.map! { |t| t.split('/') }.flatten! if Config.makefile_commands['split_on_slash']
+    @cmd.map! { |t| t.split('-') }.flatten! if Config.makefile_commands['split_on_dash']
 
     cat = ['Makefile']
 

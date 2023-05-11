@@ -17,8 +17,8 @@ class ConfigCommand < OmniCommand
 
     @cmd = target.dup
     @cmd = [target] unless @cmd.is_a?(Array)
-    @cmd.map! { |t| t.split('/') }.flatten! if Config.config_commands_split_on_slash
-    @cmd.map! { |t| t.split('-') }.flatten! if Config.config_commands_split_on_dash
+    @cmd.map! { |t| t.split('/') }.flatten! if Config.config_commands['split_on_slash']
+    @cmd.map! { |t| t.split('-') }.flatten! if Config.config_commands['split_on_dash']
 
     cat = ['Configuration']
     category = config['category']

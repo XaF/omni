@@ -43,17 +43,23 @@ In order to work as expected, omni will also require its shell integration, whic
 
 Omni accepts the following parameters as part of its configuration:
 
-- `auto_up_on_clone` *[boolean]* whether or not `omni up` should be run automatically when cloning a repository
-- `cache_file` *[filepath]* the path to the cache file used by omni *(default; $HOME/.cache/omni)*
-- `config_commands_split_on_dash` *[boolean]* whether or not the commands defined in the config file should be split on dash (e.g. 'my-command' would be used as 'omni my command' instead of 'omni my-command') *(default: true)*
-- `config_commands_split_on_slash` *[boolean]* whether or not the commands defined in the config file should be split on slash (e.g. 'my/command' would be used as 'omni my command' instead of 'omni my/command') *(default: true)*
-- `enable_git_repo_commands` *[boolean]* whether or not to load commands from the '.omni/cmd' directory relative to the root of the git repository, when in a git repository *(default: true)*
-- `enable_makefile_commands` *[boolean]* whether or not to load commands from the Makefiles in the current path and parents (up to the root of the git repository, or user directory) *(default: true)*
+- `clone` *[map]* configuration related to the `omni clone` command
+  - `auto_up` *[boolean]* whether or not `omni up` should be run automatically when cloning a repository
+- `cache` *[map]* configuration related to the cache of omni
+  - `path` *[filepath]* the path to the cache file *(default; $HOME/.cache/omni)*
+- `config_commands` *[map]* configuration related to the commands defined in the config file
+  - `split_on_dash` *[boolean]* whether or not the commands should be split on dash (e.g. 'my-command' would be used as 'omni my command' instead of 'omni my-command') *(default: true)*
+  - `split_on_slash` *[boolean]* whether or not the commands should be split on slash (e.g. 'my/command' would be used as 'omni my command' instead of 'omni my/command') *(default: true)*
+- `git_repo_commands` *[map]* configuration related to git repositories commands
+  - `enabled` *[boolean]* whether or not to load commands from the '.omni/cmd' directory relative to the root of the git repository, when in a git repository *(default: true)*
 - `env` *[map, string => string]* a key-value map of environment variables to be set when running omni commands
-- `makefile_commands_split_on_dash` *[boolean]* whether or not the targets defined in the Makefile should be split on dash (e.g. 'my-target' would be used as 'omni my target' instead of 'omni my-target') *(default: true)*
-- `makefile_commands_split_on_slash` *[boolean]* whether or not the targets defined in the Makefile should be split on slash (e.g. 'my/target' would be used as 'omni my target' instead of 'omni my/target') *(default: true)*
-- `path_repo_updates_enabled` *[boolean]* whether or not to automatically update the repositories in **OMNIPATH** when omni commands are being called *(default: true)*
-- `path_repo_updates_interval` *[int]* the number of seconds to wait between two updates of the repositories in **OMNIPATH** *(default: 43200)*
+- `makefile_commands` *[map]* configuration related to the commands generated from Makefile targets
+  - `enabled` *[boolean]* whether or not to load commands from the Makefiles in the current path and parents (up to the root of the git repository, or user directory) *(default: true)*
+  - `split_on_dash` *[boolean]* whether or not the targets should be split on dash (e.g. 'my-target' would be used as 'omni my target' instead of 'omni my-target') *(default: true)*
+  - `split_on_slash` *[boolean]* whether or not the targets should be split on slash (e.g. 'my/target' would be used as 'omni my target' instead of 'omni my/target') *(default: true)*
+- `path_repo_updates` *[map]* configuration for the automated updates of the repositories in **OMNIPATH**
+  - `enabled` *[boolean]* whether or not automated updates are enabled *(default: true)*
+  - `interval` *[int]* the number of seconds to wait between two updates of the repositories *(default: 43200)*
 - `repo_path_format` *[string]* how to format repositories when cloning them with `omni clone`, or searching them with `omni cd`. Variables `%{host}` (registry hostname), `%{org}` (repository owner) and `%{repo}` (repository name) can be used in that format. *(default: `%{host}/%{org}/%{repo}`)*
 - `commands` *[map, string => command object]* commands made available through omni, where the key is the command name, see below for more details on the command object.
 - `up` *[list, up object]* list of operations needed to setup (or tear down, in reverse) a repository, see below for more details on the up object.

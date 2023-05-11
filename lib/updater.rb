@@ -10,7 +10,7 @@ class Updater
   OMNI_PATH_UPDATE_CACHE_KEY = 'omni-path-updates'
 
   def self.update
-    return unless Config.path_repo_updates_enabled
+    return unless Config.path_repo_updates['enabled']
     return if OmniEnv::OMNI_SKIP_UPDATE
     return if Cache.get(OMNI_PATH_UPDATE_CACHE_KEY, false)
 
@@ -57,7 +57,7 @@ class Updater
       end
     end
 
-    Cache.set(OMNI_PATH_UPDATE_CACHE_KEY, true, expires_in: Config.path_repo_updates_interval)
+    Cache.set(OMNI_PATH_UPDATE_CACHE_KEY, true, expires_in: Config.path_repo_updates['interval'])
   end
 end
 
