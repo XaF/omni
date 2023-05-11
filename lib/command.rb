@@ -99,7 +99,7 @@ class OmniCommand
     end
   end
 
-  def exec(*argv, shift_argv: true)
+  def exec(*argv, shift_argv: true, autocomplete: false)
     # Shift the argv if needed
     if shift_argv
       argv = argv.dup
@@ -114,6 +114,7 @@ class OmniCommand
     ENV['OMNI_SUBCOMMAND'] = cmd.join(' ')
 
     # Execute the command
+    argv.unshift('--complete') if autocomplete
     exec_command(*argv)
 
     # If we get here, the command failed
@@ -130,20 +131,7 @@ class OmniCommand
   end
 
   def autocomplete(*argv, shift_argv: true)
-    # Shift the argv if needed
-    if shift_argv
-      argv = argv.dup
-      argv.shift(cmd.length)
-    end
-
-    # Prepare the environment variables
-    ENV['OMNI_SUBCOMMAND'] = cmd.join(' ')
-
-    # Execute the command
-    Kernel.exec(path, '--complete', *argv)
-
-    # If we get here, the command failed
-    exit 1
+    exec(*argv, shift_argv: shift_argv, autocomplete: true)
   end
 
   def config_fields
