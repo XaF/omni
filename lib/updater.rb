@@ -12,7 +12,15 @@ class Updater
   def self.update
     return unless Config.path_repo_updates['enabled']
     return if OmniEnv::OMNI_SKIP_UPDATE
-    return if Cache.get(OMNI_PATH_UPDATE_CACHE_KEY, false)
+
+    # Check if we've updated recently
+    Cache.exclusive(
+      OMNI_PATH_UPDATE_CACHE_KEY,
+      expires_in: Config.path_repo_updates['interval'],
+    ) do |updated_recently|
+      return if updated_recently&.value
+      true
+    end
 
     # Add first Omni's directory to the paths to update
     update_paths = [File.dirname(File.dirname(__FILE__))]
@@ -56,8 +64,6 @@ class Updater
         error("#{path.yellow}: omni up failed", cmd: 'updater', print_only: true) unless omni_up
       end
     end
-
-    Cache.set(OMNI_PATH_UPDATE_CACHE_KEY, true, expires_in: Config.path_repo_updates['interval'])
   end
 end
 

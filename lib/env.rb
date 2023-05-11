@@ -25,6 +25,10 @@ class OmniEnv
     @@git_repo_root ||= `git rev-parse --show-toplevel 2>/dev/null`.strip
   end
 
+  def self.git_repo_origin
+    @@git_repo_origin ||= `git remote get-url origin 2>&1`.strip
+  end
+
   def self.in_git_repo?
     self.git_repo_root != ''
   end
@@ -39,6 +43,7 @@ class OmniEnv
       OMNI_UUID: OMNI_UUID,
       in_git_repo?: in_git_repo?,
       git_repo_root: git_repo_root,
+      git_repo_origin: git_repo_origin,
     }
   end
 end

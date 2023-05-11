@@ -1,11 +1,14 @@
 require 'json'
 
+require_relative '../cache'
 require_relative '../colorize'
 require_relative '../utils'
 require_relative 'operation'
 
 
 class HomebrewOperation < Operation
+  HOMEBREW_OPERATION_CACHE_KEY = 'homebrew-operation'.freeze
+
   def up
     return unless brew_installed?
 
@@ -16,9 +19,15 @@ class HomebrewOperation < Operation
 
     STDERR.puts "# Install Homebrew dependencies".light_blue
 
+    required_packages = []
+    installed_packages = []
+    local_tap_packages = []
+
     config.each do |pkg|
       pkgname, data = pkg.first
       version = data['version'] if data
+      pkgid = "#{pkgname}#{"@#{version}" if version}"
+      required_packages << pkgid
 
       if pkg_installed?(pkgname, version)
         command_line('brew', 'upgrade', pkgname) || run_error("brew upgrade #{pkgname}") unless version
@@ -26,8 +35,9 @@ class HomebrewOperation < Operation
       end
 
       if version
+        local_tap_packages << pkgid
         unless local_tap_formula_exists?(pkgname, version)
-          unless tap_exists?(pkgname)
+          unless tap_exists?
             # This creates a new local tap so we can fetch the formula of the
             # requested version into it
             command_line("brew tap | grep -q #{tap_name} || brew tap-new #{tap_name}") || \
@@ -41,8 +51,34 @@ class HomebrewOperation < Operation
         end
       end
 
-      pkgid = "#{pkgname}#{"@#{version}" if version}"
+      installed_packages << pkgid
       command_line('brew', 'install', pkgid) || run_error("brew install #{pkgid}")
+    end
+
+    # Update the cache to save the dependencies installed for this repository
+    Cache.exclusive(HOMEBREW_OPERATION_CACHE_KEY) do |cache|
+      brew_cache = cache&.value || {}
+
+      local_tap_packages.each do |pkgid|
+        brew_cache['local_tap'] ||= []
+        brew_cache['local_tap'] << pkgid
+        brew_cache['local_tap'].uniq!
+      end
+
+      brew_cache['packages'] ||= {}
+      required_packages.each do |pkgid|
+        brew_cache['packages'][pkgid] ||= {}
+        brew_cache['packages'][pkgid]['required_by'] ||= []
+        brew_cache['packages'][pkgid]['required_by'] << OmniEnv.git_repo_origin
+        brew_cache['packages'][pkgid]['required_by'].uniq!
+      end
+
+      installed_packages.each do |pkgid|
+        brew_cache['packages'][pkgid] ||= {}
+        brew_cache['packages'][pkgid]['installed'] = true
+      end
+
+      brew_cache
     end
   end
 
@@ -52,14 +88,51 @@ class HomebrewOperation < Operation
 
     STDERR.puts "# Uninstalling Homebrew dependencies".light_blue
 
-    config.each do |pkg|
+    packages = config.map do |pkg|
       pkgname, data = pkg.first
       version = data['version'] if data
-
-      next unless pkg_installed?(pkgname, version)
-
       pkgid = "#{pkgname}#{"@#{version}" if version}"
+
+      [pkgid, pkgname, version]
+    end
+
+    # Update the cache to save the dependencies installed for this repository
+    uninstall_packages = []
+    remove_local_tap = false
+    Cache.exclusive(HOMEBREW_OPERATION_CACHE_KEY) do |cache|
+      brew_cache = cache&.value || {}
+
+      packages.each do |pkgid, pkgname, version|
+        next unless brew_cache['packages'].key?(pkgid)
+
+        brew_cache['packages'][pkgid]['required_by'].delete(OmniEnv.git_repo_origin)
+        if brew_cache['packages'][pkgid]['required_by'].empty?
+          uninstall_packages << [pkgid, pkgname, version] if brew_cache['packages'][pkgid]['installed']
+          brew_cache['packages'].delete(pkgid)
+        end
+
+        if brew_cache['local_tap']&.include?(pkgid)
+          brew_cache['local_tap'].delete(pkgid)
+
+          if brew_cache['local_tap'].empty?
+            brew_cache.delete('local_tap')
+            remove_local_tap = true
+          end
+        end
+      end
+
+      brew_cache.delete('packages') if brew_cache['packages'].empty?
+
+      brew_cache
+    end
+
+    uninstall_packages.each do |pkgid, pkgname, version|
+      next unless pkg_installed?(pkgname, version)
       command_line('brew', 'uninstall', pkgid) || run_error("brew uninstall #{pkgid}")
+    end
+
+    if remove_local_tap && tap_exists?
+      command_line('brew', 'untap', tap_name) || run_error("brew untap #{tap_name}")
     end
   end
 
