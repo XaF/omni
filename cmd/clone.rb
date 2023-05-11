@@ -1,6 +1,7 @@
 #!/usr/bin/env ruby
 #
 # category: Git commands
+# config: clone={"auto_up": true}
 # arg:repo: The repository to clone; this can be in
 # arg:repo: format <org>/<repo>, just <repo>, or the full URL.
 # arg:repo: If the case where only the repo name is specified,
@@ -9,6 +10,7 @@
 # help: Clone the specified repository
 
 require_relative '../lib/colorize'
+require_relative '../lib/config'
 require_relative '../lib/env'
 require_relative '../lib/omniorg'
 require_relative '../lib/utils'
@@ -46,7 +48,7 @@ locations.each do |location|
   Dir.chdir(full_path) do
     omni_up = command_line('omni', 'up', env: { 'OMNI_SKIP_UPDATE' => 'true' })
     error("#{repo.yellow}: omni up failed") unless omni_up
-  end if Config.clone['auto_up']
+  end if Config.dig('clone', 'auto_up').nil? || Config.dig('clone', 'auto_up')
 
   # Request omni to change directory to the newly-cloned repository
   omni_cmd(['cd', full_path])

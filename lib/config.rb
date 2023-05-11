@@ -98,9 +98,6 @@ class Config
       cache: {
         path: "#{ENV['HOME']}/.cache/omni",
       },
-      clone: {
-        auto_up: true,
-      },
       commands: {},
       config_commands: {
         split_on_dash: true,
@@ -149,15 +146,13 @@ class Config
   attr_reader :loaded_files
 
   def method_missing(method, *args, **kwargs, &block)
-    if args.empty? && kwargs.empty? && block.nil? && config.has_key?(method.to_s)
-      config[method.to_s]
-    else
-      super
-    end
+    return config[method.to_s] if args.empty? && kwargs.empty? && block.nil? && config.has_key?(method.to_s)
+    return config.send(method, *args, **kwargs, &block) if config.respond_to?(method)
+    super
   end
 
   def respond_to_missing?(method, include_private = false)
-    config.has_key?(method.to_s) || super
+    config.has_key?(method.to_s) || config.respond_to?(method) || super
   end
 
   def initialize

@@ -205,6 +205,7 @@ class OmniCommand
       autocompletion = false
       category = nil
       config_fields = []
+      config_fields_reg = /^# config:\s*(?<name>[^=]+)(?:\s*=\s*(?<default>.*))?\s*$/
       env = {}
       env_reg = /^# env:(?<name>[^:]+):\s?(?<val>.*)$/
       help_lines = []
@@ -234,7 +235,12 @@ class OmniCommand
 
           # Set the config fields if the line '# config: <field1>, <field2>, ...' is found
           if line =~ /^# config:/
-            config_fields.concat(line.sub(/^# config:\s?/, '').chomp.split(',').map(&:strip))
+            config_field = config_fields_reg.match(line)
+            next unless config_field
+
+            val = config_field[:default]&.strip
+            val = JSON.parse(val) if val
+            config_fields.push({config_field[:name].strip => val})
             next
           end
 

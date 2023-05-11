@@ -149,8 +149,10 @@ end
 STDERR.puts ""
 STDERR.puts "Configuration".bold
 valid_keys = OmniPath.map(&:config_fields).
-  flatten.map { |f| { f => :all_valid_keys } }.
-  reduce({}, :merge)
+  flatten.
+  reduce({}, :merge).
+  map { |k, v| [k, v.nil? ? :all_valid_keys : v] }.
+  to_h
 valid_keys.merge!(Config.default_config)
 recursive_dump(Config.with_src, indent: 2, valid_keys: valid_keys)
 
