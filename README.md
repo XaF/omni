@@ -50,8 +50,6 @@ Omni accepts the following parameters as part of its configuration:
 - `config_commands` *[map]* configuration related to the commands defined in the config file
   - `split_on_dash` *[boolean]* whether or not the commands should be split on dash (e.g. 'my-command' would be used as 'omni my command' instead of 'omni my-command') *(default: true)*
   - `split_on_slash` *[boolean]* whether or not the commands should be split on slash (e.g. 'my/command' would be used as 'omni my command' instead of 'omni my/command') *(default: true)*
-- `git_repo_commands` *[map]* configuration related to git repositories commands
-  - `enabled` *[boolean]* whether or not to load commands from the '.omni/cmd' directory relative to the root of the git repository, when in a git repository *(default: true)*
 - `env` *[map, string => string]* a key-value map of environment variables to be set when running omni commands
 - `makefile_commands` *[map]* configuration related to the commands generated from Makefile targets
   - `enabled` *[boolean]* whether or not to load commands from the Makefiles in the current path and parents (up to the root of the git repository, or user directory) *(default: true)*

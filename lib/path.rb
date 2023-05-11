@@ -38,9 +38,6 @@ class OmniPath
       end
 
       paths = OmniEnv::OMNIPATH.dup
-      if Config.git_repo_commands['enabled'] && OmniEnv.in_git_repo?
-        paths.unshift(File.join(OmniEnv.git_repo_root, '.omni', 'cmd'))
-      end
       paths.unshift(*Config.path['prepend']) if Config.path['prepend']&.any?
       paths.push(*Config.path['append']) if Config.path['append']&.any?
 

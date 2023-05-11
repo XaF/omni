@@ -107,9 +107,6 @@ class Config
         split_on_slash: true,
       },
       env: {},
-      git_repo_commands: {
-        enabled: true,
-      },
       makefile_commands: {
         enabled: true,
         split_on_dash: true,
