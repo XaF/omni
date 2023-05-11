@@ -291,6 +291,7 @@ print_logo
 cd "$SCRIPT_DIR"
 
 function install_dependencies_packages() {
+	local expect=("rbenv" "uuidgen")
 	local missing=()
 
 	# rbenv might be installed in the user's home, so we add it to the path to make
@@ -300,21 +301,15 @@ function install_dependencies_packages() {
 		export PATH="$HOME/.rbenv/bin:$PATH"
 	fi
 
-	# Now we check if rbenv is found, otherwise we add it to missing commands
-	if command -v rbenv >/dev/null; then
-		print_ok "rbenv found"
-	else
-		print_issue "rbenv not found"
-		missing+=("rbenv")
-	fi
-
-	# Check if uuidgen is found, otherwise we add it to missing commands
-	if command -v uuidgen >/dev/null; then
-		print_ok "uuidgen found"
-	else
-		print_issue "uuidgen not found"
-		missing+=("uuidgen")
-	fi
+	# Check that the expected commands are found
+	for cmd in "${expect[@]}"; do
+		if command -v "$cmd" >/dev/null; then
+			print_ok "$cmd found"
+		else
+			print_issue "$cmd not found"
+			missing+=("$cmd")
+		fi
+	done
 
 	# If packages is empty, we can return early
 	if [[ ${#missing[@]} -eq 0 ]]; then
@@ -361,18 +356,27 @@ function install_dependencies_packages() {
 	else
 		print_issue "No package manager found"
 		if [[ "$INTERACTIVE" == "true" ]]; then
-			print_query "Please install rbenv manually, and press enter when ready to pursue"
+			print_query "Please install the following dependencies manually:\n$(printf " - %s\n" "${packages[@]}")\nPress enter when ready to pursue."
 			read
 		fi
 	fi
 
-	if ! command -v rbenv >/dev/null; then
-		print_failed "rbenv still not found"
-		exit 1
-	fi
+	# Check that the missing commands are now available
+	for cmd in "${missing[@]}"; do
+		if command -v "$cmd" >/dev/null; then
+			print_ok "$cmd found"
+		else
+			print_failed "$cmd still not found"
+			exit 1
+		fi
+	done
 
 	if [[ " ${missing[@]} " =~ " rbenv " ]]; then
 		SETUP_RBENV_INTEGRATION=true
+	fi
+
+	if [[ "$SETUP_RBENV_PATH" == "true" ]] && [[ ! -d "$HOME/.rbenv/bin" ]]; then
+		SETUP_RBENV_PATH=false
 	fi
 
 	# Make sure rbenv is currently loaded, just in case
