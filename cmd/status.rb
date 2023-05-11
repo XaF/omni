@@ -75,7 +75,6 @@ def recursive_dump(obj, indent: 0, valid_keys: nil, indent_first_line: true, par
     end
   elsif obj.is_a?(Array)
     obj.each_with_index do |value, idx|
-
       STDERR.print "#{" " * indent}" if idx > 0 || (idx == 0 && indent_first_line)
       STDERR.print "#{"- ".yellow}"
 

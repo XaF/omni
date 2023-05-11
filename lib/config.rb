@@ -21,17 +21,19 @@ class ConfigValue
     value.unwrap
   end
 
-  def self.wrap(value, path, wrap_obj: true)
+  def self.wrap(value, path, wrap_obj: true, wrapped: false)
     if value.is_a?(ConfigValue)
       value
     elsif value.is_a?(Hash)
-      value.map do |key, item|
-        [key, ConfigValue.new(item, path)]
+      value = value.map do |key, item|
+        [key, wrap(item, path, wrap_obj: true)]
       end.to_h
+      wrapped ? value : ConfigValue.new(value, path)
     elsif value.is_a?(Array)
-      value.map do |item|
-        ConfigValue.new(item, path)
+      value = value.map do |item|
+        wrap(item, path, wrap_obj: true)
       end
+      wrapped ? value : ConfigValue.new(value, path)
     elsif !wrap_obj
       value
     else
@@ -41,9 +43,21 @@ class ConfigValue
 
   attr_reader :value, :path
 
-  def initialize(value, path)
-    @value = self.class.wrap(value, path, wrap_obj: false)
+  def initialize(value, path = nil)
+    @value = self.class.wrap(value, path, wrap_obj: false, wrapped: true)
     @path = path
+  end
+
+  def method_missing(method, *args, **kwargs, &block)
+    if @value.respond_to?(method)
+      @value.send(method, *args, **kwargs, &block)
+    else
+      super
+    end
+  end
+
+  def respond_to_missing?(method, include_private = false)
+    @value.respond_to?(method, include_private) || super
   end
 
   def []=(key, value)
@@ -101,6 +115,10 @@ class Config
         split_on_dash: true,
         split_on_slash: true,
       },
+      path: {
+        append: [],
+        prepend: [],
+      },
       path_repo_updates: {
         enabled: true,
         interval: 12 * 60 * 60, # 12 hours
@@ -149,6 +167,11 @@ class Config
     @loaded_files = []
     @config = import_values(self.class.default_config)
 
+    @path = {
+      append: [],
+      prepend: [],
+    }
+
     self.class.config_files.each do |config_file|
       import(config_file)
     end
@@ -171,6 +194,21 @@ class Config
       @config = import_values(yaml, file_path: yaml_file)
     end
 
+    if yaml['path'] && yaml['path'].is_a?(Hash)
+      if yaml['path']['append'] && yaml['path']['append'].is_a?(Array)
+        yaml['path']['append'].each do |path|
+          path = File.join(File.dirname(yaml_file), path) if path[0] != '/'
+          @path[:append] << ConfigValue.new(path, yaml_file)
+        end
+      end
+      if yaml['path']['prepend'] && yaml['path']['prepend'].is_a?(Array)
+        yaml['path']['prepend'].each do |path|
+          path = File.join(File.dirname(yaml_file), path) if path[0] != '/'
+          @path[:prepend].unshift(ConfigValue.new(path, yaml_file))
+        end
+      end
+    end
+
     @loaded_files << yaml_file
   rescue Psych::SyntaxError
     error("invalid configuration file: #{yaml_file.yellow}", print_only: true)
@@ -185,6 +223,10 @@ class Config
     end.compact
   end
 
+  def path
+    stringify_keys(ConfigValue.new(@path, nil).unwrap)
+  end
+
   def config
     @config.map do |key, value|
       [key, value.unwrap]
@@ -192,7 +234,9 @@ class Config
   end
 
   def with_src
-    @config
+    config_copy = @config.dup
+    config_copy['path'] = ConfigValue.new(stringify_keys(@path), nil)
+    config_copy
   end
 
   private
