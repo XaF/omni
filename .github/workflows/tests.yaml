@@ -50,7 +50,7 @@ jobs:
       - name: Install zsh
         if: runner.os != 'macos'
         run: |
-          sudo apt-get install zsh
+          sudo apt-get --yes install zsh
 
       - name: Try and run omni with zsh
         shell: zsh {0}
