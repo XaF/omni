@@ -184,7 +184,7 @@ function query_omni_git() {
 		default_git_dir="${GOPATH}/src"
 	fi
 
-	print_failed "What is your git base directory? \e[90m(default: ${default_git_dir})\e[0m "
+	print_query "What is your git base directory? \e[90m(default: ${default_git_dir})\e[0m "
 	read git_base_dir
 	git_base_dir="${git_base_dir:-${default_git_dir}}"
 	git_base_dir="$(eval "echo $git_base_dir")"
