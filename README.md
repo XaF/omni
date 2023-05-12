@@ -36,6 +36,15 @@ You will need the following dependencies:
 
 In order to work as expected, omni will also require its shell integration, which you can add to your `.bashrc` or `.zshrc` as desired. We recommend using a symbolic link so that the shell integration can stay up to date with omni updates without requiring any intervention on your part.
 
+### Example repo
+
+The `omni-example` repository provide a configuration example for using omni.
+You can run the following command to test omni cloning capabilities, and the operations done upon cloning:
+
+```
+omni clone git@github.com:XaF/omni-example
+```
+
 
 ## Configuration
 
