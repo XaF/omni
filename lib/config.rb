@@ -6,15 +6,6 @@ require_relative 'utils'
 require_relative 'config_command'
 
 
-def stringify_keys(hash)
-  return hash unless hash.is_a?(Hash)
-
-  hash.map do |key, value|
-    [key.to_s, stringify_keys(value)]
-  end.to_h
-end
-
-
 class ConfigValue
   def self.unwrap(value)
     return value unless value.is_a?(ConfigValue)
@@ -99,6 +90,10 @@ class Config
         path: "#{ENV['HOME']}/.cache/omni",
       },
       commands: {},
+      command_match_skip_prompt_if: {
+        first_min: 0.80,
+        second_max: 0.60,
+      },
       config_commands: {
         split_on_dash: true,
         split_on_slash: true,

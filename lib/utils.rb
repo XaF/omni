@@ -4,6 +4,15 @@ require 'timeout'
 require_relative 'env'
 
 
+def stringify_keys(hash)
+  return hash unless hash.is_a?(Hash)
+
+  hash.map do |key, value|
+    [key.to_s, stringify_keys(value)]
+  end.to_h
+end
+
+
 def error(msg, cmd: nil, print_only: false)
   cmd = cmd || OmniEnv::OMNI_SUBCOMMAND
   command_failed = cmd ? "#{cmd} command failed:" : 'command failed:'
@@ -114,7 +123,7 @@ class UserInterraction
     return choices
   end
 
-  def self.did_you_mean?(available, search)
+  def self.did_you_mean?(available, search, skip_with_score: false)
     # We do require here because we don't want to load it
     # if we don't need it, as it's a bit heavy
     require 'fuzzy_match'
@@ -127,10 +136,14 @@ class UserInterraction
     # We want to find and sort the available commands by similarity
     # to the one that was requested
     fuzzy = FuzzyMatch.new(available)
-    matching_commands = fuzzy.find_all(search)
+    matching_commands_with_score = fuzzy.find_all_with_score(search)
+    matching_commands = matching_commands_with_score.map(&:first)
 
     # If we don't have any matching command, we can just exit early
     raise NoMatchError if matching_commands.empty?
+
+    # Check if we can skip the prompt if skip_with_score is provided
+    return matching_commands.first if self.skippable(matching_commands_with_score, skip_with_score)
 
     # If we don't have a tty, we can't prompt the user, so we
     # just print the first matching command and exit
@@ -162,6 +175,37 @@ class UserInterraction
       puts
       raise InterruptedError
     end
+  end
+
+  private
+
+  def self.skippable(matching_commands_with_score, skip_with_score)
+    return false unless skip_with_score
+
+    if skip_with_score.is_a?(Float)
+      first_min = skip_with_score
+      second_max = 1.0
+    elsif skip_with_score.is_a?(Array) && skip_with_score.length <= 2
+      first_min, second_max = (skip_with_score + [nil])[0..1]
+    elsif skip_with_score.is_a?(Hash)
+      skip_with_score = stringify_keys(skip_with_score)
+      first_min = skip_with_score['first_min']
+      second_max = skip_with_score['second_max']
+    else
+      raise ArgumentError, "skip_with_score must be a float, an array or a hash; received: #{skip_with_score.inspect}"
+    end
+
+    # If we don't have a first_min, we can't skip
+    return false if first_min.nil?
+
+    # Check if first fits the criteria
+    first = matching_commands_with_score[0]
+    return false unless first && first.last >= first_min
+
+    # If we're here, we need to check if second fits the criteria
+    second = matching_commands_with_score[1]
+
+    !!(!second || second_max.nil? || second.last <= second_max)
   end
 end
 
