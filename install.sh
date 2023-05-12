@@ -332,7 +332,7 @@ function install_dependencies_packages() {
 		print_ok "apt-get found"
 
 		echo -e >&2 "\e[33m[sudo]\e[0m \e[90m$ apt-get update\e[0m"
-		sudo apt-get update || exit 1
+		sudo DEBIAN_FRONTEND=noninteractive apt-get update || exit 1
 
 		local apt_packages=()
 		if [[ " ${missing[@]} " =~ " rbenv " ]]; then
@@ -355,7 +355,7 @@ function install_dependencies_packages() {
 		fi
 
 		echo -e >&2 "\e[33m[sudo]\e[0m \e[90m$ apt-get --yes --no-install-recommends install ${apt_packages[@]}\e[0m"
-		sudo apt-get --yes install "${apt_packages[@]}" || exit 1
+		sudo DEBIAN_FRONTEND=noninteractive apt-get --yes install "${apt_packages[@]}" || exit 1
 
 		if [[ " ${missing[@]} " =~ " rbenv " ]]; then
 			echo -e >&2 "\e[90m$ curl -fsSL https://github.com/rbenv/rbenv-installer/raw/HEAD/bin/rbenv-installer | bash\e[0m"
