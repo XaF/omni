@@ -87,9 +87,10 @@ function parse_long_option() {
 
 # Handle options in a way compatible with linux and macos
 INTERACTIVE=${INTERACTIVE:-true}
-SETUP_RBENV_PATH=false
-SETUP_RBENV_INTEGRATION=false
-SETUP_OMNI_GIT=false
+SETUP_RBENV_PATH=${SETUP_RBENV_PATH:-false}
+SETUP_RBENV_INTEGRATION=${SETUP_RBENV_INTEGRATION:-false}
+SETUP_OMNI_GIT=${SETUP_OMNI_GIT:-false}
+OMNI_GIT="${OMNI_GIT}"
 while getopts -- ":h-:" optchar; do
 	case "${optchar}" in
 	-)
@@ -188,8 +189,6 @@ function query_omni_git() {
 	read git_base_dir
 	git_base_dir="${git_base_dir:-${default_git_dir}}"
 	git_base_dir="$(eval "echo $git_base_dir")"
-	SETUP_OMNI_GIT=true
-	export OMNI_GIT="$git_base_dir"
 	echo "$git_base_dir"
 }
 
@@ -235,10 +234,10 @@ function query_repo_path_format() {
 function git_clone() {
 	local repo_path_format
 	local clone_location
-	local repo_location="git@github.com:XaF/omni.git"
-
-	# We need the base location for git repositories
-	[[ -n "$OMNI_GIT" ]] || OMNI_GIT=$(query_omni_git)
+	local repo_locations=(
+	  "git@github.com:XaF/omni.git"
+	  "https://github.com/XaF/omni.git"
+	)
 
 	# We need the format the user wants for repo paths
 	repo_path_format=$(search_config "repo_path_format")
@@ -257,8 +256,9 @@ function git_clone() {
 	# an error since we won't be able to clone the omni repository
 	# there
 	if [[ -e "$clone_location" ]]; then
-		print_failed "$clone_location already exists, if this is a clone of omni, either remove it, or run $clone_location/install.sh"
-		exit 1
+		# print_failed "$clone_location already exists, if this is a clone of omni, either remove it, or run $clone_location/install.sh"
+		echo $clone_location
+		exit 0
 	fi
 
 	# We make sure the path up to the directory in which we want to
@@ -266,13 +266,21 @@ function git_clone() {
 	mkdir -p "$(dirname "$clone_location")"
 
 	# Then we can clone the repository
-	echo -e >&2 "\e[90m$ git clone \"${repo_location}\" \"${clone_location}\" --depth 1\e[0m"
-	git clone "${repo_location}" "${clone_location}" --depth 1
-	if [ $? -ne 0 ]; then
-		print_failed "clone omni repository in $clone_location"
-		exit 1  # Fail fast
-	else
-		print_ok "clone omni repository in $clone_location"
+	local cloned=false
+	for repo_location in "${repo_locations[@]}"; do
+	  echo -e >&2 "\e[90m$ git clone \"${repo_location}\" \"${clone_location}\" --depth 1\e[0m"
+	  git clone "${repo_location}" "${clone_location}" --depth 1
+	  if [ $? -ne 0 ]; then
+		  print_failed "clone omni repository from ${repo_location} in $clone_location"
+	  else
+		  print_ok "clone omni repository in $clone_location"
+		  cloned=true
+		  break
+	  fi
+	done
+	if [[ "$cloned" == "false" ]]; then
+		print_failed "failed to clone omni repository"
+		exit 1
 	fi
 
 	# Finally, we echo the clone location so the caller can use it
@@ -280,14 +288,22 @@ function git_clone() {
 }
 
 if ! $in_omni_dir; then
+	# We need the base location for git repositories
+	if [[ -z "$OMNI_GIT" ]]; then
+	  export SETUP_OMNI_GIT=true
+	  export OMNI_GIT=$(query_omni_git)
+	  [[ $? -eq 0 ]] || exit 1
+	fi
+
 	clone_location=$(git_clone)
+	[[ $? -eq 0 ]] || exit 1
 	if [[ -z "$clone_location" ]]; then
 		print_failed "weird error, clone_location is empty but shouldn't be"
 		exit 1
 	fi
 
 	# Now call the install script from the newly cloned repo
-	$clone_location/install.sh
+	$clone_location/install.sh "$@"
 
 	# And exit with the exit code of that command
 	exit $?
@@ -301,13 +317,6 @@ cd "$SCRIPT_DIR"
 function install_dependencies_packages() {
 	local expect=("rbenv" "uuidgen")
 	local missing=()
-
-	# rbenv might be installed in the user's home, so we add it to the path to make
-	# sure that it's found even if it's not in the user's configured path
-	if [[ ! ":$PATH:" =~ ":$HOME/.rbenv/bin:" ]]; then
-		SETUP_RBENV_PATH=true
-		export PATH="$HOME/.rbenv/bin:$PATH"
-	fi
 
 	# Check that the expected commands are found
 	for cmd in "${expect[@]}"; do
@@ -378,17 +387,6 @@ function install_dependencies_packages() {
 			exit 1
 		fi
 	done
-
-	if [[ " ${missing[@]} " =~ " rbenv " ]]; then
-		SETUP_RBENV_INTEGRATION=true
-	fi
-
-	if [[ "$SETUP_RBENV_PATH" == "true" ]] && [[ ! -d "$HOME/.rbenv/bin" ]]; then
-		SETUP_RBENV_PATH=false
-	fi
-
-	# Make sure rbenv is currently loaded, just in case
-	eval "$(rbenv init - bash)" || exit 1
 }
 
 function install_dependencies_ruby() {
@@ -451,7 +449,26 @@ function install_dependencies_gemfile() {
 }
 
 function install_dependencies() {
+	# rbenv might be installed in the user's home, so we add it to the path to make
+	# sure that it's found even if it's not in the user's configured path
+	if [[ ! ":$PATH:" =~ ":$HOME/.rbenv/bin:" ]]; then
+		SETUP_RBENV_PATH=true
+		export PATH="$HOME/.rbenv/bin:$PATH"
+	fi
+
 	install_dependencies_packages
+
+	if ! command -v bundle >/dev/null; then
+		SETUP_RBENV_INTEGRATION=true
+	fi
+
+	if [[ "$SETUP_RBENV_PATH" == "true" ]] && [[ ! -d "$HOME/.rbenv/bin" ]]; then
+		SETUP_RBENV_PATH=false
+	fi
+
+	# Make sure rbenv is currently loaded, just in case
+	eval "$(rbenv init - bash)" || exit 1
+
 	install_dependencies_ruby
 	install_dependencies_bundler
 	install_dependencies_gemfile
@@ -493,8 +510,8 @@ function setup_shell_integration() {
 
 	print_action "Setting up shell integration in $rc_file"
 
-	if [[ "$SETUP_OMNI_GIT" ]]; then
-		echo 'export OMNI_GIT="${OMNI_GIT}"' >> "$rc_file"
+	if [[ "$SETUP_OMNI_GIT" == "true" ]] && [[ -n "${OMNI_GIT}" ]]; then
+		echo 'export OMNI_GIT="'"${OMNI_GIT}"'"' >> "$rc_file"
 		if [ $? -ne 0 ]; then
 			print_failed "Setup OMNI_GIT in $rc_file"
 		else

@@ -65,7 +65,7 @@ function omni() {
 	export OMNI_CMD_FILE="${tmpdir}/${OMNI_FILE_PREFIX}.cmd"
 
 	# Run the command
-	BUNDLE_GEMFILE="${OMNIDIR}/Gemfile" bundle exec "${OMNIDIR}/omni.rb" "$@"
+	"${OMNIDIR}/bin/omni" "$@"
 	EXIT_CODE=$?
 
 	# Check if OMNI_CMD_FILE exists, and if it does, run the commands

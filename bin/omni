@@ -11,4 +11,12 @@ BINDIR=$(cd -P "$(dirname "$BINFILE")" >/dev/null 2>&1 && pwd)
 OMNIDIR=$(cd -P "$(dirname "$BINDIR")" >/dev/null 2>&1 && pwd)
 
 # Run omni
-BUNDLE_GEMFILE="${OMNIDIR}/Gemfile" bundle exec "${OMNIDIR}/omni.rb" "$@"
+if [[ -n "${OMNI_RUN_FROM}" ]]; then
+	cd "${OMNI_RUN_FROM}"
+	"${OMNIDIR}/omni.rb" "$@"
+	exit $?
+fi
+
+export OMNI_RUN_FROM="${PWD}"
+cd "${OMNIDIR}"
+BUNDLE_GEMFILE="${OMNIDIR}/Gemfile" bundle exec "${BINFILE}" "$@"
