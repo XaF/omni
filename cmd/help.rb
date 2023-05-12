@@ -113,8 +113,10 @@ if ARGV.length > 0
 
   STDERR.puts "#{"omni".bold} - omnipotent tool"
   STDERR.puts ""
-  STDERR.puts format_size(command.help_long, max_width)
-  STDERR.puts ""
+  if command.help_long.length > 0
+    STDERR.puts format_size(command.help_long, max_width)
+    STDERR.puts ""
+  end
   STDERR.puts "#{usage_prefix}: #{"#{command.usage}".bold}"
   STDERR.puts ""
   all_params.each do |param, desc|

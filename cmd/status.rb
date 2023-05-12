@@ -195,3 +195,13 @@ if OmniOrgs.any?
 else
   STDERR.puts "  #{'none'.red}"
 end
+
+STDERR.puts ""
+STDERR.puts "Computed current omnipath".bold
+if Config.omnipath.any?
+  Config.omnipath.each do |file|
+    STDERR.puts "  - #{file}"
+  end
+else
+  STDERR.puts "  #{'none'.red}"
+end

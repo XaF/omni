@@ -1,3 +1,4 @@
+require 'open3'
 require 'shellwords'
 require 'timeout'
 
@@ -23,6 +24,22 @@ def error(msg, cmd: nil, print_only: false)
 end
 
 
+def warning(msg, cmd: nil)
+  cmd = cmd || OmniEnv::OMNI_SUBCOMMAND
+  command_warning = cmd ? "#{cmd} warning:" : 'warning:'
+
+  STDERR.puts "#{"omni:".light_cyan} #{command_warning.yellow} #{msg}"
+end
+
+
+def info(msg, cmd: nil)
+  cmd = cmd || OmniEnv::OMNI_SUBCOMMAND
+  command = cmd ? "#{cmd} info:" : 'info:'
+
+  STDERR.puts "#{"omni:".light_cyan} #{command.light_blue} #{msg}"
+end
+
+
 def omni_cmd(*cmd)
   error("unable to propagate shell changes, please setup omni's shell integration") unless OmniEnv::OMNI_CMD_FILE
 
@@ -34,7 +51,58 @@ def omni_cmd(*cmd)
 end
 
 
-def command_line(*cmd, timeout: nil, chdir: nil, context: nil, env: nil)
+def get_command_output(*cmd, timeout: nil, env: nil, print_output: true)
+  data = {
+    out: [],
+    err: [],
+  }
+
+  outputs = {
+    out: STDOUT,
+    err: STDERR,
+  }
+
+  params = [*cmd]
+  params.unshift(env) if env
+
+  Open3.popen3(*params) do |stdin, stdout, stderr, thread|
+    {
+      :out => stdout,
+      :err => stderr,
+    }.each do |key, stream|
+      Thread.new do
+        until (raw_line = stream.gets).nil? do
+          data[key].push({
+            :timestamp => Time.now,
+            :line => raw_line,
+          })
+          outputs[key].puts raw_line if print_output
+        end
+      end
+    end
+
+    if timeout
+      begin
+        Timeout.timeout(timeout) do
+          thread.join
+        end
+      rescue Timeout::Error
+        Process.kill('TERM', thread.pid)
+        data[:return_code] = 124
+        return data
+      end
+    else
+      thread.join
+    end
+  end
+
+  data[:return_code] = $?.to_i
+
+  data
+end
+
+
+def command_line(*cmd, timeout: nil, chdir: nil, context: nil, env: nil, capture: false)
   Dir.chdir(chdir) do
     return command_line(*cmd, timeout: timeout, context: context)
   end if chdir
@@ -45,26 +113,29 @@ def command_line(*cmd, timeout: nil, chdir: nil, context: nil, env: nil)
   msg << " #{"(timeout: #{timeout}s)".light_blue}" if timeout
   STDERR.puts msg
 
+  if capture
+    return get_command_output(*cmd, timeout: timeout, env: env)
+  end
+
+  params = [*cmd]
+  params.unshift(env) if env
+
+  pid = Process.spawn(*params)
+
   if timeout
-    pid = if env.nil?
-      Process.spawn(*cmd)
-    else
-      Process.spawn(env, *cmd)
-    end
     begin
       Timeout.timeout(timeout) do
         Process.wait(pid)
-        return $?.success?
       end
     rescue Timeout::Error
       Process.kill('TERM', pid)
-      false
+      return false
     end
-  elsif env.nil?
-    system(*cmd)
   else
-    system(env, *cmd)
+    Process.wait(pid)
   end
+
+  $?.success?
 ensure
   STDERR.puts unless chdir
 end
@@ -228,3 +299,32 @@ class TTYProgressBar
     @bar.send(method, *args, **kwargs, &block)
   end
 end
+
+module MonkeyPatch
+  module Array
+    def deep_dup
+      array = dup
+      each_with_index do |value, index|
+        array[index] = value.respond_to?(:deep_dup) ? value.deep_dup : value.dup
+      end
+      array
+    end
+  end
+
+  module Hash
+    def deep_dup
+      hash = dup
+      each_pair do |key, value|
+        new_key = key.respond_to?(:deep_dup) ? key.deep_dup : key.dup
+        new_value = value.respond_to?(:deep_dup) ? value.deep_dup : value.dup
+
+        hash.delete(key) if new_key != key
+        hash[new_key] = new_value
+      end
+      hash
+    end
+  end
+end
+
+Hash.include(MonkeyPatch::Hash)
+Array.include(MonkeyPatch::Array)

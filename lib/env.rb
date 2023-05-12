@@ -11,6 +11,7 @@ class OmniEnv
   OMNI_GIT = ENV['OMNI_GIT'] || "#{ENV['HOME']}/git"
   OMNI_ORG = split_path(ENV['OMNI_ORG'] || '', split_by: ',')
   OMNI_SKIP_UPDATE = ENV['OMNI_SKIP_UPDATE'] == 'true'
+  OMNI_FORCE_UPDATE = ENV['OMNI_FORCE_UPDATE'] == 'true'
   OMNI_SUBCOMMAND = (ENV['OMNI_SUBCOMMAND'] || '').empty? ? nil : ENV['OMNI_SUBCOMMAND']
   OMNI_UUID = (ENV['OMNI_UUID'] || '').empty? ? nil : ENV['OMNI_UUID']
 
@@ -26,7 +27,7 @@ class OmniEnv
   end
 
   def self.git_repo_origin
-    @@git_repo_origin ||= `git remote get-url origin 2>&1`.strip
+    @@git_repo_origin ||= `git remote get-url origin 2>/dev/null`.strip
   end
 
   def self.in_git_repo?

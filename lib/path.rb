@@ -37,11 +37,7 @@ class OmniPath
         each_commands << omniCmd
       end
 
-      paths = OmniEnv::OMNIPATH.dup
-      paths.unshift(*Config.path['prepend']) if Config.path['prepend']&.any?
-      paths.push(*Config.path['append']) if Config.path['append']&.any?
-
-      paths.each do |dirpath|
+      Config.omnipath.each do |dirpath|
         next unless File.directory?(dirpath) && File.readable?(dirpath)
 
         Dir.chdir(dirpath) do |dir|
