@@ -25,7 +25,7 @@ This is a work in progress...
 Installing omni is as simple as running:
 
 ```
-curl https://raw.githubusercontent.com/XaF/omni/main/install.sh | bash
+bash -c "$(curl https://raw.githubusercontent.com/XaF/omni/main/install.sh)"
 ```
 
 The installation script will attempt to install those dependencies and setup omni for you. In case of issue, here is what you need to know:
