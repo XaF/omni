@@ -346,24 +346,20 @@ function install_dependencies_packages() {
 		local rbenv_build=false
 		local apt_packages=()
 		if [[ " ${missing[@]} " =~ " rbenv " ]]; then
-			if $(apt-cache search --names-only rbenv 2>/dev/null | grep -q ^rbenv); then
-				apt_packages+=("rbenv")
-			else
-				rbenv_build=true
-				apt_packages+=(
-					"libssl-dev"
-					"libreadline-dev"
-					"zlib1g-dev"
-					"autoconf"
-					"bison"
-					"build-essential"
-					"libyaml-dev"
-					"libreadline-dev"
-					"libncurses5-dev"
-					"libffi-dev"
-					"libgdbm-dev"
-				)
-			fi
+			rbenv_build=true
+			apt_packages+=(
+				"libssl-dev"
+				"libreadline-dev"
+				"zlib1g-dev"
+				"autoconf"
+				"bison"
+				"build-essential"
+				"libyaml-dev"
+				"libreadline-dev"
+				"libncurses5-dev"
+				"libffi-dev"
+				"libgdbm-dev"
+			)
 		fi
 		if [[ " ${missing[@]} " =~ " uuidgen " ]]; then
 			apt_packages+=("uuid-runtime")
