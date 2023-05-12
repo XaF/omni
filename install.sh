@@ -343,21 +343,27 @@ function install_dependencies_packages() {
 		echo -e >&2 "\e[33m[sudo]\e[0m \e[90m$ apt-get update\e[0m"
 		sudo DEBIAN_FRONTEND=noninteractive apt-get update || exit 1
 
+		local rbenv_build=false
 		local apt_packages=()
 		if [[ " ${missing[@]} " =~ " rbenv " ]]; then
-			apt_packages+=(
-				"libssl-dev"
-				"libreadline-dev"
-				"zlib1g-dev"
-				"autoconf"
-				"bison"
-				"build-essential"
-				"libyaml-dev"
-				"libreadline-dev"
-				"libncurses5-dev"
-				"libffi-dev"
-				"libgdbm-dev"
-			)
+			if $(apt-cache search --names-only rbenv 2>/dev/null | grep -q ^rbenv); then
+				apt_packages+=("rbenv")
+			else
+				rbenv_build=true
+				apt_packages+=(
+					"libssl-dev"
+					"libreadline-dev"
+					"zlib1g-dev"
+					"autoconf"
+					"bison"
+					"build-essential"
+					"libyaml-dev"
+					"libreadline-dev"
+					"libncurses5-dev"
+					"libffi-dev"
+					"libgdbm-dev"
+				)
+			fi
 		fi
 		if [[ " ${missing[@]} " =~ " uuidgen " ]]; then
 			apt_packages+=("uuid-runtime")
@@ -366,7 +372,7 @@ function install_dependencies_packages() {
 		echo -e >&2 "\e[33m[sudo]\e[0m \e[90m$ apt-get --yes --no-install-recommends install ${apt_packages[@]}\e[0m"
 		sudo DEBIAN_FRONTEND=noninteractive apt-get --yes install "${apt_packages[@]}" || exit 1
 
-		if [[ " ${missing[@]} " =~ " rbenv " ]]; then
+		if [[ "$rbenv_build" == "true" ]]; then
 			echo -e >&2 "\e[90m$ curl -fsSL https://github.com/rbenv/rbenv-installer/raw/HEAD/bin/rbenv-installer | bash\e[0m"
 			curl -fsSL https://github.com/rbenv/rbenv-installer/raw/HEAD/bin/rbenv-installer | bash || exit 1
 		fi
