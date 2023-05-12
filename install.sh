@@ -200,7 +200,7 @@ function query_repo_path_format() {
 			exit 1
 		fi
 
-		print_query "Which repository path format do you wish to use?"
+		print_query "Which repository path format do you wish to use?\n"
 
 		local PS3="Format index: "
 		select REPO_PATH_FORMAT in "%{host}/%{org}/%{repo}" "%{org}/%{repo}" "%{repo}" "other (custom)"; do
