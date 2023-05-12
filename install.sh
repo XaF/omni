@@ -89,6 +89,7 @@ function parse_long_option() {
 INTERACTIVE=${INTERACTIVE:-true}
 SETUP_RBENV_PATH=false
 SETUP_RBENV_INTEGRATION=false
+SETUP_OMNI_GIT=false
 while getopts -- ":h-:" optchar; do
 	case "${optchar}" in
 	-)
@@ -178,10 +179,17 @@ function query_omni_git() {
 		exit 1
 	fi
 
-	print_failed "What is your git base directory? \e[90m(default: ${HOME}/git)\e[0m "
+	local default_git_dir="$HOME/git"
+	if [[ ! -d "$default_git_dir" ]] && [[ -n "$GOPATH" ]] && [[ -d "${GOPATH}/src" ]]; then
+		default_git_dir="${GOPATH}/src"
+	fi
+
+	print_failed "What is your git base directory? \e[90m(default: ${default_git_dir})\e[0m "
 	read git_base_dir
-	git_base_dir="${git_base_dir:-${HOME}/git}"
+	git_base_dir="${git_base_dir:-${default_git_dir}}"
 	git_base_dir="$(eval "echo $git_base_dir")"
+	SETUP_OMNI_GIT=true
+	export OMNI_GIT="$git_base_dir"
 	echo "$git_base_dir"
 }
 
@@ -484,6 +492,15 @@ function setup_shell_integration() {
 	[[ -z "$rc_file" ]] && rc_file="${HOME}/.${shell}rc"
 
 	print_action "Setting up shell integration in $rc_file"
+
+	if [[ "$SETUP_OMNI_GIT" ]]; then
+		echo 'export OMNI_GIT="${OMNI_GIT}"' >> "$rc_file"
+		if [ $? -ne 0 ]; then
+			print_failed "Setup OMNI_GIT in $rc_file"
+		else
+			print_ok "Setup OMNI_GIT in $rc_file"
+		fi
+	fi
 
 	if [[ "$SETUP_RBENV_PATH" == "true" ]]; then
 		echo 'export PATH="$HOME/.rbenv/bin:$PATH"' >> "$rc_file"
