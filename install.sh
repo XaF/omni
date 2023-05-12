@@ -346,7 +346,7 @@ function install_dependencies_packages() {
 			apt_packages+=("uuid-runtime")
 		fi
 
-		echo -e >&2 "\e[33m[sudo]\e[0m \e[90m$ apt-get --yes install ${apt_packages[@]}\e[0m"
+		echo -e >&2 "\e[33m[sudo]\e[0m \e[90m$ apt-get --yes --no-install-recommends install ${apt_packages[@]}\e[0m"
 		sudo apt-get --yes install "${apt_packages[@]}" || exit 1
 
 		if [[ " ${missing[@]} " =~ " rbenv " ]]; then
