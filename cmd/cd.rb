@@ -2,6 +2,7 @@
 #
 # category: Git commands
 # autocompletion: true
+# config: cd
 # opt:repo: The name of the repo to change directory to; this
 # opt:repo: can be in the format <org>>/<repo>, or just <repo>,
 # opt:repo: in which case the repo will be searched for in all
@@ -84,6 +85,14 @@ autocomplete(ARGV[1..-1]) if ARGV[0] == '--complete'
 error('too many argument') if ARGV[1]
 
 
+def path_match_skip_prompt_if
+  Config.dig('cd', 'path_match_skip_prompt_if') || stringify_keys({
+    first_min: 0.80,
+    second_max: 0.40,
+  })
+end
+
+
 def basic_naive_lookup(repo)
   paths = OmniOrgs.map { |org| org.path?(repo) }
   paths << OmniEnv::OMNI_GIT unless repo
@@ -139,7 +148,10 @@ def file_system_lookup(repo)
 
   # If we got here and we did not find an exact match,
   # try offering a did-you-mean suggestion
-  UserInterraction.did_you_mean?(potential_matches.uniq, repo)
+  UserInterraction.did_you_mean?(
+    potential_matches.uniq, repo,
+    skip_with_score: path_match_skip_prompt_if,
+  )
 end
 
 
