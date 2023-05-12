@@ -36,6 +36,24 @@ You will need the following dependencies:
 
 In order to work as expected, omni will also require its shell integration, which you can add to your `.bashrc` or `.zshrc` as desired. We recommend using a symbolic link so that the shell integration can stay up to date with omni updates without requiring any intervention on your part.
 
+### Initial configuration
+
+Running the installation script should have created a configuration file in `$HOME/.config/omni.yaml`. Given that the `main` branch of omni is to be considered unstable, we recommend that you set the following configuration:
+
+```
+path_repo_updates:
+  per_repo_config:
+    git@github.com:XaF/omni.git:
+      ref_type: tag
+      ref_match: ^v[0-9]+\.[0-9]+\.[0-9]+$
+```
+
+This will make sure that `omni` will only get auto-updated toward version tags. You can use `^v[0-9]+\.[0-9]+\.[0-9]+(-rc[0-9]+)?$` in case you wish to get release candidates too.
+
+For this to work, you will also need to make sure that you are currently checked out to the latest tag instead of main. Use `git checkout vX.Y.Z` to do so (where `vX.Y.Z` is the [latest tag available](https://github.com/XaF/omni/releases)).
+
+**Note:** verify that you have cloned omni using `git@github.com:XaF/omni.git` as origin. Otherwise, update this value accordingly with what is being returned by `git remote get-url origin`.
+
 ### Example repo
 
 The `omni-example` repository provide a configuration example for using omni.
