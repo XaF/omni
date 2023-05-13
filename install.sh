@@ -165,7 +165,7 @@ function search_config() {
 
 		# Use awk to extract the parameter value, and remove the potential quotes, single or double, around it
 		local matching_value=$(echo "$matching_line" | \
-			sed -E "s/^${param}:\s*//" | \
+			sed -E "s/^${param}: *//" | \
 			sed -E 's/^"(.*)"/\1/' | \
 			sed -E "s/^'(.*)'/\1/")
 		[[ -n "$matching_value" ]] || continue
