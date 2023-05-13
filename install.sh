@@ -199,7 +199,8 @@ function query_repo_path_format() {
 			exit 1
 		fi
 
-		print_query "Which repository path format do you wish to use?\n"
+		print_query "Which repository path format do you wish to use?"
+		echo >&2 # Forces a line return
 
 		local PS3="Format index: "
 		select REPO_PATH_FORMAT in "%{host}/%{org}/%{repo}" "%{org}/%{repo}" "%{repo}" "other (custom)"; do
@@ -328,7 +329,7 @@ function install_dependencies_packages() {
 		fi
 	done
 
-	# If packages is empty, we can return early
+	# If missing is empty, we can return early
 	if [[ ${#missing[@]} -eq 0 ]]; then
 		return
 	fi
@@ -397,6 +398,11 @@ function install_dependencies_ruby() {
 	if (cd "$SCRIPT_DIR" && rbenv version | cut -d' ' -f1 | grep -q "$ruby_version"); then
 		print_ok "ruby $ruby_version found"
 	else
+		if ! rbenv install --list 2>/dev/null | grep -q "^$(echo "$ruby_version" | sed 's/\./\\./g')$"; then
+		  print_failed "cannot install ruby $ruby_version with your rbenv installation - please update rbenv or uninstall it to let this install script get the latest version for you"
+		  exit 1
+		fi
+
 		if [[ ! -d "$HOME/.rbenv/plugins/rvm-download" ]]; then
 			# Get rvm-download so that the installation can be faster
 			print_pending "Installing rvm-download plugin for rbenv"
@@ -424,8 +430,11 @@ function install_dependencies_ruby() {
 
 function install_dependencies_bundler() {
 	# We then check that bundler is installed, that should be automated, but just in case
-	if command -v bundle >/dev/null; then
-		print_ok "bundler found"
+	if command -v bundle >/dev/null && bundler --version 2>/dev/null | grep -q "\b2\."; then
+		print_ok "bundler 2.x found"
+	elif ! command -v gem >/dev/null; then
+		print_failed "gem command not found - something might be wrong with your setup!"
+		exit 1
 	else
 		print_pending "Installing bundler"
 		echo -e >&2 "\e[90m$ gem install bundler\e[0m"
@@ -433,8 +442,8 @@ function install_dependencies_bundler() {
 		print_ok "Installed bundler"
 	fi
 
-	if ! command -v bundle >/dev/null; then
-		print_failed "bundler still not found"
+	if ! (command -v bundle >/dev/null && bundler --version 2>/dev/null | grep -q "\b2\."); then
+		print_failed "bundler 2.x still not found"
 		exit 1
 	fi
 }
