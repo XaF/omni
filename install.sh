@@ -5,6 +5,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" >/dev/null 2>&1 && pwd)"
 
 function print_logo() {
 	cat >&2 <<EOF
+
   :?:.!YG#&@@@&#GJ~.
  7#@&#@@@&#BGB#&@@@#Y^
  ^&@@@@&?.     :~Y#@@@Y
@@ -17,6 +18,7 @@ P@@@~ 7B@@@P~       !@@@5
  ^#@@@@&?.     .~J#@@@Y.
  7&@&#@@@&BGGGB&@@@#5^
   :?^.!YG#@@@@@#GY!.
+
 EOF
 }
 
@@ -432,7 +434,7 @@ function install_dependencies_ruby() {
 
 function install_dependencies_bundler() {
 	# We then check that bundler is installed, that should be automated, but just in case
-	if command -v bundle >/dev/null && bundler --version 2>/dev/null | grep -q "\b2\."; then
+	if command -v bundle >/dev/null && bundle --version 2>/dev/null | grep -q "\b2\."; then
 		print_ok "bundler 2.x found"
 	elif ! command -v gem >/dev/null; then
 		print_failed "gem command not found - something might be wrong with your setup!"
@@ -444,7 +446,7 @@ function install_dependencies_bundler() {
 		print_ok "Installed bundler"
 	fi
 
-	if ! (command -v bundle >/dev/null && bundler --version 2>/dev/null | grep -q "\b2\."); then
+	if ! (command -v bundle >/dev/null && bundle --version 2>/dev/null | grep -q "\b2\."); then
 		print_failed "bundler 2.x still not found"
 		exit 1
 	fi
