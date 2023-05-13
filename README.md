@@ -43,7 +43,7 @@ Running the installation script should have created a configuration file in `$HO
 ```
 path_repo_updates:
   per_repo_config:
-    git@github.com:XaF/omni.git:
+    github.com:XaF/omni:
       ref_type: tag
       ref_match: ^v[0-9]+\.[0-9]+\.[0-9]+$
 ```
@@ -51,8 +51,6 @@ path_repo_updates:
 This will make sure that `omni` will only get auto-updated toward version tags. You can use `^v[0-9]+\.[0-9]+\.[0-9]+(-rc[0-9]+)?$` in case you wish to get release candidates too.
 
 For this to work, you will also need to make sure that you are currently checked out to the latest tag instead of main. Use `git checkout vX.Y.Z` to do so (where `vX.Y.Z` is the [latest tag available](https://github.com/XaF/omni/releases)).
-
-**Note:** verify that you have cloned omni using `git@github.com:XaF/omni.git` as origin. Otherwise, update this value accordingly with what is being returned by `git remote get-url origin`.
 
 ### Example repo
 
@@ -87,7 +85,7 @@ Omni accepts the following parameters as part of its configuration:
   - `interval` *[int]* the number of seconds to wait between two updates of the repositories *(default: 43200)*
   - `ref_type` *[enum: branch or tag]* the type of ref that is being used for updates *(default: branch)*
   - `ref_match` *[regex]* a string representing the regular expression to match the ref name when doing an update; using `null` is equivalent to matching everything *(default: nul)*
-  - `per_repo_config` *[map]* override of the update configuration per repository, the keys must be the value returned by `git remote get-url origin`, and the value a map containing:
+  - `per_repo_config` *[map]* override of the update configuration per repository, the keys must be in the format `host:owner/repo`, and the value a map containing:
     - `enabled` *[boolean]* overrides whether the update is enabled for the repository
     - `ref_type` *[enum: branch or tag]* overrides the ref type for the repository
     - `ref_match` *[regex]* overrides the ref match for the repository

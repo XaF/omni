@@ -3,6 +3,7 @@ require 'shellwords'
 require_relative 'cache'
 require_relative 'config'
 require_relative 'env'
+require_relative 'omniorg'
 require_relative 'utils'
 
 
@@ -30,12 +31,12 @@ class Updater
     STDERR.puts "#{"omni".light_cyan}: updating #{"OMNIPATH".yellow} repositories"
 
     # Update the repositories
-    update_paths.each do |path, remote|
-      repo_config = update_config(remote)
+    update_paths.each do |path, repo_id|
+      repo_config = update_config(repo_id)
       next unless repo_config['enabled']
 
       unless ['branch', 'tag'].include?(repo_config['ref_type'])
-        error("#{remote.yellow}: invalid ref_type #{repo_config['ref_type'].inspect}", cmd: 'updater', print_only: true)
+        error("#{repo_id.yellow}: invalid ref_type #{repo_config['ref_type'].inspect}", cmd: 'updater', print_only: true)
         next
       end
 
@@ -45,7 +46,7 @@ class Updater
         elsif repo_config['ref_type'] == 'tag'
           update_using_tag(path, repo_config['ref_match'])
         else
-          error("#{remote.yellow}: Urgh!? How did we get there? I must be a teapot or something.",
+          error("#{repo_id.yellow}: Urgh!? How did we get there? I must be a teapot or something.",
                 cmd: 'updater', print_only: true)
           false
         end
@@ -203,7 +204,14 @@ class Updater
 
         next unless remote
 
-        [path, remote]
+        id = begin
+          OmniRepo.new(remote).id
+        rescue ArgumentError
+          warning("#{path.yellow}: #{remote.inspect} is not a valid remote; skipping", cmd: 'updater')
+          next
+        end
+
+        [path, id]
       end
 
       update_paths.compact!

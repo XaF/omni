@@ -115,6 +115,21 @@ class OmniRepo
     raise "Invalid repo path: #{path}" if @uri == nil
   end
 
+  def id
+    @id ||= begin
+      path = @uri.path
+      path.sub!(/\.git$/, '')
+
+      full_repo = path&.sub(%r{^/}, '')
+      raise ArgumentError, "Repo address (#{@uri.to_s}) is not complete" if full_repo.nil?
+
+      org_name, repo_name = full_repo.split('/', 2)
+      raise ArgumentError, "Repo address (#{@uri.to_s}) is not complete" if org_name.nil? || repo_name.nil?
+
+      "#{@uri.host}:#{org_name}/#{repo_name}"
+    end
+  end
+
   def path?(repo = nil)
     r = repo_in_repo(repo)
     r.path.sub!(/\.git$/, '')
