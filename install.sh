@@ -288,6 +288,8 @@ function git_clone() {
 	echo $clone_location
 }
 
+OMNI_INSTALL_CURRENT_SHELL=${OMNI_INSTALL_CURRENT_SHELL:-$(basename -- "$(ps -p $PPID -o command=)" | sed 's/^-//')}
+
 if ! $in_omni_dir; then
 	# We need the base location for git repositories
 	if [[ -z "$OMNI_GIT" ]]; then
@@ -304,7 +306,7 @@ if ! $in_omni_dir; then
 	fi
 
 	# Now call the install script from the newly cloned repo
-	$clone_location/install.sh "$@"
+	OMNI_INSTALL_CURRENT_SHELL=${OMNI_INSTALL_CURRENT_SHELL} $clone_location/install.sh "$@"
 
 	# And exit with the exit code of that command
 	exit $?
@@ -487,11 +489,9 @@ function install_dependencies() {
 
 install_dependencies
 
-CURRENT_SHELL=$(basename -- "$(ps -p $PPID -o command=)" | sed 's/^-//')
-
 function setup_shell_integration() {
 	local shell="$1"
-	local default_value=$([[ "$CURRENT_SHELL" == "$shell" ]] && echo "y" || echo "n")
+	local default_value=$([[ "$OMNI_INSTALL_CURRENT_SHELL" == "$shell" ]] && echo "y" || echo "n")
 	local setup_shell_var="$(echo SETUP_${shell}RC | tr '[:lower:]' '[:upper:]')"
 	local setup_shell="${!setup_shell_var:-false}"
 	local rc_file_var="$(echo ${shell}RC_PATH | tr '[:lower:]' '[:upper:]')"
@@ -562,9 +562,9 @@ function setup_shell_integration() {
 SUPPORTED_SHELLS=("bash" "zsh")
 # Setup firt the integration for the current shell
 for shell in "${SUPPORTED_SHELLS[@]}"; do
-	[[ "$CURRENT_SHELL" == "$shell" ]] && setup_shell_integration "$shell"
+	[[ "$OMNI_INSTALL_CURRENT_SHELL" == "$shell" ]] && setup_shell_integration "$shell"
 done
 # Then offer to setup the other shell integrations
 for shell in "${SUPPORTED_SHELLS[@]}"; do
-	[[ "$CURRENT_SHELL" == "$shell" ]] || setup_shell_integration "$shell"
+	[[ "$OMNI_INSTALL_CURRENT_SHELL" == "$shell" ]] || setup_shell_integration "$shell"
 done
