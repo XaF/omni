@@ -491,7 +491,7 @@ CURRENT_SHELL=$(basename -- "$(ps -p $PPID -o command=)" | sed 's/^-//')
 
 function setup_shell_integration() {
 	local shell="$1"
-	local skip_confirmation=$([[ "$CURRENT_SHELL" == "$shell" ]] && echo "y" || echo "n")
+	local default_value=$([[ "$CURRENT_SHELL" == "$shell" ]] && echo "y" || echo "n")
 	local setup_shell_var="$(echo SETUP_${shell}RC | tr '[:lower:]' '[:upper:]')"
 	local setup_shell="${!setup_shell_var:-false}"
 	local rc_file_var="$(echo ${shell}RC_PATH | tr '[:lower:]' '[:upper:]')"
@@ -500,8 +500,11 @@ function setup_shell_integration() {
 	[[ "$skip_confirmation" =~ ^[yY]$ ]] && setup_shell="true"
 
 	if [[ "$setup_shell" != "true" ]] && [[ "$INTERACTIVE" == "true" ]]; then
-		print_query "Do you want to setup the $shell integration? \e[90m[y/N]\e[0m "
+		local default_show="y/N"
+		[[ "$default_value" =~ ^[yY]$ ]] && default_show="Y/n"
+		print_query "Do you want to setup the $shell integration? \e[90m[${default_show}]\e[0m "
 		read setup_shell
+		[[ -z "$setup_shell" ]] && setup_shell="$default_value"
 		[[ "$setup_shell" =~ ^[yY]$ ]] && setup_shell="true"
 	fi
 
