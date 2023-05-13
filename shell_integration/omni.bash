@@ -8,11 +8,22 @@ function find_omnidir() {
 		# it will assume the path where omni would clone itself, but
 		# if OMNI_GIT is setup, it will try to use that path instead;
 		# you can override this by setting OMNIDIR to a different path
-		lookup_omnidir=(
-			"${OMNI_GIT:-${HOME}/git}/github.com/XaF/omni"
-			"${OMNI_GIT:-${HOME}/git}/XaF/omni"
-			"${OMNI_GIT:-${HOME}/git}/omni"
-		)
+		local lookup_omnidir=()
+		local lookup_srcpath=()
+		if [[ -n "${OMNI_GIT}" ]]; then
+			lookup_srcpath+=("${OMNI_GIT}")
+		else
+			[[ -d "${HOME}/git" ]] && lookup_srcpath+=("${HOME}/git")
+			[[ -n "$GOPATH" ]] && [[ -d "${GOPATH}/src" ]] && lookup_srcpath+=("${GOPATH}/src")
+		fi
+		for srcpath in "${lookup_srcpath[@]}"; do
+			lookup_omnidir+=(
+				"${srcpath}/github.com/XaF/omni"
+				"${srcpath}/XaF/omni"
+				"${srcpath}/omni"
+			)
+		done
+		unset lookup_srcpath
 		for lookup in "${lookup_omnidir[@]}"; do
 			if ! [ -d "$lookup" ]; then
 				continue
@@ -25,7 +36,7 @@ function find_omnidir() {
 	fi
 
 	if [[ -z "${OMNIDIR}" ]]; then
-		echo -e >&2 "\033[96momni:\033[0m \033[31mfailed to find omni directory, please set OMNIDIR\033[0m"
+		echo -e >&2 "\033[96momni:\033[0m \033[31mfailed to find omni directory, please set OMNI_GIT to your workspace or OMNIDIR to the omni directory\033[0m"
 		return 1
 	fi
 
