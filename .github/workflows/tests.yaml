@@ -48,6 +48,9 @@ jobs:
           source "$HOME/omni.bashrc"
           omni status
 
+          cd /
+          omni status
+
       - name: Install zsh
         if: runner.os != 'macos'
         run: |
@@ -57,5 +60,8 @@ jobs:
         shell: zsh {0}
         run: |
           source "$HOME/omni.zshrc"
+          omni status
+
+          cd /
           omni status
 
