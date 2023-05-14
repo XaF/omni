@@ -314,9 +314,6 @@ fi
 
 print_logo
 
-# Switch directory to the omni repository
-cd "$SCRIPT_DIR"
-
 function install_dependencies_packages() {
 	local expect=("rbenv" "uuidgen")
 	local missing=()
@@ -397,7 +394,14 @@ function install_dependencies_packages() {
 function install_dependencies_ruby() {
 	# We then make sure the right ruby version is installed and being used from the repo
 	local ruby_version=$(<"${SCRIPT_DIR}/.ruby-version")
-	if (cd "$SCRIPT_DIR" && rbenv version | cut -d' ' -f1 | grep -q "$ruby_version"); then
+	function check_rbenv() {
+	  (
+	    cd "$SCRIPT_DIR" &&
+	    rbenv version | cut -d' ' -f1 | grep -q "$ruby_version"
+	  ) && return 0 || return 1
+	}
+
+	if check_rbenv; then
 		print_ok "ruby $ruby_version found"
 	else
 		if ! rbenv install --list 2>/dev/null | grep -q "^$(echo "$ruby_version" | sed 's/\./\\./g')$"; then
@@ -424,15 +428,25 @@ function install_dependencies_ruby() {
 		print_ok "Installed ruby $ruby_version"
 	fi
 
-	if ! (cd "$SCRIPT_DIR" && rbenv version | cut -d' ' -f1 | grep -q "$ruby_version"); then
+	if ! check_rbenv; then
 		print_failed "ruby $ruby_version still not found"
 		exit 1
 	fi
+
+	unset -f check_rbenv
 }
 
 function install_dependencies_bundler() {
+	function check_bundler() {
+	  (
+	    command -v bundle >/dev/null &&
+	    cd "$SCRIPT_DIR" &&
+	    bundle --version 2>/dev/null | grep -q "\b2\."
+	  ) && return 0 || return 1
+	}
+
 	# We then check that bundler is installed, that should be automated, but just in case
-	if command -v bundle >/dev/null && bundle --version 2>/dev/null | grep -q "\b2\."; then
+	if check_bundler; then
 		print_ok "bundler 2.x found"
 	elif ! command -v gem >/dev/null; then
 		print_failed "gem command not found - something might be wrong with your setup!"
@@ -440,24 +454,26 @@ function install_dependencies_bundler() {
 	else
 		print_pending "Installing bundler"
 		echo -e >&2 "\e[90m$ gem install bundler\e[0m"
-		gem install bundler || exit 1
+		(cd "$SCRIPT_DIR" && gem install bundler) || exit 1
 		print_ok "Installed bundler"
 	fi
 
-	if ! (command -v bundle >/dev/null && bundle --version 2>/dev/null | grep -q "\b2\."); then
+	if ! check_bundler; then
 		print_failed "bundler 2.x still not found"
 		exit 1
 	fi
+
+	unset -f check_bundler
 }
 
 function install_dependencies_gemfile() {
 	# Finally, we can go into the repository and run the bundle install from there
 	print_pending "Installing Gemfile dependencies"
-	{
+	(
 		cd "$SCRIPT_DIR"
 		bundle config set path 'vendor/bundle'
 		bundle install
-	} || exit 1
+	) || exit 1
 	print_ok "Installed Gemfile dependencies"
 }
 
@@ -476,7 +492,7 @@ function install_dependencies() {
 	install_dependencies_packages
 
 	# Make sure rbenv is currently loaded, just in case
-	eval "$(rbenv init - bash)" || exit 1
+	[[ $(type -t rbenv) == "function" ]] || eval "$(rbenv init - bash)" || exit 1
 
 	install_dependencies_ruby
 	install_dependencies_bundler
