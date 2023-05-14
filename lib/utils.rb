@@ -104,7 +104,7 @@ end
 
 def command_line(*cmd, timeout: nil, chdir: nil, context: nil, env: nil, capture: false)
   Dir.chdir(chdir) do
-    return command_line(*cmd, timeout: timeout, context: context)
+    return command_line(*cmd, timeout: timeout, context: context, env: env, capture: capture)
   end if chdir
 
   msg = +""

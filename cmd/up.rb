@@ -20,6 +20,7 @@ require_relative '../lib/config'
 require_relative '../lib/up/bundler_operation'
 require_relative '../lib/up/custom_operation'
 require_relative '../lib/up/homebrew_operation'
+require_relative '../lib/up/ruby_operation'
 require_relative '../lib/up/operation'
 require_relative '../lib/utils'
 

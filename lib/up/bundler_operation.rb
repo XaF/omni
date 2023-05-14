@@ -46,3 +46,6 @@ class BundlerOperation < Operation
   end
 end
 
+
+# In case people use `bundle` instead of `bundler` in the list, let's still make it work
+class BundleOperation < BundlerOperation; end
