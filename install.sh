@@ -399,6 +399,9 @@ function install_dependencies_ruby() {
 	  sed -E "s/'([^']*)'/\1/" | \
 	  sed -E 's/ .*$//')
 
+	# Make sure the right ruby version is used from the repo
+	echo $ruby_version > "${SCRIPT_DIR}/.ruby-version"
+
 	function check_rbenv() {
 	  (
 	    cd "$SCRIPT_DIR" &&
@@ -437,9 +440,6 @@ function install_dependencies_ruby() {
 		print_failed "ruby $ruby_version still not found"
 		exit 1
 	fi
-
-	# We then make sure the right ruby version is used from the repo
-	echo $ruby_version > "${SCRIPT_DIR}/.ruby-version"
 
 	unset -f check_rbenv
 }
