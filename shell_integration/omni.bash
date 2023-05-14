@@ -73,10 +73,7 @@ function omni_import_rbenv() {
 
 		for rbenv_path in "${rbenv_paths[@]}"; do
 			if [[ -d "$rbenv_path" ]] && [[ ! ":${PATH}" =~ ":${rbenv_path}:" ]] && [[ -x "${rbenv_path}/rbenv" ]]; then
-				echo "UPDATING THE PATH WITH ${rbenv_path}"
-				echo "PATH WAS ${PATH}"
 				export PATH="${rbenv_path}:${PATH}"
-				echo "PATH IS NOW ${PATH}"
 				break
 			fi
 		done
@@ -86,7 +83,6 @@ function omni_import_rbenv() {
 
 	# Initialize rbenv if not already initialized
 	if type rbenv 2>/dev/null | head -n1 | grep -q "function" || [[ -z "$RBENV_SHELL" ]]; then
-		echo "INITIALIZING RBENV"
 		eval "$(rbenv init -)"
 	fi
 }
