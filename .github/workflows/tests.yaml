@@ -42,14 +42,28 @@ jobs:
             --bashrc "$HOME/omni.bashrc" \
             --zshrc "$HOME/omni.zshrc"
 
+      - name: Check the content of the generated bashrc
+        run: |
+          cat "$HOM/omni.bashrc"
+
+      - name: Check the content of the generated zshrc
+        run: |
+          cat "$HOM/omni.zshrc"
+
       - name: Try and run omni with bash
         shell: bash
         run: |
           source "$HOME/omni.bashrc"
+
+          echo "## Running 'status' from git directory"; echo
           omni status
 
+          echo; echo "## Running 'status' from root directory"; echo
           cd /
           omni status
+
+          echo; echo "## Running 'help' from root directory"; echo
+          omni help
 
       - name: Install zsh
         if: runner.os != 'macos'
@@ -60,8 +74,14 @@ jobs:
         shell: zsh {0}
         run: |
           source "$HOME/omni.zshrc"
+
+          echo "## Running 'status' from git directory"; echo
           omni status
 
+          echo; echo "## Running 'status' from root directory"; echo
           cd /
           omni status
+
+          echo; echo "## Running 'help' from root directory"; echo
+          omni help
 
