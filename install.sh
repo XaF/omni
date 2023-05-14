@@ -164,8 +164,8 @@ function search_config() {
 		# Use awk to extract the parameter value, and remove the potential quotes, single or double, around it
 		local matching_value=$(echo "$matching_line" | \
 			sed -E "s/^${param}: *//" | \
-			sed -E 's/^"(.*)"/\1/' | \
-			sed -E "s/^'(.*)'/\1/")
+			sed -E 's/^"([^"]*)".*/\1/' | \
+			sed -E "s/^'([^']*)'.*/\1/")
 		[[ -n "$matching_value" ]] || continue
 
 		# If we found a value, just return it
@@ -393,7 +393,12 @@ function install_dependencies_packages() {
 
 function install_dependencies_ruby() {
 	# We then make sure the right ruby version is installed and being used from the repo
-	local ruby_version=$(<"${SCRIPT_DIR}/.ruby-version")
+	local ruby_version=$(grep "^ *- *ruby:" "${SCRIPT_DIR}/.omni.yaml" | \
+	  sed -E 's/^ *- ruby: *//' | \
+	  sed -E 's/^"([^"]*)"/\1/' | \
+	  sed -E "s/'([^']*)'/\1/" | \
+	  sed -E 's/ .*$//')
+
 	function check_rbenv() {
 	  (
 	    cd "$SCRIPT_DIR" &&
@@ -432,6 +437,9 @@ function install_dependencies_ruby() {
 		print_failed "ruby $ruby_version still not found"
 		exit 1
 	fi
+
+	# We then make sure the right ruby version is used from the repo
+	echo $ruby_version > "${SCRIPT_DIR}/.ruby-version"
 
 	unset -f check_rbenv
 }
