@@ -82,7 +82,7 @@ function omni_import_rbenv() {
 	fi
 
 	# Initialize rbenv if not already initialized
-	if [[ $(type -t rbenv) != "function" ]] || [[ -z "$RBENV_SHELL" ]]; then
+	if type rbenv 2>/dev/null | head -n1 | grep -q "function" || [[ -z "$RBENV_SHELL" ]]; then
 		eval "$(rbenv init -)"
 	fi
 }
