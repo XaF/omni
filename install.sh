@@ -88,7 +88,7 @@ function parse_long_option() {
 }
 
 # Handle options in a way compatible with linux and macos
-INTERACTIVE=${INTERACTIVE:-true}
+INTERACTIVE=${INTERACTIVE:-$([ -t 0 ] && echo true || echo false)}
 SETUP_RBENV_PATH=${SETUP_RBENV_PATH:-false}
 SETUP_RBENV_INTEGRATION=${SETUP_RBENV_INTEGRATION:-false}
 SETUP_OMNI_GIT=${SETUP_OMNI_GIT:-false}
