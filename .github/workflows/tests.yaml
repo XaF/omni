@@ -44,11 +44,11 @@ jobs:
 
       - name: Check the content of the generated bashrc
         run: |
-          cat "$HOM/omni.bashrc"
+          cat "$HOME/omni.bashrc"
 
       - name: Check the content of the generated zshrc
         run: |
-          cat "$HOM/omni.zshrc"
+          cat "$HOME/omni.zshrc"
 
       - name: Try and run omni with bash
         shell: bash
