@@ -15,6 +15,8 @@ class BundlerOperation < Operation
     bundle_install = ['bundle', 'install']
     bundle_install.push('--gemfile', gemfile) if gemfile
     command_line(*bundle_install) || run_error("bundle install")
+
+    !had_errors
   end
 
   def down
@@ -24,6 +26,8 @@ class BundlerOperation < Operation
     STDERR.puts "# Removing dependencies installed with bundler".light_blue
     STDERR.puts "$ rm -rf #{path}".light_black
     FileUtils.rm_rf(path)
+
+    !had_errors
   end
 
   private

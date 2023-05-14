@@ -10,11 +10,13 @@ class RubyOperation < Operation
     if is_installed?
       STDERR.puts "# Ruby #{ruby_version} is already installed".light_green
       set_ruby_local_version!
-      return
+      return true
     end
 
     puts "# `-> Ruby #{ruby_version} will be installed".light_blue
     install_ruby! && set_ruby_local_version!
+
+    !had_errors
   end
 
   def down
@@ -109,7 +111,7 @@ class RubyOperation < Operation
   def set_ruby_local_version!
     Dir.chdir(OmniEnv::GIT_REPO_ROOT) do
       output = `rbenv local #{ruby_version} 2>&1`
-      $?.success? || error("Failed to set ruby version to #{ruby_version}: #{output}")
+      $?.success? || run_error("Failed to set ruby version to #{ruby_version}: #{output}")
     end
   end
 

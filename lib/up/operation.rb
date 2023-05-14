@@ -12,10 +12,18 @@ class Operation
     check_valid_operation!
   end
 
+  # up is the method that will be called when `omni up`
+  # is executed. It should return true if the operation
+  # was successful, false in case of errors, and nil if
+  # the operation was not applicable
   def up
     raise NotImplementedError
   end
 
+  # down is the method that will be called when `omni down`
+  # is executed. It should return true if the operation
+  # was successful, false in case of errors, and nil if
+  # the operation was not applicable
   def down
     raise NotImplementedError
   end
@@ -47,8 +55,13 @@ class Operation
           "#{message}")
   end
 
+  def had_errors
+    @had_errors ||= false
+  end
+
   def run_error(command)
     error("issue while running #{command.yellow}", print_only: true)
+    @had_errors = true
   end
 end
 

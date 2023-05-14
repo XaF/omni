@@ -14,7 +14,7 @@ class HomebrewOperation < Operation
 
     if met?
       STDERR.puts "# Homebrew dependencies already installed".light_yellow
-      return
+      return true
     end
 
     STDERR.puts "# Install Homebrew dependencies".light_blue
@@ -80,11 +80,13 @@ class HomebrewOperation < Operation
 
       brew_cache
     end
+
+    !had_errors
   end
 
   def down
     return unless brew_installed?
-    return unless partial_met?
+    return true unless partial_met?
 
     STDERR.puts "# Uninstalling Homebrew dependencies".light_blue
 
@@ -134,6 +136,8 @@ class HomebrewOperation < Operation
     if remove_local_tap && tap_exists?
       command_line('brew', 'untap', tap_name) || run_error("brew untap #{tap_name}")
     end
+
+    !had_errors
   end
 
   private

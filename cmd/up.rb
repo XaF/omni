@@ -139,14 +139,20 @@ def handle_up
 
   # Run the commands from the git repository root
   Dir.chdir(OmniEnv.git_repo_root) do
-    if OmniEnv::OMNI_SUBCOMMAND == 'up'
-      # Run the operations in the provided order
-      operations.each(&:up)
-    else
-      # In case of being called as `down`, this will also
-      # run the operations in reverse order in case there
-      # are dependencies between them
-      operations.reverse.each(&:down)
+    # Convert the subcommand to the operation type
+    operation_type = OmniEnv::OMNI_SUBCOMMAND.downcase.to_sym
+
+    # Still block in case operation is unknown
+    error("unknown operation #{operation_type.to_s.yellow}") unless [:up, :down].include?(operation_type)
+
+    # In case of being called as `down`, this will run the operations in reverse order
+    # in case there are dependencies between them
+    operations.reverse! if operation_type == :down
+
+    # Run the operations as long as the up command returns true or nil
+    operations.take_while do |operation|
+      status = operation.send(operation_type)
+      status.nil? || status
     end
   end
 end

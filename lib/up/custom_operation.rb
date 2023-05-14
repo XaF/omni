@@ -7,11 +7,13 @@ class CustomOperation < Operation
   def up
     if met?
       STDERR.puts "# Skipping #{name || meet_cmd} (already met)".light_yellow
-      return
+      return true
     end
 
     STDERR.puts "# #{name}".light_blue if name
     meet || run_error(name || meet_cmd)
+
+    !had_errors
   end
 
   def down
@@ -19,11 +21,13 @@ class CustomOperation < Operation
 
     unless met?
       STDERR.puts "# Skipping revert of #{name || unmeet_cmd} (not met)".light_yellow
-      return
+      return true
     end
 
     STDERR.puts "# Revert: #{name}".light_blue if name
     unmeet || run_error(name || unmeet_cmd)
+
+    !had_errors
   end
 
   private
