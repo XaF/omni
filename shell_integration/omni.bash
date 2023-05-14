@@ -67,22 +67,26 @@ find_omnidir
 function omni_import_rbenv() {
 	# Try and add rbenv to the path if not already present
 	if ! command -v rbenv >/dev/null; then
-		local rbenv_path=()
-		command -v brew >/dev/null && rbenv_path+=("$(brew --prefix)/bin")
-		rbenv_path+=("${HOME}/.rbenv/bin")
+		local rbenv_paths=()
+		command -v brew >/dev/null && rbenv_paths+=("$(brew --prefix)/bin")
+		rbenv_paths+=("${HOME}/.rbenv/bin")
 
-		for path in "${rbenv_path[@]}"; do
-			if [[ -d "$path" ]] && [[ ! ":${PATH}" =~ ":${path}:" ]] && [[ -x "${path}/rbenv" ]]; then
-				export PATH="${path}:${PATH}"
+		for rbenv_path in "${rbenv_paths[@]}"; do
+			if [[ -d "$rbenv_path" ]] && [[ ! ":${PATH}" =~ ":${rbenv_path}:" ]] && [[ -x "${rbenv_path}/rbenv" ]]; then
+				echo "UPDATING THE PATH WITH ${rbenv_path}"
+				echo "PATH WAS ${PATH}"
+				export PATH="${rbenv_path}:${PATH}"
+				echo "PATH IS NOW ${PATH}"
 				break
 			fi
 		done
 
-		unset rbenv_path
+		unset rbenv_paths
 	fi
 
 	# Initialize rbenv if not already initialized
 	if type rbenv 2>/dev/null | head -n1 | grep -q "function" || [[ -z "$RBENV_SHELL" ]]; then
+		echo "INITIALIZING RBENV"
 		eval "$(rbenv init -)"
 	fi
 }

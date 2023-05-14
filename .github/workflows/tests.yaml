@@ -33,7 +33,6 @@ jobs:
         run: |
           echo "OMNIDIR=${GITHUB_WORKSPACE}" | tee -a "$GITHUB_ENV"
           echo "OMNI_GIT=${HOME}/git" | tee -a "$GITHUB_ENV"
-          echo "PATH=${PATH}" | tee -a "$GITHUB_ENV"
 
       - name: Run install script
         run: |
