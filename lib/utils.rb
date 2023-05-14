@@ -94,9 +94,9 @@ def get_command_output(*cmd, timeout: nil, env: nil, print_output: true)
     else
       thread.join
     end
-  end
 
-  data[:return_code] = $?.to_i
+    data[:return_code] = thread.value.exitstatus
+  end
 
   data
 end
