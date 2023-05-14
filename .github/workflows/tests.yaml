@@ -29,15 +29,15 @@ jobs:
       - name: Checkout current commit
         uses: actions/checkout@v3
 
-      - name: Set OMNIDIR
+      - name: Set OMNIDIR and OMNI_GIT
         run: |
           echo "OMNIDIR=${GITHUB_WORKSPACE}" | tee -a "$GITHUB_ENV"
+          echo "OMNI_GIT=${HOME}/git" | tee -a "$GITHUB_ENV"
 
       - name: Run install script
         run: |
           ./install.sh \
             --no-interactive \
-            --git-dir "$HOME/git" \
             --repo-path-format "%{host}/%{org}/%{repo}" \
             --bashrc "$HOME/omni.bashrc" \
             --zshrc "$HOME/omni.zshrc"
