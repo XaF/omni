@@ -89,8 +89,6 @@ function parse_long_option() {
 
 # Handle options in a way compatible with linux and macos
 INTERACTIVE=${INTERACTIVE:-$([ -t 0 ] && echo true || echo false)}
-SETUP_RBENV_PATH=${SETUP_RBENV_PATH:-false}
-SETUP_RBENV_INTEGRATION=${SETUP_RBENV_INTEGRATION:-false}
 SETUP_OMNI_GIT=${SETUP_OMNI_GIT:-false}
 OMNI_GIT="${OMNI_GIT}"
 while getopts -- ":h-:" optchar; do
@@ -466,20 +464,16 @@ function install_dependencies_gemfile() {
 function install_dependencies() {
 	# rbenv might be installed in the user's home, so we add it to the path to make
 	# sure that it's found even if it's not in the user's configured path
-	if [[ ! ":$PATH:" =~ ":$HOME/.rbenv/bin:" ]]; then
-		SETUP_RBENV_PATH=true
-		export PATH="$HOME/.rbenv/bin:$PATH"
+	[[ ":$PATH:" =~ ":$HOME/.rbenv/bin:" ]] || export PATH="$HOME/.rbenv/bin:$PATH"
+
+	# We also add the homebrew path there, just in case
+	if command -v brew >/dev/null; then
+	  local brewbin="$(brew --prefix)/bin"
+	  [[ ":$PATH:" =~ ":${brewbin}:" ]] || export PATH="${brewbin}:$PATH"
+	  unset brewbin
 	fi
 
 	install_dependencies_packages
-
-	if ! command -v bundle >/dev/null; then
-		SETUP_RBENV_INTEGRATION=true
-	fi
-
-	if [[ "$SETUP_RBENV_PATH" == "true" ]] && [[ ! -d "$HOME/.rbenv/bin" ]]; then
-		SETUP_RBENV_PATH=false
-	fi
 
 	# Make sure rbenv is currently loaded, just in case
 	eval "$(rbenv init - bash)" || exit 1
@@ -532,24 +526,6 @@ function setup_shell_integration() {
 			print_failed "Setup OMNI_GIT in $rc_file"
 		else
 			print_ok "Setup OMNI_GIT in $rc_file"
-		fi
-	fi
-
-	if [[ "$SETUP_RBENV_PATH" == "true" ]]; then
-		echo 'export PATH="$HOME/.rbenv/bin:$PATH"' >> "$rc_file"
-		if [ $? -ne 0 ]; then
-			print_failed "Setup rbenv path in $rc_file"
-		else
-			print_ok "Setup rbenv path in $rc_file"
-		fi
-	fi
-
-	if [[ "$SETUP_RBENV_INTEGRATION" == "true" ]]; then
-		echo 'eval "$(rbenv init - '"${shell}"')"' >> "$rc_file"
-		if [ $? -ne 0 ]; then
-			print_failed "Setup rbenv integration in $rc_file"
-		else
-			print_ok "Setup rbenv integration in $rc_file"
 		fi
 	fi
 

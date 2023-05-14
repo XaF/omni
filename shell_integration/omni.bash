@@ -61,6 +61,34 @@ function find_omnidir() {
 # Run the `find_omnidir` call when being sourced
 find_omnidir
 
+# Make sure that rbenv has been loaded properly, as it is a dependency of omni;
+# this will also allow that if the integration is properly loaded in the shell,
+# then the user will be able to use rbenv right away.
+function omni_import_rbenv() {
+	# Try and add rbenv to the path if not already present
+	if ! command -v rbenv >/dev/null; then
+		local rbenv_path=()
+		command -v brew >/dev/null && rbenv_path+=("$(brew --prefix)/bin")
+		rbenv_path+=("${HOME}/.rbenv/bin")
+
+		for path in "${rbenv_path[@]}"; do
+			if [[ -d "$path" ]] && [[ ! ":${PATH}" =~ ":${path}:" ]] && [[ -x "${path}/rbenv" ]]; then
+				export PATH="${path}:${PATH}"
+				break
+			fi
+		done
+
+		unset rbenv_path
+	fi
+
+	# Initialize rbenv if not already initialized
+	if [[ $(type -t rbenv) != "function" ]] || [[ -z "$RBENV_SHELL" ]]; then
+		eval "$(rbenv init -)"
+	fi
+}
+omni_import_rbenv
+unset -f omni_import_rbenv
+
 # This function is used to run the omni command, and then operate on
 # the requested shell changes from the command (changing current
 # working directory, environment, etc.); this is why we require using
