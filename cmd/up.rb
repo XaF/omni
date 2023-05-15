@@ -3,7 +3,6 @@
 # category: Git commands
 # autocompletion: true
 # config: up
-# Write in bold
 # opt:--update-user-config:Whether we should handle paths found in the configuration
 # opt:--update-user-config:of the repository if any (yes/ask/no); When using \e[3mup\e[0m,
 # opt:--update-user-config:the \e[3mpath\e[0m configuration will be copied to the home

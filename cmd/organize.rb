@@ -1,6 +1,8 @@
 #!/usr/bin/env ruby
 #
 # category: Git commands
+# autocompletion: true
+# opt:--yes:Do not ask for confirmation before organizing repositories
 # help: Organize your git repositories using the configured format
 # help:
 # help: This will offer to organize your git repositories, moving them from
@@ -10,13 +12,45 @@
 # help: using \e[3momni\e[0m, or if you changed your mind on the repo path format
 # help: you wish to use.
 
+require 'optparse'
+
 require_relative '../lib/colorize'
 require_relative '../lib/omniorg'
 require_relative '../lib/utils'
 
 
-yes = (ARGV[0] == '--yes')
-error('too many argument') if ARGV[1] || (ARGV[0] && !yes)
+options = {:yes => false}
+parser = OptionParser.new do |opts|
+  opts.banner = "Usage: omni #{OmniEnv::OMNI_SUBCOMMAND} [options]"
+
+  opts.on("-y", "--yes", "Do not ask for confirmation before organizing repositories") do |yes|
+    options[:yes] = yes
+  end
+
+  opts.on(
+    "-h", "--help",
+    "Prints this help"
+  ) do
+    `omni help #{OmniEnv::OMNI_SUBCOMMAND}`
+    exit
+  end
+
+  opts.on(
+    "--complete",
+  ) do
+    puts "--yes"
+    puts "-y"
+    exit
+  end
+end
+
+begin
+  parser.parse!
+rescue OptionParser::InvalidOption, OptionParser::MissingArgument, OptionParser::InvalidArgument => e
+  error(e.message)
+end
+
+error('too many argument') if ARGV[0]
 
 
 class GitRepo
@@ -150,7 +184,7 @@ def list_file_system_repos(skip_confirmation: false)
 end
 
 begin
-  list_file_system_repos(skip_confirmation: yes)
+  list_file_system_repos(skip_confirmation: options[:yes])
 rescue UserInterraction::StoppedByUserError, UserInterraction::NoMatchError
   nil
 end
