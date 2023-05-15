@@ -4,13 +4,13 @@
 # autocompletion: true
 # config: up
 # Write in bold
-# opt:--handle-path:Whether we should handle paths found in the configuration
-# opt:--handle-path:of the repository if any (yes/ask/no); When using \e[3mup\e[0m,
-# opt:--handle-path:the \e[3mpath\e[0m configuration will be copied to the home
-# opt:--handle-path:directory of the user to be loaded on every omni call. When
-# opt:--handle-path:using \e[3mdown\e[0m, the \e[3mpath\e[0m configuration of the
-# opt:--handle-path:repository will be removed from the home directory of the user
-# opt:--handle-path:if it exists \e[90m(default: no)\e[0m
+# opt:--update-user-config:Whether we should handle paths found in the configuration
+# opt:--update-user-config:of the repository if any (yes/ask/no); When using \e[3mup\e[0m,
+# opt:--update-user-config:the \e[3mpath\e[0m configuration will be copied to the home
+# opt:--update-user-config:directory of the user to be loaded on every omni call. When
+# opt:--update-user-config:using \e[3mdown\e[0m, the \e[3mpath\e[0m configuration of the
+# opt:--update-user-config:repository will be removed from the home directory of the user
+# opt:--update-user-config:if it exists \e[90m(default: no)\e[0m
 # help: Sets up or tear down a repository depending on its \e[3mup\e[0m configuration
 
 require 'optparse'
@@ -31,7 +31,9 @@ parser = OptionParser.new do |opts|
   opts.banner = "Usage: omni #{OmniEnv::OMNI_SUBCOMMAND} [options]"
 
   opts.on(
-    "--handle-path [ACTION]", [:yes, :ask, :no],
+    "--update-user-config [yes/ask/no]",
+    "--handle-path [yes/ask/no]",
+    [:yes, :ask, :no],
     "Whether we should import/remove paths found in the repository if any (yes/ask/no)"
   ) do |handle_path|
     options[:handle_path] = handle_path || :ask
@@ -50,6 +52,7 @@ parser = OptionParser.new do |opts|
   ) do
     puts "--handle-path"
     puts "--help"
+    puts "--update-user-config"
     puts "-h"
     exit
   end
