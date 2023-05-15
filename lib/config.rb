@@ -261,8 +261,9 @@ class Config
 
       path = [:prepend, :append].map do |key|
         values = @path[key].select { |path| path.has_label?('git_repo') }
+        next if values.empty?
         [key, values.map(&:unwrap)]
-      end.to_h
+      end.compact.to_h
 
       stringify_keys(path)
     end
