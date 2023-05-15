@@ -2,6 +2,8 @@ require 'singleton'
 
 require_relative 'command_collection'
 require_relative 'command_alias'
+require_relative 'config_command'
+require_relative 'makefile_command'
 require_relative 'path'
 
 
@@ -34,6 +36,12 @@ class OmniPathWithAliases
           command.path
         end
 
+        # If the command provides a line number, append it to the realpath
+        # This is used for commands like `makefile` which are all computed from
+        # the same file, but we want to display them separately, except if
+        # we find two symlinks to the same Makefile
+        realpath += ":#{command.lineno}" if command.respond_to?(:lineno)
+
         [realpath, command]
       end
 
@@ -46,6 +54,16 @@ class OmniPathWithAliases
       # Now convert that into commands
       commands = OmniCommandCollection.new
       realpaths.each do |path, aliases|
+        # For special commands all computed from the same file, we do not want to
+        # merge aliases into a single help line, but rather display them separately
+        # if there are no real way to know which commands are exactly the same
+        if aliases.first.is_a?(ConfigCommand)
+          aliases.each do |cmd|
+            commands << OmniCommandWithAliases.new(cmd, [])
+          end
+          next
+        end
+
         # aliases.sort_by! do |aliascmd|
           # path = aliascmd.path.dup
           # resolved_path = File.realpath(path)
@@ -57,6 +75,7 @@ class OmniPathWithAliases
           # end
           # num_symlinks
         # end
+
         commands << OmniCommandWithAliases.new(aliases.first, aliases[1..-1])
       end
 

@@ -6,9 +6,12 @@ require_relative 'env'
 
 
 class MakefileCommand < OmniCommand
+  attr_reader :lineno
+
   def initialize(target, makefile, help: nil, lineno: nil, category: nil)
     @target = target
     @path = makefile
+    @lineno = lineno
 
     @cmd = target.dup
     @cmd = [target] unless @cmd.is_a?(Array)
