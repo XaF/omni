@@ -91,7 +91,8 @@ Omni accepts the following parameters as part of its configuration:
     - `ref_match` *[regex]* overrides the ref match for the repository
 - `repo_path_format` *[string]* how to format repositories when cloning them with `omni clone`, or searching them with `omni cd`. Variables `%{host}` (registry hostname), `%{org}` (repository owner) and `%{repo}` (repository name) can be used in that format. *(default: `%{host}/%{org}/%{repo}`)*
 - `commands` *[map, string => command object]* commands made available through omni, where the key is the command name, see below for more details on the command object.
-- `up` *[list, up object]* list of operations needed to setup (or tear down, in reverse) a repository, see below for more details on the up object.
+- `up` *[list, up object]* list of operations needed to setup (or tear down, in reverse) a repository, see below for more details on the up object. *Should only be used in git repositories configuration.*
+- `suggest_config` *[map]* configuration that a git repository suggests should be added to the user configuration, this is picked up when calling `omni up --update-user-config` or when this command is directly called by `omni clone`. This can contain any value otherwise available in the configuration. *Should only be used in git repositories configuration.*
 
 
 #### Command object

@@ -20,7 +20,7 @@ class ConfigValue
       value = value.map do |key, item|
         [key, wrap(item, path, labels: labels, wrap_obj: true)]
       end.to_h
-      wrapped ? value : ConfigValue.new(value, path)
+      wrapped ? value : ConfigValue.new(value, path, labels: labels)
     elsif value.is_a?(Array)
       value = value.map do |item|
         wrap(item, path, labels: labels, wrap_obj: true)
@@ -36,7 +36,7 @@ class ConfigValue
   attr_reader :value, :path, :labels
 
   def initialize(value, path = nil, labels: nil)
-    @value = self.class.wrap(value, path, wrap_obj: false, wrapped: true)
+    @value = self.class.wrap(value, path, labels: labels, wrap_obj: false, wrapped: true)
     @path = path
     @labels = labels || []
   end
@@ -63,6 +63,26 @@ class ConfigValue
 
   def add_labels(labels)
     @labels += labels
+  end
+
+  def select_label(label)
+    if !has_label?(label)
+      nil
+    elsif @value.is_a?(ConfigValue)
+      select_value = @value.select_label(label)
+      return nil unless select_value
+      ConfigValue.new(select_value, path, labels: labels)
+    elsif @value.is_a?(Hash)
+      select_value = @value.select { |_, item| item.has_label?(label) }
+      return nil if select_value.empty?
+      ConfigValue.new(select_value, path, labels: labels)
+    elsif @value.is_a?(Array)
+      select_value = @value.select { |item| item.has_label?(label) }
+      return nil if select_value.empty?
+      ConfigValue.new(select_value, path, labels: labels)
+    else
+      self
+    end
   end
 
   def to_s
@@ -269,6 +289,21 @@ class Config
     end
   end
 
+  def suggested_from_repo
+    @suggested_from_repo ||= begin
+      return {} unless OmniEnv.in_git_repo?
+      return {} unless @config['suggest_config']
+      return {} unless @config['suggest_config'].has_label?('git_repo')
+
+      suggest_config = @config['suggest_config'].
+        select_label('git_repo').
+        map { |key, value| [key, value.unwrap] }.
+        to_h
+
+      stringify_keys(suggest_config)
+    end
+  end
+
   def config
     @config.map do |key, value|
       [key, value.unwrap]
@@ -355,15 +390,5 @@ class Config
     end
 
     config
-  end
-
-  def recursive_merge_hashes(current_hash, added_hash)
-    current_hash.merge(added_hash) do |key, current_val, added_val|
-      if current_val.is_a?(Hash) && added_val.is_a?(Hash)
-        recursive_merge_hashes(current_val, added_val)
-      else
-        added_val
-      end
-    end
   end
 end

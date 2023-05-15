@@ -15,6 +15,17 @@ def stringify_keys(hash)
 end
 
 
+def recursive_merge_hashes(current_hash, added_hash)
+  current_hash.merge(added_hash) do |key, current_val, added_val|
+    if current_val.is_a?(Hash) && added_val.is_a?(Hash)
+      recursive_merge_hashes(current_val, added_val)
+    else
+      added_val
+    end
+  end
+end
+
+
 def error(msg, cmd: nil, print_only: false)
   cmd = cmd || OmniEnv::OMNI_SUBCOMMAND
   command_failed = cmd ? "#{cmd} command failed:" : 'command failed:'

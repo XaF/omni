@@ -38,52 +38,108 @@ error('too many arguments') if ARGV.size > 0
 error("can only be run from a git repository") unless OmniEnv.in_git_repo?
 
 
+def update_path_user_config(config, proceed: false)
+  merged_path = {}
+  [['append', :push], ['prepend', :unshift]].each do |key, func|
+    merged_path[key] = config.dig('path', key).dup || []
+    (Config.path_from_repo[key] || []).each do |path|
+      merged_path[key].send(func, path) unless merged_path[key].include?(path)
+    end
+  end
+  merged_path.select! { |_, value| !value.empty? }
+  merged_path.transform_values! { |value| value.uniq }
+
+  return false if merged_path == (config.dig('path') || {})
+
+  STDERR.puts "#{"omni:".light_cyan} #{"#{OmniEnv::OMNI_SUBCOMMAND}:".light_yellow} The current repository is declaring paths for omni commands."
+  STDERR.puts "#{"omni:".light_cyan} #{"#{OmniEnv::OMNI_SUBCOMMAND}:".light_yellow} The following paths are going to be set in your configuration:"
+  STDERR.puts "  #{"path:".green}"
+  YAML.dump(merged_path).each_line do |line|
+    line = line.chomp
+    next if line == "---"
+    STDERR.puts "    #{line.green}"
+  end
+  if config.dig('path', 'append') || config.dig('path', 'prepend')
+    STDERR.puts "#{"omni:".light_cyan} #{"#{OmniEnv::OMNI_SUBCOMMAND}:".light_yellow} Previous configuration contained:"
+    STDERR.puts "  #{"path:".red}"
+    YAML.dump(config.dig('path')).each_line do |line|
+      line = line.chomp
+      next if line == "---"
+      STDERR.puts "    #{line.red}"
+    end
+  end
+
+  proceed = proceed || begin
+    UserInterraction.confirm?("Do you want to continue?")
+  rescue UserInterraction::StoppedByUserError, UserInterraction::NoMatchError
+    false
+  end
+
+  if proceed
+    STDERR.puts "#{"omni:".light_cyan} #{"#{OmniEnv::OMNI_SUBCOMMAND}:".light_yellow} Updated path user configuration."
+    config['path'] = merged_path
+    true
+  else
+    STDERR.puts "#{"omni:".light_cyan} #{"#{OmniEnv::OMNI_SUBCOMMAND}:".light_yellow} Skipped updating path user configuration."
+    false
+  end
+end
+
+def update_suggested_user_config(config, proceed: false)
+  current_config = Config.suggested_from_repo.keys.map do |key|
+    value = config.dig(key)
+    next if value.nil?
+    value = value.respond_to?(:deep_dup) ? value.deep_dup : value.dup
+    [key, value]
+  end.compact.to_h
+
+  merged_config = recursive_merge_hashes(current_config, Config.suggested_from_repo)
+
+  return false if merged_config == current_config
+
+  STDERR.puts "#{"omni:".light_cyan} #{"#{OmniEnv::OMNI_SUBCOMMAND}:".light_yellow} The current repository is suggesting configuration changes."
+  STDERR.puts "#{"omni:".light_cyan} #{"#{OmniEnv::OMNI_SUBCOMMAND}:".light_yellow} The following is going to be set in your configuration:"
+  YAML.dump(merged_config).each_line do |line|
+    line = line.chomp
+    next if line == "---"
+    STDERR.puts "  #{line.green}"
+  end
+  if current_config.any?
+    STDERR.puts "#{"omni:".light_cyan} #{"#{OmniEnv::OMNI_SUBCOMMAND}:".light_yellow} Previous configuration was:"
+    YAML.dump(current_config).each_line do |line|
+      line = line.chomp
+      next if line == "---"
+      STDERR.puts "  #{line.red}"
+    end
+  end
+
+  proceed = proceed || begin
+    UserInterraction.confirm?("Do you want to continue?")
+  rescue UserInterraction::StoppedByUserError, UserInterraction::NoMatchError
+    false
+  end
+
+  if proceed
+    STDERR.puts "#{"omni:".light_cyan} #{"#{OmniEnv::OMNI_SUBCOMMAND}:".light_yellow} Updated path user configuration."
+    merged_config.each { |key, value| config[key] = value }
+    true
+  else
+    STDERR.puts "#{"omni:".light_cyan} #{"#{OmniEnv::OMNI_SUBCOMMAND}:".light_yellow} Skipped updating path user configuration."
+    false
+  end
+end
+
 def update_user_config(proceed: false)
   return if OmniEnv::OMNI_SUBCOMMAND == 'down'
 
   Config.user_config_file(:readwrite) do |config|
-    merged_path = {}
-    [['append', :push], ['prepend', :unshift]].each do |key, func|
-      merged_path[key] = config.dig('path', key).dup || []
-      (Config.path_from_repo[key] || []).each do |path|
-        merged_path[key].send(func, path) unless merged_path[key].include?(path)
-      end
-    end
-    merged_path.select! { |_, value| !value.empty? }
-    merged_path.transform_values! { |value| value.uniq }
+    path_updated = update_path_user_config(config, proceed: proceed) if Config.path_from_repo.any?
+    suggested_updated = update_suggested_user_config(config, proceed: proceed) if Config.suggested_from_repo.any?
 
-    break if merged_path == (config.dig('path') || {})
-
-    STDERR.puts "#{"omni:".light_cyan} #{"#{OmniEnv::OMNI_SUBCOMMAND}:".light_yellow} The current repository is declaring paths for omni commands."
-    STDERR.puts "#{"omni:".light_cyan} #{"#{OmniEnv::OMNI_SUBCOMMAND}:".light_yellow} The following paths are going to be set in your configuration:"
-    STDERR.puts "  #{"path:".green}"
-    YAML.dump(merged_path).each_line do |line|
-      line = line.chomp
-      next if line == "---"
-      STDERR.puts "    #{line.green}"
-    end
-    if config.dig('path', 'append') || config.dig('path', 'prepend')
-      STDERR.puts "#{"omni:".light_cyan} #{"#{OmniEnv::OMNI_SUBCOMMAND}:".light_yellow} Previous configuration contained:"
-      STDERR.puts "  #{"path:".red}"
-      YAML.dump(config.dig('path')).each_line do |line|
-        line = line.chomp
-        next if line == "---"
-        STDERR.puts "    #{line.red}"
-      end
-    end
-
-    proceed = proceed || begin
-      UserInterraction.confirm?("Do you want to continue?")
-    rescue UserInterraction::StoppedByUserError, UserInterraction::NoMatchError
-      false
-    end
-
-    if proceed
-      STDERR.puts "#{"omni:".light_cyan} #{"#{OmniEnv::OMNI_SUBCOMMAND}:".light_yellow} Updated user configuration."
-      config['path'] = merged_path
+    # Only update the configuration file if something changed
+    if path_updated || suggested_updated
       config
     else
-      STDERR.puts "#{"omni:".light_cyan} #{"#{OmniEnv::OMNI_SUBCOMMAND}:".light_yellow} Skipped updating user configuration."
       nil
     end
   end
@@ -133,7 +189,8 @@ end
 
 
 should_handle_up = Config.respond_to?(:up) && Config.up
-should_update_user_config = [:yes, :ask].include?(options[:update_user_config]) && Config.path_from_repo.any?
+should_update_user_config = [:yes, :ask].include?(options[:update_user_config]) && (
+  Config.path_from_repo.any? || Config.suggested_from_repo.any?)
 
 if should_handle_up || should_update_user_config
   if should_handle_up
