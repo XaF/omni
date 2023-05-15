@@ -25,7 +25,7 @@ class OmniPathWithAliases
     @each ||= begin
       # Prepare all the data we initially need to merge commands with their aliases
       paths = Set.new
-      realpaths = OmniPath.map do |command|
+      realpaths = OmniPath.map.each_with_object({}) do |command, hash|
         paths.add(command.path)
 
         realpath = begin
@@ -34,13 +34,8 @@ class OmniPathWithAliases
           command.path
         end
 
-        [realpath, command]
-      end
-
-      # Merge realpaths into a map of realpath => [commands...]
-      realpaths = realpaths.each_with_object({}) do |(path, command), hash|
-        hash[path] ||= []
-        hash[path] << command
+        hash[realpath] ||= []
+        hash[realpath] << command
       end
 
       # Now convert that into commands
