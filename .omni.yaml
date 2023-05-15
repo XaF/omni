@@ -2,3 +2,9 @@
 up:
   - ruby: 3.2.2
   - bundler
+suggest_config:
+  path_repo_updates:
+    per_repo_config:
+      github.com:XaF/omni:
+        ref_type: tag
+        ref_match: ^v[0-9]+\.[0-9]+\.[0-9]+(-rc[0-9]+)?$
