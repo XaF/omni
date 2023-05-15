@@ -1,4 +1,5 @@
 require 'open3'
+require 'optparse'
 require 'shellwords'
 require 'timeout'
 
@@ -304,6 +305,7 @@ class TTYProgressBar
   end
 end
 
+
 module MonkeyPatch
   module Array
     def deep_dup
@@ -332,3 +334,40 @@ end
 
 Hash.include(MonkeyPatch::Hash)
 Array.include(MonkeyPatch::Array)
+
+
+def SubcommandOptions(options = nil, &block)
+  options ||= {}
+  parser = OptionParser.new do |opts|
+    opts.banner = "Usage: omni #{OmniEnv::OMNI_SUBCOMMAND} [options]"
+
+    yield(opts, options)
+
+    opts.on(
+      "-h", "--help",
+      "Prints this help"
+    ) do
+      `omni help #{OmniEnv::OMNI_SUBCOMMAND}`
+      exit
+    end
+
+    opts.on(
+      "--complete",
+    ) do
+      all_opts = []
+      all_opts.push(*opts.top.short.keys.map { |k| "-#{k}" })
+      all_opts.push(*opts.top.long.keys.map { |k| "--#{k}" })
+      all_opts.delete('--complete')
+      all_opts.sort.each { |o| puts o }
+      exit
+    end
+  end
+
+  begin
+    parser.parse!
+  rescue OptionParser::InvalidOption, OptionParser::MissingArgument, OptionParser::InvalidArgument => e
+    error(e.message)
+  end
+
+  options
+end

@@ -12,8 +12,6 @@
 # opt:--update-user-config:if it exists \e[90m(default: no)\e[0m
 # help: Sets up or tear down a repository depending on its \e[3mup\e[0m configuration
 
-require 'optparse'
-
 require_relative '../lib/colorize'
 require_relative '../lib/config'
 require_relative '../lib/up/bundler_operation'
@@ -25,10 +23,7 @@ require_relative '../lib/up/operation'
 require_relative '../lib/utils'
 
 
-options = {:update_user_config => :no}
-parser = OptionParser.new do |opts|
-  opts.banner = "Usage: omni #{OmniEnv::OMNI_SUBCOMMAND} [options]"
-
+options = SubcommandOptions({:update_user_config => :no}) do |opts, options|
   opts.on(
     "--update-user-config [yes/ask/no]",
     "--handle-path [yes/ask/no]",
@@ -37,30 +32,6 @@ parser = OptionParser.new do |opts|
   ) do |update_user_config|
     options[:update_user_config] = update_user_config || :ask
   end
-
-  opts.on(
-    "-h", "--help",
-    "Prints this help"
-  ) do
-    `omni help #{OmniEnv::OMNI_SUBCOMMAND}`
-    exit
-  end
-
-  opts.on(
-    "--complete",
-  ) do
-    puts "--handle-path"
-    puts "--help"
-    puts "--update-user-config"
-    puts "-h"
-    exit
-  end
-end
-
-begin
-  parser.parse!
-rescue OptionParser::InvalidOption, OptionParser::MissingArgument, OptionParser::InvalidArgument => e
-  error(e.message)
 end
 
 error('too many arguments') if ARGV.size > 0

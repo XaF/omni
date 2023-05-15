@@ -12,42 +12,15 @@
 # help: using \e[3momni\e[0m, or if you changed your mind on the repo path format
 # help: you wish to use.
 
-require 'optparse'
-
 require_relative '../lib/colorize'
 require_relative '../lib/omniorg'
 require_relative '../lib/utils'
 
 
-options = {:yes => false}
-parser = OptionParser.new do |opts|
-  opts.banner = "Usage: omni #{OmniEnv::OMNI_SUBCOMMAND} [options]"
-
+options = SubcommandOptions({:yes => false}) do |opts, options|
   opts.on("-y", "--yes", "Do not ask for confirmation before organizing repositories") do |yes|
     options[:yes] = yes
   end
-
-  opts.on(
-    "-h", "--help",
-    "Prints this help"
-  ) do
-    `omni help #{OmniEnv::OMNI_SUBCOMMAND}`
-    exit
-  end
-
-  opts.on(
-    "--complete",
-  ) do
-    puts "--yes"
-    puts "-y"
-    exit
-  end
-end
-
-begin
-  parser.parse!
-rescue OptionParser::InvalidOption, OptionParser::MissingArgument, OptionParser::InvalidArgument => e
-  error(e.message)
 end
 
 error('too many argument') if ARGV[0]
