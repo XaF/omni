@@ -562,7 +562,7 @@ function setup_shell_integration() {
 }
 
 SUPPORTED_SHELLS=("bash" "zsh")
-# Setup firt the integration for the current shell
+# Setup first the integration for the current shell
 for shell in "${SUPPORTED_SHELLS[@]}"; do
 	[[ "$OMNI_INSTALL_CURRENT_SHELL" == "$shell" ]] && setup_shell_integration "$shell"
 done
@@ -570,3 +570,20 @@ done
 for shell in "${SUPPORTED_SHELLS[@]}"; do
 	[[ "$OMNI_INSTALL_CURRENT_SHELL" == "$shell" ]] || setup_shell_integration "$shell"
 done
+
+function call_omni_up() {
+  print_pending "Running 'omni up' from the omni directory"
+  if (cd "$SCRIPT_DIR" && bin/omni up --update-user-config); then
+    print_ok "Ran 'omni up' from the omni directory"
+  else
+    print_failed "'omni up' failed"
+    exit 1
+  fi
+}
+
+# Finish setting up omni by using omni
+call_omni_up
+
+# All set-up !
+print_ok "All done! Omni is now installed 🎉"
+print_action "You might need to reload your shell or use 'source ~/.${OMNI_INSTALL_CURRENT_SHELL}rc' to start using omni"
