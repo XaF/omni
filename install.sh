@@ -26,7 +26,8 @@ function print_msg() { printf >&2 "\033[96momni:\033[0m \033[93minstall:\033[0m 
 function print_ok() { print_msg "\033[92m[OK]\033[0m      $@"; }
 function print_failed() { print_msg "\033[91m[FAILED]\033[0m  $@"; }
 function print_pending() { print_msg "\033[90m[--]\033[0m      $@"; }
-function print_query() { printf >&2 "$(print_msg "\033[90m[??]\033[0m      $*" 2>&1) "; }
+function print_query_nl() { print_msg "\033[90m[??]\033[0m      $@"; }
+function print_query() { printf >&2 "$(print_query_nl "$*" 2>&1) "; }
 function print_action() { print_msg "\033[90m[!!]\033[0m      $@"; }
 function print_issue() { print_msg "\033[93m[~~]\033[0m      $@"; }
 
@@ -185,6 +186,10 @@ function query_omni_git() {
 		default_git_dir="${GOPATH}/src"
 	fi
 
+	print_query_nl "Omni clones and looks for git repositories in a git base directory. For "
+	print_query_nl "that to work, it needs to know where your git repositories are located."
+	print_query_nl "It will also use this directory to clone itself during this installation."
+	print_query_nl "Some people call that their workspace, worktree, or git base directory."
 	print_query "What is your git base directory? \033[90m(default: ${default_git_dir})\033[0m "
 	read git_base_dir
 	git_base_dir="${git_base_dir:-${default_git_dir}}"
@@ -199,16 +204,16 @@ function query_repo_path_format() {
 			exit 1
 		fi
 
-		print_query "Which repository path format do you wish to use?"
-		echo >&2 # Forces a line return
+		print_query_nl "Omni will clone repositories in a standardized path format."
+		print_query_nl "Which repository path format do you wish to use?"
+		echo -e >&2 "\033[90m  %{host}	registry (e.g. github.com)\033[0m"
+		echo -e >&2 "\033[90m  %{org}	 repository owner (e.g. XaF)\033[0m"
+		echo -e >&2 "\033[90m  %{repo}	repository name (e.g. omni)\033[0m"
 
 		local PS3="Format index: "
 		select REPO_PATH_FORMAT in "%{host}/%{org}/%{repo}" "%{org}/%{repo}" "%{repo}" "other (custom)"; do
 			if [[ "$REPO_PATH_FORMAT" == "other (custom)" ]]; then
 				print_msg "Enter the format to use for repositories"
-				echo -e >&2 "\033[90m  %{host}	registry (e.g. github.com)\033[0m"
-				echo -e >&2 "\033[90m  %{org}	 repository owner (e.g. XaF)\033[0m"
-				echo -e >&2 "\033[90m  %{repo}	repository name (e.g. omni)\033[0m"
 				echo -en >&2 "Format: "
 				read REPO_PATH_FORMAT
 				break
