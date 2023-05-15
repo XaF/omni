@@ -52,7 +52,7 @@ locations.each do |location|
   end if Config.dig('clone', 'auto_up').nil? || Config.dig('clone', 'auto_up')
 
   # Request omni to change directory to the newly-cloned repository
-  omni_cmd(['cd', full_path])
+  omni_cmd('cd', full_path)
 
   exit 0
 end

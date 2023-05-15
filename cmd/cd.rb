@@ -179,7 +179,7 @@ rescue UserInterraction::NoMatchError
 end
 
 if dir
-  omni_cmd(['cd', dir])
+  omni_cmd('cd', dir)
   exit 0
 end
 
