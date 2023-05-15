@@ -104,7 +104,7 @@ def run_omni_subcommand(argv)
   # instead; if the command is --help, we also want to run
   # the help command
   argv = ['help'] if argv.length == 0
-  argv[0] = 'help' if argv[0] == '--help'
+  argv[0] = 'help' if ['--help', '-h'].include?(argv[0])
 
   # Try to find the requested command
   omniCmd = OmniPath.find { |omniCmd| omniCmd.serves?(argv) }
