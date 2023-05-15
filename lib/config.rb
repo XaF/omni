@@ -352,7 +352,7 @@ class Config
 
       # Load the current configuration
       config = begin
-        YAML::load(file)
+        YAML::load(file) || {}
       rescue Psych::SyntaxError
         {}
       end
