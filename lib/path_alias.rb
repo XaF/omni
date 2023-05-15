@@ -37,19 +37,27 @@ class OmniPathWithAliases
         [realpath, command]
       end
 
-      # Find all the aliases for each command
-      aliases = {}
-      realpaths.
-        select { |path, command| path != command.path && paths.include?(path) }.
-        each do |path, command|
-          aliases[path] ||= []
-          aliases[path] << command
-        end
+      # Merge realpaths into a map of realpath => [commands...]
+      realpaths = realpaths.each_with_object({}) do |(path, command), hash|
+        hash[path] ||= []
+        hash[path] << command
+      end
 
+      # Now convert that into commands
       commands = OmniCommandCollection.new
-      realpaths.each do |path, command|
-        next if aliases[path]&.include?(command)
-        commands << OmniCommandWithAliases.new(command, aliases[path])
+      realpaths.each do |path, aliases|
+        # aliases.sort_by! do |aliascmd|
+          # path = aliascmd.path.dup
+          # resolved_path = File.realpath(path)
+          # num_symlinks = 0
+          # while path != resolved_path
+            # num_symlinks += 1
+            # path = File.dirname(path)
+            # resolved_path = File.realpath(path)
+          # end
+          # num_symlinks
+        # end
+        commands << OmniCommandWithAliases.new(aliases.first, aliases[1..-1])
       end
 
       commands.sort!
