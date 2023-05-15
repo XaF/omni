@@ -86,7 +86,7 @@ class OmniEnv
         break path.to_s if path.exist?
       end
 
-      return go_git if File.writeable?(first_existing_path)
+      return go_git if File.writable?(first_existing_path)
     end
 
     # Raise an error if we cannot resolve an OMNI_GIT repository
