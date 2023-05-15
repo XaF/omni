@@ -26,7 +26,7 @@ require_relative '../lib/up/operation'
 require_relative '../lib/utils'
 
 
-options = {:handle_path => :no}
+options = {:update_user_config => :no}
 parser = OptionParser.new do |opts|
   opts.banner = "Usage: omni #{OmniEnv::OMNI_SUBCOMMAND} [options]"
 
@@ -35,8 +35,8 @@ parser = OptionParser.new do |opts|
     "--handle-path [yes/ask/no]",
     [:yes, :ask, :no],
     "Whether we should import/remove paths found in the repository if any (yes/ask/no)"
-  ) do |handle_path|
-    options[:handle_path] = handle_path || :ask
+  ) do |update_user_config|
+    options[:update_user_config] = update_user_config || :ask
   end
 
   opts.on(
@@ -68,7 +68,7 @@ error('too many arguments') if ARGV.size > 0
 error("can only be run from a git repository") unless OmniEnv.in_git_repo?
 
 
-def handle_path(proceed: false)
+def update_user_config(proceed: false)
   return if OmniEnv::OMNI_SUBCOMMAND == 'down'
 
   Config.user_config_file(:readwrite) do |config|
@@ -163,15 +163,15 @@ end
 
 
 should_handle_up = Config.respond_to?(:up) && Config.up
-should_handle_path = [:yes, :ask].include?(options[:handle_path]) && Config.path_from_repo.any?
+should_update_user_config = [:yes, :ask].include?(options[:update_user_config]) && Config.path_from_repo.any?
 
-if should_handle_up || should_handle_path
+if should_handle_up || should_update_user_config
   if should_handle_up
     error("invalid #{'up'.yellow} configuration, it should be a list") unless Config.up.is_a?(Array)
     handle_up
   end
 
-  handle_path(proceed: options[:handle_path] == :yes) if should_handle_path
+  update_user_config(proceed: options[:update_user_config] == :yes) if should_update_user_config
 else
   STDERR.puts "#{"omni:".light_cyan} #{"#{OmniEnv::OMNI_SUBCOMMAND}:".light_yellow} No #{'up'.italic} configuration found, nothing to do."
 end
