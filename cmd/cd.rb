@@ -4,15 +4,15 @@
 # autocompletion: true
 # config: cd
 # opt:repo: The name of the repo to change directory to; this
-# opt:repo: can be in the format <org>>/<repo>, or just <repo>,
+# opt:repo: can be in the format <org>/<repo>, or just <repo>,
 # opt:repo: in which case the repo will be searched for in all
-# opt:repo: the organizations, trying to use \e[3mOMNI_ORG\e[0m if it is
+# opt:repo: the organizations, trying to use \033[3mOMNI_ORG\033[0m if it is
 # opt:repo: set, and then trying all the other organizations
 # opt:repo: alphabetically.
 # help: Change directory to the git directory of the specified repository
 # help:
 # help: If no repository is specified, change to the git directory of the
-# help: main org as specified by \e[3mOMNI_ORG\e[0m, if specified, or errors out if
+# help: main org as specified by \033[3mOMNI_ORG\033[0m, if specified, or errors out if
 # help: not specified.
 
 require 'pathname'

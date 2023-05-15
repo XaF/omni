@@ -7,9 +7,9 @@
 # help:
 # help: This will offer to organize your git repositories, moving them from
 # help: their current path to the path they should be at if they had been
-# help: cloned using \e[3momni clone\e[0m. This is useful if you have a bunch of
+# help: cloned using \033[3momni clone\033[0m. This is useful if you have a bunch of
 # help: repositories that you have cloned manually, and you want to start
-# help: using \e[3momni\e[0m, or if you changed your mind on the repo path format
+# help: using \033[3momni\033[0m, or if you changed your mind on the repo path format
 # help: you wish to use.
 
 require_relative '../lib/colorize'

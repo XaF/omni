@@ -22,13 +22,13 @@ P@@@~ 7B@@@P~       !@@@5
 EOF
 }
 
-function print_msg() { printf >&2 "\e[96momni:\e[0m \e[93minstall:\e[0m $@\n"; }
-function print_ok() { print_msg "\e[92m[OK]\e[0m      $@"; }
-function print_failed() { print_msg "\e[91m[FAILED]\e[0m  $@"; }
-function print_pending() { print_msg "\e[90m[--]\e[0m      $@"; }
-function print_query() { printf >&2 "$(print_msg "\e[90m[??]\e[0m      $*" 2>&1) "; }
-function print_action() { print_msg "\e[90m[!!]\e[0m      $@"; }
-function print_issue() { print_msg "\e[93m[~~]\e[0m      $@"; }
+function print_msg() { printf >&2 "\033[96momni:\033[0m \033[93minstall:\033[0m $@\n"; }
+function print_ok() { print_msg "\033[92m[OK]\033[0m      $@"; }
+function print_failed() { print_msg "\033[91m[FAILED]\033[0m  $@"; }
+function print_pending() { print_msg "\033[90m[--]\033[0m      $@"; }
+function print_query() { printf >&2 "$(print_msg "\033[90m[??]\033[0m      $*" 2>&1) "; }
+function print_action() { print_msg "\033[90m[!!]\033[0m      $@"; }
+function print_issue() { print_msg "\033[93m[~~]\033[0m      $@"; }
 
 # Usage function
 function usage() {
@@ -185,7 +185,7 @@ function query_omni_git() {
 		default_git_dir="${GOPATH}/src"
 	fi
 
-	print_query "What is your git base directory? \e[90m(default: ${default_git_dir})\e[0m "
+	print_query "What is your git base directory? \033[90m(default: ${default_git_dir})\033[0m "
 	read git_base_dir
 	git_base_dir="${git_base_dir:-${default_git_dir}}"
 	git_base_dir="$(eval "echo $git_base_dir")"
@@ -206,9 +206,9 @@ function query_repo_path_format() {
 		select REPO_PATH_FORMAT in "%{host}/%{org}/%{repo}" "%{org}/%{repo}" "%{repo}" "other (custom)"; do
 			if [[ "$REPO_PATH_FORMAT" == "other (custom)" ]]; then
 				print_msg "Enter the format to use for repositories"
-				echo -e >&2 "\e[90m  %{host}	registry (e.g. github.com)\e[0m"
-				echo -e >&2 "\e[90m  %{org}	 repository owner (e.g. XaF)\e[0m"
-				echo -e >&2 "\e[90m  %{repo}	repository name (e.g. omni)\e[0m"
+				echo -e >&2 "\033[90m  %{host}	registry (e.g. github.com)\033[0m"
+				echo -e >&2 "\033[90m  %{org}	 repository owner (e.g. XaF)\033[0m"
+				echo -e >&2 "\033[90m  %{repo}	repository name (e.g. omni)\033[0m"
 				echo -en >&2 "Format: "
 				read REPO_PATH_FORMAT
 				break
@@ -269,7 +269,7 @@ function git_clone() {
 	# Then we can clone the repository
 	local cloned=false
 	for repo_location in "${repo_locations[@]}"; do
-	  echo -e >&2 "\e[90m$ git clone \"${repo_location}\" \"${clone_location}\" --depth 1\e[0m"
+	  echo -e >&2 "\033[90m$ git clone \"${repo_location}\" \"${clone_location}\" --depth 1\033[0m"
 	  git clone "${repo_location}" "${clone_location}" --depth 1
 	  if [ $? -ne 0 ]; then
 		  print_failed "clone omni repository from ${repo_location} in $clone_location"
@@ -335,12 +335,12 @@ function install_dependencies_packages() {
 
 	if command -v brew >/dev/null; then
 		print_ok "brew found"
-		echo -e >&2 "\e[90m$ brew install ${missing[@]}\e[0m"
+		echo -e >&2 "\033[90m$ brew install ${missing[@]}\033[0m"
 		brew install "${missing[@]}" || exit 1
 	elif command -v apt-get >/dev/null; then
 		print_ok "apt-get found"
 
-		echo -e >&2 "\e[33m[sudo]\e[0m \e[90m$ apt-get update\e[0m"
+		echo -e >&2 "\033[33m[sudo]\033[0m \033[90m$ apt-get update\033[0m"
 		sudo DEBIAN_FRONTEND=noninteractive apt-get update || exit 1
 
 		local rbenv_build=false
@@ -365,11 +365,11 @@ function install_dependencies_packages() {
 			apt_packages+=("uuid-runtime")
 		fi
 
-		echo -e >&2 "\e[33m[sudo]\e[0m \e[90m$ apt-get --yes --no-install-recommends install ${apt_packages[@]}\e[0m"
+		echo -e >&2 "\033[33m[sudo]\033[0m \033[90m$ apt-get --yes --no-install-recommends install ${apt_packages[@]}\033[0m"
 		sudo DEBIAN_FRONTEND=noninteractive apt-get --yes install "${apt_packages[@]}" || exit 1
 
 		if [[ "$rbenv_build" == "true" ]]; then
-			echo -e >&2 "\e[90m$ curl -fsSL https://github.com/rbenv/rbenv-installer/raw/HEAD/bin/rbenv-installer | bash\e[0m"
+			echo -e >&2 "\033[90m$ curl -fsSL https://github.com/rbenv/rbenv-installer/raw/HEAD/bin/rbenv-installer | bash\033[0m"
 			curl -fsSL https://github.com/rbenv/rbenv-installer/raw/HEAD/bin/rbenv-installer | bash || exit 1
 		fi
 	else
@@ -461,7 +461,7 @@ function install_dependencies_bundler() {
 		exit 1
 	else
 		print_pending "Installing bundler"
-		echo -e >&2 "\e[90m$ gem install bundler\e[0m"
+		echo -e >&2 "\033[90m$ gem install bundler\033[0m"
 		(cd "$SCRIPT_DIR" && gem install bundler) || exit 1
 		print_ok "Installed bundler"
 	fi
@@ -522,7 +522,7 @@ function setup_shell_integration() {
 	if [[ "$setup_shell" != "true" ]] && [[ "$INTERACTIVE" == "true" ]]; then
 		local default_show="y/N"
 		[[ "$default_value" =~ ^[yY]$ ]] && default_show="Y/n"
-		print_query "Do you want to setup the $shell integration? \e[90m[${default_show}]\e[0m "
+		print_query "Do you want to setup the $shell integration? \033[90m[${default_show}]\033[0m "
 		read setup_shell
 		[[ -z "$setup_shell" ]] && setup_shell="$default_value"
 		[[ "$setup_shell" =~ ^[yY]$ ]] && setup_shell="true"
@@ -534,7 +534,7 @@ function setup_shell_integration() {
 	fi
 
 	if [[ -z "$rc_file" ]] && [[ "$INTERACTIVE" == "true" ]]; then
-		print_query "Location of the .${shell}rc file to edit? \e[90m(default: ${HOME}/.${shell}rc)\e[0m "
+		print_query "Location of the .${shell}rc file to edit? \033[90m(default: ${HOME}/.${shell}rc)\033[0m "
 		read rc_file
 		rc_file="${rc_file:-${HOME}/.${shell}rc}"
 		rc_file="$(eval "echo $rc_file")"

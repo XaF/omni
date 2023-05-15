@@ -5,7 +5,7 @@
 # arg:repo: The repository to clone; this can be in
 # arg:repo: format <org>/<repo>, just <repo>, or the full URL.
 # arg:repo: If the case where only the repo name is specified,
-# arg:repo: \e[3mOMNI_ORG\e[0m will be used to search for the
+# arg:repo: \033[3mOMNI_ORG\033[0m will be used to search for the
 # arg:repo: repository to clone.
 # opt:options...: Any additional options to pass to git clone.
 # help: Clone the specified repository

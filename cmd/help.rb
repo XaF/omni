@@ -71,7 +71,7 @@ def format_size(str, size, return_split: false)
   str_split = str.split("\n\n")
   str_split.map! do |block|
     block.gsub("\n", ' ').
-      scan(/(?<=\s|\A)(?:(?:\e(?:\[(?:\d+)(?:;\d+)*m))*.){1,#{size}}(?=\s|\z)/).
+      scan(/(?<=\s|\A)(?:(?:(?:\033|\e)(?:\[(?:\d+)(?:;\d+)*m))*.){1,#{size}}(?=\s|\z)/).
       map(&:strip).
       join("\n")
   end
@@ -102,7 +102,7 @@ if ARGV.length > 0
   usage_prefix = if String.disable_colorization
     'Usage'
   else
-    "\e[1m\e[3mUsage\e[0m\e[1m"
+    "\033[1m\033[3mUsage\033[0m\033[1m"
   end
 
   all_params = command.arguments + command.options

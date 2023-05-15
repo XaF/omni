@@ -4,13 +4,13 @@
 # autocompletion: true
 # config: up
 # opt:--update-user-config:Whether we should handle paths found in the configuration
-# opt:--update-user-config:of the repository if any (yes/ask/no); When using \e[3mup\e[0m,
-# opt:--update-user-config:the \e[3mpath\e[0m configuration will be copied to the home
+# opt:--update-user-config:of the repository if any (yes/ask/no); When using \033[3mup\033[0m,
+# opt:--update-user-config:the \033[3mpath\033[0m configuration will be copied to the home
 # opt:--update-user-config:directory of the user to be loaded on every omni call. When
-# opt:--update-user-config:using \e[3mdown\e[0m, the \e[3mpath\e[0m configuration of the
+# opt:--update-user-config:using \033[3mdown\033[0m, the \033[3mpath\033[0m configuration of the
 # opt:--update-user-config:repository will be removed from the home directory of the user
-# opt:--update-user-config:if it exists \e[90m(default: no)\e[0m
-# help: Sets up or tear down a repository depending on its \e[3mup\e[0m configuration
+# opt:--update-user-config:if it exists \033[90m(default: no)\033[0m
+# help: Sets up or tear down a repository depending on its \033[3mup\033[0m configuration
 
 require_relative '../lib/colorize'
 require_relative '../lib/config'
