@@ -82,7 +82,7 @@ def handle_path(proceed: false)
     merged_path.select! { |_, value| !value.empty? }
     merged_path.transform_values! { |value| value.uniq }
 
-    break if merged_path == config.dig('path')
+    break if merged_path == (config.dig('path') || {})
 
     STDERR.puts "#{"omni:".light_cyan} #{"#{OmniEnv::OMNI_SUBCOMMAND}:".light_yellow} The current repository is declaring paths for omni commands."
     STDERR.puts "#{"omni:".light_cyan} #{"#{OmniEnv::OMNI_SUBCOMMAND}:".light_yellow} The following paths are going to be set in your configuration:"
