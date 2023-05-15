@@ -38,7 +38,7 @@ class CustomOperation < Operation
 
   def met?
     return false unless met_cmd
-    system("#{met_cmd} >/dev/null 2>/dev/null")
+    system("bash", "-c", met_cmd, ">/dev/null 2>&1")
   end
 
   def meet
