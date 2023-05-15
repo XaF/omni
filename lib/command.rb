@@ -209,7 +209,12 @@ class OmniCommand
         file.each_line do |line|
           # Stop reading if the line does not start with '#' or if we started
           # reading the help and the line does not start with '# help:'
-          break if line !~ /^#/ || (reading_help && line !~ /^# help:/)
+          begin
+            break if line !~ /^#/ || (reading_help && line !~ /^# help:/)
+          rescue ArgumentError
+            # Break on invalid byte sequence, the file might be binary
+            break
+          end
 
           # Set the category if the line '# category: <category>' is found
           if line =~ /^# category:/
