@@ -89,6 +89,39 @@ function omni_import_rbenv() {
 omni_import_rbenv
 unset -f omni_import_rbenv
 
+# Make sure goenv has been loaded properly, as it is used with omni up;
+# this will also allow that if the integration is properly loaded in the shell,
+# then the user will be able to use goenv right away.
+function omni_import_goenv() {
+	if ! command -v goenv >/dev/null; then
+		local goenv_paths=()
+		# command -v brew >/dev/null && goenv_paths+=("$(brew --prefix)/bin")
+		goenv_paths+=("${HOME}/.goenv/bin")
+
+		for goenv_path in "${goenv_paths[@]}"; do
+			if [[ -d "$goenv_path" ]] && [[ ! ":${PATH}" =~ ":${goenv_path}:" ]] && [[ -x "${goenv_path}/goenv" ]]; then
+				export PATH="${goenv_path}:${PATH}"
+				break
+			fi
+		done
+	fi
+
+	# Add the shims - We need to force them at the beginning of the path in case there
+	# is a homebrew version of go installed which would take preference over the shims
+	# if the homebrew path is before the shims path
+	goenv_shims="${HOME}/.goenv/shims"
+	if [[ -d "${goenv_shims}" ]] && [[ ! ":${PATH}" =~ ":${goenv_shims}:" ]]; then
+		export PATH="${goenv_shims}:${PATH}"
+	fi
+
+	# Initialize goenv if not already initialized
+	if type goenv 2>/dev/null | head -n1 | grep -q "function" || [[ -z "$GOENV_SHELL" ]]; then
+		eval "$(goenv init -)"
+	fi
+}
+omni_import_goenv
+unset -f omni_import_goenv
+
 # This function is used to run the omni command, and then operate on
 # the requested shell changes from the command (changing current
 # working directory, environment, etc.); this is why we require using

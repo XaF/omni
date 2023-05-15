@@ -43,7 +43,11 @@ end
 def omni_cmd(*cmd)
   error("unable to propagate shell changes, please setup omni's shell integration") unless OmniEnv::OMNI_CMD_FILE
 
-  cmd = Shellwords.join(*cmd)
+  if cmd.size != 1
+    cmd = Shellwords.join(*cmd)
+  else
+    cmd = cmd.first
+  end
 
   File.open(OmniEnv::OMNI_CMD_FILE, 'a') do |f|
     f.write("#{cmd}\n")

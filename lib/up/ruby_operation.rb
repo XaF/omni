@@ -10,7 +10,7 @@ class RubyOperation < Operation
     if is_installed?
       STDERR.puts "# Ruby #{ruby_version} is already installed".light_green
       set_ruby_local_version!
-      return true
+      return !had_errors
     end
 
     puts "# `-> Ruby #{ruby_version} will be installed".light_blue
@@ -37,8 +37,14 @@ class RubyOperation < Operation
       rubies = `rbenv install --list-all`.split("\n").map(&:strip)
 
       # Select only the versions that start with the prefix, and that
-      # contain only numbers and dots
-      rubies.select! { |ruby| ruby =~ /\A#{Regexp.escape(config['version'])}(\.[0-9\.]*)?\z/ }
+      # contain only numbers and dots; in case latest is specified, we
+      # only want to match versions that are only numbers and dots
+      version_regex = if config['version'] == 'latest'
+        /\A[0-9\.]+\z/
+      else
+        /\A#{Regexp.escape(config['version'])}(\.[0-9\.]*)?\z/
+      end
+      rubies.select! { |ruby| version_regex.match?(ruby) }
 
       # We have an issue if there are no matching versions
       error("No ruby version found matching #{config['version']}") if rubies.empty?
@@ -118,6 +124,9 @@ class RubyOperation < Operation
   def check_valid_operation!
     @config = { 'version' => config.to_s } if config.is_a?(String) || config.is_a?(Numeric)
     config_error("expecting hash, got #{config}") unless config.is_a?(Hash)
+
+    # In case the version is not specified, we will use the latest
+    @config['version'] ||= 'latest'
 
     check_params(required_params: ['version'])
   end

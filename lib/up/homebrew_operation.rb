@@ -9,15 +9,15 @@ require_relative 'operation'
 class HomebrewOperation < Operation
   HOMEBREW_OPERATION_CACHE_KEY = 'homebrew-operation'.freeze
 
-  def up
+  def up(skip_headers: false)
     return unless brew_installed?
 
     if met?
-      STDERR.puts "# Homebrew dependencies already installed".light_yellow
+      STDERR.puts "# Homebrew dependencies already installed".light_yellow unless skip_headers
       return true
     end
 
-    STDERR.puts "# Install Homebrew dependencies".light_blue
+    STDERR.puts "# Install Homebrew dependencies".light_blue unless skip_headers
 
     required_packages = []
     installed_packages = []
