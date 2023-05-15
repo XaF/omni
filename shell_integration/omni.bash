@@ -106,17 +106,19 @@ function omni_import_goenv() {
 		done
 	fi
 
-	# Add the shims - We need to force them at the beginning of the path in case there
-	# is a homebrew version of go installed which would take preference over the shims
-	# if the homebrew path is before the shims path
-	goenv_shims="${HOME}/.goenv/shims"
-	if [[ -d "${goenv_shims}" ]] && [[ ! ":${PATH}" =~ ":${goenv_shims}:" ]]; then
-		export PATH="${goenv_shims}:${PATH}"
-	fi
+	if command -v goenv >/dev/null; then
+		# Add the shims - We need to force them at the beginning of the path in case there
+		# is a homebrew version of go installed which would take preference over the shims
+		# if the homebrew path is before the shims path
+		goenv_shims="${HOME}/.goenv/shims"
+		if [[ -d "${goenv_shims}" ]] && [[ ! ":${PATH}" =~ ":${goenv_shims}:" ]]; then
+			export PATH="${goenv_shims}:${PATH}"
+		fi
 
-	# Initialize goenv if not already initialized
-	if type goenv 2>/dev/null | head -n1 | grep -q "function" || [[ -z "$GOENV_SHELL" ]]; then
-		eval "$(goenv init -)"
+		# Initialize goenv if not already initialized
+		if type goenv 2>/dev/null | head -n1 | grep -q "function" || [[ -z "$GOENV_SHELL" ]]; then
+			eval "$(goenv init -)"
+		fi
 	fi
 }
 omni_import_goenv
