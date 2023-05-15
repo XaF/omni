@@ -120,11 +120,11 @@ def update_suggested_user_config(config, proceed: false)
   end
 
   if proceed
-    STDERR.puts "#{"omni:".light_cyan} #{"#{OmniEnv::OMNI_SUBCOMMAND}:".light_yellow} Updated path user configuration."
+    STDERR.puts "#{"omni:".light_cyan} #{"#{OmniEnv::OMNI_SUBCOMMAND}:".light_yellow} Updated user configuration."
     merged_config.each { |key, value| config[key] = value }
     true
   else
-    STDERR.puts "#{"omni:".light_cyan} #{"#{OmniEnv::OMNI_SUBCOMMAND}:".light_yellow} Skipped updating path user configuration."
+    STDERR.puts "#{"omni:".light_cyan} #{"#{OmniEnv::OMNI_SUBCOMMAND}:".light_yellow} Skipped updating user configuration."
     false
   end
 end
