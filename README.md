@@ -24,7 +24,7 @@ This is a work in progress...
 
 Installing omni is as simple as running:
 
-```
+```sh
 bash -c "$(curl https://raw.githubusercontent.com/XaF/omni/main/install.sh)"
 ```
 
@@ -40,7 +40,7 @@ In order to work as expected, omni will also require its shell integration, whic
 
 Running the installation script should have created a configuration file in `$HOME/.config/omni.yaml`. Given that the `main` branch of omni is to be considered unstable, we recommend that you set the following configuration:
 
-```
+```yaml
 path_repo_updates:
   per_repo_config:
     github.com:XaF/omni:
@@ -57,14 +57,14 @@ For this to work, you will also need to make sure that you are currently checked
 The `omni-example` repository provide a configuration example for using omni.
 You can run the following command to test omni cloning capabilities, and the operations done upon cloning:
 
-```
+```sh
 omni clone https://github.com/omnicli/omni-example.git
 ```
 
 The `omni-example-go` repository provides a configuration example for a repository providing omni commands in Go.
 You can run the following command to test omni with that repository:
 
-```
+```sh
 omni clone https://github.com/omnicli/omni-example-go.git
 ```
 

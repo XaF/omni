@@ -134,6 +134,10 @@ class Config
         split_on_dash: true,
         split_on_slash: true,
       },
+      org: {
+        append: [],
+        prepend: [],
+      },
       path: {
         append: [],
         prepend: [],
