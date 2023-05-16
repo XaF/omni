@@ -58,9 +58,15 @@ The `omni-example` repository provide a configuration example for using omni.
 You can run the following command to test omni cloning capabilities, and the operations done upon cloning:
 
 ```
-omni clone git@github.com:XaF/omni-example
+omni clone https://github.com/omnicli/omni-example.git
 ```
 
+The `omni-example-go` repository provides a configuration example for a repository providing omni commands in Go.
+You can run the following command to test omni with that repository:
+
+```
+omni clone https://github.com/omnicli/omni-example-go.git
+```
 
 ## Configuration
 
