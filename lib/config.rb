@@ -6,55 +6,234 @@ require_relative 'utils'
 require_relative 'config_command'
 
 
+class ConfigUtils
+  STRATEGY_REGEX = /^(?<key>.*)__(?<strategy>toappend|toprepend|toreplace|ifnone)$/
+
+  def self.value_is_a?(value, klass)
+    return if value.nil?
+    value.is_a?(klass) || (value.is_a?(ConfigValue) && value.value.is_a?(klass))
+  end
+
+  def self.key_strategy(key, keypath, strategy)
+    return [key, strategy] if strategy == :ignore_inherit
+
+    # suggest_config is there so that we can suggest config edits to the user,
+    # we thus do not want to touch or edit any keys under this, as it needs to
+    # be able to be passed to the smart_merge function
+    return [key, :ignore_inherit] if keypath.empty? && key == 'suggest_config'
+
+    # path is a special key that is used to append or prepend to the path,
+    # we do not want to merge this key, but rather append or prepend to it
+    return [key, key.to_sym] if keypath == ['path'] && ['append', 'prepend'].include?(key)
+
+    # if the key does not contain any strategy specification, we just use the
+    # default strategy
+    return [key, :default] unless key =~ STRATEGY_REGEX
+
+    # If the key contains a strategy specification, we use that strategy
+    key, strategy = $~[:key], $~[:strategy]
+    strategy = strategy == 'ifnone' ? :keep : strategy.gsub(/^to/, '').to_sym
+
+    [key, strategy]
+  end
+
+  def self.smart_merge(current, added, strategy: :default, keypath: nil, transform: method(:transform_unwrap), key_strategy: nil)
+    keypath ||= []
+
+    if value_is_a?(current, Hash) && value_is_a?(added, Hash)
+      merged = current.dup
+      added.each do |key, value|
+        key_strategy = nil
+        key_strategy ||= key_strategy.call(key, keypath, strategy) if key_strategy.respond_to?(:call)
+        key_strategy ||= self.key_strategy(key, keypath, strategy)
+        key, local_strategy = key_strategy
+
+        oldval = merged[key]
+        newval = value
+
+        merged[key] = smart_merge(
+          oldval, newval,
+          strategy: local_strategy,
+          keypath: keypath + [key],
+          transform: transform,
+        )
+      end
+      merged
+    elsif !current&.nil? && !current&.empty? && strategy == :keep
+      current
+    elsif value_is_a?(current, Array) && value_is_a?(added, Array)
+      start_index = case strategy
+      when :prepend
+        0
+      when :append
+        current.size
+      else
+        0
+      end
+
+      new_added = added.each_with_index.map do |value, index|
+        smart_merge(
+          nil, value,
+          strategy: strategy == :ignore_inherit ? strategy : :default,
+          keypath: keypath + [start_index + index],
+          transform: transform,
+        )
+      end
+
+      case strategy
+      when :prepend
+        new_added + current
+      when :append
+        current + new_added
+      else
+        new_added
+      end.uniq
+    elsif value_is_a?(added, Hash)
+      added.map do |key, value|
+        key_strategy = nil
+        key_strategy ||= key_strategy.call(key, keypath, strategy) if key_strategy.respond_to?(:call)
+        key_strategy ||= self.key_strategy(key, keypath, strategy)
+        key, local_strategy = key_strategy
+
+        new_value = smart_merge(
+          nil, value,
+          strategy: local_strategy,
+          keypath: keypath + [key],
+          transform: transform,
+        )
+
+        [key, new_value]
+      end.to_h
+    elsif value_is_a?(added, Array)
+      new_added = []
+      added.each_with_index do |value, index|
+        new_added << smart_merge(
+          nil, value,
+          strategy: strategy == :ignore_inherit ? strategy : :default,
+          keypath: keypath + [index],
+          transform: transform,
+      )
+      end
+      new_added
+    elsif transform && transform.respond_to?(:call)
+      transform.call(added, keypath)
+    else
+      added
+    end
+  end
+
+  def self.transform_path(value, path, unwrap: true)
+    if path.size == 3 && path[0] == 'path' && ['append', 'prepend'].include?(path[1])
+      abs_path = value.value
+      abs_path = File.join(File.dirname(value.path), abs_path) unless abs_path.start_with?('/')
+      return abs_path if unwrap
+
+      value.set_value(abs_path)
+      return value
+    end
+    return ConfigUtils.transform_unwrap(value, path) if unwrap
+    value
+  end
+
+  def self.transform_unwrap(value, path)
+    value.is_a?(ConfigValue) ? value.value : value
+  end
+end
+
+
 class ConfigValue
   def self.unwrap(value)
     return value unless value.is_a?(ConfigValue)
     value.unwrap
   end
 
-  def self.wrap(value, path, labels: nil, wrap_obj: true, wrapped: false)
-    if value.is_a?(ConfigValue)
+  def self.wrap(value, path, labels: nil, wrapped: false, inheritance: false, return_found: false)
+    found = {
+      paths: [],
+      labels: [],
+    }
+
+    value, found = if value.is_a?(ConfigValue)
+      found[:paths] << value.path
+      found[:paths].uniq!
+
+      found[:labels].concat(value.labels)
+      found[:labels].uniq!
+
       value.add_labels(labels) if labels
-      value
-    elsif value.is_a?(Hash)
-      value = value.map do |key, item|
-        [key, wrap(item, path, labels: labels, wrap_obj: true)]
-      end.to_h
-      wrapped ? value : ConfigValue.new(value, path, labels: labels)
-    elsif value.is_a?(Array)
-      value = value.map do |item|
-        wrap(item, path, labels: labels, wrap_obj: true)
+
+      [value, found]
+    elsif value.is_a?(Hash) || value.is_a?(Array)
+      value = if value.is_a?(Hash)
+        value.map do |key, item|
+          new_wrapped, local_found = wrap(
+            item, path,
+            labels: labels,
+            inheritance: inheritance,
+            return_found: true,
+          )
+          found[:paths] = (found[:paths] + local_found[:paths]).uniq
+          found[:labels] = (found[:labels] + local_found[:labels]).uniq
+
+          [key, new_wrapped]
+        end.to_h
+      else
+        value.map do |item|
+          new_wrapped, local_found = wrap(
+            item, path,
+            labels: labels,
+            inheritance: inheritance,
+            return_found: true,
+          )
+          found[:paths] = (found[:paths] + local_found[:paths]).uniq
+          found[:labels] = (found[:labels] + local_found[:labels]).uniq
+
+          new_wrapped
+        end
       end
-      wrapped ? value : ConfigValue.new(value, path, labels: labels)
-    elsif !wrap_obj
-      value
+
+      unless wrapped
+        value_path = inheritance && found[:paths].any? ? found[:paths].last : path
+        value = ConfigValue.new(value, value_path, labels: labels)
+      end
+
+      [value, found]
+    elsif wrapped
+      [value, found]
     else
-      ConfigValue.new(value, path, labels: labels)
+      [ConfigValue.new(value, path, labels: labels), found]
+    end
+
+    if return_found
+      [value, found]
+    else
+      value
     end
   end
 
   attr_reader :value, :path, :labels
 
   def initialize(value, path = nil, labels: nil)
-    @value = self.class.wrap(value, path, labels: labels, wrap_obj: false, wrapped: true)
+    @value = self.class.wrap(value, path, labels: labels, wrapped: true)
     @path = path
     @labels = labels || []
   end
 
   def method_missing(method, *args, **kwargs, &block)
-    if @value.respond_to?(method)
-      @value.send(method, *args, **kwargs, &block)
-    else
-      super
-    end
+    return @value.send(method, *args, **kwargs, &block) if @value.respond_to?(method)
+    super
   end
 
   def respond_to_missing?(method, include_private = false)
     @value.respond_to?(method, include_private) || super
   end
 
+  def set_value(value)
+    @value = self.class.wrap(value, path, inheritance: true, wrapped: true)
+  end
+
   def []=(key, value)
-    @value[key] = self.class.wrap(value, path)
+    @value[key] = self.class.wrap(value, path, inheritance: true)
   end
 
   def has_label?(label)
@@ -62,24 +241,60 @@ class ConfigValue
   end
 
   def add_labels(labels)
-    @labels += labels
+    @labels.concat(labels).uniq!
+  end
+
+  def reject_label(label)
+    if has_label?(label)
+      nil
+    elsif @value.is_a?(ConfigValue)
+      reject_value = @value.reject_label(label)
+      return nil unless reject_value
+      ConfigValue.new(reject_value, path, labels: labels)
+    elsif @value.is_a?(Hash)
+      reject_value = @value.map do |key, item|
+        left = item.reject_label(label)
+        next if left.nil?
+        [key, left]
+      end.compact.to_h
+      return nil if reject_value.empty?
+      ConfigValue.new(reject_value, path, labels: labels)
+    elsif @value.is_a?(Array)
+      reject_value = @value.map do |item|
+        left = item.reject_label(label)
+        next if left.nil?
+        left
+      end.compact
+      return nil if reject_value.empty?
+      ConfigValue.new(reject_value, path, labels: labels)
+    else
+      self
+    end
   end
 
   def select_label(label)
-    if !has_label?(label)
-      nil
-    elsif @value.is_a?(ConfigValue)
+    if @value.is_a?(ConfigValue)
       select_value = @value.select_label(label)
       return nil unless select_value
       ConfigValue.new(select_value, path, labels: labels)
     elsif @value.is_a?(Hash)
-      select_value = @value.select { |_, item| item.has_label?(label) }
+      select_value = @value.map do |key, item|
+        left = item.select_label(label)
+        next if left.nil?
+        [key, left]
+      end.compact.to_h
       return nil if select_value.empty?
       ConfigValue.new(select_value, path, labels: labels)
     elsif @value.is_a?(Array)
-      select_value = @value.select { |item| item.has_label?(label) }
+      select_value = @value.map do |item|
+        left = item.select_label(label)
+        next if left.nil?
+        left
+      end.compact
       return nil if select_value.empty?
       ConfigValue.new(select_value, path, labels: labels)
+    elsif !has_label?(label)
+      nil
     else
       self
     end
@@ -108,6 +323,14 @@ class ConfigValue
       value
     end
   end
+
+  def deep_dup
+    copy = self.dup
+    copy.instance_variable_set(:@value, @value.respond_to?(:deep_dup) ? @value.deep_dup : @value.dup)
+    copy.instance_variable_set(:@labels, @labels.dup)
+    copy.instance_variable_set(:@path, @path.dup)
+    copy
+  end
 end
 
 
@@ -134,10 +357,7 @@ class Config
         split_on_dash: true,
         split_on_slash: true,
       },
-      org: {
-        append: [],
-        prepend: [],
-      },
+      org: [],
       path: {
         append: [],
         prepend: [],
@@ -197,11 +417,6 @@ class Config
     @loaded_files = []
     @config = import_values(self.class.default_config)
 
-    @path = {
-      append: [],
-      prepend: [],
-    }
-
     self.class.config_files.each do |config_file|
       import(config_file)
     end
@@ -228,21 +443,6 @@ class Config
       @config = import_values(yaml, file_path: yaml_file, labels: labels)
     end
 
-    if yaml['path'] && yaml['path'].is_a?(Hash)
-      if yaml['path']['append'] && yaml['path']['append'].is_a?(Array)
-        yaml['path']['append'].each do |path|
-          path = File.join(File.dirname(yaml_file), path) if path[0] != '/'
-          @path[:append] << ConfigValue.new(path, yaml_file, labels: labels)
-        end
-      end
-      if yaml['path']['prepend'] && yaml['path']['prepend'].is_a?(Array)
-        yaml['path']['prepend'].each do |path|
-          path = File.join(File.dirname(yaml_file), path) if path[0] != '/'
-          @path[:prepend].unshift(ConfigValue.new(path, yaml_file, labels: labels))
-        end
-      end
-    end
-
     @loaded_files << yaml_file
   rescue Psych::SyntaxError
     error("invalid configuration file: #{yaml_file.yellow}", print_only: true)
@@ -258,21 +458,21 @@ class Config
   end
 
   def path
-    stringify_keys(ConfigValue.new(@path, nil).unwrap)
+    config.dig('path')&.unwrap || {}
   end
 
   def omnipath(include_local: true)
     paths = []
 
-    config_paths = @path.deep_dup
-    unless include_local
-      config_paths[:prepend]&.reject! { |path| path.has_label?('git_repo') }
-      config_paths[:append]&.reject! { |path| path.has_label?('git_repo') }
-    end
+    config_paths = if include_local
+      @config.dig('path')
+    else
+      @config.dig('path').reject_label('git_repo')
+    end&.unwrap || {}
 
-    paths.push(*config_paths[:prepend].map(&:unwrap)) if config_paths[:prepend]&.any?
+    paths.push(*config_paths['prepend']) if config_paths['prepend']&.any?
     paths.push(*OmniEnv::OMNIPATH) if OmniEnv::OMNIPATH&.any?
-    paths.push(*config_paths[:append].map(&:unwrap)) if config_paths[:append]&.any?
+    paths.push(*config_paths['append']) if config_paths['append']&.any?
     paths.uniq!
 
     paths
@@ -281,31 +481,24 @@ class Config
   def path_from_repo
     @path_from_repo ||= begin
       return {} unless OmniEnv.in_git_repo?
-      git_repo_path = Pathname.new(OmniEnv.git_repo_root)
 
-      path = [:prepend, :append].map do |key|
-        values = @path[key].select { |path| path.has_label?('git_repo') }
-        next if values.empty?
-        [key, values.map(&:unwrap)]
-      end.compact.to_h
-
-      stringify_keys(path)
+      @config.dig('path').select_label('git_repo')&.unwrap || {}
     end
   end
 
-  def suggested_from_repo
+  def suggested_from_repo(unwrap: true)
     @suggested_from_repo ||= begin
       return {} unless OmniEnv.in_git_repo?
       return {} unless @config['suggest_config']
-      return {} unless @config['suggest_config'].has_label?('git_repo')
+      # return {} unless @config['suggest_config'].has_label?('git_repo')
 
       suggest_config = @config['suggest_config'].
-        select_label('git_repo').
-        map { |key, value| [key, value.unwrap] }.
-        to_h
-
-      stringify_keys(suggest_config)
+        select_label('git_repo')
     end
+
+    suggest_config = @suggested_from_repo.dup
+    suggest_config = suggest_config.map { |key, value| [key, value.unwrap] } if unwrap
+    stringify_keys(suggest_config.to_h)
   end
 
   def config
@@ -315,9 +508,7 @@ class Config
   end
 
   def with_src
-    config_copy = @config.dup
-    config_copy['path'] = ConfigValue.new(stringify_keys(@path), nil)
-    config_copy
+    @config.deep_dup
   end
 
   def user_config_file(operation = :readonly, &block)
@@ -382,17 +573,19 @@ class Config
 
   private
 
+  def transform_path(value, path)
+    ConfigUtils.transform_path(value, path, unwrap: false)
+  end
+
   def import_values(values, file_path: nil, config: nil, labels: nil)
-    config = @config&.dup || {} if config.nil?
+    config = @config&.dup || ConfigValue.new({}) if config.nil?
 
-    values.each do |key, value|
-      if value.is_a?(Hash) && config[key.to_s] && config[key.to_s].value.is_a?(Hash)
-        import_values(value, file_path: file_path, config: config[key.to_s], labels: labels)
-      else
-        config[key.to_s] = ConfigValue.new(value, file_path, labels: labels)
-      end
-    end
+    new_values = ConfigValue.new(values, file_path, labels: labels)
+    merged = ConfigUtils.smart_merge(
+      config, new_values,
+      transform: method(:transform_path),
+    )
 
-    config
+    merged
   end
 end

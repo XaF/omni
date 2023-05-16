@@ -52,7 +52,7 @@ def update_path_user_config(config, proceed: false)
   return false if merged_path == (config.dig('path') || {})
 
   STDERR.puts "#{"omni:".light_cyan} #{"#{OmniEnv::OMNI_SUBCOMMAND}:".light_yellow} The current repository is declaring paths for omni commands."
-  STDERR.puts "#{"omni:".light_cyan} #{"#{OmniEnv::OMNI_SUBCOMMAND}:".light_yellow} The following paths are going to be set in your configuration:"
+  STDERR.puts "#{"omni:".light_cyan} #{"#{OmniEnv::OMNI_SUBCOMMAND}:".light_yellow} The following paths are going to be set in your #{"omni".underline} configuration:"
   STDERR.puts "  #{"path:".green}"
   YAML.dump(merged_path).each_line do |line|
     line = line.chomp
@@ -86,19 +86,23 @@ def update_path_user_config(config, proceed: false)
 end
 
 def update_suggested_user_config(config, proceed: false)
-  current_config = Config.suggested_from_repo.keys.map do |key|
+  suggested_config = Config.suggested_from_repo(unwrap: false)
+  current_config = suggested_config.keys.map do |key|
+    key = $~[:key] if key =~ ConfigUtils::STRATEGY_REGEX
     value = config.dig(key)
     next if value.nil?
     value = value.respond_to?(:deep_dup) ? value.deep_dup : value.dup
     [key, value]
   end.compact.to_h
 
-  merged_config = recursive_merge_hashes(current_config, Config.suggested_from_repo)
+  merged_config = ConfigUtils.smart_merge(
+    current_config, suggested_config,
+    transform: ConfigUtils.method(:transform_path))
 
   return false if merged_config == current_config
 
   STDERR.puts "#{"omni:".light_cyan} #{"#{OmniEnv::OMNI_SUBCOMMAND}:".light_yellow} The current repository is suggesting configuration changes."
-  STDERR.puts "#{"omni:".light_cyan} #{"#{OmniEnv::OMNI_SUBCOMMAND}:".light_yellow} The following is going to be set in your configuration:"
+  STDERR.puts "#{"omni:".light_cyan} #{"#{OmniEnv::OMNI_SUBCOMMAND}:".light_yellow} The following is going to be set in your #{"omni".underline} configuration:"
   YAML.dump(merged_config).each_line do |line|
     line = line.chomp
     next if line == "---"
