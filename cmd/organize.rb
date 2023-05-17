@@ -83,7 +83,7 @@ end
 
 def list_file_system_repos(skip_confirmation: false)
   progress_bar = TTYProgressBar.new(
-    "#{"omni:".light_cyan} #{"reorg:".yellow} Searching for repositories [:bar]",
+    "#{"omni:".light_cyan} #{"organize:".yellow} Searching for repositories [:bar]",
     bar_format: :triangle,
     clear: true,
     output: STDERR,
@@ -106,15 +106,15 @@ def list_file_system_repos(skip_confirmation: false)
 
   # Exit if we did not find any potential matches
   if reorg.empty?
-    puts "#{"omni:".light_cyan} #{"reorg:".yellow} All repositories are already organized! 🎉"
+    STDERR.puts "#{"omni:".light_cyan} #{"organize:".yellow} All repositories are already organized! 🎉"
     return
   end
 
   unless skip_confirmation
     unless STDOUT.tty?
-      puts "#{"omni:".light_cyan} #{"reorg:".yellow} Found #{reorg.length.to_s.bold} repositories to organize:"
-      puts reorg
-      STDERR.puts "#{"omni:".light_cyan} #{"reorg:".yellow} use #{"--yes".light_blue} to organize repositories"
+      STDERR.puts "#{"omni:".light_cyan} #{"organize:".yellow} Found #{reorg.length.to_s.bold} repositories to organize:"
+      STDERR.puts reorg
+      STDERR.puts "#{"omni:".light_cyan} #{"organize:".yellow} use #{"--yes".light_blue} to organize repositories"
       return
     end
 
@@ -136,7 +136,7 @@ def list_file_system_repos(skip_confirmation: false)
       git_repo = need_reorg.shift
       next unless git_repo.organizable?
 
-      puts "#{"omni:".light_cyan} #{"reorg:".yellow} Moving #{git_repo}"
+      STDERR.puts "#{"omni:".light_cyan} #{"organize:".yellow} Moving #{git_repo}"
 
       git_repo.move!
       git_repo.cleanup!
@@ -146,7 +146,7 @@ def list_file_system_repos(skip_confirmation: false)
 
     if left == reorg.length
       reorg.each do |git_repo|
-        puts "#{"omni:".light_cyan} #{"reorg:".yellow} Skipping #{git_repo}"
+        STDERR.puts "#{"omni:".light_cyan} #{"organize:".yellow} Skipping #{git_repo}"
       end
 
       break
