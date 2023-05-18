@@ -60,6 +60,10 @@ class OmniOrgs
     each.first
   end
 
+  def size
+    each.size
+  end
+
   def repos(dedup: true)
     seen_paths = Set.new if dedup
     all_repos = []
@@ -188,6 +192,29 @@ class OmniRepo
     @org = org
   end
 
+  def in_org?(org_repo)
+    return false if org_repo.nil?
+
+    org_repo = org_repo.repo if org_repo.is_a?(OmniOrg)
+    org_repo = OmniRepo.new(org_repo) if org_repo.is_a?(String)
+
+    return true if org_repo == self
+    return false if uri.scheme != org_repo.uri.scheme
+    return false if uri.host != org_repo.uri.host
+    return false if uri.port != org_repo.uri.port
+    return false if uri.user != org_repo.uri.user
+    return false if uri.password != org_repo.uri.password
+    return true if org_repo.uri.path == nil
+
+    repo_split_path = uri.path.split('/', -1)
+    org_repo_split_path = org_repo.uri.path.split('/', -1)
+
+    return false if repo_split_path.size < org_repo_split_path.size
+    return false if repo_split_path[0..(org_repo_split_path.size - 1)] != org_repo_split_path
+
+    true
+  end
+
   def to_s
     remote?(force: true)
   end
@@ -311,6 +338,11 @@ class OmniOrg
 
   def to_s
     @repo.to_s
+  end
+
+  def has_repo?(repo)
+    repo = OmniRepo.new(repo) if repo.is_a?(String)
+    repo.in_org?(@repo)
   end
 
   def repos

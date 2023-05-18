@@ -20,6 +20,7 @@ require_relative '../lib/up/go_operation'
 require_relative '../lib/up/homebrew_operation'
 require_relative '../lib/up/ruby_operation'
 require_relative '../lib/up/operation'
+require_relative '../lib/omniorg'
 require_relative '../lib/utils'
 
 
@@ -37,6 +38,54 @@ end
 error('too many arguments') if ARGV.size > 0
 error("can only be run from a git repository") unless OmniEnv.in_git_repo?
 
+
+def trusted_repo?
+  # Get the repository object from the repository origin
+  repo = OmniRepo.new(OmniEnv.git_repo_origin)
+
+  # Check if the repository is in a known org
+  proceed = OmniOrgs.each.any? do |org|
+    org.respond_to?(:has_repo?) && repo.in_org?(org)
+  end
+
+  # If not in a trusted org, check if the repo was already marked as safe
+  proceed ||= Cache.get('trusted_repositories', nil)&.include?(repo.id) || false
+
+  unless proceed
+    STDERR.puts "#{"omni:".light_cyan} #{"#{OmniEnv::OMNI_SUBCOMMAND}:".light_yellow} The repository #{repo.id.light_blue} is not in your trusted repositories."
+
+    STDERR.puts "#{"omni:".light_cyan} #{"#{OmniEnv::OMNI_SUBCOMMAND}:".light_yellow} #{"Tip:".bold} if you set #{"OMNI_ORG".italic}, repositories in your organizations are automatically trusted." if OmniOrgs.size == 1
+
+    proceed = begin
+      UserInterraction.oneof?("Do you want to run #{"omni up".bold} for this repository?", default: 2) do |q|
+        q.choice(key: "a", name: "Yes, always (add to trusted repositories)", value: :always)
+        q.choice(key: "y", name: "Yes, this time (and ask me everytime)", value: :yes)
+        q.choice(key: "n", name: "No", value: :no)
+      end
+    rescue UserInterraction::StoppedByUserError
+      nil
+    end
+
+    if proceed == :always
+      Cache.exclusive('trusted_repositories') do |trusted_repositories|
+        trusted_repositories ||= []
+        trusted_repositories << repo.id
+        trusted_repositories.uniq!
+        trusted_repositories.sort!
+        trusted_repositories
+      end
+    end
+
+    proceed = [:always, :yes].include?(proceed)
+  end
+
+  unless proceed
+    STDERR.puts "#{"omni:".light_cyan} #{"#{OmniEnv::OMNI_SUBCOMMAND}:".light_yellow} Skipped running #{"omni up".bold} for this repository."
+    return false
+  end
+
+  return true
+end
 
 def update_path_user_config(config, proceed: false)
   merged_path = {}
@@ -197,6 +246,8 @@ should_update_user_config = [:yes, :ask].include?(options[:update_user_config]) 
   Config.path_from_repo.any? || Config.suggested_from_repo.any?)
 
 if should_handle_up || should_update_user_config
+  exit 0 unless trusted_repo?
+
   if should_handle_up
     error("invalid #{'up'.yellow} configuration, it should be a list") unless Config.up.is_a?(Array)
     handle_up

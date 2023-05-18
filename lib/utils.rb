@@ -183,6 +183,19 @@ class UserInterraction
     true
   end
 
+  def self.oneof?(message = "What to do?", **options, &block)
+    require 'tty-prompt'
+
+    TTY::Prompt.new.expand("#{"omni:".light_cyan} #{message.yellow}", auto_hint: true, **options) do |q|
+      yield q
+    end
+  rescue TTY::Reader::InputInterrupt
+    # Just a line return to make it look nicer, since we get here
+    # in case of interrupt, and the prompt doesn't do it
+    puts
+    raise InterruptedError
+  end
+
   def self.which_ones?(message = "Which ones?", choices, **options)
     require 'tty-prompt'
 
