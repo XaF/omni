@@ -174,10 +174,10 @@ OmniPathWithAliases.each do |command|
   # to justify the strings, we need to add the missing
   # characters to the string length, which we'll compute
   # from the string without colorization
-  cmd_str << ' ' * (ljust - command.cmds_s.join(', ').length)
+  cmd_str << ' ' * (ljust - command.cmds_s.join(', ').length) if command.help_short.length > 0
 
   help_short = format_size(command.help_short, help_short_width, return_split: true)
-  STDERR.puts "  #{cmd_str} #{help_short.first}"
+  STDERR.puts "  #{cmd_str} #{help_short.first}".rstrip
   STDERR.puts "  #{" " * ljust} #{help_short[1..-1].join("\n   " + " " * ljust)}" if help_short.length > 1
 end
 

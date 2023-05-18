@@ -578,8 +578,8 @@ done
 
 function call_omni_up() {
   print_pending "Running 'omni up' from the omni directory"
-  local trust=$([[ "$INTERACTIVE" == "false" ]] && echo "--trust" || echo "")
-  if (cd "$SCRIPT_DIR" && bin/omni up --update-user-config "$trust"); then
+  local extra_params=$([[ "$INTERACTIVE" == "false" ]] && echo "yes --trust" || echo "")
+  if (cd "$SCRIPT_DIR" && bin/omni up --update-user-config $extra_params); then
     print_ok "Ran 'omni up' from the omni directory"
   else
     print_failed "'omni up' failed"

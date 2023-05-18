@@ -87,3 +87,21 @@ jobs:
           echo; echo "## Running 'help' from root directory"; echo
           omni help
 
+      - name: Setup bats
+        run: |
+          bats_dir="${TMPDIR:-/tmp}/bats-core"
+          git clone https://github.com/bats-core/bats-core.git "${bats_dir}"
+          cd "${bats_dir}"
+          ./install.sh "${HOME}/.local"
+
+      - name: Evaluate expected test duration
+        run: |
+          NUM_TESTS=$(bats -c tests/)
+          # This gives about 30s per test declared in bats, which should be sufficient,
+          # might need to adapt as we grow the number of tests, if we see timeout failures
+          echo "TEST_TIMEOUT_MINUTES=$(((${NUM_TESTS} + 1) / 2))" | tee -a "$GITHUB_ENV"
+
+      - name: Run bats tests
+        timeout-minutes: ${{ fromJSON(env.TEST_TIMEOUT_MINUTES) }}
+        run: |
+          bats tests/
