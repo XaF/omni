@@ -36,6 +36,7 @@ setup() {
   echo "$output" | grep -q "^ *clone *Clone the specified repository *$"
   echo "$output" | grep -q "^ *down, up *Sets up or tear down a repository depending on its up configuration *$"
   echo "$output" | grep -q "^ *organize *Organize your git repositories using the configured format *$"
+  echo "$output" | grep -q "^ *scope *Runs an omni command in the context of the specified repository *$"
 }
 
 # bats test_tags=omni:help
@@ -56,6 +57,8 @@ Git commands
                   depending on its up configuration
   organize        Organize your git repositories using the
                   configured format
+  scope           Runs an omni command in the context of
+                  the specified repository
 ')
 
   export COLUMNS=60
