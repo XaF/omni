@@ -157,7 +157,7 @@ ensure
 end
 
 
-class UserInterraction
+class UserInteraction
   class Error < StandardError; end
   class NoMatchError < Error; end
 

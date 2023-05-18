@@ -117,13 +117,13 @@ def run_omni_subcommand(argv)
 
   # Prompt the user with a list of similar commands
   begin
-    UserInterraction.did_you_mean?(
+    UserInteraction.did_you_mean?(
       OmniPath, argv.join(' '),
       skip_with_score: Config.command_match_skip_prompt_if,
     ).exec(*argv)
-  rescue UserInterraction::StoppedByUserError
+  rescue UserInteraction::StoppedByUserError
     exit 0
-  rescue UserInterraction::NoMatchError
+  rescue UserInteraction::NoMatchError
     nil
   end
 

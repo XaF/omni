@@ -118,7 +118,7 @@ def list_file_system_repos(skip_confirmation: false)
       return
     end
 
-    reorg = UserInterraction.which_ones?(
+    reorg = UserInteraction.which_ones?(
       "Found #{reorg.length.to_s.bold} repositor#{reorg.length > 1 ? 'ies' : 'y'} to organize:",
       reorg,
       default: (1..reorg.size).to_a.reverse,
@@ -158,7 +158,7 @@ end
 
 begin
   list_file_system_repos(skip_confirmation: options[:yes])
-rescue UserInterraction::StoppedByUserError, UserInterraction::NoMatchError
+rescue UserInteraction::StoppedByUserError, UserInteraction::NoMatchError
   nil
 end
 

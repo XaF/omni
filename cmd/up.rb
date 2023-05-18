@@ -67,12 +67,12 @@ def trusted_repo?(trust: nil)
       STDERR.puts "#{"omni:".light_cyan} #{"#{OmniEnv::OMNI_SUBCOMMAND}:".light_yellow} #{"Tip:".bold} if you set #{"OMNI_ORG".italic}, repositories in your organizations are automatically trusted." if OmniOrgs.size == 1
 
       trust = begin
-        UserInterraction.oneof?("Do you want to run #{"omni up".bold} for this repository?", default: 2) do |q|
+        UserInteraction.oneof?("Do you want to run #{"omni up".bold} for this repository?", default: 2) do |q|
           q.choice(key: "a", name: "Yes, always (add to trusted repositories)", value: :always)
           q.choice(key: "y", name: "Yes, this time (and ask me everytime)", value: :yes)
           q.choice(key: "n", name: "No", value: :no)
         end
-      rescue UserInterraction::StoppedByUserError
+      rescue UserInteraction::StoppedByUserError
         nil
       end
     end
@@ -132,8 +132,8 @@ def update_path_user_config(config, proceed: false)
   end
 
   proceed = proceed || begin
-    UserInterraction.confirm?("Do you want to continue?")
-  rescue UserInterraction::StoppedByUserError, UserInterraction::NoMatchError
+    UserInteraction.confirm?("Do you want to continue?")
+  rescue UserInteraction::StoppedByUserError, UserInteraction::NoMatchError
     false
   end
 
@@ -180,8 +180,8 @@ def update_suggested_user_config(config, proceed: false)
   end
 
   proceed = proceed || begin
-    UserInterraction.confirm?("Do you want to continue?")
-  rescue UserInterraction::StoppedByUserError, UserInterraction::NoMatchError
+    UserInteraction.confirm?("Do you want to continue?")
+  rescue UserInteraction::StoppedByUserError, UserInteraction::NoMatchError
     false
   end
 

@@ -148,7 +148,7 @@ def file_system_lookup(repo)
 
   # If we got here and we did not find an exact match,
   # try offering a did-you-mean suggestion
-  UserInterraction.did_you_mean?(
+  UserInteraction.did_you_mean?(
     potential_matches.uniq, repo,
     skip_with_score: path_match_skip_prompt_if,
   )
@@ -172,9 +172,9 @@ dir = basic_naive_lookup(repo) unless dir
 # using find
 begin
   dir = file_system_lookup(repo) unless dir
-rescue UserInterraction::StoppedByUserError
+rescue UserInteraction::StoppedByUserError
   exit 0
-rescue UserInterraction::NoMatchError
+rescue UserInteraction::NoMatchError
   nil
 end
 
