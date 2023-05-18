@@ -32,18 +32,29 @@ error("#{repo.yellow}: No such repository") if locations.empty?
 locations.each do |location|
   # Compute the path that we will use for the repository
   full_path = location.path?(repo)
-  error("#{repo.yellow}: repository already exists #{"(#{full_path})".light_black}") if File.directory?(full_path)
 
-  # Compute the remote address of the repository
-  remote = location.remote?(repo)
+  if File.directory?(full_path)
+    error("#{repo.yellow}: repository already exists #{"(#{full_path})".light_black}", print_only: true)
 
-  # Check using git ls-remote if the repository exists
-  git_ls_remote = command_line('git', 'ls-remote', remote, '>/dev/null', '2>&1', timeout: 5)
-  next unless git_ls_remote
+    run_omni_up = begin
+      UserInteraction.confirm?("Do you want to run #{"omni up".bold} anyway?")
+    rescue UserInteraction::StoppedByUserError, UserInteraction::NoMatchError
+      false
+    end
 
-  # Execute git command line from ruby
-  git_clone = command_line('git', 'clone', remote, full_path, *options)
-  error("#{repo.yellow}: git clone failed") unless git_clone
+    exit 1 unless run_omni_up
+  else
+    # Compute the remote address of the repository
+    remote = location.remote?(repo)
+
+    # Check using git ls-remote if the repository exists
+    git_ls_remote = command_line('git', 'ls-remote', remote, '>/dev/null', '2>&1', timeout: 5)
+    next unless git_ls_remote
+
+    # Execute git command line from ruby
+    git_clone = command_line('git', 'clone', remote, full_path, *options)
+    error("#{repo.yellow}: git clone failed") unless git_clone
+  end
 
   # Execute omni up from the repository directory if auto-up is enabled
   Dir.chdir(full_path) do
