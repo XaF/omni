@@ -10,6 +10,7 @@
 # opt:--update-user-config:using \033[3mdown\033[0m, the \033[3mpath\033[0m configuration of the
 # opt:--update-user-config:repository will be removed from the home directory of the user
 # opt:--update-user-config:if it exists \033[90m(default: no)\033[0m
+# opt:--trust:Define how to trust the repository (always/yes/no) to run the command.
 # help: Sets up or tear down a repository depending on its \033[3mup\033[0m configuration
 
 require_relative '../lib/colorize'
@@ -24,7 +25,7 @@ require_relative '../lib/omniorg'
 require_relative '../lib/utils'
 
 
-options = SubcommandOptions({:update_user_config => :no}) do |opts, options|
+options = SubcommandOptions({update_user_config: :no, trust: nil}) do |opts, options|
   opts.on(
     "--update-user-config [yes/ask/no]",
     "--handle-path [yes/ask/no]",
@@ -33,40 +34,52 @@ options = SubcommandOptions({:update_user_config => :no}) do |opts, options|
   ) do |update_user_config|
     options[:update_user_config] = update_user_config || :ask
   end
+
+  opts.on(
+    "--trust [always/yes/no]",
+    [:always, :yes, :no],
+    "Trust the repository, and run the command without asking for confirmation"
+  ) do |trust|
+    options[:trust] = trust || :yes
+  end
 end
 
 error('too many arguments') if ARGV.size > 0
 error("can only be run from a git repository") unless OmniEnv.in_git_repo?
 
 
-def trusted_repo?
-  # Get the repository object from the repository origin
-  repo = OmniRepo.new(OmniEnv.git_repo_origin)
+def trusted_repo?(trust: nil)
+  if trust.nil?
+    # Get the repository object from the repository origin
+    repo = OmniRepo.new(OmniEnv.git_repo_origin)
 
-  # Check if the repository is in a known org
-  proceed = OmniOrgs.each.any? do |org|
-    org.respond_to?(:has_repo?) && repo.in_org?(org)
-  end
-
-  # If not in a trusted org, check if the repo was already marked as safe
-  proceed ||= Cache.get('trusted_repositories', nil)&.include?(repo.id) || false
-
-  unless proceed
-    STDERR.puts "#{"omni:".light_cyan} #{"#{OmniEnv::OMNI_SUBCOMMAND}:".light_yellow} The repository #{repo.id.light_blue} is not in your trusted repositories."
-
-    STDERR.puts "#{"omni:".light_cyan} #{"#{OmniEnv::OMNI_SUBCOMMAND}:".light_yellow} #{"Tip:".bold} if you set #{"OMNI_ORG".italic}, repositories in your organizations are automatically trusted." if OmniOrgs.size == 1
-
-    proceed = begin
-      UserInterraction.oneof?("Do you want to run #{"omni up".bold} for this repository?", default: 2) do |q|
-        q.choice(key: "a", name: "Yes, always (add to trusted repositories)", value: :always)
-        q.choice(key: "y", name: "Yes, this time (and ask me everytime)", value: :yes)
-        q.choice(key: "n", name: "No", value: :no)
-      end
-    rescue UserInterraction::StoppedByUserError
-      nil
+    # Check if the repository is in a known org
+    trust = OmniOrgs.each.any? do |org|
+      org.respond_to?(:has_repo?) && repo.in_org?(org)
     end
 
-    if proceed == :always
+    # If not in a trusted org, check if the repo was already marked as safe
+    trust ||= Cache.get('trusted_repositories', nil)&.include?(repo.id) || false
+
+    unless trust
+      STDERR.puts "#{"omni:".light_cyan} #{"#{OmniEnv::OMNI_SUBCOMMAND}:".light_yellow} The repository #{repo.id.light_blue} is not in your trusted repositories."
+
+      STDERR.puts "#{"omni:".light_cyan} #{"#{OmniEnv::OMNI_SUBCOMMAND}:".light_yellow} #{"Tip:".bold} if you set #{"OMNI_ORG".italic}, repositories in your organizations are automatically trusted." if OmniOrgs.size == 1
+
+      trust = begin
+        UserInterraction.oneof?("Do you want to run #{"omni up".bold} for this repository?", default: 2) do |q|
+          q.choice(key: "a", name: "Yes, always (add to trusted repositories)", value: :always)
+          q.choice(key: "y", name: "Yes, this time (and ask me everytime)", value: :yes)
+          q.choice(key: "n", name: "No", value: :no)
+        end
+      rescue UserInterraction::StoppedByUserError
+        nil
+      end
+    end
+  end
+
+  if trust&.is_a?(Symbol)
+    if trust == :always
       Cache.exclusive('trusted_repositories') do |trusted_repositories|
         trusted_repositories ||= []
         trusted_repositories << repo.id
@@ -76,10 +89,10 @@ def trusted_repo?
       end
     end
 
-    proceed = [:always, :yes].include?(proceed)
+    trust = [:always, :yes].include?(trust)
   end
 
-  unless proceed
+  unless trust
     STDERR.puts "#{"omni:".light_cyan} #{"#{OmniEnv::OMNI_SUBCOMMAND}:".light_yellow} Skipped running #{"omni up".bold} for this repository."
     return false
   end
@@ -246,7 +259,7 @@ should_update_user_config = [:yes, :ask].include?(options[:update_user_config]) 
   Config.path_from_repo.any? || Config.suggested_from_repo.any?)
 
 if should_handle_up || should_update_user_config
-  exit 0 unless trusted_repo?
+  exit 0 unless trusted_repo?(trust: options[:trust])
 
   if should_handle_up
     error("invalid #{'up'.yellow} configuration, it should be a list") unless Config.up.is_a?(Array)

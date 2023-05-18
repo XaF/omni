@@ -24,6 +24,7 @@ jobs:
           # - macos-latest
 
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
 
     steps:
       - name: Checkout current commit
@@ -35,6 +36,7 @@ jobs:
           echo "OMNI_GIT=${HOME}/git" | tee -a "$GITHUB_ENV"
 
       - name: Run install script
+        timeout-minutes: 10
         run: |
           ./install.sh \
             --no-interactive \
