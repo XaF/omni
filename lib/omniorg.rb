@@ -196,6 +196,8 @@ class OmniRepo
     return false if org_repo.nil?
 
     org_repo = org_repo.repo if org_repo.is_a?(OmniOrg)
+    return false if org_repo.is_a?(OmniRepoBase)
+
     org_repo = OmniRepo.new(org_repo) if org_repo.is_a?(String)
 
     return true if org_repo == self
