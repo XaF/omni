@@ -48,6 +48,26 @@ error('too many arguments') if ARGV.size > 0
 error("can only be run from a git repository") unless OmniEnv.in_git_repo?
 
 
+class ConfigSection
+  attr_reader :section
+
+  def initialize(key, value)
+    @section = { key => value }
+  end
+
+  def to_s
+    @to_s ||= YAML.dump(@section).split("\n").map do |line|
+      next if line.chomp == "---"
+      line
+    end.compact.join("\n    ").green
+  end
+
+  def to_h
+    @section
+  end
+end
+
+
 def trusted_repo?(trust: nil)
   if trust.nil?
     # Get the repository object from the repository origin
@@ -179,10 +199,32 @@ def update_suggested_user_config(config, proceed: false)
     end
   end
 
-  proceed = proceed || begin
-    UserInteraction.confirm?("Do you want to continue?")
-  rescue UserInteraction::StoppedByUserError, UserInteraction::NoMatchError
-    false
+  unless proceed
+    apply = begin
+      UserInteraction.oneof?("Do you want to continue?") do |q|
+        q.choice(key: "y", name: "Yes, apply the changes", value: :yes)
+        q.choice(key: "n", name: "No, skip the changes", value: :no)
+        q.choice(key: "s", name: "Split (choose which sections to apply)", value: :split)
+      end
+    rescue UserInteraction::StoppedByUserError
+      nil
+    end
+
+    if apply == :yes
+      proceed = true
+    elsif apply == :split
+      choices = merged_config.map { |key, value| ConfigSection.new(key, value) }
+      merged_config = begin
+        UserInteraction.which_ones?(
+          "Which sections do you want to apply?",
+          choices,
+          default: (1..choices.size).to_a.reverse,
+        )
+      rescue UserInteraction::StoppedByUserError
+        []
+      end.map(&:to_h).inject({}, &:merge)
+      proceed = merged_config.any?
+    end
   end
 
   if proceed
