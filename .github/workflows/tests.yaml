@@ -104,4 +104,4 @@ jobs:
       - name: Run bats tests
         timeout-minutes: ${{ fromJSON(env.TEST_TIMEOUT_MINUTES) }}
         run: |
-          bats tests/
+          bats --no-tempdir-cleanup tests/
