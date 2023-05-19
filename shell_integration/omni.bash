@@ -159,7 +159,7 @@ function omni() {
 	# Delete the files, we do that with '&' so there's no delay to return
 	# to the prompt, and within a subshell so that monitor mode (set +m)
 	# is disabled for that command, allowing to hide the '[x] Done' message
-	(find "${TMPDIR}/" -name "${OMNI_FILE_PREFIX}*" -exec rm {} \; >/dev/null 2>&1 &)
+	(find "${TMPDIR:-/tmp}/" -name "${OMNI_FILE_PREFIX}*" -exec rm {} \; >/dev/null 2>&1 &)
 
 	# Unset the environment variables
 	unset OMNI_UUID

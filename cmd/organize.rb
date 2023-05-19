@@ -17,9 +17,13 @@ require_relative '../lib/omniorg'
 require_relative '../lib/utils'
 
 
-options = SubcommandOptions({:yes => false}) do |opts, options|
+options = SubcommandOptions({:yes => false, :up => false}) do |opts, options|
   opts.on("-y", "--yes", "Do not ask for confirmation before organizing repositories") do |yes|
     options[:yes] = yes
+  end
+
+  opts.on("-u", "--up-all", "Update all repositories and run 'omni up'") do |up|
+    options[:up] = up
   end
 end
 
