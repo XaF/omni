@@ -550,7 +550,10 @@ function setup_shell_integration() {
 	print_action "Setting up shell integration in $rc_file"
 
 	if [[ "$SETUP_OMNI_GIT" == "true" ]] && [[ -n "${OMNI_GIT}" ]]; then
-		echo 'export OMNI_GIT="'"${OMNI_GIT}"'"' >> "$rc_file"
+		(
+		  echo 'export OMNIDIR="'"${SCRIPT_DIR}"'"'
+		  echo 'export OMNI_GIT="'"${OMNI_GIT}"'"'
+		) >> "$rc_file"
 		if [ $? -ne 0 ]; then
 			print_failed "Setup OMNI_GIT in $rc_file"
 		else
