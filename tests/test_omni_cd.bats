@@ -3,7 +3,7 @@
 load 'helpers/utils'
 
 setup() {
-  omni_setup
+  omni_setup 3>-
 }
 
 
@@ -24,7 +24,7 @@ setup() {
   [ $(pwd) = "${HOME}" ]
 
   # Check that we can cd to a repo
-  omni cd test1repo
+  omni cd test1repo 3>-
   [ "$?" -eq 0 ]
 
   # Check that we've cd'd to the correct directory
@@ -32,7 +32,7 @@ setup() {
   [ $(pwd) = "${HOME}/git/github.com/test1org/test1repo" ]
 
   # Check that we can cd to a repo
-  omni cd test2repo
+  omni cd test2repo 3>-
   [ "$?" -eq 0 ]
 
   # Check that we've cd'd to the correct directory
@@ -40,7 +40,7 @@ setup() {
   [ $(pwd) = "${HOME}/git/github.com/test2org/test2repo" ]
 
   # Check that we can cd to a repo
-  omni cd test3repo
+  omni cd test3repo 3>-
   [ "$?" -eq 0 ]
 
   # Check that we've cd'd to the correct directory
@@ -66,7 +66,7 @@ setup() {
   [ $(pwd) = "${HOME}" ]
 
   # Check that we can cd to a repo
-  omni cd test1repo
+  omni cd test1repo 3>-
   [ "$?" -eq 0 ]
 
   # Check that we've cd'd to the correct directory
@@ -74,7 +74,7 @@ setup() {
   [ $(pwd) = "${HOME}/git/github.com/test1org/test1repo" ]
 
   # Check that we can cd to a repo
-  omni cd test2repo
+  omni cd test2repo 3>-
   [ "$?" -eq 0 ]
 
   # Check that we've cd'd to the correct directory
@@ -82,7 +82,7 @@ setup() {
   [ $(pwd) = "${HOME}/git/github.com/test2org/test2repo" ]
 
   # Check that we can cd to a repo
-  omni cd test3repo
+  omni cd test3repo 3>-
   [ "$?" -eq 0 ]
 
   # Check that we've cd'd to the correct directory

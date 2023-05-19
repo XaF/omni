@@ -116,6 +116,6 @@ setup_git_dir() {
     git commit -m "Initial commit" &&
     git branch -M main &&
     git remote add origin "$remote"
-  ) >/dev/null
+  ) >/dev/null 3>-
 }
 

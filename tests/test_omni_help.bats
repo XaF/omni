@@ -3,7 +3,7 @@
 load 'helpers/utils'
 
 setup() {
-  omni_setup
+  omni_setup 3>-
 
   # Override the default columns to 100 so we have a controlled
   # environment for testing the output of the help command
@@ -17,7 +17,7 @@ setup() {
   # word wrapping, so let's use a very large COLUMNS value here for now
   export COLUMNS=1000
 
-  run omni help
+  run omni help 3>-
 
   echo "STATUS: $status"
   echo "OUTPUT: $output"
@@ -62,14 +62,14 @@ Git commands
 ')
 
   export COLUMNS=60
-  run omni help
+  run omni help 3>-
 
   echo "STATUS: $status"
   echo "OUTPUT: $output"
   [ "$status" -eq 0 ]
 
   set -o pipefail
-  diff -u <(echo "$expected") <(echo "$output") | cat -A
+  diff -u <(echo "$expected") <(echo "$output") 3>- | cat -A 3>-
   [ "$?" -eq 0 ]
 
   [[ "$output" == "$expected" ]]
