@@ -3,7 +3,7 @@
 load 'helpers/utils'
 
 setup() {
-  omni_setup 3>-
+  omni_setup 3>&-
 }
 
 # bats test_tags=omni:organize
@@ -16,7 +16,7 @@ setup() {
   # Configure the repo_path_format
   echo "repo_path_format: \"%{host}/%{org}/%{repo}\"" > "${HOME}/.omni.yaml"
 
-  run omni organize --yes 3>-
+  run omni organize --yes 3>&-
   [ "$status" -eq 0 ]
 
   # Check that the repositories were cloned
@@ -40,7 +40,7 @@ setup() {
   # Configure the repo_path_format
   echo "repo_path_format: \"%{org}/%{repo}\"" > "${HOME}/.omni.yaml"
 
-  run omni organize --yes 3>-
+  run omni organize --yes 3>&-
   [ "$status" -eq 0 ]
 
   # Check that the repositories were cloned
@@ -64,7 +64,7 @@ setup() {
   # Configure the repo_path_format
   echo "repo_path_format: \"%{repo}\"" > "${HOME}/.omni.yaml"
 
-  run omni organize --yes 3>-
+  run omni organize --yes 3>&-
   [ "$status" -eq 0 ]
 
   # Check that the repositories were cloned
@@ -88,7 +88,7 @@ setup() {
   # Configure the repo_path_format
   echo "repo_path_format: \"one/%{host}/two/%{org}/three/%{repo}/four\"" > "${HOME}/.omni.yaml"
 
-  run omni organize --yes 3>-
+  run omni organize --yes 3>&-
   [ "$status" -eq 0 ]
 
   # Check that the repositories were cloned

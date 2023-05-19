@@ -3,7 +3,7 @@
 load 'helpers/utils'
 
 setup() {
-  omni_setup 3>-
+  omni_setup 3>&-
 
   # Override the default columns to 100 so we have a controlled
   # environment for testing the output of the help command
@@ -31,14 +31,14 @@ Git commands
 
   # Avoiding any shorter-than-expected wrapping
   export COLUMNS=1000
-  run omni help 3>-
+  run omni help 3>&-
 
   echo "STATUS: $status"
   echo "OUTPUT: $output"
   [ "$status" -eq 0 ]
 
   set -o pipefail
-  diff -u <(echo "$expected") <(echo "$output") 3>- | cat -A 3>-
+  diff -u <(echo "$expected") <(echo "$output") 3>&- | cat -A 3>&-
   [ "$?" -eq 0 ]
   [[ "$output" == "$expected" ]]
 }
@@ -66,14 +66,14 @@ Git commands
 ')
 
   export COLUMNS=60
-  run omni help 3>-
+  run omni help 3>&-
 
   echo "STATUS: $status"
   echo "OUTPUT: $output"
   [ "$status" -eq 0 ]
 
   set -o pipefail
-  diff -u <(echo "$expected") <(echo "$output") 3>- | cat -A 3>-
+  diff -u <(echo "$expected") <(echo "$output") 3>&- | cat -A 3>&-
   [ "$?" -eq 0 ]
   [[ "$output" == "$expected" ]]
 }
@@ -92,7 +92,7 @@ Usage: omni help [command]
 
 ')
 
-  run omni help help 3>-
+  run omni help help 3>&-
 
   echo "STATUS: $status"
   echo "OUTPUT: $output"
@@ -103,7 +103,7 @@ Usage: omni help [command]
   output=$(echo "$output" | head -n -1)
 
   set -o pipefail
-  diff -u <(echo "$expected") <(echo "$output") 3>- | cat -A 3>-
+  diff -u <(echo "$expected") <(echo "$output") 3>&- | cat -A 3>&-
   [ "$?" -eq 0 ]
   [[ "$output" == "$expected" ]]
 
@@ -124,7 +124,7 @@ Usage: omni status
 
 ')
 
-  run omni help status 3>-
+  run omni help status 3>&-
 
   echo "STATUS: $status"
   echo "OUTPUT: $output"
@@ -135,7 +135,7 @@ Usage: omni status
   output=$(echo "$output" | head -n -1)
 
   set -o pipefail
-  diff -u <(echo "$expected") <(echo "$output") 3>- | cat -A 3>-
+  diff -u <(echo "$expected") <(echo "$output") 3>&- | cat -A 3>&-
   [ "$?" -eq 0 ]
   [[ "$output" == "$expected" ]]
 
@@ -162,7 +162,7 @@ Usage: omni cd [repo]
 
 ')
 
-  run omni help cd 3>-
+  run omni help cd 3>&-
 
   echo "STATUS: $status"
   echo "OUTPUT: $output"
@@ -173,7 +173,7 @@ Usage: omni cd [repo]
   output=$(echo "$output" | head -n -1)
 
   set -o pipefail
-  diff -u <(echo "$expected") <(echo "$output") 3>- | cat -A 3>-
+  diff -u <(echo "$expected") <(echo "$output") 3>&- | cat -A 3>&-
   [ "$?" -eq 0 ]
   [[ "$output" == "$expected" ]]
 
@@ -198,7 +198,7 @@ Usage: omni clone <repo> [options...]
 
 ')
 
-  run omni help clone 3>-
+  run omni help clone 3>&-
 
   echo "STATUS: $status"
   echo "OUTPUT: $output"
@@ -209,7 +209,7 @@ Usage: omni clone <repo> [options...]
   output=$(echo "$output" | head -n -1)
 
   set -o pipefail
-  diff -u <(echo "$expected") <(echo "$output") 3>- | cat -A 3>-
+  diff -u <(echo "$expected") <(echo "$output") 3>&- | cat -A 3>&-
   [ "$?" -eq 0 ]
   [[ "$output" == "$expected" ]]
 
@@ -239,7 +239,7 @@ Usage: omni down [--update-user-config] [--trust]
 
 ')
 
-  run omni help down 3>-
+  run omni help down 3>&-
 
   echo "STATUS: $status"
   echo "OUTPUT: $output"
@@ -250,7 +250,7 @@ Usage: omni down [--update-user-config] [--trust]
   output=$(echo "$output" | head -n -1)
 
   set -o pipefail
-  diff -u <(echo "$expected") <(echo "$output") 3>- | cat -A 3>-
+  diff -u <(echo "$expected") <(echo "$output") 3>&- | cat -A 3>&-
   [ "$?" -eq 0 ]
   [[ "$output" == "$expected" ]]
 
@@ -276,7 +276,7 @@ Usage: omni organize [--yes]
 
 ')
 
-  run omni help organize 3>-
+  run omni help organize 3>&-
 
   echo "STATUS: $status"
   echo "OUTPUT: $output"
@@ -287,7 +287,7 @@ Usage: omni organize [--yes]
   output=$(echo "$output" | head -n -1)
 
   set -o pipefail
-  diff -u <(echo "$expected") <(echo "$output") 3>- | cat -A 3>-
+  diff -u <(echo "$expected") <(echo "$output") 3>&- | cat -A 3>&-
   [ "$?" -eq 0 ]
   [[ "$output" == "$expected" ]]
 
@@ -320,7 +320,7 @@ Usage: omni scope <repo> <command> [options...]
 
 ')
 
-  run omni help scope 3>-
+  run omni help scope 3>&-
 
   echo "STATUS: $status"
   echo "OUTPUT: $output"
@@ -331,7 +331,7 @@ Usage: omni scope <repo> <command> [options...]
   output=$(echo "$output" | head -n -1)
 
   set -o pipefail
-  diff -u <(echo "$expected") <(echo "$output") 3>- | cat -A 3>-
+  diff -u <(echo "$expected") <(echo "$output") 3>&- | cat -A 3>&-
   [ "$?" -eq 0 ]
   [[ "$output" == "$expected" ]]
 
@@ -361,7 +361,7 @@ Usage: omni up [--update-user-config] [--trust]
 
 ')
 
-  run omni help up 3>-
+  run omni help up 3>&-
 
   echo "STATUS: $status"
   echo "OUTPUT: $output"
@@ -372,7 +372,7 @@ Usage: omni up [--update-user-config] [--trust]
   output=$(echo "$output" | head -n -1)
 
   set -o pipefail
-  diff -u <(echo "$expected") <(echo "$output") 3>- | cat -A 3>-
+  diff -u <(echo "$expected") <(echo "$output") 3>&- | cat -A 3>&-
   [ "$?" -eq 0 ]
   [[ "$output" == "$expected" ]]
 
