@@ -331,6 +331,16 @@ class ConfigValue
     copy.instance_variable_set(:@path, @path.dup)
     copy
   end
+
+  def flatten(keypath: [])
+    if value.is_a?(Hash)
+      value.flat_map { |key, val| val.flatten(keypath: keypath + [key]) }
+    elsif value.is_a?(Array)
+      value.flat_map.with_index { |val, index| val.flatten(keypath: keypath + [index]) }
+    else
+      [{ keypath: keypath, value: self }]
+    end
+  end
 end
 
 
@@ -461,6 +471,18 @@ class Config
     config.dig('path')&.unwrap || {}
   end
 
+  def paths(unwrapped: false, include_local: true)
+    config_paths = if include_local
+      @config.dig('path')
+    else
+      @config.dig('path').reject_label('git_repo')
+    end || ConfigValue.new({})
+
+    config_paths = config_paths.unwrap if unwrapped
+
+    config_paths
+  end
+
   def omnipath(include_local: true)
     paths = []
 
@@ -511,15 +533,21 @@ class Config
     @config.deep_dup
   end
 
-  def user_config_file(operation = :readonly, &block)
-    # We check the files in reverse order as files are loaded in reverse
-    # order of importance.
-    user_config_files = self.class.config_files.reverse
+  def user_config_file(operation = :readonly, config_file: nil, &block)
+    # If the configuration file is not specified, we will try to find the
+    # "last" interpreted configuration file that is readable or writeable
+    # depending on the requested operation.
+    if config_file.nil?
+      # We check the files in reverse order as files are loaded in reverse
+      # order of importance.
+      user_config_files = self.class.config_files.reverse
 
-    # We try and find first a config file that already exists and that is
-    # writable, so that we can put our new user configuration in it.
-    config_file = user_config_files.find do |config_file|
-      File.file?(config_file) && File.readable?(config_file) && File.writable?(config_file)
+      # We try and find first a config file that already exists and that is
+      # writable, so that we can put our new user configuration in it.
+      config_file = user_config_files.find do |config_file|
+        File.file?(config_file) && File.readable?(config_file) &&
+          (operation != :readwrite || File.writable?(config_file))
+      end
     end
 
     # If we can't find a config file that already exists and that is writable,
@@ -535,15 +563,16 @@ class Config
     # writable, so that we can create it and put our new user configuration in it.
     config_file = user_config_files.find do |config_file|
       Pathname.new(config_file).ascend do |path|
-        break File.writable?(path) if File.exist?(path)
+        break File.readable?(path) && (operation != :readwrite || File.writable?(path)) if File.exist?(path)
       end
     end if config_file.nil?
 
-    # If we can't find a config file that already exists and that is writable,
+    # Make sure that the directory exists, and open the config file in writing
+    # mode so that we can edit it.
     FileUtils.mkdir_p(File.dirname(config_file))
     File.open(config_file, File::RDWR|File::CREAT, 0644) do |file|
-      # Put a shared lock on the file
-      file.flock(File::LOCK_EX)
+      # Put a lock on the file depending on the operation we are performing
+      file.flock(operation == :readwrite ? File::LOCK_EX : File::LOCK_SH)
 
       # Load the current configuration
       config = begin

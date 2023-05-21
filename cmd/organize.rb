@@ -58,6 +58,54 @@ class GitRepo
     FileUtils.mkdir_p(File.dirname(expected_path))
     FileUtils.rmdir(expected_path) if File.directory?(expected_path) && Dir.empty?(expected_path)
     FileUtils.mv(path, expected_path)
+
+    # Check if the repo being moved is omni's repo
+    if path == OmniEnv::OMNIDIR
+      # Update the current environment so that omni keeps working
+      omni_cmd("export OMNIDIR=#{Shellwords.escape(expected_path)}")
+
+      # Inform the user that they will need to update their OMNIDIR environment
+      # variable if they set it up manually and are not using omni's magic for the
+      # setup
+      STDERR.puts "#{"omni:".light_cyan} #{"organize:".yellow} #{path.light_red} is omni's directory. The OMNIDIR environment variable got updated automatically for the current shell, but if you set it up in your rc file, you will need to update it:\n\texport OMNIDIR=\"#{expected_path.light_green}\""
+    end
+
+    # Update the current OMNIPATH too
+    omnipath_changed = false
+    omnipath = OmniEnv::OMNIPATH.map do |omnipath|
+      next omnipath unless omnipath == path || omnipath.start_with?(path + '/')
+      omnipath_changed = true
+      omnipath.sub(/^#{Regexp.escape(path)}(\/|$)/, expected_path + '\1')
+    end.join(':')
+
+    if omnipath_changed
+      omni_cmd("export OMNIPATH=#{Shellwords.escape(omnipath)}")
+
+      STDERR.puts "#{"omni:".light_cyan} #{"organize:".yellow} #{path.light_red} is in the OMNIPATH environment variable, you will need to update it to #{expected_path.light_green} manually." if path != OmniEnv::OMNIDIR
+    end
+
+    # Check the paths in the configuration files, since we can easily
+    # update those automatically
+    Config.paths(include_local: false).
+      flatten.
+      select { |omnipath| omnipath[:value].value == path || omnipath[:value].value.start_with?(path + '/') }.
+      each do |omnipath|
+        config_file = omnipath[:value].path
+        oldpath = omnipath[:value].value
+        newpath = oldvalue.sub(/^#{Regexp.escape(path)}(\/|$)/, expected_path + '\1')
+
+        begin
+          Config.user_config_file(:readwrite, config_file: config_file) do |config|
+            keypath = ['path'] + omnipath[:keypath]
+            config.dig_set(*keypath, newpath)
+            config
+          end
+
+          STDERR.puts "#{"omni:".light_cyan} #{"organize:".yellow} Updated #{oldpath.light_red} to #{newpath.light_green} in #{config_file.light_yellow}"
+        rescue => e
+          STDERR.puts "#{"omni:".light_cyan} #{"organize:".yellow} Could not update #{oldpath.light_red} to #{newpath.light_green} in #{config_file.light_yellow}: #{e.message}"
+        end
+      end
   end
 
   def cleanup!

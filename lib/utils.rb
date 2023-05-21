@@ -353,6 +353,13 @@ module MonkeyPatch
       end
       hash
     end
+
+    def dig_set(*keys, value)
+      target_key = keys.pop
+      target_hash = keys.reduce(self, :fetch)
+      target_hash[target_key] = value
+      self
+    end
   end
 end
 
