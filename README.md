@@ -68,11 +68,28 @@ You can run the following command to test omni with that repository:
 omni clone https://github.com/omnicli/omni-example-go.git
 ```
 
-## Configuration
+## Configuration files
+
+The omni configuration files are searched for in the order they are listed:
+
+### Global configuration
+
+* `~/.omni`
+* `~/.omni.yaml`
+* `~/.config/omni`
+* `~/.config/omni.yaml`
+* `$OMNI_CONFIG`
+
+### Per-repository configuration
+
+* `.omni`
+* `.omni.yaml`
+* `.omni/config`
+* `.omni/config.yaml`
 
 ### Parameters
 
-Omni accepts the following parameters as part of its configuration:
+Omni configuration files accept the following parameters:
 
 - `clone` *[map]* configuration related to the `omni clone` command
   - `auto_up` *[boolean]* whether or not `omni up` should be run automatically when cloning a repository
@@ -123,3 +140,11 @@ An up object can be one of:
   - `met?` *[string, shell script]* the command to run to know if we are currently meeting the requirement
   - `unmeet` *[string, shell script]* the command to run to 'unmeet' the requirement during tear down
 
+### Environment values
+
+* `OMNI_GIT` [path] The workspace directory where omni will clone and look for repositories. Defaults to `~/git` if it exists, or `$GOPATH` if it is defined.
+* `OMNIDIR` [path] The path to the omni repo. Defaults to searching under `$OMNI_GIT`.
+* `OMNI_ORG` [comma-delimited list of strings] Provides some quality-of-life for using omni with the organization/s a user regularly interacts with. Organizations are idenfitied by a prefix on the git origin. With the example: `OMNI_ORG="git@github.com:XaF,github.com/XaF"`.
+    * The first organization in the list is treated as an implied prefix for some commands. Example: `omni clone foo` would attempt to clone `git@github.com:XaF/foo`
+    * All organizations are implicitly trusted. `omni up` would not ask if you trusted the repo `git@github.com:XaF/foo` or `github.com/XaF/foo`.
+* `OMNI_CONFIG` [path] The path to an omni global configuration file.
