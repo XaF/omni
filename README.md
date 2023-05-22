@@ -34,7 +34,22 @@ You will need the following dependencies:
 - `rbenv`, which will be used to install ruby 3.2.2 (aims at allowing auto-handling of ruby versions for omni in the future)
 - `uuidgen`, which is used to generate UUIDs for the subcommand sessions
 
-In order to work as expected, omni will also require its shell integration, which you can add to your `.bashrc` or `.zshrc` as desired. We recommend using a symbolic link so that the shell integration can stay up to date with omni updates without requiring any intervention on your part.
+In order to work as expected, omni will also require its shell integration, which you can add depending on your shell:
+- `.bashrc`
+  ```
+  [[ -f "<path/to/omni/git/repo>/shell_integration/omni.bash" ]] && source "<path/to/omni/git/repo>/shell_integration/omni.bash"
+  ```
+
+- `.zshrc`
+  ```
+  [[ -f "<path/to/omni/git/repo>/shell_integration/omni.zsh" ]] && source "<path/to/omni/git/repo>/shell_integration/omni.zsh"
+  ```
+
+- `config.fish`
+  ```
+  test -f "<path/to/omni/git/repo>/shell_integration/omni.fish"; and source "<path/to/omni/git/repo>/shell_integration/omni.fish"
+  ```
+
 
 ### Initial configuration
 
@@ -135,6 +150,12 @@ An up object can be one of:
 
 - `homebrew` operation object, which takes a list of packages to install. Any element of the list can be a map with a single *package name => package version* if you wish to install a very specific package version.
 
+- `ruby` operation object, which can hold the following parameters:
+  - `version` *[string]* the version of ruby to install and use in the repository; if the version is not specified, the latest available through rbenv will be installed.
+
+- `go` operation object, which can hold the following parameters:
+  - `version` *[string]* the version of go to install and use in the repository; if the version is not specified, the latest available through goenv will be installed.
+
 - `custom` operation object, which can hold the following parameters:
   - `meet` **(required)** *[string, shell script]* the command to run to meet the requirement
   - `met?` *[string, shell script]* the command to run to know if we are currently meeting the requirement
@@ -142,7 +163,7 @@ An up object can be one of:
 
 ### Environment values
 
-- `OMNI_GIT` *[path]* The workspace directory where omni will clone and look for repositories. Defaults to `~/git` if it exists, or `$GOPATH` if it is defined.
+- `OMNI_GIT` *[path]* The workspace directory where omni will clone and look for repositories. Defaults to `~/git` if it exists, or `$GOPATH/src` if it is defined.
 - `OMNIDIR` *[path]* The path to the omni repo. Defaults to searching under `$OMNI_GIT`.
 - `OMNI_ORG` *[comma-delimited list of strings]* Provides some quality-of-life for using omni with the organization/s a user regularly interacts with. Organizations are idenfitied by a prefix on the git origin. With the example: `OMNI_ORG="git@github.com:XaF,github.com/XaF"`.
    - The organizations in the list are handled as an implied prefix for some commands, in the order in which they are declared, stopping at the first match. Example: `omni clone foo` would attempt to clone `git@github.com:XaF/foo.git` first, then if no match, it would attempt to clone `https://github.com/XaF/foo.git`.
