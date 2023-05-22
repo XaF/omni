@@ -338,6 +338,8 @@ function install_dependencies_packages() {
 		return
 	fi
 
+	local rbenv_build=false
+
 	if command -v brew >/dev/null; then
 		print_ok "brew found"
 		echo -e >&2 "\033[90m$ brew install ${missing[@]}\033[0m"
@@ -348,7 +350,6 @@ function install_dependencies_packages() {
 		echo -e >&2 "\033[33m[sudo]\033[0m \033[90m$ apt-get update\033[0m"
 		sudo DEBIAN_FRONTEND=noninteractive apt-get update || exit 1
 
-		local rbenv_build=false
 		local apt_packages=()
 		if [[ " ${missing[@]} " =~ " rbenv " ]]; then
 			rbenv_build=true
@@ -372,17 +373,39 @@ function install_dependencies_packages() {
 
 		echo -e >&2 "\033[33m[sudo]\033[0m \033[90m$ apt-get --yes --no-install-recommends install ${apt_packages[@]}\033[0m"
 		sudo DEBIAN_FRONTEND=noninteractive apt-get --yes install "${apt_packages[@]}" || exit 1
+	elif command -v pacman >/dev/null; then
+		print_ok "pacman found"
 
-		if [[ "$rbenv_build" == "true" ]]; then
-			echo -e >&2 "\033[90m$ curl -fsSL https://github.com/rbenv/rbenv-installer/raw/HEAD/bin/rbenv-installer | bash\033[0m"
-			curl -fsSL https://github.com/rbenv/rbenv-installer/raw/HEAD/bin/rbenv-installer | bash || exit 1
+		local pacman_packages=()
+		if [[ " ${missing[@]} " =~ " rbenv " ]]; then
+			rbenv_build=true
+			pacman_packages+=(
+			  "base-devel"
+			  "git"
+			  "libffi"
+			  "libyaml"
+			  "openssl"
+			  "readline"
+			  "zlib"
+			)
 		fi
+		if [[ " ${missing[@]} " =~ " uuidgen " ]]; then
+			pacman_packages+=("util-linux")
+		fi
+
+		echo -e >&2 "\033[33m[sudo]\033[0m \033[90m$ yes | pacman -S --noconfirm ${pacman_packages[@]}\033[0m"
+		yes | sudo pacman -S --noconfirm "${pacman_packages[@]}" || exit 1
 	else
 		print_issue "No package manager found"
 		if [[ "$INTERACTIVE" == "true" ]]; then
 			print_query "Please install the following dependencies manually:\n$(printf " - %s\n" "${packages[@]}")\nPress enter when ready to pursue."
 			read
 		fi
+	fi
+
+	if [[ "$rbenv_build" == "true" ]]; then
+		echo -e >&2 "\033[90m$ curl -fsSL https://github.com/rbenv/rbenv-installer/raw/HEAD/bin/rbenv-installer | bash\033[0m"
+		curl -fsSL https://github.com/rbenv/rbenv-installer/raw/HEAD/bin/rbenv-installer | bash || exit 1
 	fi
 
 	# Check that the missing commands are now available

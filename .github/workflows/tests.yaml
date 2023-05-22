@@ -14,25 +14,71 @@ concurrency:
 
 
 jobs:
-  install-script:
-    name: Automated installation on ${{ matrix.os }}
+  build-matrix:
+    name: Build test matrix
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
 
-    strategy:
-      matrix:
-        os:
-          - ubuntu-latest
-          # - macos-latest
-
-    runs-on: ${{ matrix.os }}
-    timeout-minutes: 20
+    outputs:
+      matrix: ${{ steps.build-matrix.outputs.matrix }}
 
     steps:
       - name: Checkout current commit
         uses: actions/checkout@v3
 
+      - name: Check changed files for extra-OS verifications
+        id: changed-install-files
+        uses: tj-actions/changed-files@v35
+        with:
+          since_last_remote_commit: true
+          files: |
+            .github/workflows/tests.yaml
+            install.sh
+
+      - name: Build the matrix
+        id: build-matrix
+        run: |
+          matrix='[{"os": "ubuntu-latest", "run-tests": true}]'
+          if [[ "${{ steps.changed-install-files.outputs.any_modified }}" == "true" ]]; then
+            matrix=$(echo "$matrix" | jq '. + [{"os": "ubuntu-latest", "container": "archlinux:base-devel"}]')
+            matrix=$(echo "$matrix" | jq '. + [{"os": "macos-latest"}]')
+          fi
+          echo "matrix=$(echo "$matrix" | jq --compact-output)" | tee -a "$GITHUB_OUTPUT"
+
+
+  install-script:
+    name: Automated installation on ${{ matrix.container || matrix.os }}
+
+    needs:
+      - build-matrix
+
+    strategy:
+      matrix:
+        include: ${{ fromJSON(needs.build-matrix.outputs.matrix) }}
+
+    runs-on: ${{ matrix.os }}
+    container: ${{ matrix.container }}
+    timeout-minutes: 20
+
+    steps:
+      - name: Install os/container dependencies
+        run: |
+          if command -v pacman >/dev/null; then
+            yes | sudo pacman -Sy --noconfirm git
+          fi
+
+      - name: Checkout current commit
+        uses: actions/checkout@v3
+
+      - name: Add trust to repository
+        if: matrix.container != ''
+        run: |
+          git config --global --add safe.directory "$(pwd)"
+          git remote set-url origin "https://github.com/XaF/omni.git"
+
       - name: Prepare environment
         run: |
-          echo "OMNIDIR=${GITHUB_WORKSPACE}" | tee -a "$GITHUB_ENV"
+          echo "OMNIDIR=$(pwd)" | tee -a "$GITHUB_ENV"
           echo "OMNI_GIT=${HOME}/git" | tee -a "$GITHUB_ENV"
 
       - name: Run install script
@@ -68,9 +114,14 @@ jobs:
           omni help
 
       - name: Install zsh
-        if: runner.os != 'macos'
         run: |
-          sudo apt-get --yes install zsh
+          if ! command -v zsh >/dev/null; then
+            if command -v apt-get >/dev/null; then
+              sudo apt-get --yes install zsh
+            elif command -v pacman >/dev/null; then
+              yes | sudo pacman -Sy --noconfirm zsh
+            fi
+          fi
 
       - name: Try and run omni with zsh
         shell: zsh {0}
@@ -88,6 +139,7 @@ jobs:
           omni help
 
       - name: Setup bats
+        if: matrix.run-tests == true
         run: |
           bats_dir="${TMPDIR:-/tmp}/bats-core"
           git clone https://github.com/bats-core/bats-core.git "${bats_dir}"
@@ -95,6 +147,7 @@ jobs:
           ./install.sh "${HOME}/.local"
 
       - name: Evaluate expected test duration
+        if: matrix.run-tests == true
         run: |
           NUM_TESTS=$(bats -c tests/)
           # This gives about 30s per test declared in bats, which should be sufficient,
@@ -102,6 +155,7 @@ jobs:
           echo "TEST_TIMEOUT_MINUTES=$(((${NUM_TESTS} + 1) / 2))" | tee -a "$GITHUB_ENV"
 
       - name: Run bats tests
+        if: matrix.run-tests == true
         timeout-minutes: ${{ fromJSON(env.TEST_TIMEOUT_MINUTES) }}
         run: |
           bats --no-tempdir-cleanup tests/
