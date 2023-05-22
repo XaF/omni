@@ -398,7 +398,7 @@ function install_dependencies_packages() {
 	else
 		print_issue "No package manager found"
 		if [[ "$INTERACTIVE" == "true" ]]; then
-			print_query "Please install the following dependencies manually:\n$(printf " - %s\n" "${packages[@]}")\nPress enter when ready to pursue."
+			print_query "Please install the following dependencies manually:\n$(printf " - %s\n" "${missing[@]}")\nPress enter when ready to pursue."
 			read
 		fi
 	fi
