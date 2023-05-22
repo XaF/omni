@@ -28,6 +28,7 @@ class OmniEnv
   end
 
   OMNIDIR = ENV['OMNIDIR'] || File.expand_path(File.join(File.dirname(__FILE__), '..'))
+  OMNIDIR_LOCATED = ENV['OMNIDIR_LOCATED'] == 'true'
   OMNIPATH = split_path(ENV['OMNIPATH'] || File.expand_path(File.join(File.dirname(__FILE__), '..', 'cmd')))
   OMNI_CMD_FILE = (ENV['OMNI_CMD_FILE'] || '').empty? ? nil : ENV['OMNI_CMD_FILE']
   OMNI_ORG = split_path(ENV['OMNI_ORG'] || '', split_by: ',')

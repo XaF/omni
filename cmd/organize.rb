@@ -67,7 +67,9 @@ class GitRepo
       # Inform the user that they will need to update their OMNIDIR environment
       # variable if they set it up manually and are not using omni's magic for the
       # setup
-      STDERR.puts "#{"omni:".light_cyan} #{"organize:".yellow} #{path.light_red} is omni's directory. The OMNIDIR environment variable got updated automatically for the current shell, but if you set it up in your rc file, you will need to update it:\n\texport OMNIDIR=\"#{expected_path.light_green}\""
+      msg = +"#{path.light_red} is omni's directory - the OMNIDIR environment variable got updated automatically"
+      msg << " for the current shell, but if you set it up in your rc file, you will need to update it:\n\texport OMNIDIR=\"#{expected_path.light_green}\"" unless OmniEnv::OMNIDIR_LOCATED
+      STDERR.puts "#{"omni:".light_cyan} #{"organize:".yellow} #{msg}"
     end
 
     # Update the current OMNIPATH too

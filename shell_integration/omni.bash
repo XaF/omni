@@ -30,6 +30,7 @@ function find_omnidir() {
 			fi
 
 			export OMNIDIR="$lookup"
+			export OMNIDIR_LOCATED=true
 			break
 		done
 		unset lookup_omnidir
