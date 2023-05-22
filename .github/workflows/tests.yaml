@@ -41,7 +41,7 @@ jobs:
           matrix='[{"os": "ubuntu-latest", "run-tests": true}]'
           if [[ "${{ steps.changed-install-files.outputs.any_modified }}" == "true" ]]; then
             matrix=$(echo "$matrix" | jq '. + [{"os": "ubuntu-latest", "container": "archlinux:base-devel"}]')
-            matrix=$(echo "$matrix" | jq '. + [{"os": "macos-latest"}]')
+            matrix=$(echo "$matrix" | jq '. + [{"os": "macos-latest", "install-timeout": 15}]')
           fi
           echo "matrix=$(echo "$matrix" | jq --compact-output)" | tee -a "$GITHUB_OUTPUT"
 
@@ -82,7 +82,7 @@ jobs:
           echo "OMNI_GIT=${HOME}/git" | tee -a "$GITHUB_ENV"
 
       - name: Run install script
-        timeout-minutes: 10
+        timeout-minutes: ${{ matrix.install-timeout || 10 }}
         run: |
           ./install.sh \
             --no-interactive \
