@@ -30,7 +30,7 @@ jobs:
         id: changed-install-files
         uses: tj-actions/changed-files@v35
         with:
-          since_last_remote_commit: true
+          since_last_remote_commit: ${{ github.event_name != 'pull_request' }}
           files: |
             .github/workflows/tests.yaml
             install.sh
@@ -55,6 +55,8 @@ jobs:
     strategy:
       matrix:
         include: ${{ fromJSON(needs.build-matrix.outputs.matrix) }}
+      fail-fast: true
+      max-parallel: 1
 
     runs-on: ${{ matrix.os }}
     container: ${{ matrix.container }}
@@ -88,7 +90,8 @@ jobs:
             --no-interactive \
             --repo-path-format "%{host}/%{org}/%{repo}" \
             --bashrc "$HOME/omni.bashrc" \
-            --zshrc "$HOME/omni.zshrc"
+            --zshrc "$HOME/omni.zshrc" \
+            --fishrc "$HOME/omni.fishrc"
 
       - name: Check the content of the generated bashrc
         run: |
@@ -97,6 +100,10 @@ jobs:
       - name: Check the content of the generated zshrc
         run: |
           cat "$HOME/omni.zshrc"
+
+      - name: Check the content of the generated fishrc
+        run: |
+          cat "$HOME/omni.fishrc"
 
       - name: Try and run omni with bash
         shell: bash
@@ -127,6 +134,33 @@ jobs:
         shell: zsh {0}
         run: |
           source "$HOME/omni.zshrc"
+
+          echo "## Running 'status' from git directory"; echo
+          omni status
+
+          echo; echo "## Running 'status' from root directory"; echo
+          cd /
+          omni status
+
+          echo; echo "## Running 'help' from root directory"; echo
+          omni help
+
+      - name: Install fish
+        run: |
+          if ! command -v fish >/dev/null; then
+            if command -v brew >/dev/null; then
+              brew install fish
+            elif command -v apt-get >/dev/null; then
+              sudo apt-get --yes install fish
+            elif command -v pacman >/dev/null; then
+              yes | sudo pacman -Sy --noconfirm fish
+            fi
+          fi
+
+      - name: Try and run omni with fish
+        shell: fish {0}
+        run: |
+          source "$HOME/omni.fishrc"
 
           echo "## Running 'status' from git directory"; echo
           omni status

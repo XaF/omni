@@ -118,6 +118,11 @@ while getopts -- ":h-:" optchar; do
 			SETUP_ZSHRC=true
 			ZSHRC_PATH="${val}"
 			;;
+		fishrc*)
+			eval "$(parse_long_option "fishrc" "optional" "${OPTARG}" "${!OPTIND}")"
+			SETUP_FISHRC=true
+			FISHRC_PATH="${val}"
+			;;
 		no-interactive*)
 			eval "$(parse_long_option "no-interactive" "none" "${OPTARG}" "${!OPTIND}")"
 			INTERACTIVE=false
@@ -547,6 +552,12 @@ function setup_shell_integration() {
 
 	[[ "$skip_confirmation" =~ ^[yY]$ ]] && setup_shell="true"
 
+	if [[ "$setup_shell" != "true" ]] && ! command -v "$shell" >/dev/null; then
+		# If the shell is not installed, and the integration was not
+		# specifically requested to be setup, we skip it
+		return 0
+	fi
+
 	if [[ "$setup_shell" != "true" ]] && [[ "$INTERACTIVE" == "true" ]]; then
 		local default_show="y/N"
 		[[ "$default_value" =~ ^[yY]$ ]] && default_show="Y/n"
@@ -562,15 +573,20 @@ function setup_shell_integration() {
 	fi
 
 	if [[ -z "$rc_file" ]] && [[ "$INTERACTIVE" == "true" ]]; then
-		print_query "Location of the .${shell}rc file to edit? \033[90m(default: ${HOME}/.${shell}rc)\033[0m "
+		local default_rc_file="${HOME}/.${shell}rc"
+		if [[ "$shell" == "fish" ]]; then
+		  default_rc_file="${HOME}/.config/fish/config.fish"
+		fi
+
+		print_query "Location of the .${shell}rc file to edit? \033[90m(default: ${default_rc_file})\033[0m "
 		read rc_file
-		rc_file="${rc_file:-${HOME}/.${shell}rc}"
+		rc_file="${rc_file:-${default_rc_file}}"
 		rc_file="$(eval "echo $rc_file")"
 	fi
 
 	[[ -z "$rc_file" ]] && rc_file="${HOME}/.${shell}rc"
 
-	print_action "Setting up shell integration in $rc_file"
+	print_action "Setting up $shell integration in $rc_file"
 
 	if [[ "$SETUP_OMNI_GIT" == "true" ]] && [[ -n "${OMNI_GIT}" ]]; then
 		echo 'export OMNI_GIT="'"${OMNI_GIT}"'"' >> "$rc_file"
@@ -581,7 +597,12 @@ function setup_shell_integration() {
 		fi
 	fi
 
-	echo "[[ -x \"${SCRIPT_DIR}/shell_integration/omni.${shell}\" ]] && source \"${SCRIPT_DIR}/shell_integration/omni.${shell}\"" >> "$rc_file"
+	local conditional_load="[[ -f \"${SCRIPT_DIR}/shell_integration/omni.${shell}\" ]] && source \"${SCRIPT_DIR}/shell_integration/omni.${shell}\""
+	if [[ "$shell" == "fish" ]]; then
+		conditional_load="test -f \"${SCRIPT_DIR}/shell_integration/omni.fish\"; and source \"${SCRIPT_DIR}/shell_integration/omni.fish\""
+	fi
+
+	echo "${conditional_load}" >> "$rc_file"
 	if [ $? -ne 0 ]; then
 		print_failed "Setup $shell integration in $rc_file"
 	else
@@ -589,7 +610,7 @@ function setup_shell_integration() {
 	fi
 }
 
-SUPPORTED_SHELLS=("bash" "zsh")
+SUPPORTED_SHELLS=("bash" "zsh" "fish")
 # Setup first the integration for the current shell
 for shell in "${SUPPORTED_SHELLS[@]}"; do
 	[[ "$OMNI_INSTALL_CURRENT_SHELL" == "$shell" ]] && setup_shell_integration "$shell"

@@ -75,8 +75,8 @@ function omni_import_rbenv
     end
 
     # Initialize rbenv if not already initialized
-    if type rbenv 2>/dev/null | head -n1 | grep -q "function"; or test -z "$RBENV_SHELL"
-        eval (rbenv init - fish | psub)
+    if not type rbenv 2>/dev/null | head -n1 | grep -q "function"; or test -z "$RBENV_SHELL"
+        . (rbenv init - fish | psub)
     end
 end
 
@@ -111,8 +111,8 @@ function omni_import_goenv
         end
 
         # Initialize goenv if not already initialized
-        if type goenv 2>/dev/null | head -n1 | grep -q "function"; or test -z "$GOENV_SHELL"
-            eval (goenv init - fish | psub)
+        if not type goenv 2>/dev/null | head -n1 | grep -q "function"; or test -z "$GOENV_SHELL"
+            . (goenv init - fish | psub)
         end
     end
 end
