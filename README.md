@@ -45,7 +45,7 @@ In order to work as expected, omni will also require its shell integration, whic
   [[ -f "<path/to/omni/git/repo>/shell_integration/omni.zsh" ]] && source "<path/to/omni/git/repo>/shell_integration/omni.zsh"
   ```
 
-- `config.fish`
+- `fish/conf.d/omni.fish`
   ```
   test -f "<path/to/omni/git/repo>/shell_integration/omni.fish"; and source "<path/to/omni/git/repo>/shell_integration/omni.fish"
   ```

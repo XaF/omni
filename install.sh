@@ -575,7 +575,7 @@ function setup_shell_integration() {
 	if [[ -z "$rc_file" ]] && [[ "$INTERACTIVE" == "true" ]]; then
 		local default_rc_file="${HOME}/.${shell}rc"
 		if [[ "$shell" == "fish" ]]; then
-		  default_rc_file="${HOME}/.config/fish/config.fish"
+		  default_rc_file="${HOME}/.config/fish/conf.d/omni.fish"
 		fi
 
 		print_query "Location of the .${shell}rc file to edit? \033[90m(default: ${default_rc_file})\033[0m "
