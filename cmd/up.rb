@@ -3,14 +3,12 @@
 # category: Git commands
 # autocompletion: true
 # config: up
-# opt:--update-user-config:Whether we should handle paths found in the configuration
+# opt:--update-user-config:Whether we should handle suggestions found in the configuration
 # opt:--update-user-config:of the repository if any (yes/ask/no); When using \033[3mup\033[0m,
-# opt:--update-user-config:the \033[3mpath\033[0m configuration will be copied to the home
-# opt:--update-user-config:directory of the user to be loaded on every omni call. When
-# opt:--update-user-config:using \033[3mdown\033[0m, the \033[3mpath\033[0m configuration of the
-# opt:--update-user-config:repository will be removed from the home directory of the user
-# opt:--update-user-config:if it exists \033[90m(default: no)\033[0m
-# opt:--trust:Define how to trust the repository (always/yes/no) to run the command.
+# opt:--update-user-config:the \033[3msuggest_config\033[0m configuration will be copied to
+# opt:--update-user-config:the home directory of the user to be loaded on every omni call
+# opt:--update-user-config:\033[90m(default: no)\033[0m
+# opt:--trust:Define how to trust the repository (always/yes/no) to run the command
 # help: Sets up or tear down a repository depending on its \033[3mup\033[0m configuration
 
 require_relative '../lib/colorize'
@@ -120,53 +118,6 @@ def trusted_repo?(trust: nil)
   return true
 end
 
-def update_path_user_config(config, proceed: false)
-  merged_path = {}
-  [['append', :push], ['prepend', :unshift]].each do |key, func|
-    merged_path[key] = config.dig('path', key).dup || []
-    (Config.path_from_repo[key] || []).each do |path|
-      merged_path[key].send(func, path) unless merged_path[key].include?(path)
-    end
-  end
-  merged_path.select! { |_, value| !value.empty? }
-  merged_path.transform_values! { |value| value.uniq }
-
-  return false if merged_path == (config.dig('path') || {})
-
-  STDERR.puts "#{"omni:".light_cyan} #{"#{OmniEnv::OMNI_SUBCOMMAND}:".light_yellow} The current repository is declaring paths for omni commands."
-  STDERR.puts "#{"omni:".light_cyan} #{"#{OmniEnv::OMNI_SUBCOMMAND}:".light_yellow} The following paths are going to be set in your #{"omni".underline} configuration:"
-  STDERR.puts "  #{"path:".green}"
-  YAML.dump(merged_path).each_line do |line|
-    line = line.chomp
-    next if line == "---"
-    STDERR.puts "    #{line.green}"
-  end
-  if config.dig('path', 'append') || config.dig('path', 'prepend')
-    STDERR.puts "#{"omni:".light_cyan} #{"#{OmniEnv::OMNI_SUBCOMMAND}:".light_yellow} Previous configuration contained:"
-    STDERR.puts "  #{"path:".red}"
-    YAML.dump(config.dig('path')).each_line do |line|
-      line = line.chomp
-      next if line == "---"
-      STDERR.puts "    #{line.red}"
-    end
-  end
-
-  proceed = proceed || begin
-    UserInteraction.confirm?("Do you want to continue?")
-  rescue UserInteraction::StoppedByUserError, UserInteraction::NoMatchError
-    false
-  end
-
-  if proceed
-    STDERR.puts "#{"omni:".light_cyan} #{"#{OmniEnv::OMNI_SUBCOMMAND}:".light_yellow} Updated path user configuration."
-    config['path'] = merged_path
-    true
-  else
-    STDERR.puts "#{"omni:".light_cyan} #{"#{OmniEnv::OMNI_SUBCOMMAND}:".light_yellow} Skipped updating path user configuration."
-    false
-  end
-end
-
 def update_suggested_user_config(config, proceed: false)
   suggested_config = Config.suggested_from_repo(unwrap: false)
   current_config = suggested_config.keys.map do |key|
@@ -247,11 +198,7 @@ def update_user_config(proceed: false)
   return if OmniEnv::OMNI_SUBCOMMAND == 'down'
 
   Config.user_config_file(:readwrite) do |config|
-    path_updated = update_path_user_config(config, proceed: proceed) if Config.path_from_repo.any?
-    suggested_updated = update_suggested_user_config(config, proceed: proceed) if Config.suggested_from_repo.any?
-
-    # Only update the configuration file if something changed
-    if path_updated || suggested_updated
+    if update_suggested_user_config(config, proceed: proceed) if Config.suggested_from_repo.any?
       config
     else
       nil
@@ -303,8 +250,7 @@ end
 
 
 should_handle_up = Config.respond_to?(:up) && Config.up
-should_update_user_config = [:yes, :ask].include?(options[:update_user_config]) && (
-  Config.path_from_repo.any? || Config.suggested_from_repo.any?)
+should_update_user_config = [:yes, :ask].include?(options[:update_user_config]) && Config.suggested_from_repo.any?
 
 if should_handle_up || should_update_user_config
   exit 0 unless trusted_repo?(trust: options[:trust])
