@@ -183,6 +183,12 @@ def update_suggested_user_config(config, proceed: false)
 
   return false if merged_config == current_config
 
+  merged_config.each_key do |key|
+    next unless merged_config[key] == current_config[key]
+    merged_config.delete(key)
+    current_config.delete(key)
+  end
+
   STDERR.puts "#{"omni:".light_cyan} #{"#{OmniEnv::OMNI_SUBCOMMAND}:".light_yellow} The current repository is suggesting configuration changes."
   STDERR.puts "#{"omni:".light_cyan} #{"#{OmniEnv::OMNI_SUBCOMMAND}:".light_yellow} The following is going to be set in your #{"omni".underline} configuration:"
   YAML.dump(merged_config).each_line do |line|
