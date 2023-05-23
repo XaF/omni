@@ -123,14 +123,18 @@ class ConfigUtils
   end
 
   def self.transform_path(value, path, unwrap: true)
-    if path.size == 3 && path[0] == 'path' && ['append', 'prepend'].include?(path[1])
+    if path.size == 3 && \
+        ((path[0] == 'path' && ['append', 'prepend'].include?(path[1])) || \
+        (path[0] == 'org' && path[2] == 'worktree'))
       abs_path = value.value
+      abs_path = File.expand_path(abs_path) if abs_path.start_with?('~/')
       abs_path = File.join(File.dirname(value.path), abs_path) unless abs_path.start_with?('/')
       return abs_path if unwrap
 
       value.set_value(abs_path)
       return value
     end
+
     return ConfigUtils.transform_unwrap(value, path) if unwrap
     value
   end
@@ -367,7 +371,17 @@ class Config
         split_on_dash: true,
         split_on_slash: true,
       },
-      org: [],
+      org: [
+        # {
+          # handle: 'git@github.com:XaF',
+          # trusted: true,
+        # },
+        # {
+          # handle: 'github.com/XaF',
+          # trusted: false,
+          # worktree: '/path/to/special/worktree',
+        # },
+      ],
       path: {
         append: [],
         prepend: [],
@@ -506,6 +520,16 @@ class Config
 
       @config.dig('path').select_label('git_repo')&.unwrap || {}
     end
+  end
+
+  def omniorg
+    orgs = []
+
+    orgs.push(*OmniEnv::OMNI_ORG)
+    orgs.push(*(@config.dig('org')&.reject_label('git_repo')&.unwrap || []))
+    orgs.uniq!
+
+    orgs
   end
 
   def suggested_from_repo(unwrap: true)

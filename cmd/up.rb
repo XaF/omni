@@ -75,7 +75,7 @@ def trusted_repo?(trust: nil)
 
     # Check if the repository is in a known org
     trust = OmniOrgs.each.any? do |org|
-      repo.in_org?(org)
+      org.trusted? && repo.in_org?(org)
     end
 
     # If not in a trusted org, check if the repo was already marked as safe

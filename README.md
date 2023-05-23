@@ -63,7 +63,7 @@ path_repo_updates:
       ref_match: ^v[0-9]+\.[0-9]+\.[0-9]+$
 ```
 
-This will make sure that `omni` will only get auto-updated toward version tags. You can use `^v[0-9]+\.[0-9]+\.[0-9]+(-rc[0-9]+)?$` in case you wish to get release candidates too.
+This will make sure that `omni` will only get auto-updated toward version tags. You can use `^v[0-9]+\.[0-9]+\.[0-9]+(-rc[0-9]+)?$` in case you wish to get release candidates too. This is what omni itself will suggest you if you run `omni up --update-user-config` in the omni repository.
 
 For this to work, you will also need to make sure that you are currently checked out to the latest tag instead of main. Use `git checkout vX.Y.Z` to do so (where `vX.Y.Z` is the [latest tag available](https://github.com/XaF/omni/releases)).
 
@@ -118,6 +118,10 @@ Omni configuration files accept the following parameters:
   - `enabled` *[boolean]* whether or not to load commands from the Makefiles in the current path and parents (up to the root of the git repository, or user directory) *(default: true)*
   - `split_on_dash` *[boolean]* whether or not the targets should be split on dash (e.g. 'my-target' would be used as 'omni my target' instead of 'omni my-target') *(default: true)*
   - `split_on_slash` *[boolean]* whether or not the targets should be split on slash (e.g. 'my/target' would be used as 'omni my target' instead of 'omni my/target') *(default: true)*
+- `org` *[list of maps]* configuration for the default organizations, which are used for easy cloning/cd of repositories, and trusted for `omni up`. The list contains maps with the following keys:
+  - `handle` *[string]* the organization handle, e.g. `git@github.com:XaF`, `github.com/XaF`
+  - `trusted` *[boolean]* whether or not the organization is to be trusted automatically for `omni up` *(default: true)*
+  - `worktree` *[dirpath]* the path to the worktree for that organization, if different from **OMNI_GIT** *(default: null)*
 - `path_repo_updates` *[map]* configuration for the automated updates of the repositories in **OMNIPATH**
   - `enabled` *[boolean]* whether or not automated updates are enabled *(default: true)*
   - `interval` *[int]* the number of seconds to wait between two updates of the repositories *(default: 43200)*
@@ -164,9 +168,9 @@ An up object can be one of:
 ### Environment values
 
 - `OMNI_GIT` *[path]* The workspace directory where omni will clone and look for repositories. Defaults to `~/git` if it exists, or `$GOPATH/src` if it is defined.
-- `OMNIDIR` *[path]* The path to the omni repo. Defaults to searching under `$OMNI_GIT`.
+- `OMNIDIR` *[dirpath]* The path to the omni repository. Defaults to searching under `$OMNI_GIT`.
 - `OMNI_ORG` *[comma-delimited list of strings]* Provides some quality-of-life for using omni with the organization/s a user regularly interacts with. Organizations are idenfitied by a prefix on the git origin. With the example: `OMNI_ORG="git@github.com:XaF,github.com/XaF"`.
    - The organizations in the list are handled as an implied prefix for some commands, in the order in which they are declared, stopping at the first match. Example: `omni clone foo` would attempt to clone `git@github.com:XaF/foo.git` first, then if no match, it would attempt to clone `https://github.com/XaF/foo.git`.
    - All organizations are implicitly trusted. `omni up` would not ask if you trusted the repo `git@github.com:XaF/foo.git` or `github.com/XaF/foo.git`.
-- `OMNI_CONFIG` *[path]* The path to an omni global configuration file.
-- `OMNIPATH` *[colon-delimited list of paths]* Provides the paths to different omni commands. This is searched after `path/prepend` and before `path/append` when looking for available commands. This works like the `PATH` environment variable but for omni commnds: only the first command in the path for a given name will be considered.
+- `OMNI_CONFIG` *[filepath]* The path to an omni global configuration file.
+- `OMNIPATH` *[colon-delimited list of dirpaths]* Provides the paths to different omni commands. This is searched after `path/prepend` and before `path/append` when looking for available commands. This works like the `PATH` environment variable but for omni commnds: only the first command in the path for a given name will be considered.

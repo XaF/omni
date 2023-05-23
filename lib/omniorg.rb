@@ -9,11 +9,8 @@ class OmniOrgs
   include Enumerable
 
   def self.method_missing(method, *args, **kwargs, &block)
-    if self.instance.respond_to?(method)
-      self.instance.send(method, *args, **kwargs, &block)
-    else
-      super
-    end
+    return self.instance.send(method, *args, **kwargs, &block) if self.instance.respond_to?(method)
+    super
   end
 
   def self.respond_to_missing?(method, include_private = false)
@@ -26,10 +23,25 @@ class OmniOrgs
     @each ||= begin
       each_orgs = []
 
-      OmniEnv::OMNI_ORG.each do |org|
-        omniOrg = OmniOrg.new(org)
-        yield omniOrg if block_given?
+      Config.omniorg.map do |org|
+        if org.is_a?(String)
+          org, worktree = org.split('=', 2) if org.include?('=')
+          worktree = nil if worktree == ''
+          org = { 'handle' => org, 'worktree' => worktree }.compact
+        end
 
+        if org['worktree'] && org['worktree'][0] != '/'
+          error("Invalid worktree path for org #{org['handle'].light_blue}: #{org['worktree'].red}; skipping", print_only: true)
+          next
+        end
+
+        org['worktree'] = File.expand_path(org['worktree']) if org['worktree']
+        org['trusted'] = true unless org['trusted'] == false
+
+        org
+      end.compact.uniq.each do |org|
+        omniOrg = OmniOrg.new(org['handle'], worktree: org['worktree'], trusted: org['trusted'])
+        yield omniOrg if block_given?
         each_orgs << omniOrg
       end
 
@@ -64,6 +76,22 @@ class OmniOrgs
     each.size
   end
 
+  def worktrees(filter_out_children: false)
+    @worktrees ||= begin
+      worktrees = [OmniEnv::OMNI_GIT]
+      worktrees += OmniOrgs.map(&:worktree)
+      worktrees.compact!
+      worktrees.uniq!
+      worktrees.sort!
+
+      worktrees.reject! do |path|
+        worktrees.any? { |p| path != p && path.start_with?(p + '/') }
+      end if filter_out_children
+
+      worktrees
+    end
+  end
+
   def repos(dedup: true)
     seen_paths = Set.new if dedup
     all_repos = []
@@ -91,16 +119,18 @@ class OmniOrgs
   def all_repos
     all_repos = []
 
-    Dir.chdir(OmniEnv::OMNI_GIT) do |dir|
-      return [] unless File.directory?(dir)
-      Dir.glob("**/*/**/.git").each do |path|
-        next unless File.directory?(path)
+    worktrees(filter_out_children: true).each do |worktree|
+      next unless File.directory?(worktree)
+      Dir.chdir(worktree) do |dir|
+        Dir.glob("**/*/**/.git").each do |path|
+          next unless File.directory?(path)
 
-        path = File.dirname(path)
-        dir_path = File.join(dir, path)
+          path = File.dirname(path)
+          dir_path = File.join(dir, path)
 
-        yield [dir, path, dir_path] if block_given?
-        all_repos << [dir, path, dir_path]
+          yield [dir, path, dir_path] if block_given?
+          all_repos << [dir, path, dir_path]
+        end
       end
     end
 
@@ -112,11 +142,19 @@ end
 class OmniRepo
   RSYNC_ADDRESS_PATTERN = %r{^(([^@]+@)?([^:]+)):(.*)$}
 
-  attr_reader :uri
+  attr_reader :uri, :worktree
 
-  def initialize(path)
+  def initialize(path, worktree: nil, trusted: nil, is_org: false)
     @uri = repo_uri(path)
     raise "Invalid repo path: #{path}" if @uri == nil
+
+    @worktree = worktree if worktree.is_a?(String) && worktree != ''
+    @trusted = trusted == false ? false : true
+    @is_org = is_org
+  end
+
+  def trusted?
+    @trusted
   end
 
   def id
@@ -134,6 +172,14 @@ class OmniRepo
     end
   end
 
+  def worktree
+    @worktree ||= begin
+      worktree = OmniOrgs.find { |org| in_org?(org) }&.worktree unless @is_org
+      worktree = OmniEnv::OMNI_GIT if worktree.nil?
+      worktree
+    end
+  end
+
   def path?(repo = nil)
     r = repo_in_repo(repo)
     r.path.sub!(/\.git$/, '')
@@ -148,7 +194,7 @@ class OmniRepo
     }
 
     repo_reldir = Config.repo_path_format % template_values
-    repo_absdir = "#{OmniEnv::OMNI_GIT}/#{repo_reldir}"
+    repo_absdir = "#{worktree}/#{repo_reldir}"
 
     if repo.nil?
       # If we didn't pass a repo as argument, we want the root path
@@ -324,10 +370,18 @@ end
 class OmniOrg
   attr_reader :path, :repo
 
-  def initialize(path)
+  def initialize(path, **options)
     @path = path
-    @repo = OmniRepo.new(path)
+    @repo = OmniRepo.new(path, is_org: true, **options)
     @repo.org = File.split(@repo.uri.path)[1]
+  end
+
+  def worktree
+    @repo.worktree
+  end
+
+  def trusted?
+    @repo.trusted?
   end
 
   def path?(repo = nil)
