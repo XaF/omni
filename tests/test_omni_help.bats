@@ -225,17 +225,14 @@ Sets up or tear down a repository depending on its up configuration
 
 Usage: omni down [--update-user-config] [--trust]
 
-  --update-user-config   Whether we should handle paths found in the
+  --update-user-config   Whether we should handle suggestions found in the
                          configuration of the repository if any (yes/ask/no);
-                         When using up, the path configuration will be copied
-                         to the home directory of the user to be loaded on
-                         every omni call. When using down, the path
-                         configuration of the repository will be removed from
-                         the home directory of the user if it exists (default:
-                         no)
+                         When using up, the suggest_config configuration will
+                         be copied to the home directory of the user to be
+                         loaded on every omni call (default: no)
 
   --trust                Define how to trust the repository (always/yes/no) to
-                         run the command.
+                         run the command
 
 ')
 
@@ -347,17 +344,14 @@ Sets up or tear down a repository depending on its up configuration
 
 Usage: omni up [--update-user-config] [--trust]
 
-  --update-user-config   Whether we should handle paths found in the
+  --update-user-config   Whether we should handle suggestions found in the
                          configuration of the repository if any (yes/ask/no);
-                         When using up, the path configuration will be copied
-                         to the home directory of the user to be loaded on
-                         every omni call. When using down, the path
-                         configuration of the repository will be removed from
-                         the home directory of the user if it exists (default:
-                         no)
+                         When using up, the suggest_config configuration will
+                         be copied to the home directory of the user to be
+                         loaded on every omni call (default: no)
 
   --trust                Define how to trust the repository (always/yes/no) to
-                         run the command.
+                         run the command
 
 ')
 
