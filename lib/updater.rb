@@ -62,20 +62,23 @@ class Updater
   private
 
   def update_using_branch(path, branch = nil)
-    if branch
-      # Check if the currently checked out branch matches the one we want to update
-      git_branch_command = ['git', 'branch', '--show-current']
-      git_branch = `#{git_branch_command.shelljoin} 2>/dev/null`.chomp
+    # Check if the currently checked out branch matches the one we want to update
+    git_branch_command = ['git', 'branch', '--show-current']
+    git_branch = `#{git_branch_command.shelljoin} 2>/dev/null`.chomp
 
-      unless git_branch && Regexp.new(branch).match?(git_branch)
-        msg = if git_branch
-          "current branch #{git_branch.inspect} does not match #{branch.inspect}"
-        else
-          "does not seem to have a branch checked out"
-        end
-        warning("#{path.yellow}: #{msg}; skipping", cmd: 'updater')
-        return false
+    unless git_branch
+      warning("#{path.yellow}: not currently checked out on a branch; skipping", cmd: 'updater')
+      return false
+    end
+
+    if branch && !Regexp.new(branch).match?(git_branch)
+      msg = if git_branch
+        "current branch #{git_branch.inspect} does not match #{branch.inspect}"
+      else
+        "does not seem to have a branch checked out"
       end
+      warning("#{path.yellow}: #{msg}; skipping", cmd: 'updater')
+      return false
     end
 
     git_pull = command_line('git', 'pull', '--ff-only', context: path, capture: true)
@@ -98,6 +101,16 @@ class Updater
     checked_tag = `#{checked_tag_command.shelljoin} 2>/dev/null`.chomp
     unless checked_tag
       warning("#{path.yellow}: not currently checked out on a tag; skipping", cmd: 'updater')
+      return false
+    end
+
+    # Check if we are actually checked out on a branch that 'happens' to have its
+    # HEAD be the same as the tag
+    git_branch_command = ['git', 'branch', '--show-current']
+    git_branch = `#{git_branch_command.shelljoin} 2>/dev/null`.chomp
+
+    if git_branch
+      warning("#{path.yellow}: currently checked out on a branch; skipping", cmd: 'updater')
       return false
     end
 
