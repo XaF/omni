@@ -22,19 +22,22 @@ function find_omnidir
         for lookup in $lookup_omnidir
             if test -d "$lookup"
                 set -gx OMNIDIR "$lookup"
-		set -gx OMNIDIR_LOCATED "true"
+                set -gx OMNIDIR_LOCATED "true"
                 break
             end
         end
     end
 
     if test -z "$OMNIDIR"
-        echo -e (set_color 96) "omni:" (set_color 31) "failed to find omni directory, please set OMNI_GIT to your workspace or OMNIDIR to the omni directory" (set_color normal) >&2
+        set -l suggestions
+        test -z "$OMNI_GIT"; and set suggestions $suggestions "OMNI_GIT to your workspace"
+        set suggestions $suggestions "OMNIDIR to the omni directory"
+        echo -e "\033[96momni:\033[31m failed to find omni directory, please set" (string join ' or ' -- $suggestions) "\033[0m" >&2
         return 1
     end
 
     if test -n "$OMNIDIR"
-        if not contains -- "$OMNIPATH" "$OMNIDIR/cmd"
+        if not contains -- "$OMNIDIR/cmd" $OMNIPATH
             # OMNIPATH is the list of directories in which omni will look
             # for commands; omni will make sure to add its own cmd directory
             # to the list, so that it can find the default commands, but
@@ -45,7 +48,7 @@ function find_omnidir
             set -gx OMNIPATH "$OMNIPATH" "$OMNIDIR/cmd"
         end
 
-        if not contains -- $PATH "$OMNIDIR/bin"
+        if not contains -- "$OMNIDIR/bin" $PATH
             set -gx PATH "$PATH" "$OMNIDIR/bin"
         end
     end
