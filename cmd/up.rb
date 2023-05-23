@@ -196,9 +196,10 @@ end
 
 def update_user_config(proceed: false)
   return if OmniEnv::OMNI_SUBCOMMAND == 'down'
+  return unless Config.suggested_from_repo.any?
 
   Config.user_config_file(:readwrite) do |config|
-    if update_suggested_user_config(config, proceed: proceed) if Config.suggested_from_repo.any?
+    if update_suggested_user_config(config, proceed: proceed)
       config
     else
       nil
