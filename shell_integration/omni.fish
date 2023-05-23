@@ -178,7 +178,7 @@ function _omni_complete_fish
     set -l args (echo $cmdline[2..-1])
 
     set -l opts (env COMP_CWORD=$cword omni --complete $args)
-    string split ' ' -- $opts
+    string join \n -- $opts
 end
 
-complete -c omni -n "_omni_complete_fish" -f
+complete -c omni -a "(_omni_complete_fish)" -f
