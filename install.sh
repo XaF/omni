@@ -359,17 +359,16 @@ function install_dependencies_packages() {
 		if [[ " ${missing[@]} " =~ " rbenv " ]]; then
 			rbenv_build=true
 			apt_packages+=(
-				"libssl-dev"
-				"libreadline-dev"
-				"zlib1g-dev"
 				"autoconf"
 				"bison"
 				"build-essential"
-				"libyaml-dev"
-				"libreadline-dev"
-				"libncurses5-dev"
 				"libffi-dev"
 				"libgdbm-dev"
+				"libncurses5-dev"
+				"libreadline-dev"
+				"libssl-dev"
+				"libyaml-dev"
+				"zlib1g-dev"
 			)
 		fi
 		if [[ " ${missing[@]} " =~ " uuidgen " ]]; then
@@ -378,6 +377,32 @@ function install_dependencies_packages() {
 
 		echo -e >&2 "\033[33m[sudo]\033[0m \033[90m$ apt-get --yes --no-install-recommends install ${apt_packages[@]}\033[0m"
 		sudo DEBIAN_FRONTEND=noninteractive apt-get --yes install "${apt_packages[@]}" || exit 1
+	elif command -v dnf >/dev/null; then
+		print_ok "dnf found"
+
+		local dnf_packages=()
+		if [[ " ${missing[@]} " =~ " rbenv " ]]; then
+			rbenv_build=true
+			dnf_packages+=(
+				"autoconf"
+				"bison"
+				"gcc"
+				"gdbm-devel"
+				"libffi-devel"
+				"libyaml-devel"
+				"make"
+				"ncurses-devel"
+				"openssl-devel"
+				"readline-devel"
+				"zlib-devel"
+			)
+		fi
+		if [[ " ${missing[@]} " =~ " uuidgen " ]]; then
+			dnf_packages+=("util-linux")
+		fi
+
+		echo -e >&2 "\033[33m[sudo]\033[0m \033[90m$ dnf install -y ${dnf_packages[@]}\033[0m"
+		sudo dnf install -y "${dnf_packages[@]}" || exit 1
 	elif command -v pacman >/dev/null; then
 		print_ok "pacman found"
 
@@ -385,13 +410,13 @@ function install_dependencies_packages() {
 		if [[ " ${missing[@]} " =~ " rbenv " ]]; then
 			rbenv_build=true
 			pacman_packages+=(
-			  "base-devel"
-			  "git"
-			  "libffi"
-			  "libyaml"
-			  "openssl"
-			  "readline"
-			  "zlib"
+				"base-devel"
+				"git"
+				"libffi"
+				"libyaml"
+				"openssl"
+				"readline"
+				"zlib"
 			)
 		fi
 		if [[ " ${missing[@]} " =~ " uuidgen " ]]; then
