@@ -233,9 +233,9 @@ function query_repo_path_format() {
 
 		print_query_nl "Omni will clone repositories in a standardized path format."
 		print_query_nl "Which repository path format do you wish to use?"
-		echo -e >&2 "\033[90m  %{host}	registry (e.g. github.com)\033[0m"
-		echo -e >&2 "\033[90m  %{org}	 repository owner (e.g. XaF)\033[0m"
-		echo -e >&2 "\033[90m  %{repo}	repository name (e.g. omni)\033[0m"
+		echo -e >&2 "\033[90m  %{host}   registry (e.g. github.com)\033[0m"
+		echo -e >&2 "\033[90m  %{org}    repository owner (e.g. XaF)\033[0m"
+		echo -e >&2 "\033[90m  %{repo}   repository name (e.g. omni)\033[0m"
 
 		local PS3="Format index: "
 		select REPO_PATH_FORMAT in "%{host}/%{org}/%{repo}" "%{org}/%{repo}" "%{repo}" "other (custom)"; do
@@ -268,8 +268,8 @@ function git_clone() {
 	local repo_path_format
 	local clone_location
 	local repo_locations=(
-	  "git@github.com:XaF/omni.git"
-	  "https://github.com/XaF/omni.git"
+		"git@github.com:XaF/omni.git"
+		"https://github.com/XaF/omni.git"
 	)
 
 	# We need the format the user wants for repo paths
@@ -301,15 +301,15 @@ function git_clone() {
 	# Then we can clone the repository
 	local cloned=false
 	for repo_location in "${repo_locations[@]}"; do
-	  echo -e >&2 "\033[90m$ git clone \"${repo_location}\" \"${clone_location}\" --depth 1\033[0m"
-	  git clone "${repo_location}" "${clone_location}" --depth 1
-	  if [ $? -ne 0 ]; then
-		  print_failed "clone omni repository from ${repo_location} in $clone_location"
-	  else
-		  print_ok "clone omni repository in $clone_location"
-		  cloned=true
-		  break
-	  fi
+		echo -e >&2 "\033[90m$ git clone \"${repo_location}\" \"${clone_location}\" --depth 1\033[0m"
+		git clone "${repo_location}" "${clone_location}" --depth 1
+		if [ $? -ne 0 ]; then
+			print_failed "clone omni repository from ${repo_location} in $clone_location"
+		else
+			print_ok "clone omni repository in $clone_location"
+			cloned=true
+			break
+		fi
 	done
 	if [[ "$cloned" == "false" ]]; then
 		print_failed "failed to clone omni repository"
@@ -325,9 +325,9 @@ OMNI_INSTALL_CURRENT_SHELL=${OMNI_INSTALL_CURRENT_SHELL:-$(basename -- "$(ps -p 
 if ! $in_omni_dir; then
 	# We need the base location for git repositories
 	if [[ -z "$OMNI_GIT" ]]; then
-	  export SETUP_OMNI_GIT=true
-	  export OMNI_GIT=$(query_omni_git)
-	  [[ $? -eq 0 ]] || exit 1
+		export SETUP_OMNI_GIT=true
+		export OMNI_GIT=$(query_omni_git)
+		[[ $? -eq 0 ]] || exit 1
 	fi
 
 	clone_location=$(git_clone)
@@ -474,27 +474,27 @@ function install_dependencies_packages() {
 function install_dependencies_ruby() {
 	# We then make sure the right ruby version is installed and being used from the repo
 	local ruby_version=$(grep "^ *- *ruby:" "${SCRIPT_DIR}/.omni.yaml" | \
-	  sed -E 's/^ *- ruby: *//' | \
-	  sed -E 's/^"([^"]*)"/\1/' | \
-	  sed -E "s/'([^']*)'/\1/" | \
-	  sed -E 's/ .*$//')
+		sed -E 's/^ *- ruby: *//' | \
+		sed -E 's/^"([^"]*)"/\1/' | \
+		sed -E "s/'([^']*)'/\1/" | \
+		sed -E 's/ .*$//')
 
 	# Make sure the right ruby version is used from the repo
 	echo $ruby_version > "${SCRIPT_DIR}/.ruby-version"
 
 	function check_rbenv() {
-	  (
-	    cd "$SCRIPT_DIR" &&
-	    rbenv version | cut -d' ' -f1 | grep -q "$ruby_version"
-	  ) && return 0 || return 1
+		(
+			cd "$SCRIPT_DIR" &&
+			rbenv version | cut -d' ' -f1 | grep -q "$ruby_version"
+		) && return 0 || return 1
 	}
 
 	if check_rbenv; then
 		print_ok "ruby $ruby_version found"
 	else
 		if ! rbenv install --list 2>/dev/null | grep -q "^$(echo "$ruby_version" | sed 's/\./\\./g')$"; then
-		  print_failed "cannot install ruby $ruby_version with your rbenv installation - please update rbenv or uninstall it to let this install script get the latest version for you"
-		  exit 1
+			print_failed "cannot install ruby $ruby_version with your rbenv installation - please update rbenv or uninstall it to let this install script get the latest version for you"
+			exit 1
 		fi
 
 		if [[ ! -d "$HOME/.rbenv/plugins/rvm-download" ]]; then
@@ -526,11 +526,11 @@ function install_dependencies_ruby() {
 
 function install_dependencies_bundler() {
 	function check_bundler() {
-	  (
-	    command -v bundle >/dev/null &&
-	    cd "$SCRIPT_DIR" &&
-	    bundle --version 2>/dev/null | grep -q "\b2\."
-	  ) && return 0 || return 1
+		(
+			command -v bundle >/dev/null &&
+			cd "$SCRIPT_DIR" &&
+			bundle --version 2>/dev/null | grep -q "\b2\."
+		) && return 0 || return 1
 	}
 
 	# We then check that bundler is installed, that should be automated, but just in case
@@ -572,9 +572,9 @@ function install_dependencies() {
 
 	# We also add the homebrew path there, just in case
 	if command -v brew >/dev/null; then
-	  local brewbin="$(brew --prefix)/bin"
-	  [[ ":$PATH:" =~ ":${brewbin}:" ]] || export PATH="${brewbin}:$PATH"
-	  unset brewbin
+		local brewbin="$(brew --prefix)/bin"
+		[[ ":$PATH:" =~ ":${brewbin}:" ]] || export PATH="${brewbin}:$PATH"
+		unset brewbin
 	fi
 
 	install_dependencies_packages
@@ -622,7 +622,7 @@ function setup_shell_integration() {
 	if [[ -z "$rc_file" ]] && [[ "$INTERACTIVE" == "true" ]]; then
 		local default_rc_file="${HOME}/.${shell}rc"
 		if [[ "$shell" == "fish" ]]; then
-		  default_rc_file="${HOME}/.config/fish/conf.d/omni.fish"
+			default_rc_file="${HOME}/.config/fish/conf.d/omni.fish"
 		fi
 
 		print_query "Location of the .${shell}rc file to edit? \033[90m(default: ${default_rc_file})\033[0m "
@@ -668,15 +668,15 @@ for shell in "${SUPPORTED_SHELLS[@]}"; do
 done
 
 function call_omni_up() {
-  print_pending "Running 'omni up' from the omni directory"
-  local extra_params=$([[ "$INTERACTIVE" == "false" ]] && echo "yes --trust" || echo "")
-  export PATH="${PATH:+${PATH}:}${SCRIPT_DIR}/bin"
-  if (cd "$SCRIPT_DIR" && OMNI_SKIP_UPDATE=true bin/omni up --update-user-config $extra_params); then
-    print_ok "Ran 'omni up' from the omni directory"
-  else
-    print_failed "'omni up' failed"
-    exit 1
-  fi
+	print_pending "Running 'omni up' from the omni directory"
+	local extra_params=$([[ "$INTERACTIVE" == "false" ]] && echo "yes --trust" || echo "")
+	export PATH="${PATH:+${PATH}:}${SCRIPT_DIR}/bin"
+	if (cd "$SCRIPT_DIR" && OMNI_SKIP_UPDATE=true bin/omni up --update-user-config $extra_params); then
+		print_ok "Ran 'omni up' from the omni directory"
+	else
+		print_failed "'omni up' failed"
+		exit 1
+	fi
 }
 
 # Finish setting up omni by using omni
