@@ -354,7 +354,7 @@ class Config
   def self.default_config
     stringify_keys({
       cache: {
-        path: "#{ENV['HOME']}/.cache/omni",
+        path: "#{fs_cache_home}/omni",
       },
       commands: {},
       command_match_skip_prompt_if: {
@@ -407,8 +407,8 @@ class Config
     [
       "#{ENV['HOME']}/.omni",
       "#{ENV['HOME']}/.omni.yaml",
-      "#{ENV['HOME']}/.config/omni",
-      "#{ENV['HOME']}/.config/omni.yaml",
+      "#{fs_config_home}/omni",
+      "#{fs_config_home}/omni.yaml",
       ENV['OMNI_CONFIG'],
     ].compact
   end
@@ -625,6 +625,22 @@ class Config
   end
 
   private
+
+  def self.fs_config_home
+    @fs_config_home ||= ENV['XDG_CONFIG_HOME']
+    if @fs_config_home.nil? || @fs_config_home.empty? || !@fs_config_home.start_with?('/')
+      @fs_config_home = "#{ENV['HOME']}/.config"
+    end
+    @fs_config_home
+  end
+
+  def self.fs_cache_home
+    @fs_cache_home ||= ENV['XDG_CACHE_HOME']
+    if @fs_cache_home.nil? || @fs_cache_home.empty? || !@fs_cache_home.start_with?('/')
+      @fs_cache_home = "#{ENV['HOME']}/.cache"
+    end
+    @fs_cache_home
+  end
 
   def transform_path(value, path)
     ConfigUtils.transform_path(value, path, unwrap: false)

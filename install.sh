@@ -149,16 +149,27 @@ fi
 function search_config() {
 	local param=$1
 
+	local config_home=${XDG_CONFIG_HOME}
+	if [[ -z "$config_home" ]] || ! [[ "$config_home" =~ ^/ ]]; then
+		config_home="${HOME}/.config"
+	fi
+
 	local config_files=(
-		"${HOME}/.omni"
-		"${HOME}/.omni.yaml"
-		"${HOME}/.config/omni"
-		"${HOME}/.config/omni.yaml"
 		"${OMNI_CONFIG}"
+		"${config_home}/omni.yaml"
+		"${config_home}/omni"
+		"${HOME}/.omni.yaml"
+		"${HOME}/.omni"
 	)
 	for file in "${config_files[@]}"; do
 		# If file does not exist or is not readable, go to next file
-		([[ -f "$file" ]] && [[ -r "$file" ]]) || continue
+		([[ -n "$file" ]] && [[ -f "$file" ]] && [[ -r "$file" ]]) || continue
+
+		# If there is no param to search, just return the first file that exists, if any
+		if [[ -z "$param" ]]; then
+			echo $file
+			return
+		fi
 
 		# Try and find if there is a line following the format 'param: value'
 		# in the file, we want the lookup to be compatible both for macos and linux, so
@@ -176,7 +187,18 @@ function search_config() {
 
 		# If we found a value, just return it
 		echo $matching_value
-		break
+		return
+	done
+
+	# If we reach here and there is no param, returns the first file of the list that is writeable
+	if [[ -n "$param" ]]; then
+		return
+	fi
+
+	for file in "${config_files[@]}"; do
+		([[ -n "$file" ]] && [[ -w "$file" ]]) || continue
+		echo $file
+		return
 	done
 }
 
@@ -234,7 +256,7 @@ function query_repo_path_format() {
 	fi
 
 	# Write repo path format to configuration file (at default location)
-	local config_file="${HOME}/.config/omni.yaml"
+	local config_file="$(search_config)"
 	mkdir -p "$(dirname "$config_file")"
 	echo "repo_path_format: \"${REPO_PATH_FORMAT}\"" >> "${config_file}"
 	print_ok "Saved repository path format to ${config_file}"
