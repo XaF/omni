@@ -37,7 +37,10 @@ function find_omnidir() {
 	fi
 
 	if [[ -z "${OMNIDIR}" ]]; then
-		echo -e >&2 "\033[96momni:\033[0m \033[31mfailed to find omni directory, please set OMNI_GIT to your workspace or OMNIDIR to the omni directory\033[0m"
+		local suggestions=""
+		[[ -z "${OMNI_GIT}" ]] && suggestions="OMNI_GIT to your workspace or "
+		suggestions="${suggestions}OMNIDIR to the omni directory"
+		echo -e >&2 "\033[96momni:\033[0m \033[31mfailed to find omni directory, please set ${suggestions}\033[0m"
 		return 1
 	fi
 
