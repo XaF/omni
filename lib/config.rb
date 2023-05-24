@@ -14,6 +14,11 @@ class ConfigUtils
     value.is_a?(klass) || (value.is_a?(ConfigValue) && value.value.is_a?(klass))
   end
 
+  def self.value_nil?(value)
+    return true if value.nil?
+    value.is_a?(ConfigValue) && value.value.nil?
+  end
+
   def self.key_strategy(key, keypath, strategy)
     return [key, strategy] if strategy == :ignore_inherit
 
@@ -59,7 +64,7 @@ class ConfigUtils
         )
       end
       merged
-    elsif !current&.nil? && !current&.empty? && strategy == :keep
+    elsif !value_nil?(current) && !current&.empty? && strategy == :keep
       current
     elsif value_is_a?(current, Array) && value_is_a?(added, Array)
       start_index = case strategy
