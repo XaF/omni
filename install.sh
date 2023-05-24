@@ -671,7 +671,7 @@ function call_omni_up() {
   print_pending "Running 'omni up' from the omni directory"
   local extra_params=$([[ "$INTERACTIVE" == "false" ]] && echo "yes --trust" || echo "")
   export PATH="${PATH:+${PATH}:}${SCRIPT_DIR}/bin"
-  if (cd "$SCRIPT_DIR" && bin/omni up --update-user-config $extra_params); then
+  if (cd "$SCRIPT_DIR" && OMNI_SKIP_UPDATE=true bin/omni up --update-user-config $extra_params); then
     print_ok "Ran 'omni up' from the omni directory"
   else
     print_failed "'omni up' failed"
