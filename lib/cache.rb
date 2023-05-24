@@ -140,6 +140,15 @@ class CachedValue
     expired? ? nil : @value
   end
 
+  def method_missing(method, *args, **kwargs, &block)
+    return @value.send(method, *args, **kwargs, &block) if !expired? && @value.respond_to?(method)
+    super
+  end
+
+  def respond_to_missing?(method, include_private = false)
+    (!expired? && @value.respond_to?(method, include_private)) || super
+  end
+
   def expire_at
     @expires_at
   end
