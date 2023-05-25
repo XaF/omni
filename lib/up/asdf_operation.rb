@@ -87,7 +87,9 @@ class AsdfOperation < Operation
     STDERR.puts "# Installing #{tool} plugin for asdf".light_blue
 
     if system("asdf plugin add #{tool} >/dev/null")
-      STDERR.puts "# `-> you can set a global version with: asdf global #{tool} <version>".light_green
+      unless system("asdf global #{tool} system >/dev/null")
+        STDERR.puts "# Could not set global version for #{tool}; you can do it with: asdf global #{tool} system".light_red
+      end
     end
   end
 
