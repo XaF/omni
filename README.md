@@ -152,13 +152,28 @@ An up object can be one of:
   - `gemfile` *[filepath]* relative path to the Gemfile to use when calling `bundle` operations
   - `path` *[dirpath]* relative path to the vendor bundle directory *(default: vendor/bundle)*
 
-- `homebrew` operation object, which takes a list of packages to install. Any element of the list can be a map with a single *package name => package version* if you wish to install a very specific package version.
+- `homebrew` operation object, which takes a list of packages to install. Any element of the list can be a map with a single *package name: package version* if you wish to install a very specific package version.
+
+- `apt` operation object, which takes a list of packages to install. Any element of the list can be a map with a single *package name: package version* if you wish to install a very specific package version.
 
 - `ruby` operation object, which can hold the following parameters:
   - `version` *[string]* the version of ruby to install and use in the repository; if the version is not specified, the latest available through rbenv will be installed.
 
 - `go` operation object, which can hold the following parameters:
   - `version` *[string]* the version of go to install and use in the repository; if the version is not specified, the latest available through goenv will be installed.
+
+- `python` operation object, which can hold the following parameters:
+  - `version` *[string]* the version of python to install and use in the repository; if the version is not specified, the latest available through asdf will be installed.
+
+- `rust` operation object, which can hold the following parameters:
+  - `version` *[string]* the version of rust to install and use in the repository; if the version is not specified, the latest available through asdf will be installed.
+
+- `node` operation object, which can hold the following parameters:
+  - `version` *[string]* the version of NodeJS to install and use in the repository; if the version is not specified, the latest available through asdf will be installed.
+
+- `asdf` operation object, which can hold the following parameters:
+  - `tool` **(required)** *[string]* the name of the tool to install, any of the tools provided by asdf are available
+  - `version` *[string]* the version of the tool to install and use in the repository; if the version is not specified, the latest available through asdf will be installed.
 
 - `custom` operation object, which can hold the following parameters:
   - `meet` **(required)** *[string, shell script]* the command to run to meet the requirement
