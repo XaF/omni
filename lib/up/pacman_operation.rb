@@ -6,18 +6,18 @@ require_relative '../utils'
 require_relative 'operation'
 
 
-class DnfOperation < Operation
-  DNF_OPERATION_CACHE_KEY = 'dnf-operation'.freeze
+class PacmanOperation < Operation
+  PACMAN_OPERATION_CACHE_KEY = 'pacman-operation'.freeze
 
   def up(skip_headers: false)
-    return unless dnf_installed?
+    return unless pacman_installed?
 
     if met?
-      STDERR.puts "# dnf dependencies already installed".light_yellow unless skip_headers
+      STDERR.puts "# pacman dependencies already installed".light_yellow unless skip_headers
       return true
     end
 
-    STDERR.puts "# Install dnf dependencies".light_blue unless skip_headers
+    STDERR.puts "# Install pacman dependencies".light_blue unless skip_headers
 
     required_packages = []
     installed_packages = []
@@ -25,7 +25,7 @@ class DnfOperation < Operation
     config.each do |pkg|
       pkgname, data = pkg.first
       version = data['version'] if data
-      pkgid = "#{pkgname}#{"-#{version}" if version}"
+      pkgid = "#{pkgname}#{"=#{version}" if version}"
       required_packages << pkgid
 
       next if pkg_installed?(pkgname, version)
@@ -34,43 +34,43 @@ class DnfOperation < Operation
     end
 
     if installed_packages.any?
-      command_line('sudo', 'dnf', '--assumeyes', 'install', *installed_packages) || \
-        run_error("dnf --assumeyes install #{installed_packages.join(' ')}")
+      command_line('sudo', 'pacman', '-Sy', '--noconfirm', *installed_packages) || \
+        run_error("pacman -Sy --noconfirm #{installed_packages.join(' ')}")
     end
 
     # Update the cache to save the dependencies installed for this repository
-    Cache.exclusive(DNF_OPERATION_CACHE_KEY) do |cache|
-      dnf_cache = cache&.value || {}
+    Cache.exclusive(PACMAN_OPERATION_CACHE_KEY) do |cache|
+      pacman_cache = cache&.value || {}
 
-      dnf_cache['packages'] ||= {}
+      pacman_cache['packages'] ||= {}
       required_packages.each do |pkgid|
-        dnf_cache['packages'][pkgid] ||= {}
-        dnf_cache['packages'][pkgid]['required_by'] ||= []
-        dnf_cache['packages'][pkgid]['required_by'] << OmniEnv.git_repo_origin
-        dnf_cache['packages'][pkgid]['required_by'].uniq!
+        pacman_cache['packages'][pkgid] ||= {}
+        pacman_cache['packages'][pkgid]['required_by'] ||= []
+        pacman_cache['packages'][pkgid]['required_by'] << OmniEnv.git_repo_origin
+        pacman_cache['packages'][pkgid]['required_by'].uniq!
       end
 
       installed_packages.each do |pkgid|
-        dnf_cache['packages'][pkgid] ||= {}
-        dnf_cache['packages'][pkgid]['installed'] = true
+        pacman_cache['packages'][pkgid] ||= {}
+        pacman_cache['packages'][pkgid]['installed'] = true
       end
 
-      dnf_cache
+      pacman_cache
     end
 
     !had_errors
   end
 
   def down
-    return unless dnf_installed?
+    return unless pacman_installed?
     return true unless partial_met?
 
-    STDERR.puts "# Uninstalling dnf dependencies".light_blue
+    STDERR.puts "# Uninstalling pacman dependencies".light_blue
 
     packages = config.map do |pkg|
       pkgname, data = pkg.first
       version = data['version'] if data
-      pkgid = "#{pkgname}#{"-#{version}" if version}"
+      pkgid = "#{pkgname}#{"=#{version}" if version}"
 
       [pkgid, pkgname, version]
     end
@@ -78,38 +78,38 @@ class DnfOperation < Operation
     # Update the cache to save the dependencies installed for this repository
     uninstall_packages = []
     remove_local_tap = false
-    Cache.exclusive(DNF_OPERATION_CACHE_KEY) do |cache|
-      dnf_cache = cache&.value || {}
+    Cache.exclusive(PACMAN_OPERATION_CACHE_KEY) do |cache|
+      pacman_cache = cache&.value || {}
 
       packages.each do |pkgid, pkgname, version|
-        next unless dnf_cache['packages'].key?(pkgid)
+        next unless pacman_cache['packages'].key?(pkgid)
 
-        dnf_cache['packages'][pkgid]['required_by'].delete(OmniEnv.git_repo_origin)
-        if dnf_cache['packages'][pkgid]['required_by'].empty?
-          uninstall_packages << [pkgid, pkgname, version] if dnf_cache['packages'][pkgid]['installed']
-          dnf_cache['packages'].delete(pkgid)
+        pacman_cache['packages'][pkgid]['required_by'].delete(OmniEnv.git_repo_origin)
+        if pacman_cache['packages'][pkgid]['required_by'].empty?
+          uninstall_packages << [pkgid, pkgname, version] if pacman_cache['packages'][pkgid]['installed']
+          pacman_cache['packages'].delete(pkgid)
         end
       end
 
-      dnf_cache.delete('packages') if dnf_cache['packages'].empty?
+      pacman_cache.delete('packages') if pacman_cache['packages'].empty?
 
-      dnf_cache
+      pacman_cache
     end
 
     uninstall_packages.select! { |_, pkgname, version| pkg_installed?(pkgname, version) }
     uninstall_packages.map! { |pkgid, _, _| pkgid }
 
-    command_line('sudo', 'dnf', '--assumeyes', 'remove', *uninstall_packages) || \
-      run_error("dnf --assumeyes remove #{uninstall_packages.join(' ')}")
+    command_line('sudo', 'pacman', '-Rs', '--noconfirm', *uninstall_packages) || \
+      run_error("pacman -Rs --noconfirm #{uninstall_packages.join(' ')}")
 
     !had_errors
   end
 
   private
 
-  def dnf_installed?
-    return @dnf_installed unless @dnf_installed.nil?
-    @dnf_installed = system('command -v dnf >/dev/null')
+  def pacman_installed?
+    return @pacman_installed unless @pacman_installed.nil?
+    @pacman_installed = system('command -v pacman >/dev/null')
   end
 
   def met?
@@ -131,12 +131,12 @@ class DnfOperation < Operation
   end
 
   def pkg_installed?(pkgname, version = nil)
-    pkgid = "#{pkgname}#{"-#{version}" if version}"
+    pkgid = "#{pkgname}#{"=#{version}" if version}"
 
     @pkg_installed ||= {}
     return @pkg_installed[pkgid] unless @pkg_installed[pkgid].nil?
 
-    @pkg_installed[pkgid] = system("dnf list --installed #{pkgid} >/dev/null 2>&1")
+    @pkg_installed[pkgid] = system("pacman -Q #{pkgid} >/dev/null 2>&1")
     @pkg_installed[pkgid]
   end
 

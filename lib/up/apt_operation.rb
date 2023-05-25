@@ -31,7 +31,11 @@ class AptOperation < Operation
       next if pkg_installed?(pkgname, version)
 
       installed_packages << pkgid
-      command_line('sudo', 'apt', '--yes', 'install', pkgid) || run_error("apt --yes install #{pkgid}")
+    end
+
+    if installed_packages.any?
+      command_line('sudo', 'apt', '--yes', 'install', *installed_packages) || \
+        run_error("apt --yes install #{installed_packages.join(' ')}")
     end
 
     # Update the cache to save the dependencies installed for this repository
@@ -92,10 +96,11 @@ class AptOperation < Operation
       apt_cache
     end
 
-    uninstall_packages.each do |pkgid, pkgname, version|
-      next unless pkg_installed?(pkgname, version)
-      command_line('sudo', 'apt', '--yes', 'remove', pkgid) || run_error("apt --yes remove #{pkgid}")
-    end
+    uninstall_packages.select! { |_, pkgname, version| pkg_installed?(pkgname, version) }
+    uninstall_packages.map! { |pkgid, _, _| pkgid }
+
+    command_line('sudo', 'apt', '--yes', 'remove', *uninstall_packages) || \
+      run_error("apt --yes remove #{uninstall_packages.join(' ')}")
 
     !had_errors
   end
