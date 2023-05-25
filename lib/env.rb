@@ -1,3 +1,4 @@
+require 'shellwords'
 require 'singleton'
 require 'uri'
 
@@ -92,5 +93,37 @@ class OmniEnv
 
     # Raise an error if we cannot resolve an OMNI_GIT repository
     error('Unable to resolve OMNI_GIT worktree, please configure it in your environment', cmd: 'env')
+  end
+
+  def user_shell
+    current_pid = Process.pid
+
+    process = loop do
+      parent_pid = `ps -p #{current_pid} -oppid=`.strip.to_i
+
+      # Break if we reach the top-level process or an error occurs
+      break unless parent_pid > 1
+
+      comm = `ps -p #{parent_pid} -ocommand=`.strip
+
+      # Break and return comm as soon as we find a process that is not omni being run
+      break comm unless comm =~ /^([a-z]*sh) #{Regexp.escape(File.join(OMNIDIR, 'bin', 'omni'))}( |$)/
+
+      current_pid = parent_pid
+    end
+
+    unless process.nil?
+      # Keep only the first word
+      process = Shellwords.split(process).first
+
+      # Remove starting dash if any
+      process.sub!(/^-/, '')
+    end
+
+    process
+  end
+
+  def user_login_shell
+    ENV['SHELL']
   end
 end

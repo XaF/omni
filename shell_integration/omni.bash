@@ -76,7 +76,7 @@ function omni_import_rbenv() {
 		rbenv_paths+=("${HOME}/.rbenv/bin")
 
 		for rbenv_path in "${rbenv_paths[@]}"; do
-			if [[ -d "$rbenv_path" ]] && [[ ! ":${PATH}" =~ ":${rbenv_path}:" ]] && [[ -x "${rbenv_path}/rbenv" ]]; then
+			if [[ -d "$rbenv_path" ]] && [[ ! ":${PATH}:" =~ ":${rbenv_path}:" ]] && [[ -x "${rbenv_path}/rbenv" ]]; then
 				export PATH="${rbenv_path}:${PATH}"
 				break
 			fi
@@ -103,7 +103,7 @@ function omni_import_goenv() {
 		goenv_paths+=("${HOME}/.goenv/bin")
 
 		for goenv_path in "${goenv_paths[@]}"; do
-			if [[ -d "$goenv_path" ]] && [[ ! ":${PATH}" =~ ":${goenv_path}:" ]] && [[ -x "${goenv_path}/goenv" ]]; then
+			if [[ -d "$goenv_path" ]] && [[ ! ":${PATH}:" =~ ":${goenv_path}:" ]] && [[ -x "${goenv_path}/goenv" ]]; then
 				export PATH="${goenv_path}:${PATH}"
 				break
 			fi
@@ -115,7 +115,7 @@ function omni_import_goenv() {
 		# is a homebrew version of go installed which would take preference over the shims
 		# if the homebrew path is before the shims path
 		goenv_shims="${HOME}/.goenv/shims"
-		if [[ -d "${goenv_shims}" ]] && [[ ! ":${PATH}" =~ ":${goenv_shims}:" ]]; then
+		if [[ -d "${goenv_shims}" ]] && [[ ! ":${PATH}:" =~ ":${goenv_shims}:" ]]; then
 			export PATH="${goenv_shims}:${PATH}"
 		fi
 
@@ -127,6 +127,35 @@ function omni_import_goenv() {
 }
 omni_import_goenv
 unset -f omni_import_goenv
+
+# Make sure asdf has been loaded properly, as it is used with omni up;
+# this will also allow that if the integration is properly loaded in the shell,
+# then the user will be able to use asdf right away.
+function omni_import_asdf() {
+	if ! command -v asdf >/dev/null; then
+		local asdf_paths=()
+		command -v brew >/dev/null && asdf_paths+=("$(brew --prefix)/bin")
+		asdf_paths+=("${HOME}/.asdf/bin")
+
+		for asdf_path in "${asdf_paths[@]}"; do
+			if [[ -d "$asdf_path" ]] && [[ ! ":${PATH}:" =~ ":${asdf_path}:" ]] && [[ -x "${asdf_path}/asdf" ]]; then
+				export PATH="${asdf_path}:${PATH}"
+				break
+			fi
+		done
+	fi
+
+	if command -v asdf >/dev/null && (! type asdf 2>/dev/null | head -n1 | grep -q "function" || [[ -z "$ASDF_DIR" ]]); then
+		# Initialize asdf if not already initialized
+		if command -v brew >/dev/null && [[ -f "$(brew --prefix asdf)/libexec/asdf.sh" ]]; then
+			. "$(brew --prefix asdf)/libexec/asdf.sh"
+		else
+			. "${HOME}/.asdf/asdf.sh"
+		fi
+	fi
+}
+omni_import_asdf
+unset -f omni_import_asdf
 
 # This function is used to run the omni command, and then operate on
 # the requested shell changes from the command (changing current

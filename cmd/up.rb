@@ -13,13 +13,17 @@
 
 require_relative '../lib/colorize'
 require_relative '../lib/config'
+require_relative '../lib/omniorg'
+require_relative '../lib/up/asdf_operation'
 require_relative '../lib/up/bundler_operation'
 require_relative '../lib/up/custom_operation'
 require_relative '../lib/up/go_operation'
 require_relative '../lib/up/homebrew_operation'
-require_relative '../lib/up/ruby_operation'
+require_relative '../lib/up/node_operation'
 require_relative '../lib/up/operation'
-require_relative '../lib/omniorg'
+require_relative '../lib/up/python_operation'
+require_relative '../lib/up/ruby_operation'
+require_relative '../lib/up/rust_operation'
 require_relative '../lib/utils'
 
 

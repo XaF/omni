@@ -94,7 +94,7 @@ function omni_import_goenv
     if not command -v goenv >/dev/null
         set -l goenv_paths
         # command -v brew >/dev/null; and set goenv_paths (brew --prefix)/bin $goenv_paths
-        set goenv_paths $HOME/.goenv/bin $goenv_paths
+        set goenv_paths $goenv_paths $HOME/.goenv/bin
 
         for goenv_path in $goenv_paths
             if test -d $goenv_path; and not contains -- $PATH $goenv_path; and test -x $goenv_path/goenv
@@ -123,6 +123,39 @@ end
 # Run omni_import_goenv function
 omni_import_goenv
 functions -e omni_import_goenv
+
+# Make sure asdf has been loaded properly, as it is used with omni up;
+# this will also allow that if the integration is properly loaded in the shell,
+# then the user will be able to use asdf right away.
+function omni_import_asdf
+    if not command -v asdf >/dev/null
+        set -l asdf_paths
+        command -v brew >/dev/null; and set asdf_paths (brew --prefix)/bin $asdf_paths
+        set asdf_paths $asdf_paths $HOME/.asdf/bin
+
+        for asdf_path in $asdf_paths
+            if test -d $asdf_path; and not contains -- $PATH $asdf_path; and test -x $asdf_path/asdf
+                set -gx PATH $asdf_path $PATH
+                break
+            end
+        end
+    end
+
+    if command -v asdf >/dev/null
+        if not type asdf 2>/dev/null | head -n1 | grep -q "function"; or test -z "$ASDF_DIR"
+            # Initialize asdf if not already initialized
+            if command -v brew >/dev/null; and test -f "(brew --prefix asdf)/libexec/asdf.sh"
+                    source "(brew --prefix asdf)/libexec/asdf.fish"
+            else
+                    source "$HOME/.asdf/asdf.fish"
+            end
+        end
+    end
+end
+
+# Run omni_import_asdf function
+omni_import_asdf
+functions -e omni_import_asdf
 
 function omni
     # Find the OMNIDIR
