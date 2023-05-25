@@ -156,6 +156,8 @@ An up object can be one of:
 
 - `apt` operation object, which takes a list of packages to install. Any element of the list can be a map with a single *package name: package version* if you wish to install a very specific package version.
 
+- `dnf` operation object, which takes a list of packages to install. Any element of the list can be a map with a single *package name: package version* if you wish to install a very specific package version.
+
 - `ruby` operation object, which can hold the following parameters:
   - `version` *[string]* the version of ruby to install and use in the repository; if the version is not specified, the latest available through rbenv will be installed.
 
