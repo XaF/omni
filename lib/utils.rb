@@ -94,6 +94,8 @@ def get_command_output(*cmd, timeout: nil, env: nil, print_output: true)
           })
           outputs[key].puts raw_line if print_output
         end
+      rescue IOError => e
+        # Ignore
       end
     end
 
