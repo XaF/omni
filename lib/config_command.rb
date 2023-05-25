@@ -7,6 +7,7 @@ require_relative 'env'
 
 class ConfigCommand < OmniCommand
   def initialize(target, config, path: nil)
+    config = { 'run' => config } if config.is_a?(String)
     raise ArgumentError, 'config must be a Hash' unless config.is_a?(Hash)
     raise ArgumentError, 'config must not be empty' if config.empty?
     raise ArgumentError, 'config must contain \'run\'' unless config.has_key?('run')

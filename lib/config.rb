@@ -452,6 +452,7 @@ class Config
 
     if OmniEnv.in_git_repo?
       [
+        "#{OmniEnv.git_repo_root}/dev.yml",
         "#{OmniEnv.git_repo_root}/.omni",
         "#{OmniEnv.git_repo_root}/.omni.yaml",
         "#{OmniEnv.git_repo_root}/.omni/config",
