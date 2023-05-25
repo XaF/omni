@@ -14,6 +14,7 @@
 require_relative '../lib/colorize'
 require_relative '../lib/config'
 require_relative '../lib/omniorg'
+require_relative '../lib/up/apt_operation'
 require_relative '../lib/up/asdf_operation'
 require_relative '../lib/up/bundler_operation'
 require_relative '../lib/up/custom_operation'
