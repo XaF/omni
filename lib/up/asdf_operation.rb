@@ -7,12 +7,6 @@ class AsdfOperation < Operation
   def up
     STDERR.puts "# Install #{tool} #{config['version']}".light_blue
 
-    install_asdf!
-    unless is_asdf_installed?
-      STDERR.puts "# asdf is not installed and we did not seem to be able to install it".light_red
-      return false
-    end
-
     install_tool!
     unless is_tool_installed?
       STDERR.puts "# #{tool} plugin for asdf is not installed and we did not seem to be able to install it".light_red
@@ -35,12 +29,33 @@ class AsdfOperation < Operation
     nil
   end
 
-  def is_asdf_installed?
-    @asdf_installed ||= system('command -v asdf >/dev/null 2>&1')
+  def shadowenv?
+    @shadowenv ||= system("command -v shadowenv >/dev/null")
   end
 
   def is_tool_installed?
-    @tool_installed ||= `asdf plugin list 2>/dev/null`.split("\n").map(&:strip).include?(tool)
+    @tool_installed ||= `#{asdf_bin} plugin list 2>/dev/null`.split("\n").map(&:strip).include?(tool)
+  end
+
+  def shadowenv(env)
+    file_name = "600_#{tool}_#{tool_version}.lisp"
+
+    contents = <<~LISP
+    (provide "#{tool}" "#{tool_version}")
+
+    (when (null (env/get "OMNI_DATA_HOME"))
+      (env/set "OMNI_DATA_HOME"
+        (path-concat
+          (if (or (null (env/get "XDG_DATA_HOME")) (not (string-prefix-p "/" (env/get "XDG_DATA_HOME"))))
+            (path-concat (env/get "HOME") ".local/share")
+            (env/get "XDG_DATA_HOME"))
+          "omni")))
+
+    (let ((tool_path (path-concat (env/get "OMNI_DATA_HOME") "asdf" "installs" "#{tool}" "#{tool_version}")))
+      (env/prepend-to-pathlist "PATH" (path-concat tool_path "bin")))
+    LISP
+
+    env.write(file_name, contents)
   end
 
   private
@@ -50,35 +65,31 @@ class AsdfOperation < Operation
   end
 
   def asdf_path
-    File.expand_path('~/.asdf')
+    @asdf_path ||= begin
+      asdf_data_dir = ENV['ASDF_DATA_DIR']
+      return asdf_data_dir if asdf_data_dir
+
+      omni_data_home = ENV['OMNI_DATA_HOME']
+      unless omni_data_home && !omni_data_home.nil?
+        xdg_data_home = ENV['XDG_DATA_HOME']
+        xdg_data_home = "#{ENV['HOME']}/.local/share" unless xdg_data_home && xdg_data_home.start_with?('/')
+
+        omni_data_home = "#{xdg_data_home}/omni"
+      end
+
+      asdf_data_dir = "#{omni_data_home}/asdf"
+      ENV['ASDF_DATA_DIR'] = asdf_data_dir
+
+      asdf_data_dir
+    end
   end
 
-  def install_asdf!
-    unless is_asdf_installed?
-      unless File.directory?(asdf_path)
-        git_clone = command_line('git', 'clone', 'https://github.com/asdf-vm/asdf.git', asdf_path)
-        return unless git_clone
-      end
+  def asdf_bin
+    "#{asdf_path}/bin/asdf"
+  end
 
-      # Update environment variables
-      ENV['PATH'] = "#{asdf_path}/bin:#{asdf_path}/shims:#{ENV['PATH']}"
-      return unless is_asdf_installed?
-
-      # And take advantage of the shell integration to update
-      # the current shell environment of the user
-      omni_cmd('export PATH="$HOME/.asdf/bin:$HOME/.asdf/shims:$PATH"')
-      case OmniEnv.user_shell
-      when 'fish'
-        omni_cmd('source ~/.asdf/asdf.fish')
-      when 'zsh', 'bash'
-        omni_cmd('source ~/.asdf/asdf.sh')
-      end
-    end
-
-    # Make sure we're using the last stable version
-    unless system('asdf update >/dev/null 2>&1')
-      STDERR.puts "# Could not update asdf to the latest version".light_red
-    end
+  def tool_path
+    "#{asdf_path}/installs/#{tool}/#{tool_version}"
   end
 
   def install_tool!
@@ -86,9 +97,9 @@ class AsdfOperation < Operation
 
     STDERR.puts "# Installing #{tool} plugin for asdf".light_blue
 
-    if system("asdf plugin add #{tool} >/dev/null")
-      unless system("asdf global #{tool} system >/dev/null")
-        STDERR.puts "# Could not set global version for #{tool}; you can do it with: asdf global #{tool} system".light_red
+    if system("#{asdf_bin} plugin add #{tool} >/dev/null")
+      unless system("#{asdf_bin} global #{tool} system >/dev/null")
+        #STDERR.puts "# Could not set global version for #{tool}; you can do it with: asdf global #{tool} system".light_red
       end
     end
   end
@@ -96,10 +107,10 @@ class AsdfOperation < Operation
   def tool_version
     @tool_version ||= begin
       # Refresh the list of available versions
-      `asdf plugin update #{tool}`
+      `#{asdf_bin} plugin update #{tool}`
 
       # List all versions for the tool
-      available_versions = `asdf list all #{tool}`.split("\n").map(&:strip)
+      available_versions = `#{asdf_bin} list all #{tool}`.split("\n").map(&:strip)
 
       # Select only the versions that start with the prefix, and that
       # contain only numbers and dots; in case latest is specified, we
@@ -121,23 +132,32 @@ class AsdfOperation < Operation
     end
   end
 
+  def tool_version_major
+    tool_version.split('.')[0]
+  end
+
+  def tool_version_minor
+    tool_version.split('.')[0..1].join('.')
+  end
+
   def is_tool_version_installed?
-    @tool_version_installed ||= system("asdf list #{tool} #{tool_version} >/dev/null 2>&1")
+    @tool_version_installed ||= system("#{asdf_bin} list #{tool} #{tool_version} >/dev/null 2>&1")
   end
 
   def install_tool_version!
     return true if command_line(
-      'asdf', 'install', tool, tool_version,
+      asdf_bin, 'install', tool, tool_version,
       chdir: File.expand_path('~'),
     )
 
-    run_error("asdf install #{tool} #{tool_version}")
+    run_error("#{asdf_bin} install #{tool} #{tool_version}")
     false
   end
 
   def set_tool_local_version!
+    return if shadowenv?
     Dir.chdir(OmniEnv::GIT_REPO_ROOT) do
-      output = `asdf local #{tool} #{tool_version} 2>&1`
+      output = `#{asdf_bin} local #{tool} #{tool_version} 2>&1`
       $?.success? || error("Failed to set #{tool} version to #{tool_version}: #{output}")
     end
   end

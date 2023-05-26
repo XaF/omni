@@ -10,14 +10,39 @@ done
 BINDIR=$(cd -P "$(dirname "$BINFILE")" >/dev/null 2>&1 && pwd)
 OMNIDIR=$(cd -P "$(dirname "$BINDIR")" >/dev/null 2>&1 && pwd)
 
-# Run omni
+if [[ -z "$OMNI_DATA_HOME" ]]; then
+  [[ -n "${XDG_DATA_HOME}" ]] && [[ "${XDG_DATA_HOME}" =~ ^/ ]] || XDG_DATA_HOME="${HOME}/.local/share"
+  OMNI_DATA_HOME="${XDG_DATA_HOME}/omni"
+fi
+
+export OMNI_DATA_HOME
+export ASDF_DATA_DIR="${OMNI_DATA_HOME}/asdf"
+
+# Get ruby's version needed to run omni
+if [[ -z "$OMNI_RUBY_VERSION" ]]; then
+	OMNI_RUBY_VERSION=$(grep "^ *- *ruby:" "${OMNIDIR}/.omni.yaml" | \
+		sed -E 's/^ *- ruby: *//' | \
+		sed -E 's/^"([^"]*)"/\1/' | \
+		sed -E "s/'([^']*)'/\1/" | \
+		sed -E 's/ .*$//')
+fi
+export OMNI_RUBY_VERSION
+
+# Add the ruby version to the path
+ruby_path="${ASDF_DATA_DIR}/installs/ruby/${OMNI_RUBY_VERSION}/bin"
+
 if [[ -n "${OMNI_CHDIR_BEFORE_EXEC}" ]]; then
 	cd "${OMNI_CHDIR_BEFORE_EXEC}"
 	export OMNI_CHDIR_BEFORE_EXEC=
-	"${OMNIDIR}/omni.rb" "$@"
+	ruby_path="${ASDF_DATA_DIR}/installs/ruby/${OMNI_RUBY_VERSION}/bin"
+	[[ ":$PATH:" != *":${ruby_path}:"* ]] && PATH="${ruby_path}:${PATH}"
+	${ruby_path}/ruby "${OMNIDIR}/omni.rb" "$@"
 	exit $?
 fi
 
 export OMNI_CHDIR_BEFORE_EXEC="${PWD}"
 cd "${OMNIDIR}"
-BUNDLE_GEMFILE="${OMNIDIR}/Gemfile" bundle exec "${BINFILE}" "$@"
+
+SHADOWENV=
+command -v shadowenv >/dev/null && SHADOWENV="shadowenv exec -- "
+BUNDLE_GEMFILE="${OMNIDIR}/Gemfile" BUNDLE_PATH="${OMNIDIR}/vendor/bundle" ${SHADOWENV}${ruby_path}/bundle exec "${BINFILE}" "$@"

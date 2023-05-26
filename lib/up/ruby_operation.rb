@@ -1,134 +1,54 @@
 require_relative '../colorize'
 require_relative '../utils'
-require_relative 'operation'
+require_relative 'asdf_operation'
 
 
-class RubyOperation < Operation
-  def up
-    STDERR.puts "# Install Ruby #{config['version']}".light_blue
+class RubyOperation < AsdfOperationTool
+  def shadowenv(env)
+    file_name = "600_#{tool}_#{tool_version}.lisp"
 
-    if is_installed?
-      STDERR.puts "# Ruby #{ruby_version} is already installed".light_green
-      set_ruby_local_version!
-      return !had_errors
-    end
+    contents = <<~LISP
+    (provide "#{tool}" "#{tool_version}")
 
-    puts "# `-> Ruby #{ruby_version} will be installed".light_blue
-    install_ruby! && set_ruby_local_version!
+    (when-let ((ruby-root (env/get "RUBY_ROOT")))
+     (env/remove-from-pathlist "PATH" (path-concat ruby-root "bin"))
+     (when-let ((gem-root (env/get "GEM_ROOT")))
+       (env/remove-from-pathlist "PATH" (path-concat gem-root "bin")))
+     (when-let ((gem-home (env/get "GEM_HOME")))
+       (env/remove-from-pathlist "PATH" (path-concat gem-home "bin"))))
 
-    !had_errors
-  end
+    (env/set "GEM_PATH" ())
+    (env/set "GEM_HOME" ())
+    (env/set "RUBYOPT" ())
 
-  def down
-    nil
+    (when (null (env/get "OMNI_DATA_HOME"))
+      (env/set "OMNI_DATA_HOME"
+        (path-concat
+          (if (or (null (env/get "XDG_DATA_HOME")) (not (string-prefix-p "/" (env/get "XDG_DATA_HOME"))))
+            (path-concat (env/get "HOME") ".local/share")
+            (env/get "XDG_DATA_HOME"))
+          "omni")))
+
+    (let ((tool_path (path-concat (env/get "OMNI_DATA_HOME") "asdf" "installs" "#{tool}" "#{tool_version}")))
+      (do
+        (env/set "RUBY_ROOT" tool_path)
+        (env/prepend-to-pathlist "PATH" (path-concat tool_path "bin"))
+        (env/set "RUBY_ENGINE" "#{tool}")
+        (env/set "RUBY_VERSION" "#{tool_version}")
+        (env/set "GEM_ROOT" (path-concat tool_path "lib/#{tool}/gems/#{tool_version_minor}.0"))
+        (env/set "GEM_HOME" (env/get "GEM_ROOT"))))
+
+    (when-let ((gem-root (env/get "GEM_ROOT")))
+      (env/prepend-to-pathlist "GEM_PATH" gem-root)
+      (env/prepend-to-pathlist "PATH" (path-concat gem-root "bin")))
+    LISP
+
+    env.write(file_name, contents)
   end
 
   private
 
-  def ruby_version
-    @ruby_version ||= begin
-      # Refresh the list of available ruby versions
-      ruby_build_local_dir = File.expand_path('~/.rbenv/plugins/ruby-build')
-      if File.directory?(ruby_build_local_dir) && File.directory?(File.join(ruby_build_local_dir, '.git'))
-        `git -C "#{ruby_build_local_dir}" pull`
-      end
-
-      # List all ruby versions
-      rubies = `rbenv install --list-all`.split("\n").map(&:strip)
-
-      # Select only the versions that start with the prefix, and that
-      # contain only numbers and dots; in case latest is specified, we
-      # only want to match versions that are only numbers and dots
-      version_regex = if config['version'] == 'latest'
-        /\A[0-9\.]+\z/
-      else
-        /\A#{Regexp.escape(config['version'])}(\.[0-9\.]*)?\z/
-      end
-      rubies.select! { |ruby| version_regex.match?(ruby) }
-
-      # We have an issue if there are no matching versions
-      error("No ruby version found matching #{config['version']}") if rubies.empty?
-
-      # The expected ruby version is the highest matching version number returned,
-      # and since `rbenv install --list-all` returns versions in ascending order,
-      # the last one is the highest
-      rubies.last
-    end
-  end
-
-  def is_installed?
-    @is_installed ||= begin
-      # Make sure we have a ruby version before checking if it is installed
-      _ = ruby_version
-
-      # Check if the ruby version is already installed
-      `rbenv versions --bare 2>/dev/null`.split("\n").map(&:strip).any? do |ruby|
-        ruby == ruby_version
-      end
-    end
-  end
-
-  def install_ruby!
-    download_ruby! || build_ruby!
-  end
-
-  def download_ruby!
-    # Check if 'rbenv download' is available
-    return false unless system('rbenv download --list >/dev/null 2>&1')
-
-    # Download the ruby version, and rehash rbenv to make it available
-    return true if command_line('rbenv', 'download', ruby_version, '&&', 'rbenv', 'rehash')
-
-    # If we got here, the download failed
-    STDERR.puts "# `-> Could not download pre-built binary, will have to build it ⏳".light_blue
-    false
-  end
-
-  def build_ruby!
-    return true if command_line(
-      'rbenv', 'install',
-      # '--verbose',
-      '--skip-existing',
-      ruby_version,
-      env: build_ruby_env,
-      chdir: File.expand_path('~'),
-    )
-
-    run_error("rbenv install #{ruby_version}")
-    false
-  end
-
-  def build_ruby_env
-    @build_ruby_env ||= begin
-      # Override all the BUNDLE/BUNDLER/GEM and some RUBY env variables
-      env = ENV.each_pair.map do |key, value|
-        next unless key =~ /\A(BUNDLE|BUNDLER|GEM|RBENV)_/ || ['RUBYOPT', 'RUBYLIB'].include?(key)
-        [key, nil]
-      end.compact.to_h
-
-      # Disable the installation of the ri and rdoc documentation
-      env['RUBY_CONFIGURE_OPTS'] = '--disable-install-doc'
-
-      # Return the cleaned env
-      env
-    end
-  end
-
-  def set_ruby_local_version!
-    Dir.chdir(OmniEnv::GIT_REPO_ROOT) do
-      output = `rbenv local #{ruby_version} 2>&1`
-      $?.success? || run_error("Failed to set ruby version to #{ruby_version}: #{output}")
-    end
-  end
-
-  def check_valid_operation!
-    @config = { 'version' => config.to_s } if config.is_a?(String) || config.is_a?(Numeric)
-    config_error("expecting hash, got #{config}") unless config.is_a?(Hash)
-
-    # In case the version is not specified, we will use the latest
-    @config['version'] ||= 'latest'
-
-    check_params(required_params: ['version'])
+  def tool
+    'ruby'
   end
 end
-

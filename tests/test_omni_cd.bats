@@ -26,6 +26,7 @@ setup() {
   [ $(pwd) = "${HOME}" ]
 
   # Check that we can cd to a repo
+  echo "PATH = $PATH"
   omni cd test1repo 3>&-
   [ "$?" -eq 0 ]
 

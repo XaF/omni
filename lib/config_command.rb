@@ -76,8 +76,20 @@ class ConfigCommand < OmniCommand
     # Switch to the directory containing the config file
     Dir.chdir(File.dirname(@path)) unless @path.nil?
 
+    # Prepare command environment
+    prepare_exec_command_env(@path)
+
+    # Prepare the command
+    exec_cmd = ['bash', '-c', @config['run']]
+
+    # If we are in a shadowenv, we want to change the environment first
+    exec_cmd.unshift('shadowenv', 'exec', '--') if OmniEnv.shadowenv?
+
     # Execute the command
-    Kernel.exec('bash', '-c', @config['run'], @path, *argv)
+    Kernel.exec(*exec_cmd, @path, *argv)
+
+    # If we get here, the command failed
+    exit 1
   end
 
   def sort_category

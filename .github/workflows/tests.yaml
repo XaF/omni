@@ -5,6 +5,7 @@ on:
     branches:
       - main
       - dev
+      - xaf/shadowenv
   pull_request:
 
 
@@ -87,7 +88,7 @@ jobs:
           echo "OMNI_GIT=${HOME}/git" | tee -a "$GITHUB_ENV"
 
       - name: Run install script
-        timeout-minutes: ${{ matrix.install-timeout || 10 }}
+        timeout-minutes: ${{ matrix.install-timeout || 12 }}
         run: |
           ./install.sh \
             --no-interactive \

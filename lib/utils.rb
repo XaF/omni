@@ -120,16 +120,37 @@ def get_command_output(*cmd, timeout: nil, env: nil, print_output: true)
 end
 
 
-def command_line(*cmd, timeout: nil, chdir: nil, context: nil, env: nil, capture: false)
+def command_line(*cmd, timeout: nil, chdir: nil, context: nil, env: nil, capture: false, shadowenv: true, wrap_with_shell: false)
   Dir.chdir(chdir) do
-    return command_line(*cmd, timeout: timeout, context: context, env: env, capture: capture)
+    return command_line(
+      *cmd,
+      timeout: timeout,
+      context: context,
+      env: env,
+      capture: capture,
+      shadowenv: shadowenv,
+      wrap_with_shell: wrap_with_shell,
+    )
   end if chdir
+
+  # Since we have set BUNDLE_GEMFILE to call omni, we want to unset
+  # it for underneath commands _unless_ it was set by the user
+  if env.nil? || env.empty? || !env.key?('BUNDLE_GEMFILE')
+    env ||= {}
+    env['BUNDLE_GEMFILE'] = nil
+  end
 
   msg = +""
   msg << "#{context.light_blue} " if context
   msg << "$ #{cmd.join(' ')}".light_black
   msg << " #{"(timeout: #{timeout}s)".light_blue}" if timeout
   STDERR.puts msg
+
+  cmd = ["bash", "-c", cmd.join(' ')] if wrap_with_shell
+  cmd = Shellwords.shellsplit(cmd[0]) if cmd.size == 1
+  if shadowenv && cmd[0] != 'shadowenv' && system('command -v shadowenv >/dev/null')
+    cmd.unshift('shadowenv', 'exec', '--')
+  end
 
   if capture
     return get_command_output(*cmd, timeout: timeout, env: env)

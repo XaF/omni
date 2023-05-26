@@ -2,7 +2,7 @@
 
 # Setup the environment for omni, to make sure
 # we have the required environment variables setup
-function find_omnidir() {
+function set_omni_env() {
 	if [[ -z "${OMNIDIR}" ]]; then
 		# OMNIDIR is the directory in which omni is located; by default
 		# it will assume the path where omni would clone itself, but
@@ -59,102 +59,57 @@ function find_omnidir() {
 		if [[ "$PATH" != *"${OMNIDIR}/bin"* ]]; then
 			export PATH="${PATH:+$PATH:}${OMNIDIR}/bin"
 		fi
-	fi
-}
 
-# Run the `find_omnidir` call when being sourced
-find_omnidir
-
-# Make sure that rbenv has been loaded properly, as it is a dependency of omni;
-# this will also allow that if the integration is properly loaded in the shell,
-# then the user will be able to use rbenv right away.
-function omni_import_rbenv() {
-	# Try and add rbenv to the path if not already present
-	if ! command -v rbenv >/dev/null; then
-		local rbenv_paths=()
-		command -v brew >/dev/null && rbenv_paths+=("$(brew --prefix)/bin")
-		rbenv_paths+=("${HOME}/.rbenv/bin")
-
-		for rbenv_path in "${rbenv_paths[@]}"; do
-			if [[ -d "$rbenv_path" ]] && [[ ! ":${PATH}:" =~ ":${rbenv_path}:" ]] && [[ -x "${rbenv_path}/rbenv" ]]; then
-				export PATH="${rbenv_path}:${PATH}"
-				break
-			fi
-		done
-
-		unset rbenv_paths
-	fi
-
-	# Initialize rbenv if not already initialized
-	if ! type rbenv 2>/dev/null | head -n1 | grep -q "function" || [[ -z "$RBENV_SHELL" ]]; then
-		eval "$(rbenv init -)"
-	fi
-}
-omni_import_rbenv
-unset -f omni_import_rbenv
-
-# Make sure goenv has been loaded properly, as it is used with omni up;
-# this will also allow that if the integration is properly loaded in the shell,
-# then the user will be able to use goenv right away.
-function omni_import_goenv() {
-	if ! command -v goenv >/dev/null; then
-		local goenv_paths=()
-		# command -v brew >/dev/null && goenv_paths+=("$(brew --prefix)/bin")
-		goenv_paths+=("${HOME}/.goenv/bin")
-
-		for goenv_path in "${goenv_paths[@]}"; do
-			if [[ -d "$goenv_path" ]] && [[ ! ":${PATH}:" =~ ":${goenv_path}:" ]] && [[ -x "${goenv_path}/goenv" ]]; then
-				export PATH="${goenv_path}:${PATH}"
-				break
-			fi
-		done
-	fi
-
-	if command -v goenv >/dev/null; then
-		# Add the shims - We need to force them at the beginning of the path in case there
-		# is a homebrew version of go installed which would take preference over the shims
-		# if the homebrew path is before the shims path
-		goenv_shims="${HOME}/.goenv/shims"
-		if [[ -d "${goenv_shims}" ]] && [[ ! ":${PATH}:" =~ ":${goenv_shims}:" ]]; then
-			export PATH="${goenv_shims}:${PATH}"
-		fi
-
-		# Initialize goenv if not already initialized
-		if ! type goenv 2>/dev/null | head -n1 | grep -q "function" || [[ -z "$GOENV_SHELL" ]]; then
-			eval "$(goenv init -)"
+		if [[ -z "${OMNI_RUBY_VERSION}" ]]; then
+			export OMNI_RUBY_VERSION=$(grep "^ *- *ruby:" "${OMNIDIR}/.omni.yaml" | \
+				sed -E 's/^ *- ruby: *//' | \
+				sed -E 's/^"([^"]*)"/\1/' | \
+				sed -E "s/'([^']*)'/\1/" | \
+				sed -E 's/ .*$//')
 		fi
 	fi
+
+	if [[ -z "${OMNI_DATA_HOME}" ]]; then
+		local xdg_data_home="${XDG_DATA_HOME}"
+		[[ -n "${xdg_data_home}" ]] && [[ "${xdg_data_home}" =~ ^/ ]] || xdg_data_home="${HOME}/.local/share"
+		export OMNI_DATA_HOME="${xdg_data_home}/omni"
+	fi
 }
-omni_import_goenv
-unset -f omni_import_goenv
+
+# Run the `set_omni_env` call when being sourced
+set_omni_env
 
 # Make sure asdf has been loaded properly, as it is used with omni up;
 # this will also allow that if the integration is properly loaded in the shell,
 # then the user will be able to use asdf right away.
 function omni_import_asdf() {
-	if ! command -v asdf >/dev/null; then
-		local asdf_paths=()
-		command -v brew >/dev/null && asdf_paths+=("$(brew --prefix)/bin")
-		asdf_paths+=("${HOME}/.asdf/bin")
+	export ASDF_DATA_DIR="${OMNI_DATA_HOME}/asdf"
+	source "${ASDF_DATA_DIR}/asdf.sh"
+}
 
-		for asdf_path in "${asdf_paths[@]}"; do
-			if [[ -d "$asdf_path" ]] && [[ ! ":${PATH}:" =~ ":${asdf_path}:" ]] && [[ -x "${asdf_path}/asdf" ]]; then
-				export PATH="${asdf_path}:${PATH}"
-				break
-			fi
-		done
+function omni_import_shadowenv {
+	if ! command -v shadowenv >/dev/null; then
+		# If we do not have shadowenv, import asdf directly instead
+		omni_import_asdf
+		return
 	fi
 
-	if command -v asdf >/dev/null && (! type asdf 2>/dev/null | head -n1 | grep -q "function" || [[ -z "$ASDF_DIR" ]]); then
-		# Initialize asdf if not already initialized
-		if command -v brew >/dev/null && [[ -f "$(brew --prefix asdf)/libexec/asdf.sh" ]]; then
-			. "$(brew --prefix asdf)/libexec/asdf.sh"
-		else
-			. "${HOME}/.asdf/asdf.sh"
-		fi
+	if type __shadowenv_hook >/dev/null 2>&1; then
+		# Shadowenv is already loaded, we can skip
+		return
+	fi
+
+	if [[ -n "$BASH_VERSION" ]]; then
+		eval "$(shadowenv init bash)"
+	elif [[ -n "$ZSH_VERSION" ]]; then
+		eval "$(shadowenv init zsh)"
+	else
+		# Unsupported shadowenv shell, we can use asdf directly instead
+		omni_import_asdf
 	fi
 }
-omni_import_asdf
+omni_import_shadowenv
+unset -f omni_import_shadowenv
 unset -f omni_import_asdf
 
 # This function is used to run the omni command, and then operate on
@@ -163,7 +118,7 @@ unset -f omni_import_asdf
 # a shell function for this, instead of simply calling the omni
 # command from the path
 function omni() {
-	find_omnidir || return 1
+	set_omni_env || return 1
 
 	# Prepare the environment for omni
 	export OMNI_UUID=$(uuidgen)

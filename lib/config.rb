@@ -630,7 +630,51 @@ class Config
     end
   end
 
+  def path_config(path)
+    repo_config = ConfigValue.new({})
+
+    `git -C #{Shellwords.escape(File.dirname(path))} rev-parse --show-toplevel 2>/dev/null`.chomp.tap do |git_root|
+      [
+        "#{git_root}/dev.yml",
+        "#{git_root}/.omni",
+        "#{git_root}/.omni.yaml",
+        "#{git_root}/.omni/config",
+        "#{git_root}/.omni/config.yaml",
+      ].each do |config_file|
+        repo_config = import_file(
+          config_file,
+          labels: ['git_repo'],
+          config: repo_config&.dup,
+          add_loaded_files: false,
+        )
+      end
+
+      return repo_config&.unwrap, git_root
+    end
+
+    [{}, nil]
+  end
+
   private
+
+  def import_file(yaml_file, labels: nil, config: nil,  add_loaded_files: false)
+    config ||= @config
+
+    return config if yaml_file.nil? || !File.file?(yaml_file) || !File.readable?(yaml_file)
+
+    yaml = YAML::load(File.open(yaml_file))
+
+    unless yaml.nil?
+      error("invalid configuration file: #{yaml_file}") unless yaml.is_a?(Hash)
+      config = import_values(yaml, file_path: yaml_file, labels: labels, config: config&.dup)
+    end
+
+    @loaded_files << yaml_file unless add_loaded_files
+
+    config
+  rescue Psych::SyntaxError
+    error("invalid configuration file: #{yaml_file.yellow}", print_only: true)
+  end
 
   def self.fs_config_home
     @fs_config_home ||= ENV['XDG_CONFIG_HOME']

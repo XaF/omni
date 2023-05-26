@@ -123,9 +123,58 @@ class OmniCommand
     exit 1
   end
 
+  def prepare_exec_command_env(path)
+    # Remove BUNDLE_GEMFILE from the environment if the command is
+    # not from the OMNIDIR
+    return if OmniEnv.in_omnidir?(path)
+
+    ENV['BUNDLE_GEMFILE'] = nil
+
+    return unless path.end_with?('.rb')
+
+    # We want to try and find the gemfile of the repository
+    # and set it as the BUNDLE_GEMFILE environment variable
+    # if it exists, so that the command is executed in the
+    # context of the repository
+
+    repo_config, repo_root = Config.path_config(path)
+    !repo_config.nil? && repo_config['up']&.find do |up|
+      (up.is_a?(Hash) && (up.key?('bundle') || up.key?('bundler'))) ||
+        (up.is_a?(String) && ['bundle', 'bundler'].include?(up))
+    end&.tap do |up_config|
+      gemfile = 'Gemfile'
+      if up_config.is_a?(Hash)
+        value = up_config.values.first
+        if value.is_a?(Hash)
+          gemfile = value['gemfile'] if value['gemfile'] && !value['gemfile'].empty?
+        elsif value.is_a?(String)
+          gemfile = value if !value.empty?
+        end
+      end
+
+      gemfile_path = File.join(repo_root, gemfile)
+      ENV['BUNDLE_GEMFILE'] = gemfile_path if File.exist?(gemfile_path)
+    end
+  end
+
   def exec_command(*argv)
+    prepare_exec_command_env(path)
+
+    # Prepare the command
+    exec_cmd = [path]
+
+    unless OmniEnv.in_omnidir?(path)
+      exec_cmd.unshift('bundle', 'exec') if path.end_with?('.rb') && !ENV['BUNDLE_GEMFILE']&.empty?
+
+      # If we are in a shadowenv, we want to change the environment first
+      exec_cmd.unshift('shadowenv', 'exec', '--dir', File.dirname(path), '--') if OmniEnv.shadowenv?
+    end
+
     # Execute the command
-    Kernel.exec(path, *argv)
+    Kernel.exec(*exec_cmd, *argv)
+
+    # If we get here, the command failed to exec
+    exit 1
   end
 
   def autocompletion?

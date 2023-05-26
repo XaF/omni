@@ -322,14 +322,14 @@ function git_clone() {
 
 OMNI_INSTALL_CURRENT_SHELL=${OMNI_INSTALL_CURRENT_SHELL:-$(basename -- "$(ps -p $PPID -o command=)" | sed 's/^-//')}
 
-if ! $in_omni_dir; then
-	# We need the base location for git repositories
-	if [[ -z "$OMNI_GIT" ]]; then
-		export SETUP_OMNI_GIT=true
-		export OMNI_GIT=$(query_omni_git)
-		[[ $? -eq 0 ]] || exit 1
-	fi
+# We need the base location for git repositories
+if [[ -z "$OMNI_GIT" ]]; then
+	export SETUP_OMNI_GIT=true
+	export OMNI_GIT=$(query_omni_git)
+	[[ $? -eq 0 ]] && [[ -n "${OMNI_GIT}" ]] || exit 1
+fi
 
+if ! $in_omni_dir; then
 	clone_location=$(git_clone)
 	[[ $? -eq 0 ]] || exit 1
 	if [[ -z "$clone_location" ]]; then
@@ -337,53 +337,82 @@ if ! $in_omni_dir; then
 		exit 1
 	fi
 
-	# Now call the install script from the newly cloned repo
-	OMNI_INSTALL_CURRENT_SHELL=${OMNI_INSTALL_CURRENT_SHELL} $clone_location/install.sh "$@"
-
-	# And exit with the exit code of that command
-	exit $?
+	# Update SCRIPT_DIR to the location of the cloned repository
+	SCRIPT_DIR="$clone_location"
 fi
 
 print_logo
 
+# Find ruby version to install
+ruby_version=$(grep "^ *- *ruby:" "${SCRIPT_DIR}/.omni.yaml" | \
+	sed -E 's/^ *- ruby: *//' | \
+	sed -E 's/^"([^"]*)"/\1/' | \
+	sed -E "s/'([^']*)'/\1/" | \
+	sed -E 's/ .*$//')
+export ASDF_RUBY_VERSION="$ruby_version"
+
+# Compute the OMNI_DATA_HOME directory location
+if [[ -z "$OMNI_DATA_HOME" ]]; then
+	if [[ -z "$XDG_DATA_HOME" ]] || ! [[ "$XDG_DATA_HOME" =~ ^/ ]]; then
+		XDG_DATA_HOME="$HOME/.local/share"
+	fi
+	OMNI_DATA_HOME="${XDG_DATA_HOME}/omni"
+fi
+
+# Prepare the location of the ASDF data directory
+export ASDF_DATA_DIR="$OMNI_DATA_HOME/asdf"
+
+# Prepare versions required for shadowenv
+rust_version="1.69.0"
+shadowenv_version="2.1.0"
+
 function install_dependencies_packages() {
-	local expect=("rbenv" "uuidgen")
+	local expect_bin=(
+		"autoconf"
+		"bison"
+		"curl"
+		"gcc"
+		"git"
+		"make"
+		"uuidgen"
+	)
 	local missing=()
 
 	# Check that the expected commands are found
-	for cmd in "${expect[@]}"; do
-		if command -v "$cmd" >/dev/null; then
-			print_ok "$cmd found"
+	for bin in "${expect_bin[@]}"; do
+		if command -v "$bin" >/dev/null; then
+			print_ok "$bin found"
 		else
-			print_issue "$cmd not found"
-			missing+=("$cmd")
+			print_issue "$bin not found"
+			missing+=("$bin")
 		fi
 	done
 
-	# If missing is empty, we can return early
-	if [[ ${#missing[@]} -eq 0 ]]; then
+	# If missing is empty, and omni's ruby version is already installed, we can return early
+	local omni_ruby_installed=$([[ -d "${ASDF_DATA_DIR}/installs/ruby/${ruby_version}" ]] && echo true || echo false)
+	if [[ "$omni_ruby_installed" == "true" ]] && [[ ${#missing[@]} -eq 0 ]]; then
 		return
 	fi
 
-	local rbenv_build=false
-
 	if command -v brew >/dev/null; then
 		print_ok "brew found"
-		echo -e >&2 "\033[90m$ brew install ${missing[@]}\033[0m"
-		brew install "${missing[@]}" || exit 1
+
+		if [[ ${#missing[@]} -gt 0 ]]; then
+			echo -e >&2 "\033[90m$ brew install ${missing[@]}\033[0m"
+			brew install "${missing[@]}" || exit 1
+		fi
 	elif command -v apt-get >/dev/null; then
 		print_ok "apt-get found"
 
-		echo -e >&2 "\033[33m[sudo]\033[0m \033[90m$ apt-get update\033[0m"
-		sudo DEBIAN_FRONTEND=noninteractive apt-get update || exit 1
+		echo -e >&2 "${CAN_USE_SUDO:+\033[33m[sudo]\033[0m }\033[90m$ apt-get update\033[0m"
+		(
+			export DEBIAN_FRONTEND=noninteractive
+			${CAN_USE_SUDO:+sudo }apt update
+		) || exit 1
 
 		local apt_packages=()
-		if [[ " ${missing[@]} " =~ " rbenv " ]]; then
-			rbenv_build=true
+		if [[ "$omni_ruby_installed" == "false" ]]; then
 			apt_packages+=(
-				"autoconf"
-				"bison"
-				"build-essential"
 				"libffi-dev"
 				"libgdbm-dev"
 				"libncurses5-dev"
@@ -393,32 +422,46 @@ function install_dependencies_packages() {
 				"zlib1g-dev"
 			)
 		fi
+		for pkg in autoconf bison curl git; do
+			if [[ " ${missing[@]} " =~ " $pkg " ]]; then
+				apt_packages+=("$pkg")
+			fi
+		done
+		for pkg in gcc make; do
+			if [[ " ${missing[@]} " =~ " $pkg " ]]; then
+				apt_packages+=("build-essential")
+				break
+			fi
+		done
 		if [[ " ${missing[@]} " =~ " uuidgen " ]]; then
 			apt_packages+=("uuid-runtime")
 		fi
 
-		echo -e >&2 "\033[33m[sudo]\033[0m \033[90m$ apt-get --yes --no-install-recommends install ${apt_packages[@]}\033[0m"
-		sudo DEBIAN_FRONTEND=noninteractive apt-get --yes install "${apt_packages[@]}" || exit 1
+		echo -e >&2 "${CAN_USE_SUDO:+\033[33m[sudo]\033[0m }\033[90m$ apt-get --yes --no-install-recommends install ${apt_packages[@]}\033[0m"
+		(
+			export DEBIAN_FRONTEND=noninteractive
+			${CAN_USE_SUDO:+sudo }apt-get --yes install "${apt_packages[@]}"
+		) || exit 1
 	elif command -v dnf >/dev/null; then
 		print_ok "dnf found"
 
 		local dnf_packages=()
-		if [[ " ${missing[@]} " =~ " rbenv " ]]; then
-			rbenv_build=true
+		if [[ "$omni_ruby_installed" == "false" ]]; then
 			dnf_packages+=(
-				"autoconf"
-				"bison"
-				"gcc"
 				"gdbm-devel"
 				"libffi-devel"
 				"libyaml-devel"
-				"make"
 				"ncurses-devel"
 				"openssl-devel"
 				"readline-devel"
 				"zlib-devel"
 			)
 		fi
+		for pkg in autoconf bison curl gcc git make; do
+			if [[ " ${missing[@]} " =~ " $pkg " ]]; then
+				dnf_packages+=("$pkg")
+			fi
+		done
 		if [[ " ${missing[@]} " =~ " uuidgen " ]]; then
 			dnf_packages+=("util-linux")
 		fi
@@ -429,11 +472,8 @@ function install_dependencies_packages() {
 		print_ok "pacman found"
 
 		local pacman_packages=()
-		if [[ " ${missing[@]} " =~ " rbenv " ]]; then
-			rbenv_build=true
+		if [[ "$omni_ruby_installed" == "false" ]]; then
 			pacman_packages+=(
-				"base-devel"
-				"git"
 				"libffi"
 				"libyaml"
 				"openssl"
@@ -441,6 +481,17 @@ function install_dependencies_packages() {
 				"zlib"
 			)
 		fi
+		for pkg in curl git; do
+			if [[ " ${missing[@]} " =~ " $pkg " ]]; then
+				pacman_packages+=("$pkg")
+			fi
+		done
+		for pkg in autoconf bison gcc make; do
+			if [[ " ${missing[@]} " =~ " $pkg " ]]; then
+				pacman_packages+=("base-devel")
+				break
+			fi
+		done
 		if [[ " ${missing[@]} " =~ " uuidgen " ]]; then
 			pacman_packages+=("util-linux")
 		fi
@@ -455,11 +506,6 @@ function install_dependencies_packages() {
 		fi
 	fi
 
-	if [[ "$rbenv_build" == "true" ]]; then
-		echo -e >&2 "\033[90m$ curl -fsSL https://github.com/rbenv/rbenv-installer/raw/HEAD/bin/rbenv-installer | bash\033[0m"
-		curl -fsSL https://github.com/rbenv/rbenv-installer/raw/HEAD/bin/rbenv-installer | bash || exit 1
-	fi
-
 	# Check that the missing commands are now available
 	for cmd in "${missing[@]}"; do
 		if command -v "$cmd" >/dev/null; then
@@ -471,57 +517,153 @@ function install_dependencies_packages() {
 	done
 }
 
+function install_dependencies_asdf() {
+	if ! [[ -d "$ASDF_DATA_DIR" ]]; then
+		echo -e >&2 "\033[90m$ git clone https://github.com/asdf-vm/asdf.git $ASDF_DATA_DIR --branch v0.11.3\033[0m"
+		git clone https://github.com/asdf-vm/asdf.git $ASDF_DATA_DIR --branch v0.11.3 || exit 1
+	fi
+
+	# Load asdf bash
+	source "$ASDF_DATA_DIR/asdf.sh"
+
+	# Make sure asdf is up to date
+	echo -e >&2 "\033[90m$ asdf update\033[0m"
+	asdf update || exit 1
+}
+
+function install_dependencies_rust() {
+	echo -e >&2 "\033[90m$ asdf plugin add rust\033[0m"
+	asdf plugin add rust || {
+		if [[ $? == 2 ]]; then
+			asdf plugin update rust || exit 1
+		else
+			exit 1
+		fi
+	}
+
+	echo -e >&2 "\033[90m$ asdf install rust $rust_version\033[0m"
+	asdf install rust $rust_version || exit 1
+}
+
+function install_dependencies_shadowenv() {
+	# Make sure that omni bin path is in the PATH
+	export PATH="${SCRIPT_DIR}/bin:$PATH"
+
+	function check_shadowenv() {
+		if command -v shadowenv >/dev/null; then
+			# Check the version of shadowenv is the expected one
+			local current_shadowenv_version="$(shadowenv --version 2>/dev/null | cut -d' ' -f2)"
+			if [[ "$current_shadowenv_version" == "$shadowenv_version" ]]; then
+				print_ok "shadowenv ${shadowenv_version} found"
+				return 0
+			fi
+
+			print_issue "shadowenv found but version is ${current_shadowenv_version:-unreadable}, expected $shadowenv_version"
+		fi
+		return 1
+	}
+
+	# Check if we already have shadowenv, and in which case, which version
+	if check_shadowenv; then
+		return
+	fi
+
+	# Prepare to have to build shadowenv locally
+	local shadowenv_bin="${SCRIPT_DIR}/bin/shadowenv"
+
+	if [[ -e "$shadowenv_bin" ]]; then
+		print_issue "moving ${shadowenv_bin} to ${shadowenv_bin}.old"
+		mv "$shadowenv_bin" "${shadowenv_bin}.old"
+	fi
+
+	# If on MacOS, we can try and brew install it
+	if command -v brew >/dev/null && [[ "$OSTYPE" == "darwin"* ]]; then
+		echo -e >&2 "\033[33m[brew]\033[0m \033[90m$ brew install shadowenv\033[0m"
+		brew install shadowenv || exit 1
+
+		if ! command -v shadowenv >/dev/null; then
+			print_issue "shadowenv not found after brew install, verify that brew is correctly installed and in the PATH"
+			exit 1
+		fi
+		return
+	fi
+
+	# Install rust
+	install_dependencies_rust
+
+	# Clone shadowenv to a temp directory that we'll remove after
+	local clone_tmp_dir="$(mktemp -d "${TMPDIR:-/tmp}/omni-shadowenv.XXXXXX")"
+
+	echo -e >&2 "\033[90m$ git clone https://github.com/Shopify/shadowenv --branch ${shadowenv_version} --depth 1 $clone_tmp_dir\033[0m"
+	git clone https://github.com/Shopify/shadowenv --branch "${shadowenv_version}" --depth 1 "$clone_tmp_dir" || exit 1
+
+	(
+		# Go to shadowenv's directory
+		cd "$clone_tmp_dir"
+
+		# Set the rust version
+		export ASDF_RUST_VERSION="$rust_version"
+
+		# Try to save on memory by using git cli
+		mkdir -p .cargo
+		printf "[net]\ngit-fetch-with-cli = true\n" > .cargo/config
+
+		# Build shadowenv
+		echo -e >&2 "\033[90m$ cargo build --release\033[0m"
+		cargo build --release || exit 1
+
+		# Move the binary to the bin directory
+		mv "target/release/shadowenv" "$shadowenv_bin"
+	) || {
+		# If something went wrong, remove the temp directory
+		rm -rf "$clone_tmp_dir"
+
+		# And exit
+		exit 1
+	}
+
+	# Remove the temp directory
+	rm -rf "$clone_tmp_dir"
+
+	# Check that shadowenv is now available
+	if ! check_shadowenv; then
+		print_failed "shadowenv ${shadowenv_version} still not found"
+		exit 1
+	fi
+}
+
 function install_dependencies_ruby() {
-	# We then make sure the right ruby version is installed and being used from the repo
-	local ruby_version=$(grep "^ *- *ruby:" "${SCRIPT_DIR}/.omni.yaml" | \
-		sed -E 's/^ *- ruby: *//' | \
-		sed -E 's/^"([^"]*)"/\1/' | \
-		sed -E "s/'([^']*)'/\1/" | \
-		sed -E 's/ .*$//')
-
-	# Make sure the right ruby version is used from the repo
-	echo $ruby_version > "${SCRIPT_DIR}/.ruby-version"
-
-	function check_rbenv() {
+	# Check that asdf current returns the right version
+	function check_ruby() {
 		(
 			cd "$SCRIPT_DIR" &&
-			rbenv version | cut -d' ' -f1 | grep -q "$ruby_version"
+			asdf current ruby 2>/dev/null | grep -q "$ruby_version"
 		) && return 0 || return 1
 	}
 
-	if check_rbenv; then
+	if check_ruby; then
 		print_ok "ruby $ruby_version found"
-	else
-		if ! rbenv install --list 2>/dev/null | grep -q "^$(echo "$ruby_version" | sed 's/\./\\./g')$"; then
-			print_failed "cannot install ruby $ruby_version with your rbenv installation - please update rbenv or uninstall it to let this install script get the latest version for you"
-			exit 1
-		fi
-
-		if [[ ! -d "$HOME/.rbenv/plugins/rvm-download" ]]; then
-			# Get rvm-download so that the installation can be faster
-			print_pending "Installing rvm-download plugin for rbenv"
-			git clone https://github.com/garnieretienne/rvm-download.git "$HOME/.rbenv/plugins/rvm-download" || exit 1
-			print_ok "Installed rvm-download plugin for rbenv"
-		fi
-
-		{
-			print_pending "Installing ruby $ruby_version from rvm sources"
-			rbenv download $ruby_version && rbenv rehash
-		} || {
-			print_failed "Installing ruby $ruby_version from rvm sources"
-			print_pending "Installing ruby $ruby_version from ruby-build"
-			RUBY_CONFIGURE_OPTS=--disable-install-doc \
-				rbenv install --verbose --skip-existing $ruby_version
-		} || exit 1
-		print_ok "Installed ruby $ruby_version"
+		return
 	fi
 
-	if ! check_rbenv; then
+	echo -e >&2 "\033[90m$ asdf plugin add ruby\033[0m"
+	asdf plugin add ruby || {
+		if [[ $? == 2 ]]; then
+			asdf plugin update ruby || exit 1
+		else
+			exit 1
+		fi
+	}
+
+	echo -e >&2 "\033[90m$ asdf install ruby $ruby_version\033[0m"
+	asdf install ruby $ruby_version || exit 1
+
+	if ! check_ruby; then
 		print_failed "ruby $ruby_version still not found"
 		exit 1
 	fi
 
-	unset -f check_rbenv
+	unset -f check_ruby
 }
 
 function install_dependencies_bundler() {
@@ -566,22 +708,11 @@ function install_dependencies_gemfile() {
 }
 
 function install_dependencies() {
-	# rbenv might be installed in the user's home, so we add it to the path to make
-	# sure that it's found even if it's not in the user's configured path
-	[[ ":$PATH:" =~ ":$HOME/.rbenv/bin:" ]] || export PATH="$HOME/.rbenv/bin:$PATH"
-
-	# We also add the homebrew path there, just in case
-	if command -v brew >/dev/null; then
-		local brewbin="$(brew --prefix)/bin"
-		[[ ":$PATH:" =~ ":${brewbin}:" ]] || export PATH="${brewbin}:$PATH"
-		unset brewbin
-	fi
+	CAN_USE_SUDO="$(command -v sudo >/dev/null && echo sudo)"
 
 	install_dependencies_packages
-
-	# Make sure rbenv is currently loaded, just in case
-	[[ $(type -t rbenv) == "function" ]] || eval "$(rbenv init - bash)" || exit 1
-
+	install_dependencies_asdf
+	install_dependencies_shadowenv
 	install_dependencies_ruby
 	install_dependencies_bundler
 	install_dependencies_gemfile
@@ -635,6 +766,9 @@ function setup_shell_integration() {
 
 	print_action "Setting up $shell integration in $rc_file"
 
+	# Make sure directory exists
+	mkdir -p "$(dirname "$rc_file")"
+
 	if [[ "$SETUP_OMNI_GIT" == "true" ]] && [[ -n "${OMNI_GIT}" ]]; then
 		echo 'export OMNI_GIT="'"${OMNI_GIT}"'"' >> "$rc_file"
 		if [ $? -ne 0 ]; then
@@ -647,6 +781,11 @@ function setup_shell_integration() {
 	local conditional_load="[[ -f \"${SCRIPT_DIR}/shell_integration/omni.${shell}\" ]] && source \"${SCRIPT_DIR}/shell_integration/omni.${shell}\""
 	if [[ "$shell" == "fish" ]]; then
 		conditional_load="test -f \"${SCRIPT_DIR}/shell_integration/omni.fish\"; and source \"${SCRIPT_DIR}/shell_integration/omni.fish\""
+	fi
+
+	if [[ -f "$rc_file" ]] &&  grep -qF "$conditional_load" "$rc_file"; then
+		print_pending "$shell integration already in $rc_file"
+		return
 	fi
 
 	echo "${conditional_load}" >> "$rc_file"

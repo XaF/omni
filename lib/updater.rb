@@ -13,11 +13,8 @@ class Updater
   OMNI_PATH_UPDATE_CACHE_KEY = 'omni-path-updates'
 
   def self.method_missing(method, *args, **kwargs, &block)
-    if self.instance.respond_to?(method)
-      self.instance.send(method, *args, **kwargs, &block)
-    else
-      super
-    end
+    return self.instance.send(method, *args, **kwargs, &block) if self.instance.respond_to?(method)
+    super
   end
 
   def self.respond_to_missing?(method, include_private = false)

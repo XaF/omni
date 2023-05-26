@@ -54,7 +54,19 @@ class MakefileCommand < OmniCommand
     # Switch to the Makefile directory
     Dir.chdir(File.dirname(@path))
 
+    # Prepare command environment
+    prepare_exec_command_env(@path)
+
+    # Prepare the command
+    exec_cmd = ['make', '-f', @path, @target]
+
+    # If we are in a shadowenv, we want to change the environment first
+    exec_cmd.unshift('shadowenv', 'exec', '--') if OmniEnv.shadowenv?
+
     # Execute the command
-    Kernel.exec('make', '-f', @path, @target, *argv)
+    Kernel.exec(*exec_cmd, *argv)
+
+    # If we get here, it means the exec failed
+    exit 1
   end
 end

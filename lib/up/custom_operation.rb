@@ -38,15 +38,21 @@ class CustomOperation < Operation
 
   def met?
     return false unless met_cmd
-    system("bash", "-c", met_cmd, ">/dev/null 2>&1")
+    system(*wrap_cmd(met_cmd), ">/dev/null 2>&1")
   end
 
   def meet
-    command_line(meet_cmd)
+    command_line(meet_cmd, wrap_with_shell: true)
   end
 
   def unmeet
-    command_line(unmeet_cmd)
+    command_line(unmeet_cmd, wrap_with_shell: true)
+  end
+
+  def wrap_cmd(cmd)
+    wrapped_cmd = ['bash', '-c', cmd]
+    wrapped_cmd.unshift('shadowenv', 'exec', '--') if OmniEnv.shadowenv?
+    wrapped_cmd
   end
 
   def met_cmd

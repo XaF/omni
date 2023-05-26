@@ -73,6 +73,71 @@ class ConfigSection
 end
 
 
+class Shadowenv
+  def initialize
+    @any_file = false
+  end
+
+  def trust
+    system('shadowenv', 'trust') if @any_file
+  end
+
+  def clear
+    FileUtils.rm_rf(shadowenv_path) if File.exist?(shadowenv_path)
+  end
+
+  def write(filename, content)
+    raise RuntimeError, "Filename #{filename} needs to be a relative path" if filename.start_with?('/')
+    prepare_directory
+
+    File.open(File.join(shadowenv_path, filename), 'w') do |file|
+      file.write(content)
+    end
+
+    @any_file = true
+    trust
+
+    nil
+  end
+
+  def config_env
+    config = Config.with_src
+    return if config.nil? || config.empty?
+
+    env = config['env']
+    return if !config['env'] || config['env'].empty?
+
+    env_repo = env.select_label('git_repo')
+    return if !env_repo || env_repo.empty?
+
+    file_name = '100_env.lisp'
+
+    env_repo = env_repo.unwrap
+    contents = env_repo.map do |key, value|
+      "(env/set \"#{key}\" \"#{value}\")"
+    end
+
+    contents = ['(provide "env")', ""] + contents + [""]
+    contents = contents.join("\n")
+
+    write(file_name, contents)
+  end
+
+  private
+
+  def shadowenv_path
+    '.shadowenv.d'
+  end
+
+  def prepare_directory
+    FileUtils.mkdir_p(shadowenv_path)
+    File.open("#{shadowenv_path}/.gitignore", 'w') do |file|
+      file.write("*\n")
+    end
+  end
+end
+
+
 def trusted_repo?(trust: nil)
   if trust.nil?
     # Get the repository object from the repository origin
@@ -244,6 +309,11 @@ def handle_up
     # Still block in case operation is unknown
     error("unknown operation #{operation_type.to_s.yellow}") unless [:up, :down].include?(operation_type)
 
+    # Remove the .shadowenv.d directory if it exists
+    shadowenv = Shadowenv.new
+    shadowenv.clear
+    shadowenv.config_env if operation_type == :up
+
     # In case of being called as `down`, this will run the operations in reverse order
     # in case there are dependencies between them
     operations.reverse! if operation_type == :down
@@ -251,8 +321,13 @@ def handle_up
     # Run the operations as long as the up command returns true or nil
     operations.take_while do |operation|
       status = operation.send(operation_type)
+
+      operation.shadowenv(shadowenv) if status && operation_type == :up && operation.respond_to?(:shadowenv)
+
       status.nil? || status
     end
+
+    shadowenv.trust
   end
 end
 

@@ -1,2 +1,5 @@
-.ruby-version
+.*-version
+.shadowenv.d
+.tool-versions
+bin/shadowenv*
 vendor

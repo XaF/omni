@@ -21,7 +21,8 @@ class BundlerOperation < Operation
 
   def down
     return unless path && Dir.exist?(path)
-    return if OmniEnv.git_repo_root == OmniEnv::OMNIDIR
+    return unless OmniEnv.in_git_repo?
+    return if OmniEnv.in_omnidir?
 
     STDERR.puts "# Removing dependencies installed with bundler".light_blue
     STDERR.puts "$ rm -rf #{path}".light_black

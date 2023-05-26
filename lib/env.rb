@@ -11,6 +11,13 @@ end
 class OmniEnv
   include Singleton
 
+  def initialize
+    # Change directory if requested
+    chdir = ENV['OMNI_CHDIR_BEFORE_EXEC']
+    Dir.chdir(chdir) if chdir && !chdir.empty? && Dir.exist?(chdir)
+    ENV['OMNI_CHDIR_BEFORE_EXEC'] = nil
+  end
+
   def self.method_missing(method, *args, **kwargs, &block)
     return self.instance.send(method, *args, **kwargs, &block) if self.instance.respond_to?(method)
     super
@@ -25,6 +32,9 @@ class OmniEnv
     return git_repo_root if name == :GIT_REPO_ROOT
     return git_repo_origin if name == :GIT_REPO_ORIGIN
     return in_git_repo? if name == :IN_GIT_REPO
+    return config_home if name == :OMNI_CONFIG_HOME
+    return data_home if name == :OMNI_DATA_HOME
+    return user_shell if name == :OMNI_USER_SHELL
     raise NameError, "uninitialized constant #{self.name}::#{name}"
   end
 
@@ -42,7 +52,8 @@ class OmniEnv
     ENV['OMNIPATH'] = OMNIPATH.join(':')
     ENV['OMNI_CMD_FILE'] = OMNI_CMD_FILE || ''
     ENV['OMNI_GIT'] = OMNI_GIT
-    ENV['OMNI_ORG'] = OMNI_ORG.join(',')
+    ENV['OMNIDIR'] = OMNIDIR
+    ENV['OMNIDIR_LOCATED'] = OMNIDIR_LOCATED.to_s
   end
 
   def git_repo_root
@@ -95,6 +106,30 @@ class OmniEnv
     error('Unable to resolve OMNI_GIT worktree, please configure it in your environment', cmd: 'env')
   end
 
+  def config_home
+    @config_home ||= begin
+      config_home = ENV['OMNI_CONFIG_HOME']
+      return config_home if config_home && !config_home.empty?
+
+      xdg_config_home = ENV['XDG_CONFIG_HOME']
+      xdg_config_home = File.expand_path('~/.config') if xdg_config_home.nil? || !xdg_config_home.start_with?('/')
+
+      File.join(xdg_config_home, 'omni')
+    end
+  end
+
+  def data_home
+    @data_home ||= begin
+      data_home = ENV['OMNI_DATA_HOME']
+      return data_home if data_home && !data_home.empty?
+
+      xdg_data_home = ENV['XDG_DATA_HOME']
+      xdg_data_home = File.expand_path('~/.local/share') if xdg_data_home.nil? || !xdg_data_home.start_with?('/')
+
+      File.join(xdg_data_home, 'omni')
+    end
+  end
+
   def user_shell
     current_pid = Process.pid
 
@@ -125,5 +160,18 @@ class OmniEnv
 
   def user_login_shell
     ENV['SHELL']
+  end
+
+  def in_omnidir?(path = nil)
+    return git_repo_root == OMNIDIR if path.nil?
+
+    path = File.realpath(File.expand_path(path))
+    omnidir = File.realpath(OMNIDIR)
+
+    path == omnidir || path.start_with?(omnidir + '/')
+  end
+
+  def shadowenv?
+    @shadowenv ||= system('command -v shadowenv >/dev/null 2>&1')
   end
 end
