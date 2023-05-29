@@ -28,7 +28,7 @@ jobs:
 
       - name: Check changed files for extra-OS verifications
         id: changed-install-files
-        uses: tj-actions/changed-files@v35
+        uses: tj-actions/changed-files@v36
         with:
           since_last_remote_commit: ${{ github.event_name != 'pull_request' }}
           files: |
