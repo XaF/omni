@@ -548,6 +548,7 @@ class Config
         select_label('git_repo')
     end
 
+    return {} if @suggested_from_repo.nil?
     suggest_config = @suggested_from_repo.dup
     suggest_config = suggest_config.map { |key, value| [key, value.unwrap] } if unwrap
     stringify_keys(suggest_config.to_h)
