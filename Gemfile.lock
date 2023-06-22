@@ -4,7 +4,7 @@ GEM
     amatch (0.4.1)
       mize
       tins (~> 1.0)
-    colorize (0.8.1)
+    colorize (1.0.3)
     fuzzy_match (2.1.0)
     mize (0.4.1)
       protocol (~> 2.0)
