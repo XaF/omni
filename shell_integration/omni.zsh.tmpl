@@ -1,0 +1,83 @@
+# This function is used to run the omni command, and then operate on
+# the requested shell changes from the command (changing current
+# working directory, environment, etc.); this is why we require using
+# a shell function for this, instead of simply calling the omni
+# command from the path
+function omni() {
+	# Prepare the environment for omni
+	export OMNI_UUID=$(command -v uuidgen >/dev/null && uuidgen || {{OMNI_BIN}} hook uuid)
+	local tmpdir=${TMPDIR:-/tmp}
+	OMNI_FILE_PREFIX="omni_${OMNI_UUID}"
+	export OMNI_CMD_FILE="${tmpdir}/${OMNI_FILE_PREFIX}.cmd"
+	export OMNI_SHELL=zsh
+
+	# Run the command
+	{{OMNI_BIN}} "$@"
+	EXIT_CODE=$?
+
+	# Check if OMNI_CMD_FILE exists, and if it does, run the commands
+	# inside without a subshell, so that the commands can modify the
+	# environment of the current shell, and then delete the file
+	if [[ -f $OMNI_CMD_FILE ]] && [[ "$EXIT_CODE" == "0" ]]; then
+		while IFS= read -r cmd; do
+			eval $cmd
+			EXIT_CODE=$?
+			if [[ "$EXIT_CODE" != "0" ]]; then
+				echo -e "\033[96momni:\033[0m \033[31mcommand failed:\033[0m $cmd \033[90m(exit: $EXIT_CODE)\033[0m"
+				break
+			fi
+		done < $OMNI_CMD_FILE
+	fi
+
+	# Delete the files, we do that with '&' so there's no delay to return
+	# to the prompt, and within a subshell so that monitor mode (set +m)
+	# is disabled for that command, allowing to hide the '[x] Done' message
+	(find "${tmpdir}/" -name "${OMNI_FILE_PREFIX}*" -exec rm {} \; >/dev/null 2>&1 &)
+
+	# Unset the environment variables
+	unset OMNI_SHELL
+	unset OMNI_UUID
+	unset OMNI_FILE_PREFIX
+	unset OMNI_CMD_FILE
+	unset OMNI_HELPERS_FILE
+
+	# Return the exit code of the command
+	return $EXIT_CODE
+}
+
+
+# Setup autocompletion for omni
+_omni_complete_zsh() {
+	local opts=$(\
+		COMP_CWORD=$((CURRENT-1)) \
+		COMP_TYPE=$compstate[quote] \
+		{{OMNI_BIN}} --complete ${words[2,CURRENT]})
+	local reply=($(echo $opts))
+
+	if [[ "${#reply[@]}" -lt 1 ]]; then
+		return
+	fi
+
+	# For each completion, override them by adding a space
+	# at the end UNLESS they end with a slash (dir completion)
+	for i in "${#reply[@]}"; do
+		if [[ "${reply[$i]}" != */ ]]; then
+			reply[$i]="${reply[$i]} "
+		fi
+	done
+	compadd -Q -S '' -- $reply
+}
+compdef _omni_complete_zsh omni
+
+
+# Prepare omni's hook
+__omni_hook() {
+	local ppid=$$
+	eval "$(OMNI_SHELL_PPID="${ppid}" "{{OMNI_BIN}}" hook env "${@}")"
+}
+
+# Inject omni's hooks into the prompt command
+__omni_hook_precmd()  { __omni_hook zsh }
+if [[ ! ${precmd_functions[(r)__omni_hook_precmd]} ]]; then
+	precmd_functions+=("__omni_hook_precmd");
+fi

@@ -1,0 +1,65 @@
+function omni
+    # Prepare the environment for omni
+    set -gx OMNI_UUID (uuidgen)
+    set -q TMPDIR; and set -l tmpdir $TMPDIR; or set -l tmpdir /tmp
+    set -gx OMNI_FILE_PREFIX "omni_$OMNI_UUID"
+    set -gx OMNI_CMD_FILE "$tmpdir/$OMNI_FILE_PREFIX.cmd"
+    set -gx OMNI_SHELL "fish"
+
+    # Run the command
+    {{OMNI_BIN}} $argv
+    set EXIT_CODE $status
+
+    # Check if OMNI_CMD_FILE exists, and if it does, run the commands
+    # inside without a subshell, so that the commands can modify the
+    # environment of the current shell, and then delete the file
+    if test -f $OMNI_CMD_FILE; and test $EXIT_CODE -eq 0
+        cat $OMNI_CMD_FILE | while read -l cmd
+            eval $cmd
+            set EXIT_CODE $status
+            if test $EXIT_CODE -ne 0
+                echo -e "\033[96momni:\033[0m \033[31mcommand failed:\033[0m $cmd \033[90m(exit: $EXIT_CODE)\033[0m"
+                break
+            end
+        end
+    end
+
+    # Delete the files using background process to avoid delay
+    # in returning to the prompt, and within a subshell to disable
+    # monitor mode (set +m) and hide the '[x] Done' message
+    commandline -M find "$tmpdir/" -name "$OMNI_FILE_PREFIX*" -exec echo rm {} \; >/dev/null 2>&1 &
+
+    # Unset the environment variables
+    set -e OMNI_SHELL
+    set -e OMNI_UUID
+    set -e OMNI_FILE_PREFIX
+    set -e OMNI_CMD_FILE
+    set -e OMNI_HELPERS_FILE
+
+    # Return the exit code of the command
+    return $EXIT_CODE
+end
+
+# Setup autocompletion for omni
+function _omni_complete_fish
+    set -l cur (commandline -o)
+    set -l prev (commandline -P)
+    set -l cmdline (commandline --tokenize --cut-at-cursor)
+    set -l cword (count $cmdline)
+
+    # Remove the first element (command) from cmdline
+    set -l args (echo $cmdline[2..-1])
+
+    set -l opts (env COMP_CWORD=$cword OMNI_SHELL=fish omni --complete $args)
+    string join \n -- $opts
+end
+
+complete -c omni -a "(_omni_complete_fish)" -f
+
+# Setup the prompt hook to load the dynamic environment
+function __omni_hook --on-event fish_prompt --on-variable PWD
+    OMNI_SHELL=fish OMNI_SHELL_PPID=$fish_pid {{OMNI_BIN}} hook env fish \
+        | while read line
+            eval "$line" 2>/dev/null
+        end
+end

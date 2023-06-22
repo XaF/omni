@@ -1,0 +1,107 @@
+name: Release
+
+permissions:
+  contents: write
+
+on:
+  push:
+    tags:
+      - v[0-9]+.*
+
+jobs:
+  create-release:
+    name: Create new github release
+
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout commit
+        uses: actions/checkout@v3
+
+      - uses: taiki-e/create-gh-release-action@v1
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+  upload-assets:
+    name: Build new binary for ${{ matrix.suffix }}
+
+    needs:
+      - create-release
+
+    strategy:
+      matrix:
+        include:
+          - target: aarch64-unknown-linux-gnu
+            os: ubuntu-latest
+            suffix: arm64-linux
+          - target: aarch64-apple-darwin
+            os: macos-latest
+            suffix: arm64-darwin
+          - target: x86_64-unknown-linux-gnu
+            os: ubuntu-latest
+            suffix: x86_64-linux
+          - target: x86_64-apple-darwin
+            os: macos-latest
+            suffix: x86_64-darwin
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - name: Checkout commit
+        uses: actions/checkout@v3
+
+      - name: Set up cargo cache
+        uses: actions/cache@v3
+        continue-on-error: false
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: ${{ runner.os }}-cargo-
+
+      - name: Install cross
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cross
+
+      - name: Set Cargo.toml version
+        shell: bash
+        run: |
+          RELEASE=$(git describe --tags || echo "${{ github.ref }}")
+          RELEASE_VERSION=${RELEASE##v}
+          echo "RELEASE_VERSION=${RELEASE_VERSION}" | tee -a "$GITHUB_ENV"
+
+          mv Cargo.toml Cargo.toml.orig
+          sed "s/0\\.0\\.0-git/${RELEASE_VERSION}/" Cargo.toml.orig >Cargo.toml
+          mv Cargo.lock Cargo.lock.orig
+          sed "s/0\\.0\\.0-git/${RELEASE_VERSION}/" Cargo.lock.orig >Cargo.lock
+          echo "Release version set to ${RELEASE}"
+
+      - name: Build and upload binary
+        uses: taiki-e/upload-rust-binary-action@v1
+        with:
+          bin: omni
+          archive: omni-${{ env.RELEASE_VERSION }}-${{ matrix.suffix }}
+          target: ${{ matrix.target }}
+          token: ${{ secrets.GITHUB_TOKEN }}
+          checksum: sha256
+
+  update-brew:
+    name: Trigger brew formula update
+
+    needs:
+      - upload-assets
+
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Send repository dispatch with update-formulae event
+        uses: peter-evans/repository-dispatch@v2
+        with:
+          token: ${{ secrets.REPOSITORY_DISPATCH_TOKEN }}
+          repository: XaF/homebrew-test
+          event-type: update-formulae

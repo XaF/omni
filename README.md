@@ -24,48 +24,26 @@ This is a work in progress...
 
 Installing omni is as simple as running:
 
-```sh
-bash -c "$(curl https://raw.githubusercontent.com/XaF/omni/main/install.sh)"
+```
+brew tap XaF/omni
+brew install omni
 ```
 
-The installation script will attempt to install those dependencies and setup omni for you. In case of issue, here is what you need to know:
+Or installing from sources: (assuming you have rust installed)
 
-You will need the following dependencies:
-- `rbenv`, which will be used to install ruby 3.2.2 (aims at allowing auto-handling of ruby versions for omni in the future)
-- `uuidgen`, which is used to generate UUIDs for the subcommand sessions
-
-In order to work as expected, omni will also require its shell integration, which you can add depending on your shell:
-- `.bashrc`
-  ```
-  [[ -f "<path/to/omni/git/repo>/shell_integration/omni.bash" ]] && source "<path/to/omni/git/repo>/shell_integration/omni.bash"
-  ```
-
-- `.zshrc`
-  ```
-  [[ -f "<path/to/omni/git/repo>/shell_integration/omni.zsh" ]] && source "<path/to/omni/git/repo>/shell_integration/omni.zsh"
-  ```
-
-- `fish/conf.d/omni.fish`
-  ```
-  test -f "<path/to/omni/git/repo>/shell_integration/omni.fish"; and source "<path/to/omni/git/repo>/shell_integration/omni.fish"
-  ```
-
-
-### Initial configuration
-
-Running the installation script should have created a configuration file in `$HOME/.config/omni.yaml`. Given that the `main` branch of omni is to be considered unstable, we recommend that you set the following configuration:
-
-```yaml
-path_repo_updates:
-  per_repo_config:
-    github.com:XaF/omni:
-      ref_type: tag
-      ref_match: ^v[0-9]+\.[0-9]+\.[0-9]+$
+```
+git clone https://github.com/XaF/omni
+cargo build --release
 ```
 
-This will make sure that `omni` will only get auto-updated toward version tags. You can use `^v[0-9]+\.[0-9]+\.[0-9]+(-rc[0-9]+)?$` in case you wish to get release candidates too. This is what omni itself will suggest you if you run `omni up --update-user-config` in the omni repository.
+And then setting up your environment:
 
-For this to work, you will also need to make sure that you are currently checked out to the latest tag instead of main. Use `git checkout vX.Y.Z` to do so (where `vX.Y.Z` is the [latest tag available](https://github.com/XaF/omni/releases)).
+```
+eval "$(omni hook init bash)" # for bash
+eval "$(omni hook init zsh)"  # for zsh
+omni hook init fish | source  # for fish
+
+```
 
 ### Example repo
 
@@ -174,10 +152,6 @@ An up object can be one of:
 
 - `node` operation object, which can hold the following parameters:
   - `version` *[string]* the version of NodeJS to install and use in the repository; if the version is not specified, the latest available through asdf will be installed.
-
-- `asdf` operation object, which can hold the following parameters:
-  - `tool` **(required)** *[string]* the name of the tool to install, any of the tools provided by asdf are available
-  - `version` *[string]* the version of the tool to install and use in the repository; if the version is not specified, the latest available through asdf will be installed.
 
 - `custom` operation object, which can hold the following parameters:
   - `meet` **(required)** *[string, shell script]* the command to run to meet the requirement
