@@ -29,6 +29,8 @@ brew tap XaF/omni
 brew install omni
 ```
 
+Or downloading the [binary of the last release](https://github.com/XaF/omni/releases/) that fits your OS and architecture.
+
 Or installing from sources: (assuming you have rust installed)
 
 ```
