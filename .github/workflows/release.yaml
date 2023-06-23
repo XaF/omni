@@ -68,6 +68,12 @@ jobs:
         with:
           tool: cross
 
+      - name: Get release version for archives names
+        run: |
+          RELEASE=$(git describe --tags --always)
+          RELEASE_VERSION=${RELEASE##v}
+          echo "RELEASE_VERSION=${RELEASE_VERSION}" | tee -a "$GITHUB_ENV"
+
       - name: Build and upload binary
         uses: taiki-e/upload-rust-binary-action@v1
         with:
