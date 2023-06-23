@@ -5,6 +5,7 @@ use std::io;
 use std::io::Read;
 use std::io::Seek;
 use std::io::Write;
+use std::path::PathBuf;
 use std::time::Duration;
 
 use fs4::FileExt;
@@ -73,6 +74,15 @@ impl Cache {
     where
         F: FnOnce(&mut Self) -> bool,
     {
+        // Check if the directory of the cache file exists, otherwise create it recursively
+        let cache_path = PathBuf::from(config(".").cache.path.clone());
+        if let Some(parent) = cache_path.parent() {
+            if !parent.exists() {
+                std::fs::create_dir_all(parent)?;
+            }
+        }
+
+        // Open the cache file
         let mut file = OpenOptions::new()
             .read(true)
             .write(true)

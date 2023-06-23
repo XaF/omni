@@ -74,8 +74,7 @@ impl ConfigValue {
 
     pub fn default() -> Self {
         // Parse a default yaml file using serde
-        // TODO: remove -rust suffix for cache file
-        let default_cache_path = format!("{}-rust", ENV.cache_home);
+        let default_cache_path = format!("{}", ENV.cache_home);
         let mut yaml_str = format!("cache:\n  path: \"{}\"\n", default_cache_path);
         yaml_str = yaml_str
             + r#"
