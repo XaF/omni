@@ -68,19 +68,6 @@ jobs:
         with:
           tool: cross
 
-      - name: Set Cargo.toml version
-        shell: bash
-        run: |
-          RELEASE=$(git describe --tags || echo "${{ github.ref }}")
-          RELEASE_VERSION=${RELEASE##v}
-          echo "RELEASE_VERSION=${RELEASE_VERSION}" | tee -a "$GITHUB_ENV"
-
-          mv Cargo.toml Cargo.toml.orig
-          sed "s/0\\.0\\.0-git/${RELEASE_VERSION}/" Cargo.toml.orig >Cargo.toml
-          mv Cargo.lock Cargo.lock.orig
-          sed "s/0\\.0\\.0-git/${RELEASE_VERSION}/" Cargo.lock.orig >Cargo.lock
-          echo "Release version set to ${RELEASE}"
-
       - name: Build and upload binary
         uses: taiki-e/upload-rust-binary-action@v1
         with:

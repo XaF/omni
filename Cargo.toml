@@ -6,6 +6,9 @@ description = "Omnipotent dev tool"
 homepage = "https://github.com/XaF/omni"
 edition = "2021"
 
+[build-dependencies]
+time = { version = "0.3.22", features = ["serde-well-known"] }
+
 [dependencies]
 atty = "0.2.14"
 blake3 = "1.4.0"
