@@ -144,6 +144,10 @@ impl UpConfigAsdfBase {
         if let Some(config_value) = config_value {
             if let Some(value) = config_value.as_str() {
                 version = value.to_string();
+            } else if let Some(value) = config_value.as_float() {
+                version = value.to_string();
+            } else if let Some(value) = config_value.as_integer() {
+                version = value.to_string();
             } else if let Some(value) = config_value.get("version") {
                 version = value.as_str().unwrap().to_string();
             }
