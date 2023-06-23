@@ -103,5 +103,5 @@ jobs:
         uses: peter-evans/repository-dispatch@v2
         with:
           token: ${{ secrets.REPOSITORY_DISPATCH_TOKEN }}
-          repository: XaF/homebrew-test
+          repository: XaF/homebrew-omni
           event-type: update-formulae
