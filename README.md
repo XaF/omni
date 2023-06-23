@@ -24,7 +24,7 @@ This is a work in progress...
 
 Installing omni is as simple as running:
 
-```
+```sh
 brew tap XaF/omni
 brew install omni
 ```
@@ -33,18 +33,17 @@ Or downloading the [binary of the last release](https://github.com/XaF/omni/rele
 
 Or installing from sources: (assuming you have rust installed)
 
-```
+```sh
 git clone https://github.com/XaF/omni
 cargo build --release
 ```
 
 And then setting up your environment:
 
-```
+```sh
 eval "$(omni hook init bash)" # for bash
 eval "$(omni hook init zsh)"  # for zsh
 omni hook init fish | source  # for fish
-
 ```
 
 ### Example repo
