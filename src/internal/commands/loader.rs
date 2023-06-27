@@ -251,7 +251,7 @@ impl CommandLoader {
                 let mut match_level: usize = 0;
 
                 for command_name in command.all_names() {
-                    for i in 1..argv.len() {
+                    for i in 0..argv.len() {
                         let argv = &argv[..argv.len() - i].to_vec();
                         let cmd = argv.join(" ");
 
