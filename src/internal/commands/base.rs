@@ -1,5 +1,3 @@
-use std::os::unix::process::CommandExt;
-
 use crate::internal::commands::builtin::CdCommand;
 use crate::internal::commands::builtin::CloneCommand;
 use crate::internal::commands::builtin::HelpCommand;

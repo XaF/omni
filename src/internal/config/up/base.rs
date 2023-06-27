@@ -1,5 +1,3 @@
-use std::collections::HashMap;
-
 use serde::Deserialize;
 use serde::Serialize;
 use time::OffsetDateTime;
@@ -110,12 +108,11 @@ impl UpConfig {
             let repo_id = repo_id.unwrap();
 
             // Update the repository up cache
-            let mut up_env = HashMap::new();
-            if let Some(up_cache) = &cache.up_environments {
-                up_env = up_cache.env.clone();
+            let mut up_env = if let Some(up_cache) = &cache.up_environments {
+                up_cache.env.clone()
             } else {
                 return false;
-            }
+            };
 
             if !up_env.contains_key(&repo_id) {
                 return false;

@@ -109,7 +109,7 @@ impl UpConfigCustom {
                 .to_string()
         };
 
-        let mut spinner_progress_handler = None;
+        let spinner_progress_handler;
         let mut progress_handler: Option<Box<&dyn ProgressHandler>> = None;
         if ENV.interactive_shell {
             spinner_progress_handler = Some(SpinnerProgressHandler::new(
