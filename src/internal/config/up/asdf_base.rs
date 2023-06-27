@@ -30,12 +30,6 @@ use crate::internal::ENV;
 
 lazy_static! {
     pub static ref ASDF_PATH: String = {
-        if let Ok(asdf_data_dir) = std::env::var("ASDF_DATA_DIR") {
-            if !asdf_data_dir.is_empty() {
-                return asdf_data_dir;
-            }
-        }
-
         let omni_data_home = ENV.data_home.clone();
         let asdf_path = format!("{}/asdf", omni_data_home);
 
@@ -101,6 +95,7 @@ fn update_asdf(progress_handler: Option<Box<&dyn ProgressHandler>>) -> Result<()
 
     let mut asdf_update = TokioCommand::new(format!("{}", *ASDF_BIN));
     asdf_update.arg("update");
+    asdf_update.env("ASDF_DIR", &*ASDF_PATH);
     asdf_update.env("ASDF_DATA_DIR", &*ASDF_PATH);
     asdf_update.stdout(std::process::Stdio::piped());
     asdf_update.stderr(std::process::Stdio::piped());
@@ -117,6 +112,7 @@ fn is_asdf_tool_version_installed(tool: &str, version: &str) -> bool {
     asdf_list.arg("list");
     asdf_list.arg(tool);
     asdf_list.arg(version);
+    asdf_list.env("ASDF_DIR", &*ASDF_PATH);
     asdf_list.env("ASDF_DATA_DIR", &*ASDF_PATH);
     asdf_list.stdout(std::process::Stdio::null());
     asdf_list.stderr(std::process::Stdio::null());
@@ -327,6 +323,7 @@ impl UpConfigAsdfBase {
             asdf_list_all.arg("list");
             asdf_list_all.arg("all");
             asdf_list_all.arg(self.tool.clone());
+            asdf_list_all.env("ASDF_DIR", &*ASDF_PATH);
             asdf_list_all.env("ASDF_DATA_DIR", &*ASDF_PATH);
             asdf_list_all.stdout(std::process::Stdio::piped());
             asdf_list_all.stderr(std::process::Stdio::piped());
@@ -380,6 +377,7 @@ impl UpConfigAsdfBase {
         let mut asdf_plugin_list = std::process::Command::new(format!("{}", *ASDF_BIN));
         asdf_plugin_list.arg("plugin");
         asdf_plugin_list.arg("list");
+        asdf_plugin_list.env("ASDF_DIR", &*ASDF_PATH);
         asdf_plugin_list.env("ASDF_DATA_DIR", &*ASDF_PATH);
         asdf_plugin_list.stdout(std::process::Stdio::piped());
         asdf_plugin_list.stderr(std::process::Stdio::null());
@@ -421,6 +419,7 @@ impl UpConfigAsdfBase {
         asdf_plugin_add.arg("plugin");
         asdf_plugin_add.arg("add");
         asdf_plugin_add.arg(self.tool.clone());
+        asdf_plugin_add.env("ASDF_DIR", &*ASDF_PATH);
         asdf_plugin_add.env("ASDF_DATA_DIR", &*ASDF_PATH);
         asdf_plugin_add.stdout(std::process::Stdio::piped());
         asdf_plugin_add.stderr(std::process::Stdio::piped());
@@ -447,6 +446,7 @@ impl UpConfigAsdfBase {
         asdf_plugin_update.arg("plugin");
         asdf_plugin_update.arg("update");
         asdf_plugin_update.arg(self.tool.clone());
+        asdf_plugin_update.env("ASDF_DIR", &*ASDF_PATH);
         asdf_plugin_update.env("ASDF_DATA_DIR", &*ASDF_PATH);
         asdf_plugin_update.stdout(std::process::Stdio::piped());
         asdf_plugin_update.stderr(std::process::Stdio::piped());
@@ -489,6 +489,7 @@ impl UpConfigAsdfBase {
         asdf_install.arg("install");
         asdf_install.arg(self.tool.clone());
         asdf_install.arg(version);
+        asdf_install.env("ASDF_DIR", &*ASDF_PATH);
         asdf_install.env("ASDF_DATA_DIR", &*ASDF_PATH);
         asdf_install.stdout(std::process::Stdio::piped());
         asdf_install.stderr(std::process::Stdio::piped());
@@ -574,6 +575,7 @@ impl UpConfigAsdfBase {
                         asdf_uninstall.arg("uninstall");
                         asdf_uninstall.arg(to_remove.tool.clone());
                         asdf_uninstall.arg(to_remove.version.clone());
+                        asdf_uninstall.env("ASDF_DIR", &*ASDF_PATH);
                         asdf_uninstall.env("ASDF_DATA_DIR", &*ASDF_PATH);
                         asdf_uninstall.stdout(std::process::Stdio::piped());
                         asdf_uninstall.stderr(std::process::Stdio::piped());
