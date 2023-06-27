@@ -21,6 +21,7 @@ use crate::internal::commands::frompath::PathCommand;
 use crate::internal::config;
 use crate::internal::user_interface::colors::StringColor;
 use crate::internal::ENV;
+use crate::omni_info;
 
 lazy_static! {
     #[derive(Debug)]
@@ -241,14 +242,34 @@ impl CommandLoader {
     }
 
     pub fn find_command(&self, argv: &[String]) -> Option<(Command, Vec<String>, Vec<String>)> {
-        let cmd = argv.join(" ");
-
         let mut with_score = self
             .commands
             .iter()
-            .map(|command| CommandScore {
-                score: normalized_damerau_levenshtein(cmd.as_str(), &command.flat_name()),
-                command: command.clone(),
+            .map(|command| {
+                // Take the base score
+                let mut max_score: f64 = 0.0;
+                let mut match_level: usize = 0;
+
+                for command_name in command.all_names() {
+                    for i in 1..argv.len() {
+                        let argv = &argv[..argv.len() - i].to_vec();
+                        let cmd = argv.join(" ");
+
+                        let score =
+                            normalized_damerau_levenshtein(cmd.as_str(), &command_name.join(" "));
+
+                        if score > max_score {
+                            max_score = score;
+                            match_level = argv.len();
+                        }
+                    }
+                }
+
+                CommandScore {
+                    score: max_score,
+                    command: command.clone(),
+                    match_level: match_level,
+                }
             })
             .filter(|command| command.score > config(".").command_match_min_score)
             .collect::<Vec<_>>();
@@ -265,6 +286,7 @@ impl CommandLoader {
             && (with_score.len() < 2
                 || with_score[1].score <= config(".").command_match_skip_prompt_if.second_max)
         {
+            omni_info!(format!("{}", with_score[0].command.flat_name()), "found");
             return with_score[0].to_return(argv);
         }
 
@@ -330,13 +352,14 @@ impl CommandLoader {
 struct CommandScore {
     score: f64,
     command: Command,
+    match_level: usize,
 }
 
 impl CommandScore {
     fn to_return(&self, argv: &[String]) -> Option<(Command, Vec<String>, Vec<String>)> {
         let cmd = self.command.clone();
-        let called_as = argv[..cmd.name().len()].to_vec();
-        let argv = argv[cmd.name().len()..].to_vec();
+        let called_as = argv[..self.match_level].to_vec();
+        let argv = argv[self.match_level..].to_vec();
         return Some((cmd, called_as, argv));
     }
 }
