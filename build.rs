@@ -15,8 +15,6 @@ fn main() {
     };
 
     println!("cargo:rustc-env=CARGO_PKG_VERSION={}", version);
-    println!("cargo:rerun-if-env-changed=OMNI_RELEASE_VERSION");
-    println!("cargo:rerun-if-changed=.git/HEAD");
 }
 
 fn get_git_version() -> Option<String> {
