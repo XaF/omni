@@ -47,29 +47,33 @@ function omni() {
 
 
 # Setup autocompletion for omni
-_omni_complete_bash() {
-	local cur prev opts
-	COMPREPLY=()
-	cur="${COMP_WORDS[COMP_CWORD]}"
-	prev="${COMP_WORDS[COMP_CWORD-1]}"
-	opts=$(\
-		COMP_CWORD=$COMP_CWORD \
-		COMP_TYPE=$COMP_TYPE \
-		{{OMNI_BIN}} --complete ${COMP_WORDS[@]:1:$COMP_CWORD})
-	COMPREPLY=( $(compgen -W "${opts}" -- ${cur}) )
+if [[ "${BASH_VERSINFO[0]}" -lt 4 ]]; then
+	echo -e "\033[96momni:\033[0m \033[91mBash version 4 or higher is required for autocompletion (current: ${BASH_VERSION})\033[0m"
+else
+	_omni_complete_bash() {
+		local cur prev opts
+		COMPREPLY=()
+		cur="${COMP_WORDS[COMP_CWORD]}"
+		prev="${COMP_WORDS[COMP_CWORD-1]}"
+		opts=$(\
+			COMP_CWORD=$COMP_CWORD \
+			COMP_TYPE=$COMP_TYPE \
+			{{OMNI_BIN}} --complete ${COMP_WORDS[@]:1:$COMP_CWORD})
+		COMPREPLY=( $(compgen -W "${opts}" -- ${cur}) )
 
-	# For each completion, override them by adding a space
-	# at the end UNLESS they end with a slash (dir completion)
-	for i in "${!COMPREPLY[@]}"; do
-		if [[ "${COMPREPLY[$i]}" != */ ]]; then
-			COMPREPLY[$i]="${COMPREPLY[$i]} "
-		fi
-	done
-	compopt -o nospace
+		# For each completion, override them by adding a space
+		# at the end UNLESS they end with a slash (dir completion)
+		for i in "${!COMPREPLY[@]}"; do
+			if [[ "${COMPREPLY[$i]}" != */ ]]; then
+				COMPREPLY[$i]="${COMPREPLY[$i]} "
+			fi
+		done
+		compopt -o nospace
 
-	return 0
-}
-complete -F _omni_complete_bash omni
+		return 0
+	}
+	complete -F _omni_complete_bash omni
+fi
 
 
 # Prepare omni's hook
