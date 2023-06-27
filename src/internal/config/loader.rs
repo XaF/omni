@@ -187,6 +187,14 @@ impl ConfigLoader {
     where
         F: FnOnce(&mut ConfigValue) -> bool,
     {
+        // Check if the directory of the config file exists, otherwise create it recursively
+        let file_pathbuf = PathBuf::from(file_path.clone());
+        if let Some(parent) = file_pathbuf.parent() {
+            if !parent.exists() {
+                std::fs::create_dir_all(parent)?;
+            }
+        }
+
         // Open the file and take the lock
         let mut file = OpenOptions::new()
             .read(true)
