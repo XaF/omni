@@ -18,9 +18,21 @@ jobs:
       - name: Checkout commit
         uses: actions/checkout@v3
 
-      - uses: taiki-e/create-gh-release-action@v1
+      - name: Prepare changelog for the release
+        run: |
+          tags=tags=($(git tag --list | tail -n2))
+          echo "RELEASE_CHANGELOG<<$EOF" | tee -a "$GITHUB_ENV"
+          git log --pretty=format:"- %s (%an)" "${tags[0]}".."${tags[1]}" | tee -a "$GITHUB_ENV"
+          echo "$EOF" | tee -a "$GITHUB_ENV"
+
+      - name: Create release
+        uses: ncipollo/release-action@v1
         with:
-          token: ${{ secrets.GITHUB_TOKEN }}
+          allowUpdates: false
+          skipIfReleaseExists: true
+          makeLatest: true
+          body: ${{ env.RELEASE_CHANGELOG }}
+
 
   upload-assets:
     name: Build new binary for ${{ matrix.suffix }}
