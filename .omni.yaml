@@ -1,2 +1,31 @@
 up:
   - rust
+
+commands:
+  create-tag:
+    desc: Create a new version tag for omni
+    run: |
+      set -e
+
+      # Get the last created tag
+      last_tag=$(git describe --tags --abbrev=0 --always)
+
+      # Extract the version number from the tag
+      version=$(echo "$last_tag" | sed -E 's/v([0-9]+\.[0-9]+\.[0-9]+)/\1/')
+
+      # Split the version number into its components
+      IFS='.' read -r -a version_parts <<< "$version"
+
+      # Increment the last component of the version number
+      next_version="${version_parts[0]}.${version_parts[1]}.$((${version_parts[2]} + 1))"
+
+      # Generate the tag name with the incremented version number
+      new_tag="v$next_version"
+
+      # Generate the annotation message using git log
+      changelog=$(git log --pretty=format:"- %s (%an)" "$last_tag"..HEAD)
+
+      # Create the annotated tag with the generated message
+      git tag -a "$new_tag" -m "$changelog"
+
+      echo "Created tag: $new_tag"
