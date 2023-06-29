@@ -29,6 +29,7 @@ use crate::omni_info;
 #[derive(Debug, Clone)]
 struct TidyCommandArgs {
     yes: bool,
+    search_paths: HashSet<String>,
     unparsed: Vec<String>,
 }
 
@@ -36,6 +37,7 @@ impl TidyCommandArgs {
     fn default() -> Self {
         Self {
             yes: false,
+            search_paths: HashSet::new(),
             unparsed: vec![],
         }
     }
@@ -43,6 +45,12 @@ impl TidyCommandArgs {
     fn parse(argv: Vec<String>) -> Self {
         let mut opts = Options::new();
         opts.optflag("y", "yes", "-");
+        opts.optmulti(
+            "p",
+            "search-path",
+            "-",
+            "Also search this path for git repositories",
+        );
 
         let matches = match opts.parse(&argv) {
             Ok(m) => m,
@@ -52,8 +60,14 @@ impl TidyCommandArgs {
             }
         };
 
+        let mut search_paths = HashSet::new();
+        for path in matches.opt_strs("search-path") {
+            search_paths.insert(path);
+        }
+
         Self {
             yes: matches.opt_present("yes"),
+            search_paths: search_paths,
             unparsed: matches.free,
         }
     }
@@ -102,12 +116,24 @@ impl TidyCommand {
         Some(CommandSyntax {
             usage: None,
             arguments: vec![],
-            options: vec![SyntaxOptArg {
-                name: "--yes".to_string(),
-                desc: Some(
-                    "Do not ask for confirmation before organizing repositories".to_string(),
-                ),
-            }],
+            options: vec![
+                SyntaxOptArg {
+                    name: "--yes".to_string(),
+                    desc: Some(
+                        "Do not ask for confirmation before organizing repositories".to_string(),
+                    ),
+                },
+                SyntaxOptArg {
+                    name: "--search-path".to_string(),
+                    desc: Some(
+                        concat!(
+                            "Extra path to search git repositories to tidy up ",
+                            "(repeat as many times as you need)",
+                        )
+                        .to_string(),
+                    ),
+                },
+            ],
         })
     }
 
@@ -262,6 +288,9 @@ impl TidyCommand {
     }
 
     pub fn autocomplete(&self, _comp_cword: usize, _argv: Vec<String>) {
+        // TODO: if the last parameter before completion is `search-path`,
+        // TODO: we should autocomplete with the file system paths
+        println!("--search-path");
         println!("-y");
         println!("--yes");
         exit(0);
@@ -283,6 +312,8 @@ impl TidyCommand {
         };
 
         let mut worktrees = HashSet::new();
+
+        // We want to search for repositories in all our worktrees
         worktrees.insert(ENV.omni_git.clone().into());
         for org in ORG_LOADER.orgs.iter() {
             let path = PathBuf::from(org.worktree());
@@ -290,6 +321,28 @@ impl TidyCommand {
                 worktrees.insert(path);
             }
         }
+
+        // But also in any search path that was provided on the command line
+        for search_path in self.cli_args().search_paths.iter() {
+            let path = PathBuf::from(search_path);
+            if path.is_dir() {
+                worktrees.insert(path);
+            }
+        }
+
+        // Cleanup the paths by removing each path for which
+        // the parent is also in the list
+        let mut worktrees = worktrees.into_iter().collect::<Vec<_>>();
+        worktrees.sort_by(|a, b| a.cmp(b));
+        let worktrees = worktrees
+            .clone()
+            .into_iter()
+            .filter(|path| {
+                !worktrees
+                    .iter()
+                    .any(|other| path != other && path.starts_with(format!("{}/", other.display())))
+            })
+            .collect::<Vec<_>>();
 
         let mut repositories = HashSet::new();
         for worktree in worktrees.iter() {
