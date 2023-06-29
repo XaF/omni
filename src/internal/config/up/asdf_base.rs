@@ -135,6 +135,14 @@ pub struct UpConfigAsdfBase {
 }
 
 impl UpConfigAsdfBase {
+    pub fn new(tool: &str, version: &str) -> Self {
+        UpConfigAsdfBase {
+            tool: tool.to_string(),
+            version: version.to_string(),
+            actual_version: OnceCell::new(),
+        }
+    }
+
     pub fn from_config_value(tool: &str, config_value: Option<&ConfigValue>) -> Self {
         let mut version = "latest".to_string();
         if let Some(config_value) = config_value {

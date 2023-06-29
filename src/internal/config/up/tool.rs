@@ -4,6 +4,7 @@ use serde::Serialize;
 use crate::internal::config::up::UpConfigAsdfBase;
 use crate::internal::config::up::UpConfigBundler;
 use crate::internal::config::up::UpConfigCustom;
+use crate::internal::config::up::UpConfigGolang;
 use crate::internal::config::up::UpConfigHomebrew;
 use crate::internal::config::up::UpError;
 use crate::internal::config::ConfigValue;
@@ -17,7 +18,7 @@ pub enum UpConfigTool {
     Bundler(UpConfigBundler),
     Ruby(UpConfigAsdfBase),
     Rust(UpConfigAsdfBase),
-    Go(UpConfigAsdfBase),
+    Go(UpConfigGolang),
     Nodejs(UpConfigAsdfBase),
     Python(UpConfigAsdfBase),
     // TODO: Java(UpConfigAsdfBase), // JAVA_HOME
@@ -45,8 +46,7 @@ impl UpConfigTool {
                 "rust",
                 config_value,
             ))),
-            "go" | "golang" => Some(UpConfigTool::Go(UpConfigAsdfBase::from_config_value(
-                "golang",
+            "go" | "golang" => Some(UpConfigTool::Go(UpConfigGolang::from_config_value(
                 config_value,
             ))),
             "python" => Some(UpConfigTool::Python(UpConfigAsdfBase::from_config_value(
@@ -98,7 +98,13 @@ impl UpConfigTool {
             UpConfigTool::Ruby(config) => Some(config),
             UpConfigTool::Nodejs(config) => Some(config),
             UpConfigTool::Rust(config) => Some(config),
-            UpConfigTool::Go(config) => Some(config),
+            UpConfigTool::Go(config) => {
+                if let Ok(config) = config.asdf_base() {
+                    Some(config)
+                } else {
+                    None
+                }
+            }
             UpConfigTool::Python(config) => Some(config),
             _ => None,
         }

@@ -10,6 +10,9 @@ pub use bundler::UpConfigBundler;
 pub mod custom;
 pub use custom::UpConfigCustom;
 
+pub mod golang;
+pub use golang::UpConfigGolang;
+
 pub mod homebrew;
 pub use homebrew::UpConfigHomebrew;
 
