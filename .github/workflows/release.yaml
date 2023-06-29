@@ -20,7 +20,7 @@ jobs:
 
       - name: Prepare changelog for the release
         run: |
-          git fetch --append --tags
+          git fetch --append --tags --force
           tags=($(git tag --list | tail -n2))
           echo "RELEASE_CHANGELOG<<EOF" | tee -a "$GITHUB_ENV"
           git log --pretty=format:"- %s (%an)" "${tags[0]}".."${tags[1]}" | tee -a "$GITHUB_ENV"
