@@ -26,7 +26,6 @@ jobs:
           git log --pretty=format:"- %s (%an)" "${tags[0]}".."${tags[1]}" | tee -a "$GITHUB_ENV"
           echo | tee -a "$GITHUB_ENV"
           echo "EOF" | tee -a "$GITHUB_ENV"
-          exit 1
 
       - name: Create release
         uses: ncipollo/release-action@v1
