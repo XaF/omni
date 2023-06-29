@@ -20,11 +20,13 @@ jobs:
 
       - name: Prepare changelog for the release
         run: |
-          git fetch --append
+          git fetch --append --tags
           tags=($(git tag --list | tail -n2))
           echo "RELEASE_CHANGELOG<<EOF" | tee -a "$GITHUB_ENV"
           git log --pretty=format:"- %s (%an)" "${tags[0]}".."${tags[1]}" | tee -a "$GITHUB_ENV"
+          echo | tee -a "$GITHUB_ENV"
           echo "EOF" | tee -a "$GITHUB_ENV"
+          exit 1
 
       - name: Create release
         uses: ncipollo/release-action@v1
