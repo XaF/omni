@@ -504,6 +504,7 @@ impl PathConfig {
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct PathRepoUpdatesConfig {
     pub enabled: bool,
+    pub self_update: PathRepoUpdatesSelfUpdateEnum,
     pub interval: u64,
     pub ref_type: String,
     pub ref_match: Option<String>,
@@ -529,6 +530,15 @@ impl PathRepoUpdatesConfig {
             enabled: match config_value.get("enabled") {
                 Some(value) => value.as_bool().unwrap(),
                 None => true,
+            },
+            self_update: match config_value.get_as_str("self_update") {
+                Some(value) => match value.to_lowercase().as_str() {
+                    "ask" => PathRepoUpdatesSelfUpdateEnum::Ask,
+                    "true" => PathRepoUpdatesSelfUpdateEnum::True,
+                    "false" => PathRepoUpdatesSelfUpdateEnum::False,
+                    _ => PathRepoUpdatesSelfUpdateEnum::Ask,
+                },
+                None => PathRepoUpdatesSelfUpdateEnum::Ask,
             },
             interval: match config_value.get("interval") {
                 Some(value) => value.as_integer().unwrap() as u64,
@@ -565,6 +575,38 @@ impl PathRepoUpdatesConfig {
         }
 
         update_git_repo(repo_id, ref_type, ref_match, None, None)
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
+pub enum PathRepoUpdatesSelfUpdateEnum {
+    True,
+    False,
+    #[serde(other)]
+    Ask,
+}
+
+impl PathRepoUpdatesSelfUpdateEnum {
+    pub fn is_true(&self) -> bool {
+        match self {
+            PathRepoUpdatesSelfUpdateEnum::True => true,
+            _ => false,
+        }
+    }
+
+    pub fn is_false(&self) -> bool {
+        match self {
+            PathRepoUpdatesSelfUpdateEnum::False => true,
+            PathRepoUpdatesSelfUpdateEnum::Ask => !ENV.interactive_shell,
+            _ => false,
+        }
+    }
+
+    pub fn is_ask(&self) -> bool {
+        match self {
+            PathRepoUpdatesSelfUpdateEnum::Ask => ENV.interactive_shell,
+            _ => false,
+        }
     }
 }
 

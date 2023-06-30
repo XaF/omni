@@ -22,6 +22,7 @@ pub use parser::OrgConfig;
 pub use parser::PathConfig;
 pub use parser::PathRepoUpdatesConfig;
 pub use parser::PathRepoUpdatesPerRepoConfig;
+pub use parser::PathRepoUpdatesSelfUpdateEnum;
 pub use parser::SyntaxOptArg;
 
 pub mod up;

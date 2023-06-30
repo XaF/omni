@@ -1,5 +1,6 @@
 use indicatif::MultiProgress;
 use indicatif::ProgressBar;
+use indicatif::ProgressDrawTarget;
 use indicatif::ProgressStyle;
 use regex::Regex;
 use tokio;
@@ -256,6 +257,8 @@ pub trait ProgressHandler {
     fn success_with_message(&self, message: String);
     fn error(&self);
     fn error_with_message(&self, message: String);
+    fn hide(&self);
+    fn show(&self);
 }
 
 #[derive(Debug, Clone)]
@@ -377,6 +380,14 @@ impl ProgressHandler for SpinnerProgressHandler {
             println!();
         }
     }
+
+    fn hide(&self) {
+        self.spinner.set_draw_target(ProgressDrawTarget::hidden());
+    }
+
+    fn show(&self) {
+        self.spinner.set_draw_target(ProgressDrawTarget::stderr());
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -444,5 +455,13 @@ impl ProgressHandler for PrintProgressHandler {
                 .replacen("{}", "✖".to_string().red().as_str(), 1)
                 .replacen("{}", message.red().as_str(), 1)
         );
+    }
+
+    fn hide(&self) {
+        // do nothing
+    }
+
+    fn show(&self) {
+        // do nothing
     }
 }
