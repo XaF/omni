@@ -206,7 +206,7 @@ impl PathCommandFileDetails {
         let reader = BufReader::new(file);
         for line in reader.lines() {
             if line.is_err() {
-                println!("CANNOT READ");
+                // If the file is not readable, skip trying to read the headers
                 return None;
             }
             let line = line.unwrap();
