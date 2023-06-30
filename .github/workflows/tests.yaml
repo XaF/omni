@@ -32,7 +32,7 @@ jobs:
     name: Auto-merge Dependabot pull-requests
     runs-on: "ubuntu-latest"
 
-    if: github.actor == 'dependabot[bot]'
+    if: github.event_name == 'pull_request' && github.actor == 'dependabot[bot]'
 
     needs:
       - tests
