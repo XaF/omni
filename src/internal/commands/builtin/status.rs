@@ -150,7 +150,11 @@ impl StatusCommand {
     }
 
     fn color_yaml(&self, yaml_code: &str) -> String {
-        let yaml_lines = &yaml_code.lines().collect::<Vec<&str>>()[1..];
+        let mut yaml_lines = &mut yaml_code.lines().collect::<Vec<&str>>();
+        if yaml_lines[0] == "---" {
+            // Remove the first line if it's "---"; as it's not very useful
+            yaml_lines.remove(0);
+        }
 
         let pattern = r#"^(\s*)(\-\s*)?(("[^"]+"|[a-zA-Z0-9_\?!\-]+)\s*:)\s*"#;
         let regex_keys = Regex::new(pattern).unwrap();
