@@ -170,6 +170,8 @@ impl UpConfigAsdfBase {
             .map(|progress_handler| progress_handler.progress("updating cache".to_string()));
 
         let result = Cache::exclusive(|cache| {
+            let mut updated = false;
+
             let git_env = git_env(".");
             let repo_id = git_env.id();
             if repo_id.is_none() {
@@ -194,6 +196,7 @@ impl UpConfigAsdfBase {
                 if exists.tool == self.tool && exists.version == version {
                     if !exists.required_by.contains(&repo_id) {
                         exists.required_by.push(repo_id.clone());
+                        updated = true;
                     }
                     found = true;
                     break;
@@ -206,6 +209,7 @@ impl UpConfigAsdfBase {
                     version: version.clone(),
                     required_by: vec![repo_id.clone()],
                 });
+                updated = true;
             }
 
             cache.asdf_operation = Some(AsdfOperation {
@@ -224,17 +228,29 @@ impl UpConfigAsdfBase {
             }
             let repo_up_env = up_env.get_mut(&repo_id).unwrap();
 
-            repo_up_env.versions.push(UpVersion {
-                tool: self.tool.clone(),
-                version: version.clone(),
-            });
+            let mut found = false;
+            for exists in repo_up_env.versions.iter_mut() {
+                if exists.tool == self.tool && exists.version == version {
+                    found = true;
+                    break;
+                }
+            }
 
-            cache.up_environments = Some(UpEnvironments {
-                env: up_env.clone(),
-                updated_at: OffsetDateTime::now_utc(),
-            });
+            if !found {
+                repo_up_env.versions.push(UpVersion {
+                    tool: self.tool.clone(),
+                    version: version.clone(),
+                });
 
-            true
+                cache.up_environments = Some(UpEnvironments {
+                    env: up_env.clone(),
+                    updated_at: OffsetDateTime::now_utc(),
+                });
+
+                updated = true;
+            }
+
+            updated
         });
 
         if let Err(err) = result {
