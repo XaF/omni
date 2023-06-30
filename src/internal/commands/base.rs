@@ -341,6 +341,14 @@ impl Command {
                     }
                 }
 
+                if self_category.len() < other_category.len() {
+                    return std::cmp::Ordering::Less;
+                }
+
+                if self_category.len() > other_category.len() {
+                    return std::cmp::Ordering::Greater;
+                }
+
                 std::cmp::Ordering::Equal
             }
             (None, None) => std::cmp::Ordering::Equal,
