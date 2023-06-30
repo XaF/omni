@@ -106,6 +106,7 @@ path:
   prepend: []
 path_repo_updates:
   enabled: true
+  self_update: ask
   interval: 43200 # 12 hours
   ref_type: "branch" # branch or tag
   ref_match: null # regex or null

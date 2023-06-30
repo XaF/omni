@@ -13,6 +13,7 @@ use crate::internal::config::up::utils::PrintProgressHandler;
 use crate::internal::config::up::utils::ProgressHandler;
 use crate::internal::config::up::utils::SpinnerProgressHandler;
 use crate::internal::git_env;
+use crate::internal::self_update;
 use crate::internal::user_interface::StringColor;
 use crate::internal::Cache;
 use crate::internal::ENV;
@@ -64,9 +65,14 @@ fn should_update() -> bool {
 }
 
 pub fn auto_path_update() {
+    // Get the configuration
+    let config = config(".");
+
+    // Get the omnipath
     let omnipath = omnipath();
-    if omnipath.is_empty() {
-        // Nothing to do if nothing is in the omnipath
+    if omnipath.is_empty() && config.path_repo_updates.self_update.is_false() {
+        // Nothing to do if nothing is in the omnipath and we
+        // don't check for omni updates
         return;
     }
 
@@ -74,8 +80,11 @@ pub fn auto_path_update() {
         return;
     }
 
-    // Get the configuration
-    let config = config(".");
+    self_update();
+
+    if omnipath.is_empty() {
+        return;
+    }
 
     // Let's do all the git updates in parallel since we don't require
     // switching directory for that

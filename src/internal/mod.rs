@@ -49,3 +49,6 @@ pub use user_interface::StringColor;
 pub mod dynenv;
 
 pub mod hooks;
+
+pub mod self_updater;
+pub use self_updater::self_update;
