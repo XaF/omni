@@ -228,8 +228,6 @@ impl HomebrewTap {
                 if let Some(parsed_taps) = config_value.get("tap") {
                     taps.extend(Self::parse_taps(parsed_taps));
                 }
-            } else {
-                taps.extend(Self::parse_taps(config_value));
             }
         }
 
