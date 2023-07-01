@@ -60,7 +60,7 @@ impl OrgLoader {
 
     pub fn complete(&self, repo: &str) -> Vec<String> {
         let mut worktrees = HashSet::new();
-        worktrees.insert(ENV.omni_git.clone().into());
+        worktrees.insert(config(".").worktree().into());
         for org in self.orgs.iter() {
             let path = PathBuf::from(org.worktree());
             if path.is_dir() {
@@ -150,8 +150,10 @@ impl OrgLoader {
                 worktrees.push(org.worktree());
             }
         }
-        if seen.insert(ENV.omni_git.clone()) {
-            worktrees.push(ENV.omni_git.clone());
+
+        let worktree = config(".").worktree();
+        if seen.insert(worktree.clone()) {
+            worktrees.push(worktree.clone());
         }
 
         // Prepare a spinner for the research
@@ -405,9 +407,9 @@ impl Org {
 
     pub fn worktree(&self) -> String {
         if let Some(worktree) = self.config.worktree.clone() {
-            return worktree;
+            worktree
         } else {
-            ENV.omni_git.clone()
+            config(".").worktree()
         }
     }
 

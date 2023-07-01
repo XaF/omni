@@ -19,6 +19,7 @@ use crate::internal::config::ConfigSource;
 use crate::internal::config::ConfigValue;
 use crate::internal::env::git_env;
 use crate::internal::env::ENV;
+use crate::internal::env::HOME;
 use crate::internal::user_interface::StringColor;
 use crate::omni_error;
 
@@ -79,8 +80,8 @@ impl ConfigLoader {
 
     fn user_config_files() -> Vec<String> {
         vec![
-            format!("{}/.omni", ENV.user_home),
-            format!("{}/.omni.yaml", ENV.user_home),
+            format!("{}/.omni", *HOME),
+            format!("{}/.omni.yaml", *HOME),
             format!("{}/omni", ENV.xdg_config_home),
             format!("{}/omni.yaml", ENV.xdg_config_home),
             format!("{}/config", ENV.config_home),

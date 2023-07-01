@@ -3,6 +3,7 @@ use std::process::exit;
 use shell_escape::escape;
 
 use crate::internal::commands::utils::omni_cmd;
+use crate::internal::config::config;
 use crate::internal::config::CommandSyntax;
 use crate::internal::config::SyntaxOptArg;
 use crate::internal::git::ORG_LOADER;
@@ -141,7 +142,8 @@ impl CdCommand {
         let path = if let Some(main_org) = ORG_LOADER.first() {
             main_org.worktree()
         } else {
-            ENV.omni_git.clone()
+            let config = config(".");
+            config.worktree()
         };
 
         let path_str = format!("{}", path);

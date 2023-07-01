@@ -11,6 +11,7 @@ use indicatif::ProgressStyle;
 use once_cell::sync::OnceCell;
 use walkdir::WalkDir;
 
+use crate::internal::config::config;
 use crate::internal::config::global_config_loader;
 use crate::internal::config::CommandSyntax;
 use crate::internal::config::ConfigSource;
@@ -314,7 +315,8 @@ impl TidyCommand {
         let mut worktrees = HashSet::new();
 
         // We want to search for repositories in all our worktrees
-        worktrees.insert(ENV.omni_git.clone().into());
+        let config = config(".");
+        worktrees.insert(config.worktree().into());
         for org in ORG_LOADER.orgs.iter() {
             let path = PathBuf::from(org.worktree());
             if path.is_dir() {
@@ -441,7 +443,9 @@ impl TidyGitRepo {
                     && repo_url.owner.is_some()
                     && repo_url.host.is_some()
                 {
-                    let repo_path = format_path(&ENV.omni_git, &repo_url);
+                    let config = config(".");
+                    let worktree = config.worktree();
+                    let repo_path = format_path(&worktree, &repo_url);
                     expected_path = Some(PathBuf::from(repo_path));
                 }
             }

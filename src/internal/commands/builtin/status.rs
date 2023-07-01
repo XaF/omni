@@ -4,6 +4,7 @@ use regex::Regex;
 use serde_yaml;
 
 use crate::internal::commands::path::omnipath;
+use crate::internal::config::config;
 use crate::internal::config::config_loader;
 use crate::internal::config::CommandSyntax;
 use crate::internal::git::ORG_LOADER;
@@ -64,6 +65,7 @@ impl StatusCommand {
         self.print_shell_integration();
         self.print_configuration();
         self.print_cache();
+        self.print_worktree();
         self.print_orgs();
         self.print_path();
 
@@ -111,6 +113,13 @@ impl StatusCommand {
         // Use serde_yaml to convert the cache to yaml
         let yaml_code = serde_yaml::to_string(&*CACHE).unwrap();
         println!("{}", self.color_yaml(&yaml_code));
+    }
+
+    fn print_worktree(&self) {
+        println!("\n{}", format!("Worktree").bold());
+
+        let config = config(".");
+        println!("  {}", config.worktree());
     }
 
     fn print_orgs(&self) {

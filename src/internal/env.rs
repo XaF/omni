@@ -15,6 +15,19 @@ lazy_static! {
 
     #[derive(Debug)]
     pub static ref GIT_ENV: Mutex<GitRepoEnvByPath> = Mutex::new(GitRepoEnvByPath::new());
+
+    #[derive(Debug)]
+    pub static ref HOME: String = std::env::var("HOME").expect("Failed to determine user's home directory");
+
+    #[derive(Debug)]
+    pub static ref OMNI_GIT: Option<String> = {
+        if let Ok(omni_git) = std::env::var("OMNI_GIT") {
+            if !omni_git.is_empty() && omni_git.starts_with('/') {
+                return Some(omni_git);
+            }
+        }
+        None
+    };
 }
 
 pub fn git_env(path: &str) -> GitRepoEnv {
@@ -32,7 +45,6 @@ pub struct Env {
     pub cache_home: String,
     pub config_home: String,
     pub data_home: String,
-    pub user_home: String,
 
     pub xdg_cache_home: String,
     pub xdg_config_home: String,
@@ -47,7 +59,6 @@ pub struct Env {
     // pub omni_located: bool,
     pub omnipath: Vec<String>,
     pub omni_cmd_file: Option<String>,
-    pub omni_git: String,
     pub omni_org: Vec<OrgConfig>,
     // pub omni_skip_update: bool,
     // pub omni_force_update: bool,
@@ -57,9 +68,6 @@ pub struct Env {
 
 impl Env {
     fn new() -> Self {
-        // Read user's home from environment
-        let home = std::env::var("HOME").expect("Failed to determine user's home directory");
-
         // Find XDG_CONFIG_HOME
         let xdg_config_home = match std::env::var("XDG_CONFIG_HOME") {
             Ok(xdg_config_home)
@@ -68,7 +76,7 @@ impl Env {
                 xdg_config_home
             }
             _ => {
-                format!("{}/.config", home)
+                format!("{}/.config", *HOME)
             }
         };
 
@@ -79,7 +87,7 @@ impl Env {
                     && (config_home.starts_with('/') || config_home.starts_with("~/")) =>
             {
                 if config_home.starts_with("~/") {
-                    format!("{}/{}", home, &config_home[2..])
+                    format!("{}/{}", *HOME, &config_home[2..])
                 } else {
                     config_home
                 }
@@ -95,7 +103,7 @@ impl Env {
                 xdg_data_home
             }
             _ => {
-                format!("{}/.local/share", home)
+                format!("{}/.local/share", *HOME)
             }
         };
 
@@ -106,7 +114,7 @@ impl Env {
                     && (data_home.starts_with('/') || data_home.starts_with("~/")) =>
             {
                 if data_home.starts_with("~/") {
-                    format!("{}/{}", home, &data_home[2..])
+                    format!("{}/{}", *HOME, &data_home[2..])
                 } else {
                     data_home
                 }
@@ -122,7 +130,7 @@ impl Env {
                 xdg_cache_home
             }
             _ => {
-                format!("{}/.cache", home)
+                format!("{}/.cache", *HOME)
             }
         };
 
@@ -133,14 +141,14 @@ impl Env {
                     || (!cache_home.starts_with('/') && !cache_home.starts_with("~/"))) =>
             {
                 if cache_home.starts_with("~/") {
-                    format!("{}/{}", home, &cache_home[2..])
+                    format!("{}/{}", *HOME, &cache_home[2..])
                 } else {
                     cache_home
                 }
             }
             _ => {
                 let xdg_cache_home =
-                    std::env::var("XDG_CACHE_HOME").unwrap_or_else(|_| format!("{}/.cache", home));
+                    std::env::var("XDG_CACHE_HOME").unwrap_or_else(|_| format!("{}/.cache", *HOME));
                 format!("{}/omni", xdg_cache_home)
             }
         };
@@ -166,26 +174,6 @@ impl Env {
             }
         }
 
-        // Load the git base directory
-        let mut omni_git = "".to_string();
-        if let Ok(omni_git_str) = std::env::var("OMNI_GIT") {
-            omni_git = omni_git_str;
-        }
-        if omni_git.is_empty() {
-            // Check if ~/git exists and is a directory
-            omni_git = format!("{}/git", home);
-            if !std::path::Path::new(&omni_git).is_dir() {
-                // Check if GOPATH is set and GOPATH/src exists and is a directory
-                let gopath = std::env::var("GOPATH").unwrap_or_else(|_| "".to_string());
-                if !gopath.is_empty() {
-                    let gopath_src = format!("{}/src", gopath);
-                    if std::path::Path::new(&gopath_src).is_dir() {
-                        omni_git = gopath_src;
-                    }
-                }
-            }
-        }
-
         // Load the command file
         let mut omni_cmd_file = None;
         if let Ok(omni_cmd_file_str) = std::env::var("OMNI_CMD_FILE") {
@@ -198,7 +186,6 @@ impl Env {
             cache_home: cache_home,
             config_home: config_home,
             data_home: data_home,
-            user_home: home,
 
             xdg_cache_home: xdg_cache_home,
             xdg_config_home: xdg_config_home,
@@ -210,7 +197,6 @@ impl Env {
             git_by_path: GitRepoEnvByPath::new(),
 
             omnipath: omnipath,
-            omni_git: omni_git,
             omni_org: omni_org,
             omni_cmd_file: omni_cmd_file,
         }

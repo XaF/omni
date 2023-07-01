@@ -11,6 +11,8 @@ use crate::internal::config::ConfigSource;
 use crate::internal::config::ConfigValue;
 use crate::internal::env::git_env;
 use crate::internal::env::ENV;
+use crate::internal::env::HOME;
+use crate::internal::env::OMNI_GIT;
 use crate::internal::git::update_git_repo;
 
 lazy_static! {
@@ -21,6 +23,23 @@ lazy_static! {
     pub static ref CONFIG: OmniConfig = {
         let mut config_per_path = CONFIG_PER_PATH.lock().unwrap();
         config_per_path.get(".").clone()
+    };
+
+    #[derive(Debug, Serialize, Deserialize, Clone)]
+    pub static ref DEFAULT_WORKTREE: String = {
+        let home = HOME.clone();
+        let mut default_worktree_path = format!("{}/git", home);
+        if !std::path::Path::new(&default_worktree_path).is_dir() {
+            // Check if GOPATH is set and GOPATH/src exists and is a directory
+            let gopath = std::env::var("GOPATH").unwrap_or_else(|_| "".to_string());
+            if !gopath.is_empty() {
+                let gopath_src = format!("{}/src", gopath);
+                if std::path::Path::new(&gopath_src).is_dir() {
+                    default_worktree_path = gopath_src;
+                }
+            }
+        }
+        default_worktree_path
     };
 }
 
@@ -68,6 +87,7 @@ impl OmniConfigPerPath {
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct OmniConfig {
+    pub worktree: String,
     pub cache: CacheConfig,
     pub commands: HashMap<String, CommandDefinition>,
     pub command_match_min_score: f64,
@@ -120,6 +140,9 @@ impl OmniConfig {
         }
 
         Self {
+            worktree: config_value
+                .get_as_str("worktree")
+                .unwrap_or_else(|| format!("{}", *DEFAULT_WORKTREE)),
             cache: CacheConfig::from_config_value(&config_value.get("cache").unwrap()),
             commands: commands_config,
             command_match_min_score: config_value
@@ -151,6 +174,14 @@ impl OmniConfig {
                 None => None,
             },
         }
+    }
+
+    pub fn worktree(&self) -> String {
+        if let Some(omni_git) = OMNI_GIT.clone() {
+            return omni_git;
+        }
+
+        self.worktree.clone()
     }
 }
 
@@ -230,7 +261,10 @@ impl CommandDefinition {
                 Some(value) => Some(value.as_str().unwrap().to_string()),
                 None => None,
             },
-            run: config_value.get_as_str("run").unwrap().to_string(),
+            run: config_value
+                .get_as_str("run")
+                .unwrap_or("true".to_string())
+                .to_string(),
             aliases: aliases,
             syntax: syntax,
             category: category,

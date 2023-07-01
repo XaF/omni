@@ -121,7 +121,9 @@ impl CloneCommand {
                     && clone_url.owner.is_some()
                     && clone_url.host.is_some()
                 {
-                    let clone_path = format_path(&ENV.omni_git, &clone_url);
+                    let config = config(".");
+                    let worktree = config.worktree();
+                    let clone_path = format_path(&worktree, &clone_url);
                     if self.try_clone(&clone_url, &clone_path, &clone_args, spinner.clone()) {
                         cloned = true;
                     }

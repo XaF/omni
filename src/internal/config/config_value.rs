@@ -7,6 +7,7 @@ use serde::Serialize;
 use serde_yaml;
 
 use crate::internal::env::ENV;
+use crate::internal::env::HOME;
 use crate::internal::user_interface::colors::StringColor;
 use crate::omni_error;
 
@@ -73,11 +74,14 @@ impl ConfigValue {
     }
 
     pub fn default() -> Self {
-        // Parse a default yaml file using serde
+        // Check if ~/git exists and is a directory
         let default_cache_path = format!("{}", ENV.cache_home);
-        let mut yaml_str = format!("cache:\n  path: \"{}\"\n", default_cache_path);
-        yaml_str = yaml_str
+        let default_cache_config = format!("cache:\n  path: \"{}\"\n", default_cache_path);
+
+        // Parse a default yaml file using serde
+        let yaml_str = default_cache_config
             + r#"
+worktree: null
 commands: {}
 command_match_min_score: 0.12
 command_match_skip_prompt_if:
@@ -799,7 +803,7 @@ repo_path_format: "%{host}/%{org}/%{repo}"
                         let value_string = string_value.to_owned();
                         let mut abs_path = value_string.clone();
                         if abs_path.starts_with("~/") {
-                            abs_path = Path::new(&ENV.user_home)
+                            abs_path = Path::new(&*HOME)
                                 .join(abs_path.trim_start_matches("~/"))
                                 .to_str()
                                 .unwrap()
