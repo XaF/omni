@@ -185,6 +185,10 @@ impl MakefileCommand {
     }
 
     pub fn exec(&self, argv: Vec<String>) {
+        // Get the current directory so we can store it in a variable
+        let current_dir = std::env::current_dir().expect("Failed to get current directory");
+        std::env::set_var("OMNI_CWD", current_dir.display().to_string());
+
         let makefile_dir = Path::new(&self.source).parent().unwrap();
         if std::env::set_current_dir(makefile_dir).is_err() {
             println!("Failed to change directory to {}", makefile_dir.display());
