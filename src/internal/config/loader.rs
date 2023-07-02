@@ -80,11 +80,8 @@ impl ConfigLoader {
 
     fn user_config_files() -> Vec<String> {
         vec![
-            format!("{}/.omni", *HOME),
             format!("{}/.omni.yaml", *HOME),
-            format!("{}/omni", ENV.xdg_config_home),
             format!("{}/omni.yaml", ENV.xdg_config_home),
-            format!("{}/config", ENV.config_home),
             format!("{}/config.yaml", ENV.config_home),
             std::env::var("OMNI_CONFIG").unwrap_or("".to_owned()),
         ]
@@ -245,9 +242,7 @@ impl ConfigLoader {
 
         let git_repo_root = git_repo.root().clone().unwrap();
         let mut git_config_files = vec![];
-        git_config_files.push(format!("{}/.omni", git_repo_root));
         git_config_files.push(format!("{}/.omni.yaml", git_repo_root));
-        git_config_files.push(format!("{}/.omni/config", git_repo_root));
         git_config_files.push(format!("{}/.omni/config.yaml", git_repo_root));
 
         new_config_loader.import_config_files(git_config_files, vec!["git_repo".to_owned()]);
