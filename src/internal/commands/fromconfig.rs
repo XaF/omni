@@ -146,8 +146,14 @@ impl ConfigCommand {
     }
 
     pub fn exec(&self, argv: Vec<String>) {
+        // Get the current directory so we can store it in a variable
+        let current_dir = std::env::current_dir().expect("Failed to get current directory");
+        std::env::set_var("OMNI_CWD", current_dir.display().to_string());
+
         let config_file = self.source();
-        let config_dir = Path::new(&config_file).parent().unwrap();
+        let config_dir = Path::new(&config_file)
+            .parent()
+            .expect("Failed to get config directory");
         if std::env::set_current_dir(config_dir).is_err() {
             println!("Failed to change directory to {}", config_dir.display());
         }
