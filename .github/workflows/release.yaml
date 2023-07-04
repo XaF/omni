@@ -90,6 +90,8 @@ jobs:
 
       - name: Build and upload binary
         uses: taiki-e/upload-rust-binary-action@v1
+        env:
+          OMNI_RELEASE_VERSION: ${{ env.RELEASE_VERSION }}
         with:
           bin: omni
           archive: omni-${{ env.RELEASE_VERSION }}-${{ matrix.suffix }}
