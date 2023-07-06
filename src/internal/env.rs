@@ -3,6 +3,7 @@ use std::collections::HashSet;
 use std::sync::Mutex;
 
 use git2::Repository;
+use is_terminal::IsTerminal;
 use lazy_static::lazy_static;
 use once_cell::sync::OnceCell;
 
@@ -191,7 +192,7 @@ impl Env {
             xdg_config_home: xdg_config_home,
             xdg_data_home: xdg_data_home,
 
-            interactive_shell: atty::is(atty::Stream::Stdout),
+            interactive_shell: std::io::stdout().is_terminal(),
             shell: determine_shell(),
 
             git_by_path: GitRepoEnvByPath::new(),

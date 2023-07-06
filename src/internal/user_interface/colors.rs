@@ -1,4 +1,4 @@
-use atty;
+use is_terminal::IsTerminal;
 use lazy_static::lazy_static;
 
 use crate::internal::env::ENV;
@@ -54,7 +54,7 @@ fn enable_colors() -> bool {
     if let Some(_) = std::env::var_os("CLICOLOR_FORCE") {
         return true;
     }
-    atty::is(atty::Stream::Stdout) || atty::is(atty::Stream::Stderr)
+    std::io::stdout().is_terminal() || std::io::stderr().is_terminal()
 }
 
 pub trait StringColor {
