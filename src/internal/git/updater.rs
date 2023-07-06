@@ -7,7 +7,7 @@ use std::time::Duration;
 use indicatif::MultiProgress;
 
 use crate::internal::cache::OmniPathUpdates;
-use crate::internal::commands::path::omnipath;
+use crate::internal::commands::path::global_omnipath;
 use crate::internal::config::config;
 use crate::internal::config::up::utils::PrintProgressHandler;
 use crate::internal::config::up::utils::ProgressHandler;
@@ -69,7 +69,7 @@ pub fn auto_path_update() {
     let config = config(".");
 
     // Get the omnipath
-    let omnipath = omnipath();
+    let omnipath = global_omnipath();
     if omnipath.is_empty() && config.path_repo_updates.self_update.is_false() {
         // Nothing to do if nothing is in the omnipath and we
         // don't check for omni updates

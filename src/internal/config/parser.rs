@@ -6,6 +6,7 @@ use serde::Deserialize;
 use serde::Serialize;
 
 use crate::internal::config::config_loader;
+use crate::internal::config::global_config_loader;
 use crate::internal::config::up::UpConfig;
 use crate::internal::config::ConfigSource;
 use crate::internal::config::ConfigValue;
@@ -20,9 +21,9 @@ lazy_static! {
     pub static ref CONFIG_PER_PATH: Mutex<OmniConfigPerPath> = Mutex::new(OmniConfigPerPath::new());
 
     #[derive(Debug, Serialize, Deserialize, Clone)]
-    pub static ref CONFIG: OmniConfig = {
-        let mut config_per_path = CONFIG_PER_PATH.lock().unwrap();
-        config_per_path.get(".").clone()
+    pub static ref CONFIG_GLOBAL: OmniConfig = {
+        let config_loader = global_config_loader();
+        OmniConfig::from_config_value(&config_loader.raw_config)
     };
 
     #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -51,6 +52,10 @@ pub fn config(path: &str) -> OmniConfig {
         .to_owned();
     let mut config_per_path = CONFIG_PER_PATH.lock().unwrap();
     config_per_path.get(&path).clone()
+}
+
+pub fn global_config() -> OmniConfig {
+    (*CONFIG_GLOBAL).clone()
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]

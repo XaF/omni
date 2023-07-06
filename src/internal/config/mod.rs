@@ -10,6 +10,7 @@ pub use loader::ConfigLoader;
 
 pub mod parser;
 pub use parser::config;
+pub use parser::global_config;
 pub use parser::CacheConfig;
 pub use parser::CdConfig;
 pub use parser::CommandDefinition;
