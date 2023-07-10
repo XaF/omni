@@ -39,6 +39,7 @@ jobs:
         uses: tj-actions/changed-files@v37
         with:
           files_ignore: |
+            README.md
             website
 
       - name: List all changed files
