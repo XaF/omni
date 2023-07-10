@@ -26,6 +26,19 @@ brew install omni
 
 Pre-built binaries are available for MacOS and Linux, for `arm64` and `x86_64` architectures. You can [download the last release binaries directly from the GitHub releases](https://github.com/XaF/omni/releases/).
 
+### Using `cargo install`
+
+Omni is [available as the `omnicli` cargo crate](https://crates.io/crates/omnicli).
+You can thus install it by running the following command:
+
+```bash
+cargo install omnicli --root /path/to/bindir
+```
+
+:::caution
+If installing omni through `cargo install`, make sure to install it in a path different from your `$CARGO_HOME`, as omni's dynamic environment might replace the `$CARGO_HOME/bin` directory in your `PATH` when loading a dynamic rust environment.
+:::
+
 ### Building from sources
 
 #### Clone the git repository
