@@ -799,10 +799,10 @@ repo_path_format: "%{host}/%{org}/%{repo}"
     }
 
     fn transform(&mut self, keypath: &Vec<String>) {
-        if keypath.len() == 3
+        if (keypath.len() == 3
             && ((keypath[0] == "path" && ["append", "prepend"].contains(&keypath[1].as_str()))
-                || (keypath[0] == "org" && keypath[2] == "worktree")
-                || (keypath[0] == "worktree"))
+                || (keypath[0] == "org" && keypath[2] == "worktree")))
+            || (keypath.len() == 1 && keypath[0] == "worktree")
         {
             if let Some(data) = self.value.as_mut().map(|data| data.as_mut()) {
                 if let ConfigData::Value(value) = data {
