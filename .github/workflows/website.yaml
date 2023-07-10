@@ -99,7 +99,7 @@ jobs:
 
       - name: Setup Pages
         if: github.event_name != 'pull_request'
-        uses: actions/configure-pages@v1
+        uses: actions/configure-pages@v3s
 
       - name: Upload artifact
         if: github.event_name != 'pull_request'
@@ -110,4 +110,4 @@ jobs:
       - name: Deploy to GitHub Pages
         if: github.event_name != 'pull_request'
         id: deployment
-        uses: actions/deploy-pages@v1
+        uses: actions/deploy-pages@v2
