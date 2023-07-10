@@ -15,7 +15,7 @@ P@@@~ 7B@@@P~       !@@@5
 
 # omni - omnipotent tool
 
-![build](https://github.com/XaF/omni/actions/workflows/build.yaml/badge.svg)
+![build](https://github.com/XaF/omni/actions/workflows/tests.yaml/badge.svg)
 [![latest release](https://img.shields.io/github/v/release/XaF/omni?logo=github&sort=semver)](https://github.com/XaF/omni/releases)
 
 Documentation available on [omnicli.dev](https://omnicli.dev).
