@@ -159,7 +159,7 @@ impl StatusCommand {
     }
 
     fn color_yaml(&self, yaml_code: &str) -> String {
-        let mut yaml_lines = &mut yaml_code.lines().collect::<Vec<&str>>();
+        let yaml_lines = &mut yaml_code.lines().collect::<Vec<&str>>();
         if yaml_lines[0] == "---" {
             // Remove the first line if it's "---"; as it's not very useful
             yaml_lines.remove(0);

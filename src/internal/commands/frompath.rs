@@ -176,8 +176,6 @@ pub struct PathCommandFileDetails {
     category: Option<Vec<String>>,
     help: Option<Vec<String>>,
     autocompletion: bool,
-    // config_fields: HashSet<String>,
-    env: HashMap<String, String>,
     syntax: Option<CommandSyntax>,
 }
 
@@ -185,8 +183,6 @@ impl PathCommandFileDetails {
     pub fn from_file(path: &str) -> Option<Self> {
         let mut autocompletion = false;
         let mut category = None;
-        // let mut config_fields = HashSet::new();
-        let mut env = HashMap::new();
         let mut help_lines = Vec::new();
 
         let mut arguments_order = Vec::new();
@@ -231,14 +227,6 @@ impl PathCommandFileDetails {
                     .trim()
                     .to_lowercase();
                 autocompletion = completion == "true";
-            } else if line.starts_with("# env:") {
-                let envvars: Vec<String> = line
-                    .strip_prefix("# env:")
-                    .unwrap()
-                    .splitn(2, ":")
-                    .map(|s| s.trim().to_string())
-                    .collect();
-                env.insert(envvars[0].clone(), envvars[1].clone());
             } else if line.starts_with("# help:") {
                 reading_help = true;
                 let help_line =
@@ -310,30 +298,11 @@ impl PathCommandFileDetails {
                 .collect();
         }
 
-        // let help_short = if help_lines.is_empty() {
-        // None
-        // } else {
-        // Some(help_lines.
-        // clone().
-        // into_iter().
-        // take_while(|l| !l.is_empty()).
-        // map(|l| l.trim().to_string()).
-        // collect::<Vec<String>>().
-        // join("\n"))
-        // };
-        // let help_long = if help_lines.is_empty() {
-        // None
-        // } else {
-        // Some(help_lines.join("\n"))
-        // };
-
         // // Return the file details
         Some(PathCommandFileDetails {
             category: category,
             help: Some(help_lines),
             autocompletion: autocompletion,
-            // config_fields: config_fields,
-            env: env,
             syntax: syntax,
         })
     }

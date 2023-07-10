@@ -4,7 +4,6 @@ use std::io::Read;
 use std::io::Seek;
 use std::io::SeekFrom;
 use std::path::Path;
-use std::process::exit;
 
 use lazy_static::lazy_static;
 use semver::{Prerelease, Version};
@@ -20,7 +19,6 @@ use crate::internal::config::up::utils::PrintProgressHandler;
 use crate::internal::config::up::utils::ProgressHandler;
 use crate::internal::config::up::utils::RunConfig;
 use crate::internal::config::up::utils::SpinnerProgressHandler;
-use crate::internal::config::PathRepoUpdatesSelfUpdateEnum;
 use crate::internal::user_interface::colors::StringColor;
 use crate::internal::ENV;
 use crate::omni_info;
@@ -102,7 +100,7 @@ impl OmniRelease {
         let json_url =
             "https://raw.githubusercontent.com/XaF/homebrew-omni/main/Formula/resources/omni.json";
 
-        let mut response = reqwest::blocking::get(json_url);
+        let response = reqwest::blocking::get(json_url);
         if let Err(err) = response {
             dbg!("Failed to get latest release: {:?}", err);
             return None;
@@ -277,7 +275,7 @@ impl OmniRelease {
 
         // Download tar.gz to the temp directory
         progress_handler.progress(format!("downloading: {}", binary.url));
-        let mut response = reqwest::blocking::get(binary.url.as_str());
+        let response = reqwest::blocking::get(binary.url.as_str());
         if response.is_err() {
             return Err(io::Error::new(
                 io::ErrorKind::Other,

@@ -438,13 +438,13 @@ impl Org {
         false
     }
 
-    pub fn get_repo_url(&self, repo: &str) -> Option<String> {
-        if let Some(git_url) = self.get_repo_git_url(repo) {
-            Some(git_url.to_string())
-        } else {
-            None
-        }
-    }
+    // pub fn get_repo_url(&self, repo: &str) -> Option<String> {
+    // if let Some(git_url) = self.get_repo_git_url(repo) {
+    // Some(git_url.to_string())
+    // } else {
+    // None
+    // }
+    // }
 
     pub fn get_repo_git_url(&self, repo: &str) -> Option<GitUrl> {
         if let Ok(repo) = Repo::parse(repo) {

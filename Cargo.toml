@@ -1,10 +1,22 @@
 [package]
-name = "omni"
+name = "omnicli"
 version = "0.0.0-git"
-authors = ["Raphaël Beamonte"]
+authors = ["Raphaël Beamonte <raphael.beamonte@gmail.com>"]
 description = "Omnipotent dev tool"
-homepage = "https://github.com/XaF/omni"
+documentation = "https://omnicli.dev"
 edition = "2021"
+homepage = "https://omnicli.dev"
+license = "LGPL-2.1"
+readme = "README.md"
+repository = "https://github.com/XaF/omni"
+exclude = [
+    ".github/*",
+    "website/*",
+]
+
+[[bin]]
+name = "omni"
+path = "src/main.rs"
 
 [build-dependencies]
 time = { version = "0.3.23", features = ["serde-well-known"] }

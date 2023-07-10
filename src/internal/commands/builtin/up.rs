@@ -361,9 +361,9 @@ impl UpCommand {
         self.subcommand() == "up"
     }
 
-    fn is_down(&self) -> bool {
-        self.subcommand() == "down"
-    }
+    // fn is_down(&self) -> bool {
+    // self.subcommand() == "down"
+    // }
 
     fn trust(&self) -> bool {
         match self.cli_args().trust {

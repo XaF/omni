@@ -202,15 +202,15 @@ impl TrustedRepositories {
         }
     }
 
-    pub fn contains(&self, repository: &str) -> bool {
-        self.repositories.contains(&repository.to_string())
-    }
+    // pub fn contains(&self, repository: &str) -> bool {
+    // self.repositories.contains(&repository.to_string())
+    // }
 
-    pub fn add(&mut self, repository: &str) {
-        if !self.contains(repository) {
-            self.repositories.push(repository.to_string());
-        }
-    }
+    // pub fn add(&mut self, repository: &str) {
+    // if !self.contains(repository) {
+    // self.repositories.push(repository.to_string());
+    // }
+    // }
 }
 
 impl Empty for TrustedRepositories {

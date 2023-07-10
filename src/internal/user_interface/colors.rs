@@ -39,7 +39,7 @@ pub const RESET_HIDDEN: &str = "28";
 pub const STRIKETHROUGH: &str = "9";
 pub const RESET_STRIKETHROUGH: &str = "29";
 
-pub const DEFAULT: &str = "39";
+// pub const DEFAULT: &str = "39";
 pub const RESET: &str = "0";
 
 lazy_static! {

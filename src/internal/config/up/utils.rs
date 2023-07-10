@@ -74,19 +74,19 @@ where
     ))
 }
 
-pub fn run_command_with_handler_blocks<F>(
-    command: &mut TokioCommand,
-    handler_fn: F,
-    run_config: RunConfig,
-) -> Result<(), UpError>
-where
-    F: Fn(Option<String>, Option<String>) -> (),
-{
-    let rt = Runtime::new().unwrap();
-    rt.block_on(async_run_progress_readblocks(
-        command, handler_fn, run_config,
-    ))
-}
+// pub fn run_command_with_handler_blocks<F>(
+// command: &mut TokioCommand,
+// handler_fn: F,
+// run_config: RunConfig,
+// ) -> Result<(), UpError>
+// where
+// F: Fn(Option<String>, Option<String>) -> (),
+// {
+// let rt = Runtime::new().unwrap();
+// rt.block_on(async_run_progress_readblocks(
+// command, handler_fn, run_config,
+// ))
+// }
 
 async fn async_run_progress_readblocks<F>(
     process_command: &mut TokioCommand,
@@ -330,9 +330,9 @@ impl SpinnerProgressHandler {
         self.newline_on_error = false;
     }
 
-    pub fn get_spinner(&self) -> &ProgressBar {
-        &self.spinner
-    }
+    // pub fn get_spinner(&self) -> &ProgressBar {
+    // &self.spinner
+    // }
 
     fn replace_spinner(&self, replace_by: String) {
         let template = self.template.replace("{spinner}", replace_by.as_str());

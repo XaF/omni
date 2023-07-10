@@ -626,12 +626,12 @@ pub enum PathRepoUpdatesSelfUpdateEnum {
 }
 
 impl PathRepoUpdatesSelfUpdateEnum {
-    pub fn is_true(&self) -> bool {
-        match self {
-            PathRepoUpdatesSelfUpdateEnum::True => true,
-            _ => false,
-        }
-    }
+    // pub fn is_true(&self) -> bool {
+    // match self {
+    // PathRepoUpdatesSelfUpdateEnum::True => true,
+    // _ => false,
+    // }
+    // }
 
     pub fn is_false(&self) -> bool {
         match self {

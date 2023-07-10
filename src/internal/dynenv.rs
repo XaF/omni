@@ -414,6 +414,7 @@ impl DynamicEnvSetter {
         ));
     }
 
+    #[allow(dead_code)]
     fn append_to_list(&mut self, key: &str, value: &str) {
         self.operations.push(DynamicEnvOperation::AppendToList(
             key.to_string(),
@@ -782,13 +783,13 @@ struct DynamicEnvListValue {
 }
 
 impl DynamicEnvListValue {
-    fn new(operation: DynamicEnvListOperation, value: &str, index: usize) -> Self {
-        Self {
-            operation: operation,
-            value: value.to_string(),
-            index: index,
-        }
-    }
+    // fn new(operation: DynamicEnvListOperation, value: &str, index: usize) -> Self {
+    // Self {
+    // operation: operation,
+    // value: value.to_string(),
+    // index: index,
+    // }
+    // }
 }
 
 fn set_none() -> Option<String> {

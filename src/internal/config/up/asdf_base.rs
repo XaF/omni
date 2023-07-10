@@ -385,18 +385,6 @@ impl UpConfigAsdfBase {
         Ok(version)
     }
 
-    fn version_major(&self) -> Result<String, UpError> {
-        let version = self.version(None)?;
-        let version_major = version.split('.').next().unwrap();
-        Ok(version_major.to_string())
-    }
-
-    fn version_minor(&self) -> Result<String, UpError> {
-        let version = self.version(None)?;
-        let version_minor = version.split('.').take(2).collect::<Vec<_>>().join(".");
-        Ok(version_minor.to_string())
-    }
-
     fn is_plugin_installed(&self) -> bool {
         let mut asdf_plugin_list = std::process::Command::new(format!("{}", *ASDF_BIN));
         asdf_plugin_list.arg("plugin");

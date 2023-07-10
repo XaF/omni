@@ -166,6 +166,7 @@ repo_path_format: "%{host}/%{org}/%{repo}"
         config_mapping
     }
 
+    #[allow(dead_code)]
     pub fn from_str(value: &str) -> Self {
         let value: serde_yaml::Value = serde_yaml::from_str(value).unwrap();
         Self::from_value(ConfigSource::Null, vec![], value)
@@ -336,6 +337,7 @@ repo_path_format: "%{host}/%{org}/%{repo}"
         None
     }
 
+    #[allow(dead_code)]
     pub fn is_bool(&self) -> bool {
         return self.as_bool().is_some();
     }
@@ -354,6 +356,7 @@ repo_path_format: "%{host}/%{org}/%{repo}"
         return None;
     }
 
+    #[allow(dead_code)]
     pub fn is_float(&self) -> bool {
         return self.as_float().is_some();
     }
@@ -372,6 +375,7 @@ repo_path_format: "%{host}/%{org}/%{repo}"
         return None;
     }
 
+    #[allow(dead_code)]
     pub fn is_integer(&self) -> bool {
         return self.as_integer().is_some();
     }
@@ -546,6 +550,7 @@ repo_path_format: "%{host}/%{org}/%{repo}"
         return None;
     }
 
+    #[allow(dead_code)]
     pub fn get_as_integer(&self, key: &str) -> Option<i64> {
         if let Some(value) = self.get(key) {
             return value.as_integer();
@@ -567,6 +572,7 @@ repo_path_format: "%{host}/%{org}/%{repo}"
         return None;
     }
 
+    #[allow(dead_code)]
     pub fn get_as_array_mut(&mut self, key: &str) -> Option<&mut Vec<ConfigValue>> {
         if let Some(&mut ref mut value) = self.get_mut(key) {
             return value.as_array_mut();
@@ -877,6 +883,7 @@ repo_path_format: "%{host}/%{org}/%{repo}"
         serde_yaml::to_string(&serde_yaml).unwrap()
     }
 
+    #[allow(dead_code)]
     pub fn set_value(&mut self, value: Option<Box<ConfigData>>) {
         self.value = value;
     }

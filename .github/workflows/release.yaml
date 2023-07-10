@@ -36,11 +36,65 @@ jobs:
           body: ${{ env.RELEASE_CHANGELOG }}
 
 
+  publish-crate:
+    name: Publish crate
+
+    needs:
+      - create-release
+
+    outputs:
+      release_version: ${{ env.RELEASE_VERSION }}
+
+    steps:
+      - name: Checkout commit
+        uses: actions/checkout@v3
+
+      - name: Set up cargo cache
+        uses: actions/cache@v3
+        continue-on-error: false
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: ${{ runner.os }}-cargo-
+
+      - name: Get release version
+        run: |
+          RELEASE=$(git describe --tags --always)
+          RELEASE_VERSION=${RELEASE##v}
+          echo "RELEASE_VERSION=${RELEASE_VERSION}" | tee -a "$GITHUB_ENV"
+
+      - name: Override Cargo.toml and Cargo.lock version
+        run: |
+          sed -i 's/^version = "0\.0\.0-git"$/version = "'"${RELEASE_VERSION}"'"/' Cargo.toml
+          sed -i 's/^version = "0\.0\.0-git"$/version = "'"${RELEASE_VERSION}"'"/' Cargo.lock
+
+      - name: Publish crate
+        env:
+          OMNI_RELEASE_VERSION=${{ env.RELEASE_VERSION }}
+        run: |
+          # We use --allow-dirty since we override the version key
+          cargo publish --token ${{ secrets.CARGO_REGISTRY_TOKEN }} --allow-dirty
+
+      - name: Reset Cargo.toml and Cargo.lock
+        run: |
+          git checkout Cargo.toml
+          git checkout Cargo.lock
+
+
   upload-assets:
     name: Build new binary for ${{ matrix.suffix }}
 
     needs:
       - create-release
+      - publish-crate
+
+    env:
+      RELEASE_VERSION: ${{ needs.publish-crate.outputs.release_version }}
 
     strategy:
       matrix:
@@ -81,12 +135,6 @@ jobs:
         uses: taiki-e/install-action@v2
         with:
           tool: cross
-
-      - name: Get release version for archives names
-        run: |
-          RELEASE=$(git describe --tags --always)
-          RELEASE_VERSION=${RELEASE##v}
-          echo "RELEASE_VERSION=${RELEASE_VERSION}" | tee -a "$GITHUB_ENV"
 
       - name: Build and upload binary
         uses: taiki-e/upload-rust-binary-action@v1

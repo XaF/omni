@@ -47,3 +47,29 @@ commands:
     run: |
       cd website
       yarn start
+
+  cargo-package:
+    desc: Runs cargo package after overriding the version
+    run: |
+      # Check if git is dirty
+      [ -z "$(git status --short 2>/dev/null)" ] || {
+        echo "Repository dirty. Please stash all before running."
+        exit 1
+      }
+
+      # Get version
+      OMNI_RELEASE_VERSION=$(git describe --tags --broken --dirty --match v*)
+      if [ -z "$OMNI_RELEASE_VERSION" ]; then
+        OMNI_RELEASE_VERSION=0.0.0-$(git describe --tags --always --broken --dirty --match v*)
+      fi
+      OMNI_RELEASE_VERSION=${OMNI_RELEASE_VERSION#v}
+      export OMNI_RELEASE_VERSION
+
+      # Override Cargo.toml version entry
+      sed -i 's/^version = "0\.0\.0-git"$/version = "'"${OMNI_RELEASE_VERSION}"'"/' Cargo.toml
+
+      # Run Cargo package
+      cargo package --allow-dirty
+
+      # Reset Cargo.toml
+      git checkout Cargo.toml

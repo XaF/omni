@@ -16,7 +16,6 @@ use crate::internal::config::global_config_loader;
 use crate::internal::config::CommandSyntax;
 use crate::internal::config::ConfigSource;
 use crate::internal::config::SyntaxOptArg;
-use crate::internal::env::GitRepoEnv;
 use crate::internal::git::format_path;
 use crate::internal::git::safe_git_url_parse;
 use crate::internal::git_env;
@@ -406,7 +405,6 @@ impl TidyCommand {
 
 #[derive(Debug, Clone)]
 struct TidyGitRepo {
-    git_env: GitRepoEnv,
     current_path: PathBuf,
     expected_path: PathBuf,
     organized: bool,
@@ -457,7 +455,6 @@ impl TidyGitRepo {
         let expected_path = expected_path.unwrap();
 
         Some(Self {
-            git_env: git_env,
             current_path: path.clone(),
             expected_path: expected_path.clone(),
             organized: path == expected_path,
