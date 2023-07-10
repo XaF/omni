@@ -83,7 +83,7 @@ jobs:
           OMNI_RELEASE_VERSION: ${{ env.RELEASE_VERSION }}
         run: |
           # We use --allow-dirty since we override the version key
-          cargo publish --token ${{ secrets.CARGO_REGISTRY_TOKEN }} --allow-dirty
+          cargo publish --token ${{ secrets.CARGO_REGISTRY_TOKEN }} --allow-dirty --verbose
 
       - name: Reset Cargo.toml and Cargo.lock
         run: |
