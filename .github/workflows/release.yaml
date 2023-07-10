@@ -73,8 +73,8 @@ jobs:
 
       - name: Override Cargo.toml and Cargo.lock version
         run: |
-          sed -i 's/^version = "0\.0\.0-git"$/version = "'"${RELEASE_VERSION}"'"/' Cargo.toml
-          sed -i 's/^version = "0\.0\.0-git"$/version = "'"${RELEASE_VERSION}"'"/' Cargo.lock
+          sed -i 's/^version = "0\.0\.0-git"$/version = "${{ env.RELEASE_VERSION }}"/' Cargo.toml
+          sed -i 's/^version = "0\.0\.0-git"$/version = "${{ env.RELEASE_VERSION }}"/' Cargo.lock
 
       - name: Publish crate
         env:
