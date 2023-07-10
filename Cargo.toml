@@ -7,7 +7,7 @@ homepage = "https://github.com/XaF/omni"
 edition = "2021"
 
 [build-dependencies]
-time = { version = "0.3.22", features = ["serde-well-known"] }
+time = { version = "0.3.23", features = ["serde-well-known"] }
 
 [dependencies]
 blake3 = "1.4.1"
@@ -42,7 +42,7 @@ strsim = "0.10.0"
 tar = "0.4.38"
 tempfile = "3.6.0"
 term_size = "0.3.2"
-time = { version = "0.3.22", features = ["serde-well-known"] }
+time = { version = "0.3.23", features = ["serde-well-known"] }
 tokio = { version = "1.29.1", features = ["full"] }
 url = "2.4.0"
 uuid = { version = "1.4.0", features = ["v4", "fast-rng"] }
