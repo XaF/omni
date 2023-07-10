@@ -437,7 +437,7 @@ path:
   append:
     # [...]
     - /path/to/repo/python
-    - /path/to/repo/go/bin
+    - /path/to/repo/go/wrapper
 
 # [...]
 ```
