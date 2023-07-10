@@ -4,7 +4,10 @@ use time::format_description;
 use time::OffsetDateTime;
 
 fn main() {
-    let version = if let Ok(version) = std::env::var("OMNI_RELEASE_VERSION") {
+    let pkg_version = env!("CARGO_PKG_VERSION");
+    let version = if pkg_version != "0.0.0-git" {
+        pkg_version.to_string()
+    } else if let Ok(version) = std::env::var("OMNI_RELEASE_VERSION") {
         version
     } else if let Some(version) = get_git_version() {
         version
