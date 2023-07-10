@@ -7,6 +7,7 @@ on:
       - main
     paths-ignore:
       - .github/workflows/release.yaml
+      - .github/workflows/website.yaml
       - README.md
       - "website/**"
 
@@ -16,6 +17,7 @@ on:
       - main
     paths-ignore:
       - .github/workflows/release.yaml
+      - .github/workflows/website.yaml
       - README.md
       - "website/**"
 
@@ -48,6 +50,7 @@ jobs:
         with:
           files_ignore: |
             .github/workflows/release.yaml
+            .github/workflows/website.yaml
             README.md
             website
 
