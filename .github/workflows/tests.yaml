@@ -39,6 +39,7 @@ jobs:
         uses: tj-actions/changed-files@v37
         with:
           files_ignore: |
+            .github/workflows/release.yaml
             README.md
             website
 
