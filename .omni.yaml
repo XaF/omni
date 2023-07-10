@@ -1,5 +1,13 @@
 up:
   - rust
+  - node
+  - custom:
+      name: Install yarn & dependencies
+      meet: |
+        cd website
+        npm install -g yarn
+        yarn
+      unmeet: rm -rf "website/node_modules"
 
 commands:
   create-tag:
@@ -29,3 +37,13 @@ commands:
       git tag -a "$new_tag" -m "$changelog"
 
       echo "Created tag: $new_tag"
+
+  website-dev:
+    desc: |
+      Starts a local development server for the website
+
+      This opens up a browser window once the server is started.
+      Most changes are reflected live without having to restart the server.
+    run: |
+      cd website
+      yarn start

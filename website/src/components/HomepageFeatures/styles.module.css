@@ -1,0 +1,23 @@
+.features {
+  display: flex;
+  align-items: center;
+  padding: 2rem 0;
+  width: 100%;
+}
+
+.featureSvg {
+  height: 200px;
+  width: 200px;
+}
+
+.featureEmoji {
+  /* font-size: 4rem; */
+  /* line-height: 1; */
+  /* display: block; */
+
+  font-size: 120px;
+  line-height: 200px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
