@@ -12,6 +12,8 @@ Install bundler dependencies.
 
 ## Parameters
 
+The following parameters can be used:
+
 | Parameter        | Type      | Description                                           |
 |------------------|-----------|-------------------------------------------------------|
 | `gemfile` | string | Path to the `Gemfile` file; if not provided, defaults to `Gemfile` at the root of the git repository |
