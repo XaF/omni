@@ -43,6 +43,7 @@ jobs:
 
     outputs:
       deploy-website: ${{ steps.changed-files.outputs.any_modified }}
+      pages_environment: ${{ env.PAGES_ENVIRONMENT }}
 
     steps:
       - uses: actions/checkout@v3
@@ -63,6 +64,11 @@ jobs:
             echo "$file was modified"
           done
 
+      - name: Set the pages environment
+        if: github.event_name != 'pull_request'
+        run: |
+          echo "PAGES_ENVIRONMENT=${PAGES_ENVIRONMENT}" | tee -a "$GITHUB_ENV"
+
 
   # Single deploy job since we're just deploying
   deploy-website:
@@ -73,7 +79,7 @@ jobs:
     if: needs.check-changed-files.outputs.deploy-website == 'true'
 
     environment:
-      name: github-pages
+      name: ${{ needs.check-changed-files.outputs.pages_environment }}
       url: ${{ steps.deployment.outputs.page_url }}
 
     runs-on: ubuntu-latest
