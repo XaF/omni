@@ -13,6 +13,7 @@ The following configuration parameters lead to dynamic environment.
 | Configuration | Dynamic environment |
 |---------------|---------------------|
 | `env` | Each entry in the map leads to setting an environment variable to the defined value |
+| [`bash` operation](/reference/configuration/parameters/up/bash) | [See details](/reference/configuration/parameters/up/bash#dynamic-environment) |
 | [`bundler` operation](/reference/configuration/parameters/up/bundler) | [See details](/reference/configuration/parameters/up/bundler#dynamic-environment) |
 | [`go` operation](/reference/configuration/parameters/up/go) | [See details](/reference/configuration/parameters/up/go#dynamic-environment) |
 | [`node` operation](/reference/configuration/parameters/up/node) | [See details](/reference/configuration/parameters/up/node#dynamic-environment) |

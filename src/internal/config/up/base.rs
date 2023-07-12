@@ -86,9 +86,9 @@ impl UpConfig {
     // self.steps.clone()
     // }
 
-    // pub fn errors(&self) -> Vec<UpError> {
-    // self.errors.clone()
-    // }
+    pub fn errors(&self) -> Vec<UpError> {
+        self.errors.clone()
+    }
 
     pub fn has_steps(&self) -> bool {
         !self.steps.is_empty()

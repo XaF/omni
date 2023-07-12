@@ -129,6 +129,7 @@ fn is_asdf_tool_version_installed(tool: &str, version: &str) -> bool {
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct UpConfigAsdfBase {
     pub tool: String,
+    pub tool_url: Option<String>,
     pub version: String,
     #[serde(skip)]
     actual_version: OnceCell<String>,
@@ -138,12 +139,29 @@ impl UpConfigAsdfBase {
     pub fn new(tool: &str, version: &str) -> Self {
         UpConfigAsdfBase {
             tool: tool.to_string(),
+            tool_url: None,
             version: version.to_string(),
             actual_version: OnceCell::new(),
         }
     }
 
     pub fn from_config_value(tool: &str, config_value: Option<&ConfigValue>) -> Self {
+        Self::from_config_value_with_params(tool, None, config_value)
+    }
+
+    pub fn from_config_value_with_url(
+        tool: &str,
+        tool_url: &str,
+        config_value: Option<&ConfigValue>,
+    ) -> Self {
+        Self::from_config_value_with_params(tool, Some(tool_url.to_string()), config_value)
+    }
+
+    fn from_config_value_with_params(
+        tool: &str,
+        tool_url: Option<String>,
+        config_value: Option<&ConfigValue>,
+    ) -> Self {
         let mut version = "latest".to_string();
         if let Some(config_value) = config_value {
             if let Some(value) = config_value.as_str() {
@@ -159,6 +177,7 @@ impl UpConfigAsdfBase {
 
         UpConfigAsdfBase {
             tool: tool.to_string(),
+            tool_url: tool_url,
             version: version,
             actual_version: OnceCell::new(),
         }
@@ -431,6 +450,9 @@ impl UpConfigAsdfBase {
         asdf_plugin_add.arg("plugin");
         asdf_plugin_add.arg("add");
         asdf_plugin_add.arg(self.tool.clone());
+        if let Some(tool_url) = &self.tool_url {
+            asdf_plugin_add.arg(tool_url.clone());
+        }
         asdf_plugin_add.env("ASDF_DIR", &*ASDF_PATH);
         asdf_plugin_add.env("ASDF_DATA_DIR", &*ASDF_PATH);
         asdf_plugin_add.stdout(std::process::Stdio::piped());

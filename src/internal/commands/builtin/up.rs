@@ -236,11 +236,12 @@ impl UpCommand {
 
         let config = config(".");
         let up_config = config.up.clone();
-        if up_config.is_some() && up_config.clone().unwrap().has_errors() {
-            for error in up_config.unwrap().errors {
-                omni_error!(error);
+        if let Some(up_config) = up_config.clone() {
+            if up_config.has_errors() {
+                for error in up_config.errors() {
+                    omni_warning!(error);
+                }
             }
-            exit(1);
         }
 
         let mut suggest_config = None;

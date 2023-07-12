@@ -11,49 +11,57 @@ use crate::internal::config::ConfigValue;
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub enum UpConfigTool {
-    Homebrew(UpConfigHomebrew),
     // TODO: Apt(UpConfigApt),
-    // TODO: Dnf(UpConfigDnf),
-    // TODO: Pacman(UpConfigPacman),
+    Bash(UpConfigAsdfBase),
     Bundler(UpConfigBundler),
-    Ruby(UpConfigAsdfBase),
-    Rust(UpConfigAsdfBase),
+    Custom(UpConfigCustom),
+    // TODO: Dnf(UpConfigDnf),
     Go(UpConfigGolang),
-    Nodejs(UpConfigAsdfBase),
-    Python(UpConfigAsdfBase),
+    Homebrew(UpConfigHomebrew),
     // TODO: Java(UpConfigAsdfBase), // JAVA_HOME
     // TODO: Kotlin(UpConfigAsdfBase), // KOTLIN_HOME
-    Custom(UpConfigCustom),
+    Nodejs(UpConfigAsdfBase),
+    // TODO: Pacman(UpConfigPacman),
+    Python(UpConfigAsdfBase),
+    Ruby(UpConfigAsdfBase),
+    Rust(UpConfigAsdfBase),
 }
 
 impl UpConfigTool {
     pub fn from_config_value(up_name: &str, config_value: Option<&ConfigValue>) -> Option<Self> {
         match up_name {
-            "homebrew" | "brew" => Some(UpConfigTool::Homebrew(
-                UpConfigHomebrew::from_config_value(config_value),
+            "bash" => Some(UpConfigTool::Bash(
+                UpConfigAsdfBase::from_config_value_with_url(
+                    "bash",
+                    "https://github.com/XaF/asdf-bash",
+                    config_value,
+                ),
             )),
             "bundler" | "bundle" => Some(UpConfigTool::Bundler(
                 UpConfigBundler::from_config_value(config_value),
             )),
-            "ruby" => Some(UpConfigTool::Ruby(UpConfigAsdfBase::from_config_value(
-                "ruby",
-                config_value,
-            ))),
-            "nodejs" | "node" | "npm" => Some(UpConfigTool::Nodejs(
-                UpConfigAsdfBase::from_config_value("nodejs", config_value),
-            )),
-            "rust" => Some(UpConfigTool::Rust(UpConfigAsdfBase::from_config_value(
-                "rust",
+            "custom" => Some(UpConfigTool::Custom(UpConfigCustom::from_config_value(
                 config_value,
             ))),
             "go" | "golang" => Some(UpConfigTool::Go(UpConfigGolang::from_config_value(
                 config_value,
             ))),
+            "homebrew" | "brew" => Some(UpConfigTool::Homebrew(
+                UpConfigHomebrew::from_config_value(config_value),
+            )),
+            "nodejs" | "node" | "npm" => Some(UpConfigTool::Nodejs(
+                UpConfigAsdfBase::from_config_value("nodejs", config_value),
+            )),
             "python" => Some(UpConfigTool::Python(UpConfigAsdfBase::from_config_value(
                 "python",
                 config_value,
             ))),
-            "custom" => Some(UpConfigTool::Custom(UpConfigCustom::from_config_value(
+            "ruby" => Some(UpConfigTool::Ruby(UpConfigAsdfBase::from_config_value(
+                "ruby",
+                config_value,
+            ))),
+            "rust" => Some(UpConfigTool::Rust(UpConfigAsdfBase::from_config_value(
+                "rust",
                 config_value,
             ))),
             _ => None,
@@ -62,27 +70,29 @@ impl UpConfigTool {
 
     pub fn up(&self, progress: Option<(usize, usize)>) -> Result<(), UpError> {
         match self {
-            UpConfigTool::Homebrew(config) => config.up(progress),
+            UpConfigTool::Bash(config) => config.up(progress),
             UpConfigTool::Bundler(config) => config.up(progress),
-            UpConfigTool::Ruby(config) => config.up(progress),
-            UpConfigTool::Nodejs(config) => config.up(progress),
-            UpConfigTool::Rust(config) => config.up(progress),
-            UpConfigTool::Go(config) => config.up(progress),
-            UpConfigTool::Python(config) => config.up(progress),
             UpConfigTool::Custom(config) => config.up(progress),
+            UpConfigTool::Go(config) => config.up(progress),
+            UpConfigTool::Homebrew(config) => config.up(progress),
+            UpConfigTool::Nodejs(config) => config.up(progress),
+            UpConfigTool::Python(config) => config.up(progress),
+            UpConfigTool::Ruby(config) => config.up(progress),
+            UpConfigTool::Rust(config) => config.up(progress),
         }
     }
 
     pub fn down(&self, progress: Option<(usize, usize)>) -> Result<(), UpError> {
         match self {
-            UpConfigTool::Homebrew(config) => config.down(progress),
+            UpConfigTool::Bash(config) => config.up(progress),
             UpConfigTool::Bundler(config) => config.down(progress),
-            UpConfigTool::Ruby(config) => config.down(progress),
-            UpConfigTool::Nodejs(config) => config.down(progress),
-            UpConfigTool::Rust(config) => config.down(progress),
-            UpConfigTool::Go(config) => config.down(progress),
-            UpConfigTool::Python(config) => config.down(progress),
             UpConfigTool::Custom(config) => config.down(progress),
+            UpConfigTool::Go(config) => config.down(progress),
+            UpConfigTool::Homebrew(config) => config.down(progress),
+            UpConfigTool::Nodejs(config) => config.down(progress),
+            UpConfigTool::Python(config) => config.down(progress),
+            UpConfigTool::Ruby(config) => config.down(progress),
+            UpConfigTool::Rust(config) => config.down(progress),
         }
     }
 
@@ -95,9 +105,7 @@ impl UpConfigTool {
 
     pub fn asdf_tool(&self) -> Option<&UpConfigAsdfBase> {
         match self {
-            UpConfigTool::Ruby(config) => Some(config),
-            UpConfigTool::Nodejs(config) => Some(config),
-            UpConfigTool::Rust(config) => Some(config),
+            UpConfigTool::Bash(config) => Some(config),
             UpConfigTool::Go(config) => {
                 if let Ok(config) = config.asdf_base() {
                     Some(config)
@@ -105,7 +113,10 @@ impl UpConfigTool {
                     None
                 }
             }
+            UpConfigTool::Nodejs(config) => Some(config),
             UpConfigTool::Python(config) => Some(config),
+            UpConfigTool::Ruby(config) => Some(config),
+            UpConfigTool::Rust(config) => Some(config),
             _ => None,
         }
     }
