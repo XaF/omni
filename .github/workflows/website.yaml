@@ -67,7 +67,7 @@ jobs:
       - name: Set the pages environment
         if: github.event_name != 'pull_request'
         run: |
-          echo "PAGES_ENVIRONMENT=${PAGES_ENVIRONMENT}" | tee -a "$GITHUB_ENV"
+          echo "PAGES_ENVIRONMENT=github-pages" | tee -a "$GITHUB_ENV"
 
 
   # Single deploy job since we're just deploying
