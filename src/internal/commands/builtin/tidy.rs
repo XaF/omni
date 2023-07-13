@@ -555,7 +555,7 @@ impl TidyGitRepo {
         let mut edited = false;
         let exact_match = format!("{}", self.current_path.to_str().unwrap());
         let prefix_match = format!("{}/", self.current_path.to_str().unwrap());
-        let result = ConfigLoader::edit_main_user_config_file(|config_value| {
+        let result = ConfigLoader::edit_user_config_file(file_path.to_string(), |config_value| {
             if let Some(config_path) = config_value.get_as_table_mut("path") {
                 for (_key, path_list) in config_path.iter_mut() {
                     if let Some(path_list) = path_list.as_array_mut() {
