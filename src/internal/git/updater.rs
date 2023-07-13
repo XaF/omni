@@ -70,7 +70,7 @@ pub fn auto_path_update() {
 
     // Get the omnipath
     let omnipath = global_omnipath();
-    if omnipath.is_empty() && config.path_repo_updates.self_update.is_false() {
+    if omnipath.is_empty() && config.path_repo_updates.self_update.do_not_check() {
         // Nothing to do if nothing is in the omnipath and we
         // don't check for omni updates
         return;

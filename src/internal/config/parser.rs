@@ -570,14 +570,21 @@ impl PathRepoUpdatesConfig {
                 Some(value) => value.as_bool().unwrap(),
                 None => true,
             },
-            self_update: match config_value.get_as_str("self_update") {
-                Some(value) => match value.to_lowercase().as_str() {
-                    "ask" => PathRepoUpdatesSelfUpdateEnum::Ask,
-                    "true" => PathRepoUpdatesSelfUpdateEnum::True,
-                    "false" => PathRepoUpdatesSelfUpdateEnum::False,
-                    _ => PathRepoUpdatesSelfUpdateEnum::Ask,
+            self_update: match (
+                config_value.get_as_str("self_update"),
+                config_value.get_as_bool("self_update"),
+            ) {
+                (_, Some(value)) => match value {
+                    true => PathRepoUpdatesSelfUpdateEnum::True,
+                    false => PathRepoUpdatesSelfUpdateEnum::False,
                 },
-                None => PathRepoUpdatesSelfUpdateEnum::Ask,
+                (Some(value), _) => match value.to_lowercase().as_str() {
+                    "true" | "yes" | "y" => PathRepoUpdatesSelfUpdateEnum::True,
+                    "false" | "no" | "n" => PathRepoUpdatesSelfUpdateEnum::False,
+                    "nocheck" => PathRepoUpdatesSelfUpdateEnum::NoCheck,
+                    "ask" | _ => PathRepoUpdatesSelfUpdateEnum::Ask,
+                },
+                (None, None) => PathRepoUpdatesSelfUpdateEnum::Ask,
             },
             interval: match config_value.get("interval") {
                 Some(value) => value.as_integer().unwrap() as u64,
@@ -621,6 +628,7 @@ impl PathRepoUpdatesConfig {
 pub enum PathRepoUpdatesSelfUpdateEnum {
     True,
     False,
+    NoCheck,
     #[serde(other)]
     Ask,
 }
@@ -632,6 +640,13 @@ impl PathRepoUpdatesSelfUpdateEnum {
     // _ => false,
     // }
     // }
+
+    pub fn do_not_check(&self) -> bool {
+        match self {
+            PathRepoUpdatesSelfUpdateEnum::NoCheck => true,
+            _ => false,
+        }
+    }
 
     pub fn is_false(&self) -> bool {
         match self {

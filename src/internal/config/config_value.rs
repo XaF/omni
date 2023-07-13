@@ -166,7 +166,6 @@ repo_path_format: "%{host}/%{org}/%{repo}"
         config_mapping
     }
 
-    #[allow(dead_code)]
     pub fn from_str(value: &str) -> Self {
         let value: serde_yaml::Value = serde_yaml::from_str(value).unwrap();
         Self::from_value(ConfigSource::Null, vec![], value)

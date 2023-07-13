@@ -20,8 +20,10 @@ use crate::internal::config::up::utils::ProgressHandler;
 use crate::internal::config::up::utils::RunConfig;
 use crate::internal::config::up::utils::SpinnerProgressHandler;
 use crate::internal::user_interface::colors::StringColor;
+use crate::internal::ConfigLoader;
+use crate::internal::ConfigValue;
 use crate::internal::ENV;
-use crate::omni_info;
+use crate::omni_error;
 
 lazy_static! {
     static ref RELEASE_ARCH: String = {
@@ -84,6 +86,11 @@ lazy_static! {
 }
 
 pub fn self_update() {
+    let config = config(".");
+    if config.path_repo_updates.self_update.do_not_check() {
+        return;
+    }
+
     if let Some(omni_release) = OmniRelease::latest() {
         omni_release.check_and_update();
     }
@@ -140,9 +147,6 @@ impl OmniRelease {
 
     fn check_and_update(&self) {
         let config = config(".");
-        if config.path_repo_updates.self_update.is_false() {
-            return;
-        }
 
         let desc = format!("{} update:", "omni".to_string().light_cyan()).light_blue();
         let progress_handler: Box<dyn ProgressHandler> = if ENV.interactive_shell {
@@ -158,10 +162,19 @@ impl OmniRelease {
             return;
         }
 
+        if config.path_repo_updates.self_update.is_false() {
+            progress_handler.success_with_message(format!(
+                "{} version {} is available",
+                "omni:".to_string().light_cyan(),
+                self.version.to_string().light_blue(),
+            ));
+            return;
+        }
+
         if config.path_repo_updates.self_update.is_ask() {
             progress_handler.hide();
 
-            let question = requestty::Question::confirm("do_you_want_to_update")
+            let question = requestty::Question::expand("do_you_want_to_update")
                 .ask_if_answered(true)
                 .on_esc(requestty::OnEsc::Terminate)
                 .message(format!(
@@ -170,35 +183,32 @@ impl OmniRelease {
                     self.version.to_string().light_blue(),
                     "do you want to install it?".to_string().yellow(),
                 ))
-                .default(true)
+                .choices(vec![
+                    ('a', "Yes, always (update without asking in the future)"),
+                    ('y', "Yes, this time (and ask me everytime)"),
+                    ('n', "No"),
+                    ('x', "No, never (skip without asking in the future)"),
+                ])
+                .default('y')
                 .build();
 
-            match requestty::prompt_one(question) {
+            if !match requestty::prompt_one(question) {
                 Ok(answer) => match answer {
-                    requestty::Answer::Bool(confirmed) => {
-                        if confirmed {
-                            omni_info!(format!(
-                                "{} you can set {} to {} in your configuration to automatically install updates",
-                                "Tip:".to_string().bold(),
-                                "path_repo_updates/self_update".to_string().light_blue(),
-                                "true".to_string().light_green(),
-                            ));
-                        } else {
-                            omni_info!(format!(
-                                "{} you can set {} to {} in your configuration to disable this check",
-                                "Tip:".to_string().bold(),
-                                "path_repo_updates/self_update".to_string().light_blue(),
-                                "false".to_string().light_red(),
-                            ));
-                            return;
-                        }
-                    }
-                    _ => {}
+                    requestty::Answer::ExpandItem(expanditem) => match expanditem.key {
+                        'a' => self.edit_config_file_self_update(true),
+                        'y' => true,
+                        'n' => false,
+                        'x' => self.edit_config_file_self_update(false),
+                        _ => unreachable!(),
+                    },
+                    _ => unreachable!(),
                 },
                 Err(err) => {
                     println!("{}", format!("[✘] {:?}", err).red());
                     return;
                 }
+            } {
+                return;
             }
 
             progress_handler.show();
@@ -222,6 +232,36 @@ impl OmniRelease {
         } else {
             progress_handler.success_with_message("already up-to-date".to_string().light_black());
         }
+    }
+
+    fn edit_config_file_self_update(&self, self_update: bool) -> bool {
+        if let Err(err) = ConfigLoader::edit_main_user_config_file(|config_value| {
+            let insert_value = if self_update { "true" } else { "false" };
+
+            println!("config_value: {:#?}", config_value);
+
+            if let Some(config_path) = config_value.get_as_table_mut("path_repo_updates") {
+                config_path.insert(
+                    "self_update".to_string(),
+                    ConfigValue::from_str(insert_value),
+                );
+            } else if let Some(config_value_table) = config_value.as_table_mut() {
+                config_value_table.insert(
+                    "path_repo_updates".to_string(),
+                    ConfigValue::from_str(format!("self_update: {}", insert_value).as_str()),
+                );
+            } else {
+                *config_value = ConfigValue::from_str(
+                    format!("path_repo_updates:\n  self_update: {}", insert_value).as_str(),
+                );
+            }
+
+            true
+        }) {
+            omni_error!(format!("failed to update configuration file: {:?}", err,));
+        }
+
+        self_update
     }
 
     fn brew_upgrade(&self, progress_handler: Box<&dyn ProgressHandler>) -> io::Result<bool> {
