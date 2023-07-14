@@ -69,7 +69,9 @@ up:
   - go
 ```
 
-We can now run our commands through `python python/pysayhello.py xaf` or `go run go/src/gosayhello.go xaf` even if Python and Go are not accessible anywhere else in our system: we are using omni's dynamic environment, which gives us access to the expected versions of those tools to run our commands.
+Running `omni up` will now install those dependencies for us, and omni's [dynamic environment](/reference/dynamic-environment) will make sure that we can use them right away.
+
+This means that we can now run our commands through `python python/pysayhello.py xaf` or `go run go/src/gosayhello.go xaf` even if Python and Go are not accessible anywhere else in our system: we are using omni's dynamic environment, which gives us access to the expected versions of those tools to run our commands.
 
 You might observe a slight delay when running `go run go/src/gosayhello.go xaf`. This is related to calling `go run` everytime we run that command. To make things more efficient at call time, we can compile a binary during `omni up` using a [`custom` operation](/reference/configuration/parameters/up/custom):
 
