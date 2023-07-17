@@ -356,7 +356,7 @@ impl UpCommand {
                 if !up_env.contains_key(&repo_id) {
                     up_env.insert(repo_id.clone(), UpEnvironment::new());
                 }
-                let mut repo_up_env = up_env.get_mut(&repo_id).unwrap();
+                let repo_up_env = up_env.get_mut(&repo_id).unwrap();
 
                 repo_up_env.env_vars = env_vars.unwrap().clone();
 

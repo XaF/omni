@@ -274,9 +274,8 @@ impl TidyCommand {
             let organize_this_loop = repos_to_organize.clone();
             let mut moved = HashSet::new();
             for repository in organize_this_loop.iter() {
-                let repo = repository.clone();
-                if repo.organize(&printstr) {
-                    moved.insert(repository.clone());
+                if repository.organize(&printstr) {
+                    moved.insert(repository);
                     progress_bar.as_ref().map(|pb| pb.inc(1));
                 }
             }
