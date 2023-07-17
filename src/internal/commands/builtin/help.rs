@@ -23,14 +23,6 @@ struct HelpCommandArgs {
 
 impl HelpCommandArgs {
     fn parse(argv: Vec<String>) -> Self {
-        // If -h or --help are part of the command, just return directly; this
-        // if let Some(pos) = argv.iter().position(|arg| arg == "-h" || arg == "--help") {
-        // return Self {
-        // help: true,
-        // unparsed: argv.into_iter().skip(pos + 1).collect(),
-        // };
-        // }
-
         let mut parse_argv = vec!["".to_string()];
         parse_argv.extend(argv);
 
