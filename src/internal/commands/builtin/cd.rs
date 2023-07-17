@@ -24,37 +24,36 @@ impl CdCommandArgs {
         let mut parse_argv = vec!["".to_string()];
         parse_argv.extend(argv);
 
-        let matches = clap::Command::new("help")
-            .disable_help_flag(true)
+        let matches = clap::Command::new("")
             .disable_help_subcommand(true)
             .disable_version_flag(true)
-            .arg(
-                clap::Arg::new("help")
-                    .short('h')
-                    .long("help")
-                    .action(clap::ArgAction::SetTrue),
-            )
             .arg(clap::Arg::new("repo").action(clap::ArgAction::Set))
             .try_get_matches_from(&parse_argv);
 
         if let Err(err) = matches {
-            let err_str = format!("{}", err);
-            let err_str = err_str
-                .split('\n')
-                .take_while(|line| !line.is_empty())
-                .collect::<Vec<_>>()
-                .join(" ");
-            let err_str = err_str.trim_start_matches("error: ");
-            omni_error!(err_str);
+            match err.kind() {
+                clap::error::ErrorKind::DisplayHelp
+                | clap::error::ErrorKind::DisplayHelpOnMissingArgumentOrSubcommand => {
+                    HelpCommand::new().exec(vec!["cd".to_string()]);
+                }
+                clap::error::ErrorKind::DisplayVersion => {
+                    unreachable!("version flag is disabled");
+                }
+                _ => {
+                    let err_str = format!("{}", err);
+                    let err_str = err_str
+                        .split('\n')
+                        .take_while(|line| !line.is_empty())
+                        .collect::<Vec<_>>()
+                        .join(" ");
+                    let err_str = err_str.trim_start_matches("error: ");
+                    omni_error!(err_str);
+                }
+            }
             exit(1);
         }
 
         let matches = matches.unwrap();
-
-        if *matches.get_one::<bool>("help").unwrap_or(&false) {
-            HelpCommand::new().exec(vec!["cd".to_string()]);
-            exit(1);
-        }
 
         Self {
             repository: matches.get_one::<String>("repo").map(|arg| arg.to_string()),
