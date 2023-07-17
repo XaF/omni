@@ -2,13 +2,16 @@ use std::path::PathBuf;
 use std::process::exit;
 use std::time::Duration;
 
+use clap;
 use git_url_parse::GitUrl;
 use indicatif::ProgressBar;
 use indicatif::ProgressStyle;
+use once_cell::sync::OnceCell;
 use shell_escape::escape;
 use shell_words::join as shell_join;
 use tokio::process::Command as TokioCommand;
 
+use crate::internal::commands::builtin::HelpCommand;
 use crate::internal::commands::builtin::UpCommand;
 use crate::internal::commands::utils::omni_cmd;
 use crate::internal::config;
@@ -24,11 +27,88 @@ use crate::internal::ENV;
 use crate::omni_error;
 
 #[derive(Debug, Clone)]
-pub struct CloneCommand {}
+struct CloneCommandArgs {
+    repository: String,
+    options: Vec<String>,
+}
+
+impl CloneCommandArgs {
+    fn parse(argv: Vec<String>) -> Self {
+        let mut parse_argv = vec!["".to_string()];
+        parse_argv.extend(argv);
+
+        let matches = clap::Command::new("help")
+            .disable_help_flag(true)
+            .disable_help_subcommand(true)
+            .disable_version_flag(true)
+            .arg(
+                clap::Arg::new("help")
+                    .short('h')
+                    .long("help")
+                    .action(clap::ArgAction::SetTrue),
+            )
+            .arg(clap::Arg::new("repo").action(clap::ArgAction::Set))
+            .arg(
+                clap::Arg::new("options")
+                    .action(clap::ArgAction::Append)
+                    .allow_hyphen_values(true),
+            )
+            .try_get_matches_from(&parse_argv);
+
+        if let Err(err) = matches {
+            let err_str = format!("{}", err);
+            let err_str = err_str
+                .split('\n')
+                .take_while(|line| !line.is_empty())
+                .collect::<Vec<_>>()
+                .join(" ");
+            let err_str = err_str.trim_start_matches("error: ");
+            omni_error!(err_str);
+            exit(1);
+        }
+
+        let matches = matches.unwrap();
+
+        if *matches.get_one::<bool>("help").unwrap_or(&false) {
+            HelpCommand::new().exec(vec!["clone".to_string()]);
+            exit(1);
+        }
+
+        let repository;
+        if let Some(repo) = matches.get_one::<String>("repo") {
+            repository = repo.to_string();
+        } else {
+            omni_error!("no repository specified");
+            exit(1);
+        }
+
+        Self {
+            repository: repository,
+            options: matches
+                .get_many::<String>("options")
+                .map(|args| args.map(|arg| arg.to_string()).collect())
+                .unwrap_or(vec![]),
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct CloneCommand {
+    cli_args: OnceCell<CloneCommandArgs>,
+}
 
 impl CloneCommand {
     pub fn new() -> Self {
-        Self {}
+        Self {
+            cli_args: OnceCell::new(),
+        }
+    }
+
+    fn cli_args(&self) -> &CloneCommandArgs {
+        self.cli_args.get_or_init(|| {
+            omni_error!("command arguments not initialized");
+            exit(1);
+        })
     }
 
     pub fn name(&self) -> Vec<String> {
@@ -75,13 +155,12 @@ impl CloneCommand {
     }
 
     pub fn exec(&self, argv: Vec<String>) {
-        if argv.len() < 1 {
-            omni_error!("no repository specified");
-            exit(1);
+        if let Err(_) = self.cli_args.set(CloneCommandArgs::parse(argv)) {
+            unreachable!();
         }
 
-        let repo = argv[0].to_string();
-        let clone_args = argv[1..].to_vec();
+        let repo = self.cli_args().repository.clone();
+        let clone_args = self.cli_args().options.clone();
 
         // Create a spinner
         let spinner = if ENV.interactive_shell {

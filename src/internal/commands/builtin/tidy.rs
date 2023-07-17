@@ -5,12 +5,13 @@ use std::path::Path;
 use std::path::PathBuf;
 use std::process::exit;
 
-use getopts::Options;
+use clap;
 use indicatif::ProgressBar;
 use indicatif::ProgressStyle;
 use once_cell::sync::OnceCell;
 use walkdir::WalkDir;
 
+use crate::internal::commands::builtin::HelpCommand;
 use crate::internal::config::config;
 use crate::internal::config::global_config_loader;
 use crate::internal::config::CommandSyntax;
@@ -30,45 +31,69 @@ use crate::omni_info;
 struct TidyCommandArgs {
     yes: bool,
     search_paths: HashSet<String>,
-    unparsed: Vec<String>,
 }
 
 impl TidyCommandArgs {
-    fn default() -> Self {
-        Self {
-            yes: false,
-            search_paths: HashSet::new(),
-            unparsed: vec![],
-        }
-    }
-
     fn parse(argv: Vec<String>) -> Self {
-        let mut opts = Options::new();
-        opts.optflag("y", "yes", "-");
-        opts.optmulti(
-            "p",
-            "search-path",
-            "-",
-            "Also search this path for git repositories",
-        );
+        let mut parse_argv = vec!["".to_string()];
+        parse_argv.extend(argv);
 
-        let matches = match opts.parse(&argv) {
-            Ok(m) => m,
-            Err(e) => {
-                omni_error!(e.to_string());
-                exit(1);
-            }
-        };
+        let matches = clap::Command::new("help")
+            .disable_help_flag(true)
+            .disable_help_subcommand(true)
+            .disable_version_flag(true)
+            .arg(
+                clap::Arg::new("help")
+                    .short('h')
+                    .long("help")
+                    .action(clap::ArgAction::SetTrue),
+            )
+            .arg(
+                clap::Arg::new("yes")
+                    .short('y')
+                    .long("yes")
+                    .action(clap::ArgAction::SetTrue),
+            )
+            .arg(
+                clap::Arg::new("search-path")
+                    .short('p')
+                    .long("search-path")
+                    .action(clap::ArgAction::Append),
+            )
+            .try_get_matches_from(&parse_argv);
 
-        let mut search_paths = HashSet::new();
-        for path in matches.opt_strs("search-path") {
-            search_paths.insert(path);
+        if let Err(err) = matches {
+            let err_str = format!("{}", err);
+            let err_str = err_str
+                .split('\n')
+                .take_while(|line| !line.is_empty())
+                .collect::<Vec<_>>()
+                .join(" ");
+            let err_str = err_str.trim_start_matches("error: ");
+            omni_error!(err_str);
+            exit(1);
         }
 
+        let matches = matches.unwrap();
+
+        if *matches.get_one::<bool>("help").unwrap_or(&false) {
+            HelpCommand::new().exec(vec!["tidy".to_string()]);
+            exit(1);
+        }
+
+        let search_paths =
+            if let Some(search_paths) = matches.get_many::<String>("search-path").clone() {
+                search_paths
+                    .into_iter()
+                    .map(|arg| arg.to_string())
+                    .collect::<HashSet<_>>()
+            } else {
+                HashSet::new()
+            };
+
         Self {
-            yes: matches.opt_present("yes"),
+            yes: *matches.get_one::<bool>("yes").unwrap_or(&false),
             search_paths: search_paths,
-            unparsed: matches.free,
         }
     }
 }
@@ -86,7 +111,10 @@ impl TidyCommand {
     }
 
     fn cli_args(&self) -> &TidyCommandArgs {
-        self.cli_args.get_or_init(|| TidyCommandArgs::default())
+        self.cli_args.get_or_init(|| {
+            omni_error!("command arguments not initialized");
+            exit(1);
+        })
     }
 
     pub fn name(&self) -> Vec<String> {
@@ -144,11 +172,6 @@ impl TidyCommand {
     pub fn exec(&self, argv: Vec<String>) {
         if let Err(_) = self.cli_args.set(TidyCommandArgs::parse(argv)) {
             unreachable!();
-        }
-
-        if self.cli_args().unparsed.len() > 0 {
-            omni_error!("too many arguments");
-            exit(1);
         }
 
         let repositories = self.list_repositories();
@@ -293,6 +316,8 @@ impl TidyCommand {
         println!("--search-path");
         println!("-y");
         println!("--yes");
+        println!("-h");
+        println!("--help");
         exit(0);
     }
 

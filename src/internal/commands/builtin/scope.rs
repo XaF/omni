@@ -1,5 +1,9 @@
 use std::process::exit;
 
+use clap;
+use once_cell::sync::OnceCell;
+
+use crate::internal::commands::builtin::HelpCommand;
 use crate::internal::commands::command_loader;
 use crate::internal::config::CommandSyntax;
 use crate::internal::config::SyntaxOptArg;
@@ -9,11 +13,93 @@ use crate::internal::ENV;
 use crate::omni_error;
 
 #[derive(Debug, Clone)]
-pub struct ScopeCommand {}
+struct ScopeCommandArgs {
+    scope: String,
+    command: Vec<String>,
+}
+
+impl ScopeCommandArgs {
+    fn parse(argv: Vec<String>) -> Self {
+        let mut parse_argv = vec!["".to_string()];
+        parse_argv.extend(argv);
+
+        let matches = clap::Command::new("")
+            .disable_help_flag(true)
+            .disable_help_subcommand(true)
+            .disable_version_flag(true)
+            .arg(
+                clap::Arg::new("help")
+                    .short('h')
+                    .long("help")
+                    .action(clap::ArgAction::SetTrue),
+            )
+            .arg(clap::Arg::new("scope").action(clap::ArgAction::Set))
+            .arg(
+                clap::Arg::new("command")
+                    .action(clap::ArgAction::Append)
+                    .allow_hyphen_values(true),
+            )
+            .try_get_matches_from(&parse_argv);
+
+        if let Err(err) = matches {
+            let err_str = format!("{}", err);
+            let err_str = err_str
+                .split('\n')
+                .take_while(|line| !line.is_empty())
+                .collect::<Vec<_>>()
+                .join(" ");
+            let err_str = err_str.trim_start_matches("error: ");
+            omni_error!(err_str);
+            exit(1);
+        }
+
+        let matches = matches.unwrap();
+
+        if *matches.get_one::<bool>("help").unwrap_or(&false) {
+            HelpCommand::new().exec(vec!["scope".to_string()]);
+            exit(1);
+        }
+
+        let scope = if let Some(scope) = matches.get_one::<String>("scope") {
+            scope.to_string()
+        } else {
+            omni_error!("no scope specified");
+            exit(1);
+        };
+
+        let command = matches
+            .get_many::<String>("command")
+            .map(|args| args.map(|arg| arg.to_string()).collect())
+            .unwrap_or(vec![]);
+        if command.len() < 1 {
+            omni_error!("no command specified");
+            exit(1);
+        };
+
+        Self {
+            scope: scope,
+            command: command,
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct ScopeCommand {
+    cli_args: OnceCell<ScopeCommandArgs>,
+}
 
 impl ScopeCommand {
     pub fn new() -> Self {
-        Self {}
+        Self {
+            cli_args: OnceCell::new(),
+        }
+    }
+
+    fn cli_args(&self) -> &ScopeCommandArgs {
+        self.cli_args.get_or_init(|| {
+            omni_error!("command arguments not initialized");
+            exit(1);
+        })
     }
 
     pub fn name(&self) -> Vec<String> {
@@ -62,20 +148,13 @@ impl ScopeCommand {
     }
 
     pub fn exec(&self, argv: Vec<String>) {
-        if argv.len() < 1 {
-            omni_error!("no scope specified");
-            exit(1);
+        if let Err(_) = self.cli_args.set(ScopeCommandArgs::parse(argv)) {
+            unreachable!();
         }
 
-        if argv.len() < 2 {
-            omni_error!("no command specified");
-            exit(1);
-        }
+        self.switch_scope(&self.cli_args().scope, false);
 
-        let mut argv = argv.clone();
-        let repo = argv.remove(0);
-        self.switch_scope(&repo, false);
-
+        let argv = self.cli_args().command.clone();
         let command_loader = command_loader(".");
         if let Some((omni_cmd, called_as, argv)) = command_loader.to_serve(&argv) {
             omni_cmd.exec(argv, Some(called_as));

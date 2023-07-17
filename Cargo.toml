@@ -23,10 +23,10 @@ time = { version = "0.3.23", features = ["serde-well-known"] }
 
 [dependencies]
 blake3 = "1.4.1"
+clap = "4.3.12"
 duct = "0.13.6"
 flate2 = "1.0.26"
 fs4 = "0.6.6"
-getopts = "0.2.21"
 git-url-parse = "0.4.4"
 git2 = "0.17.2"
 imara-diff = "0.1.5"

@@ -1,7 +1,10 @@
 use std::process::exit;
 
+use clap;
+use once_cell::sync::OnceCell;
 use shell_escape::escape;
 
+use crate::internal::commands::builtin::HelpCommand;
 use crate::internal::commands::utils::omni_cmd;
 use crate::internal::config::config;
 use crate::internal::config::CommandSyntax;
@@ -12,11 +15,70 @@ use crate::internal::ENV;
 use crate::omni_error;
 
 #[derive(Debug, Clone)]
-pub struct CdCommand {}
+struct CdCommandArgs {
+    repository: Option<String>,
+}
+
+impl CdCommandArgs {
+    fn parse(argv: Vec<String>) -> Self {
+        let mut parse_argv = vec!["".to_string()];
+        parse_argv.extend(argv);
+
+        let matches = clap::Command::new("help")
+            .disable_help_flag(true)
+            .disable_help_subcommand(true)
+            .disable_version_flag(true)
+            .arg(
+                clap::Arg::new("help")
+                    .short('h')
+                    .long("help")
+                    .action(clap::ArgAction::SetTrue),
+            )
+            .arg(clap::Arg::new("repo").action(clap::ArgAction::Set))
+            .try_get_matches_from(&parse_argv);
+
+        if let Err(err) = matches {
+            let err_str = format!("{}", err);
+            let err_str = err_str
+                .split('\n')
+                .take_while(|line| !line.is_empty())
+                .collect::<Vec<_>>()
+                .join(" ");
+            let err_str = err_str.trim_start_matches("error: ");
+            omni_error!(err_str);
+            exit(1);
+        }
+
+        let matches = matches.unwrap();
+
+        if *matches.get_one::<bool>("help").unwrap_or(&false) {
+            HelpCommand::new().exec(vec!["cd".to_string()]);
+            exit(1);
+        }
+
+        Self {
+            repository: matches.get_one::<String>("repo").map(|arg| arg.to_string()),
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct CdCommand {
+    cli_args: OnceCell<CdCommandArgs>,
+}
 
 impl CdCommand {
     pub fn new() -> Self {
-        Self {}
+        Self {
+            cli_args: OnceCell::new(),
+        }
+    }
+
+    fn cli_args(&self) -> &CdCommandArgs {
+        self.cli_args.get_or_init(|| {
+            omni_error!("command arguments not initialized");
+            exit(1);
+        })
     }
 
     pub fn name(&self) -> Vec<String> {
@@ -58,9 +120,8 @@ impl CdCommand {
     }
 
     pub fn exec(&self, argv: Vec<String>) {
-        if argv.len() > 1 {
-            omni_error!("too many arguments");
-            exit(1);
+        if let Err(_) = self.cli_args.set(CdCommandArgs::parse(argv)) {
+            unreachable!();
         }
 
         if ENV.omni_cmd_file.is_none() {
@@ -68,12 +129,11 @@ impl CdCommand {
             exit(1);
         }
 
-        if argv.is_empty() {
+        if let Some(repository) = &self.cli_args().repository {
+            self.cd_repo(&repository);
+        } else {
             self.cd_main_org();
-            exit(0);
         }
-
-        self.cd_repo(&argv[0]);
         exit(0);
     }
 

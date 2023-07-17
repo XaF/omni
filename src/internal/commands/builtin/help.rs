@@ -1,6 +1,9 @@
 use std::collections::HashSet;
 use std::process::exit;
 
+use clap;
+use once_cell::sync::OnceCell;
+
 use crate::internal::commands::command_loader;
 use crate::internal::commands::Command;
 use crate::internal::config::CommandSyntax;
@@ -9,15 +12,94 @@ use crate::internal::user_interface::term_width;
 use crate::internal::user_interface::wrap_blocks;
 use crate::internal::user_interface::wrap_text;
 use crate::internal::user_interface::StringColor;
+use crate::omni_error;
 use crate::omni_header;
 use crate::omni_print;
 
 #[derive(Debug, Clone)]
-pub struct HelpCommand {}
+struct HelpCommandArgs {
+    unparsed: Vec<String>,
+}
+
+impl HelpCommandArgs {
+    fn parse(argv: Vec<String>) -> Self {
+        // If -h or --help are part of the command, just return directly; this
+        // if let Some(pos) = argv.iter().position(|arg| arg == "-h" || arg == "--help") {
+        // return Self {
+        // help: true,
+        // unparsed: argv.into_iter().skip(pos + 1).collect(),
+        // };
+        // }
+
+        let mut parse_argv = vec!["".to_string()];
+        parse_argv.extend(argv);
+
+        let matches = clap::Command::new("help")
+            .disable_help_flag(true)
+            .disable_help_subcommand(true)
+            .disable_version_flag(true)
+            .arg(
+                clap::Arg::new("help")
+                    .short('h')
+                    .long("help")
+                    .action(clap::ArgAction::SetTrue),
+            )
+            .arg(
+                clap::Arg::new("unparsed")
+                    .action(clap::ArgAction::Append)
+                    .allow_hyphen_values(true),
+            )
+            .try_get_matches_from(&parse_argv);
+
+        if let Err(err) = matches {
+            let err_str = format!("{}", err);
+            let err_str = err_str
+                .split('\n')
+                .take_while(|line| !line.is_empty())
+                .collect::<Vec<_>>()
+                .join(" ");
+            let err_str = err_str.trim_start_matches("error: ");
+            omni_error!(err_str);
+            exit(1);
+        }
+
+        let matches = matches.unwrap();
+
+        if *matches.get_one::<bool>("help").unwrap_or(&false) {
+            HelpCommand::new().exec(vec!["help".to_string()]);
+            exit(1);
+        }
+
+        let unparsed = if let Some(unparsed) = matches.get_many::<String>("unparsed").clone() {
+            unparsed
+                .into_iter()
+                .map(|arg| arg.to_string())
+                .collect::<Vec<_>>()
+        } else {
+            vec![]
+        };
+
+        Self { unparsed: unparsed }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct HelpCommand {
+    cli_args: OnceCell<HelpCommandArgs>,
+}
 
 impl HelpCommand {
     pub fn new() -> Self {
-        Self {}
+        Self {
+            cli_args: OnceCell::new(),
+        }
+    }
+
+    fn cli_args(&self) -> &HelpCommandArgs {
+        self.cli_args.get_or_init(|| {
+            omni_error!("command arguments not initialized");
+            exit(1);
+        })
     }
 
     pub fn name(&self) -> Vec<String> {
@@ -55,6 +137,12 @@ impl HelpCommand {
     }
 
     pub fn exec(&self, argv: Vec<String>) {
+        if let Err(_) = self.cli_args.set(HelpCommandArgs::parse(argv)) {
+            unreachable!();
+        }
+
+        let argv = self.cli_args().unparsed.clone();
+
         if argv.is_empty() {
             self.help_global();
             exit(0);

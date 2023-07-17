@@ -1,7 +1,8 @@
 use std::collections::HashMap;
 use std::process::exit;
+use std::str::FromStr;
 
-use getopts::Options;
+use clap;
 use imara_diff::intern::InternedInput;
 use imara_diff::{diff, Algorithm, UnifiedDiffBuilder};
 use once_cell::sync::OnceCell;
@@ -11,6 +12,7 @@ use crate::internal::cache::Cache;
 use crate::internal::cache::TrustedRepositories;
 use crate::internal::cache::UpEnvironment;
 use crate::internal::cache::UpEnvironments;
+use crate::internal::commands::builtin::HelpCommand;
 use crate::internal::commands::Command;
 use crate::internal::config::config;
 use crate::internal::config::config_loader;
@@ -34,70 +36,94 @@ struct UpCommandArgs {
     update_repository: bool,
     update_user_config: UpCommandArgsUpdateUserConfigOptions,
     trust: UpCommandArgsTrustOptions,
-    unparsed: Vec<String>,
 }
 
 impl UpCommandArgs {
-    fn default() -> Self {
-        Self {
-            update_repository: false,
-            update_user_config: UpCommandArgsUpdateUserConfigOptions::No,
-            trust: UpCommandArgsTrustOptions::Check,
-            unparsed: vec![],
-        }
-    }
-
     fn parse(argv: Vec<String>) -> Self {
-        let mut opts = Options::new();
-        opts.optflag("", "update-repository", "-");
-        opts.optflagopt("", "update-user-config", "-", "VALUE");
-        opts.optflagopt("", "trust", "-", "VALUE");
+        let mut parse_argv = vec!["".to_string()];
+        parse_argv.extend(argv);
 
-        let matches = match opts.parse(&argv) {
-            Ok(m) => m,
-            Err(e) => {
-                omni_error!(e.to_string());
-                exit(1);
-            }
-        };
+        let matches = clap::Command::new("")
+            .disable_help_flag(true)
+            .disable_help_subcommand(true)
+            .disable_version_flag(true)
+            .arg(
+                clap::Arg::new("help")
+                    .short('h')
+                    .long("help")
+                    .action(clap::ArgAction::SetTrue),
+            )
+            .arg(
+                clap::Arg::new("update-repository")
+                    .long("update-repository")
+                    .action(clap::ArgAction::SetTrue),
+            )
+            .arg(
+                clap::Arg::new("update-user-config")
+                    .long("update-user-config")
+                    .num_args(0..=1)
+                    .action(clap::ArgAction::Set)
+                    .default_missing_value("yes")
+                    .value_parser(clap::builder::PossibleValuesParser::new([
+                        "yes", "ask", "no",
+                    ])),
+            )
+            .arg(
+                clap::Arg::new("trust")
+                    .long("trust")
+                    .num_args(0..=1)
+                    .action(clap::ArgAction::Set)
+                    .default_missing_value("yes")
+                    .value_parser(clap::builder::PossibleValuesParser::new([
+                        "always", "yes", "no",
+                    ])),
+            )
+            .try_get_matches_from(&parse_argv);
 
-        let trust = if let Some(value) = matches.opt_str("trust") {
-            match value.to_lowercase().as_str() {
-                "always" => UpCommandArgsTrustOptions::Always,
-                "yes" => UpCommandArgsTrustOptions::Yes,
-                "no" => UpCommandArgsTrustOptions::No,
-                _ => {
-                    omni_error!(format!("invalid value for --trust: {}", value));
-                    exit(1);
-                }
-            }
-        } else if matches.opt_present("trust") {
-            UpCommandArgsTrustOptions::Yes
+        if let Err(err) = matches {
+            let err_str = format!("{}", err);
+            let err_str = err_str
+                .split('\n')
+                .take_while(|line| !line.is_empty())
+                .collect::<Vec<_>>()
+                .join(" ");
+            let err_str = err_str.trim_start_matches("error: ");
+            omni_error!(err_str);
+            exit(1);
+        }
+
+        let matches = matches.unwrap();
+
+        if *matches.get_one::<bool>("help").unwrap_or(&false) {
+            HelpCommand::new().exec(vec!["up".to_string()]);
+            exit(1);
+        }
+
+        let update_user_config =
+            if let Some(update_user_config) = matches.get_one::<String>("update-user-config") {
+                update_user_config
+                    .to_lowercase()
+                    .parse::<UpCommandArgsUpdateUserConfigOptions>()
+                    .unwrap()
+            } else {
+                UpCommandArgsUpdateUserConfigOptions::Ask
+            };
+
+        let trust = if let Some(trust) = matches.get_one::<String>("trust") {
+            trust
+                .to_lowercase()
+                .parse::<UpCommandArgsTrustOptions>()
+                .unwrap()
         } else {
             UpCommandArgsTrustOptions::Check
         };
 
-        let update_user_config = if let Some(value) = matches.opt_str("update-user-config") {
-            match value.to_lowercase().as_str() {
-                "yes" => UpCommandArgsUpdateUserConfigOptions::Yes,
-                "ask" => UpCommandArgsUpdateUserConfigOptions::Ask,
-                "no" => UpCommandArgsUpdateUserConfigOptions::No,
-                _ => {
-                    omni_error!(format!("invalid value for --update-user-config: {}", value));
-                    exit(1);
-                }
-            }
-        } else if matches.opt_present("update-user-config") {
-            UpCommandArgsUpdateUserConfigOptions::Ask
-        } else {
-            UpCommandArgsUpdateUserConfigOptions::No
-        };
-
         Self {
-            update_repository: matches.opt_present("update-repository"),
+            update_repository: *matches
+                .get_one::<bool>("update-repository")
+                .unwrap_or(&false),
             update_user_config: update_user_config,
             trust: trust,
-            unparsed: matches.free,
         }
     }
 }
@@ -109,12 +135,39 @@ enum UpCommandArgsUpdateUserConfigOptions {
     No,
 }
 
+impl FromStr for UpCommandArgsUpdateUserConfigOptions {
+    type Err = ();
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.to_lowercase().as_str() {
+            "yes" => Ok(Self::Yes),
+            "ask" => Ok(Self::Ask),
+            "no" => Ok(Self::No),
+            _ => Err(()),
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq)]
 enum UpCommandArgsTrustOptions {
     Always,
     Yes,
     No,
     Check,
+}
+
+impl FromStr for UpCommandArgsTrustOptions {
+    type Err = ();
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.to_lowercase().as_str() {
+            "always" => Ok(Self::Always),
+            "yes" => Ok(Self::Yes),
+            "no" => Ok(Self::No),
+            "check" => Ok(Self::Check),
+            _ => Err(()),
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -134,7 +187,10 @@ impl UpCommand {
     }
 
     fn cli_args(&self) -> &UpCommandArgs {
-        self.cli_args.get_or_init(|| UpCommandArgs::default())
+        self.cli_args.get_or_init(|| {
+            omni_error!("command arguments not initialized");
+            exit(1);
+        })
     }
 
     pub fn name(&self) -> Vec<String> {
@@ -202,11 +258,6 @@ impl UpCommand {
     pub fn exec(&self, argv: Vec<String>) {
         if let Err(_) = self.cli_args.set(UpCommandArgs::parse(argv)) {
             unreachable!();
-        }
-
-        if self.cli_args().unparsed.len() > 0 {
-            omni_error!("too many arguments");
-            exit(1);
         }
 
         let git = git_env(".");

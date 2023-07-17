@@ -1,8 +1,11 @@
 use std::process::exit;
 
+use clap;
+use once_cell::sync::OnceCell;
 use regex::Regex;
 use serde_yaml;
 
+use crate::internal::commands::builtin::HelpCommand;
 use crate::internal::commands::path::omnipath;
 use crate::internal::config::config;
 use crate::internal::config::config_loader;
@@ -15,11 +18,66 @@ use crate::omni_error;
 use crate::omni_header;
 
 #[derive(Debug, Clone)]
-pub struct StatusCommand {}
+struct StatusCommandArgs {}
+
+impl StatusCommandArgs {
+    fn parse(argv: Vec<String>) -> Self {
+        let mut parse_argv = vec!["".to_string()];
+        parse_argv.extend(argv);
+
+        let matches = clap::Command::new("")
+            .disable_help_flag(true)
+            .disable_help_subcommand(true)
+            .disable_version_flag(true)
+            .arg(
+                clap::Arg::new("help")
+                    .short('h')
+                    .long("help")
+                    .action(clap::ArgAction::SetTrue),
+            )
+            .try_get_matches_from(&parse_argv);
+
+        if let Err(err) = matches {
+            let err_str = format!("{}", err);
+            let err_str = err_str
+                .split('\n')
+                .take_while(|line| !line.is_empty())
+                .collect::<Vec<_>>()
+                .join(" ");
+            let err_str = err_str.trim_start_matches("error: ");
+            omni_error!(err_str);
+            exit(1);
+        }
+
+        let matches = matches.unwrap();
+
+        if *matches.get_one::<bool>("help").unwrap_or(&false) {
+            HelpCommand::new().exec(vec!["status".to_string()]);
+            exit(1);
+        }
+
+        Self {}
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct StatusCommand {
+    cli_args: OnceCell<StatusCommandArgs>,
+}
 
 impl StatusCommand {
     pub fn new() -> Self {
-        Self {}
+        Self {
+            cli_args: OnceCell::new(),
+        }
+    }
+
+    #[allow(dead_code)]
+    fn cli_args(&self) -> &StatusCommandArgs {
+        self.cli_args.get_or_init(|| {
+            omni_error!("command arguments not initialized");
+            exit(1);
+        })
     }
 
     pub fn name(&self) -> Vec<String> {
@@ -55,9 +113,8 @@ impl StatusCommand {
     }
 
     pub fn exec(&self, argv: Vec<String>) {
-        if argv.len() > 0 {
-            omni_error!("too many arguments");
-            exit(1);
+        if let Err(_) = self.cli_args.set(StatusCommandArgs::parse(argv)) {
+            unreachable!();
         }
 
         println!("{}", omni_header!());
