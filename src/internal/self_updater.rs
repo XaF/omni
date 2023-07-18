@@ -238,8 +238,6 @@ impl OmniRelease {
         if let Err(err) = ConfigLoader::edit_main_user_config_file(|config_value| {
             let insert_value = if self_update { "true" } else { "false" };
 
-            println!("config_value: {:#?}", config_value);
-
             if let Some(config_path) = config_value.get_as_table_mut("path_repo_updates") {
                 config_path.insert(
                     "self_update".to_string(),
