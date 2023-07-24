@@ -845,7 +845,7 @@ impl UpCommand {
         for repo in cloned {
             omni_info!(format!(
                 "running {} in {}",
-                "omni up --bootstrap".to_string().light_yellow(),
+                "omni up".to_string().light_yellow(),
                 repo.clone_path.display().to_string().light_cyan(),
             ));
 
