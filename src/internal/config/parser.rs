@@ -107,6 +107,7 @@ pub struct OmniConfig {
     pub cd: CdConfig,
     pub clone: CloneConfig,
     pub up: Option<UpConfig>,
+    pub suggest_clone: SuggestCloneConfig,
 }
 
 impl OmniConfig {
@@ -174,10 +175,8 @@ impl OmniConfig {
             env: env_config,
             cd: CdConfig::from_config_value(config_value.get("cd")),
             clone: CloneConfig::from_config_value(config_value.get("clone")),
-            up: match config_value.get("up") {
-                Some(value) => UpConfig::from_config_value(&value),
-                None => None,
-            },
+            up: UpConfig::from_config_value(config_value.get("up")),
+            suggest_clone: SuggestCloneConfig::from_config_value(config_value.get("suggest_clone")),
         }
     }
 
@@ -744,5 +743,92 @@ impl CloneConfig {
                 None => Self::DEFAULT_LS_REMOTE_TIMEOUT_SECONDS,
             },
         }
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct SuggestCloneConfig {
+    pub repositories: Vec<SuggestCloneRepositoryConfig>,
+}
+
+impl SuggestCloneConfig {
+    fn from_config_value(config_value: Option<ConfigValue>) -> Self {
+        let mut repositories = vec![];
+
+        if let Some(config_value) = config_value {
+            // We can filter by values provided by the repository, as this is only
+            // a repository-scoped configuration
+            if let Some(config_value) = config_value.select_label("git_repo") {
+                if let Some(array) = config_value.as_array() {
+                    for value in array {
+                        if let Some(repository) =
+                            SuggestCloneRepositoryConfig::from_config_value(&value)
+                        {
+                            repositories.push(repository);
+                        }
+                    }
+                } else if let Some(table) = config_value.as_table() {
+                    if let Some(array) = table.get("repositories") {
+                        if let Some(array) = array.as_array() {
+                            for value in array {
+                                if let Some(repository) =
+                                    SuggestCloneRepositoryConfig::from_config_value(&value)
+                                {
+                                    repositories.push(repository);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        Self {
+            repositories: repositories,
+        }
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct SuggestCloneRepositoryConfig {
+    pub handle: String,
+    pub args: Vec<String>,
+}
+
+impl SuggestCloneRepositoryConfig {
+    fn from_config_value(config_value: &ConfigValue) -> Option<Self> {
+        if let Some(value) = config_value.as_str() {
+            return Some(Self {
+                handle: value.to_string(),
+                args: vec![],
+            });
+        } else if let Some(table) = config_value.as_table() {
+            let mut handle = None;
+            if let Some(value) = table.get("handle") {
+                if let Some(value) = value.as_str() {
+                    handle = Some(value.to_string());
+                }
+            }
+
+            if handle.is_none() {
+                return None;
+            }
+
+            let mut args = Vec::new();
+            if let Some(value) = table.get("args") {
+                if let Some(value) = value.as_str() {
+                    if let Ok(value) = shell_words::split(&value) {
+                        args.extend(value);
+                    }
+                }
+            }
+
+            return Some(Self {
+                handle: handle.unwrap(),
+                args: args,
+            });
+        }
+
+        None
     }
 }

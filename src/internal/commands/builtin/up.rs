@@ -1,12 +1,18 @@
 use std::collections::HashMap;
+use std::collections::HashSet;
+use std::hash::Hash;
+use std::hash::Hasher;
+use std::path::PathBuf;
 use std::process::exit;
 use std::str::FromStr;
 
 use clap;
+use git_url_parse::GitUrl;
 use imara_diff::intern::InternedInput;
 use imara_diff::{diff, Algorithm, UnifiedDiffBuilder};
 use once_cell::sync::OnceCell;
 use time::OffsetDateTime;
+use tokio::process::Command as TokioCommand;
 
 use crate::internal::cache::Cache;
 use crate::internal::cache::TrustedRepositories;
@@ -16,12 +22,19 @@ use crate::internal::commands::builtin::HelpCommand;
 use crate::internal::commands::Command;
 use crate::internal::config::config;
 use crate::internal::config::config_loader;
+use crate::internal::config::up::run_progress;
+use crate::internal::config::up::utils::PrintProgressHandler;
+use crate::internal::config::up::utils::RunConfig;
+use crate::internal::config::up::ProgressHandler;
+use crate::internal::config::up::SpinnerProgressHandler;
 use crate::internal::config::up::UpConfig;
 use crate::internal::config::CommandSyntax;
 use crate::internal::config::ConfigExtendStrategy;
 use crate::internal::config::ConfigLoader;
 use crate::internal::config::ConfigValue;
 use crate::internal::config::SyntaxOptArg;
+use crate::internal::git::format_path;
+use crate::internal::git::safe_git_url_parse;
 use crate::internal::git::ORG_LOADER;
 use crate::internal::git_env;
 use crate::internal::user_interface::StringColor;
@@ -33,9 +46,10 @@ use crate::omni_warning;
 
 #[derive(Debug, Clone)]
 struct UpCommandArgs {
+    clone_suggested: UpCommandArgsCloneSuggestedOptions,
+    trust: UpCommandArgsTrustOptions,
     update_repository: bool,
     update_user_config: UpCommandArgsUpdateUserConfigOptions,
-    trust: UpCommandArgsTrustOptions,
 }
 
 impl UpCommandArgs {
@@ -47,16 +61,16 @@ impl UpCommandArgs {
             .disable_help_subcommand(true)
             .disable_version_flag(true)
             .arg(
-                clap::Arg::new("update-repository")
-                    .long("update-repository")
+                clap::Arg::new("bootstrap")
+                    .long("bootstrap")
                     .action(clap::ArgAction::SetTrue),
             )
             .arg(
-                clap::Arg::new("update-user-config")
-                    .long("update-user-config")
+                clap::Arg::new("clone-suggested")
+                    .long("clone-suggested")
                     .num_args(0..=1)
                     .action(clap::ArgAction::Set)
-                    .default_missing_value("yes")
+                    .default_missing_value("ask")
                     .value_parser(clap::builder::PossibleValuesParser::new([
                         "yes", "ask", "no",
                     ])),
@@ -69,6 +83,21 @@ impl UpCommandArgs {
                     .default_missing_value("yes")
                     .value_parser(clap::builder::PossibleValuesParser::new([
                         "always", "yes", "no",
+                    ])),
+            )
+            .arg(
+                clap::Arg::new("update-repository")
+                    .long("update-repository")
+                    .action(clap::ArgAction::SetTrue),
+            )
+            .arg(
+                clap::Arg::new("update-user-config")
+                    .long("update-user-config")
+                    .num_args(0..=1)
+                    .action(clap::ArgAction::Set)
+                    .default_missing_value("ask")
+                    .value_parser(clap::builder::PossibleValuesParser::new([
+                        "yes", "ask", "no",
                     ])),
             )
             .try_get_matches_from(&parse_argv);
@@ -98,14 +127,18 @@ impl UpCommandArgs {
 
         let matches = matches.unwrap();
 
-        let update_user_config =
-            if let Some(update_user_config) = matches.get_one::<String>("update-user-config") {
-                update_user_config
+        let bootstrap = *matches.get_one::<bool>("bootstrap").unwrap_or(&false);
+
+        let clone_suggested =
+            if let Some(clone_suggested) = matches.get_one::<String>("clone-suggested") {
+                clone_suggested
                     .to_lowercase()
-                    .parse::<UpCommandArgsUpdateUserConfigOptions>()
+                    .parse::<UpCommandArgsCloneSuggestedOptions>()
                     .unwrap()
+            } else if bootstrap {
+                UpCommandArgsCloneSuggestedOptions::Ask
             } else {
-                UpCommandArgsUpdateUserConfigOptions::Ask
+                UpCommandArgsCloneSuggestedOptions::No
             };
 
         let trust = if let Some(trust) = matches.get_one::<String>("trust") {
@@ -117,24 +150,37 @@ impl UpCommandArgs {
             UpCommandArgsTrustOptions::Check
         };
 
+        let update_user_config =
+            if let Some(update_user_config) = matches.get_one::<String>("update-user-config") {
+                update_user_config
+                    .to_lowercase()
+                    .parse::<UpCommandArgsUpdateUserConfigOptions>()
+                    .unwrap()
+            } else if bootstrap {
+                UpCommandArgsUpdateUserConfigOptions::Ask
+            } else {
+                UpCommandArgsUpdateUserConfigOptions::No
+            };
+
         Self {
+            clone_suggested: clone_suggested,
+            trust: trust,
             update_repository: *matches
                 .get_one::<bool>("update-repository")
                 .unwrap_or(&false),
             update_user_config: update_user_config,
-            trust: trust,
         }
     }
 }
 
 #[derive(Debug, Clone, PartialEq)]
-enum UpCommandArgsUpdateUserConfigOptions {
+enum UpCommandArgsCloneSuggestedOptions {
     Yes,
     Ask,
     No,
 }
 
-impl FromStr for UpCommandArgsUpdateUserConfigOptions {
+impl FromStr for UpCommandArgsCloneSuggestedOptions {
     type Err = ();
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
@@ -164,6 +210,26 @@ impl FromStr for UpCommandArgsTrustOptions {
             "yes" => Ok(Self::Yes),
             "no" => Ok(Self::No),
             "check" => Ok(Self::Check),
+            _ => Err(()),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+enum UpCommandArgsUpdateUserConfigOptions {
+    Yes,
+    Ask,
+    No,
+}
+
+impl FromStr for UpCommandArgsUpdateUserConfigOptions {
+    type Err = ();
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.to_lowercase().as_str() {
+            "yes" => Ok(Self::Yes),
+            "ask" => Ok(Self::Ask),
+            "no" => Ok(Self::No),
             _ => Err(()),
         }
     }
@@ -216,6 +282,35 @@ impl UpCommand {
             arguments: vec![],
             options: vec![
                 SyntaxOptArg {
+                    name: "--bootstrap".to_string(),
+                    desc: Some(
+                        concat!(
+                            "Same as using \x1B[1m--update-user-config --clone-suggested\x1B[0m; if ",
+                            "any of the options are directly provided, they will take precedence over ",
+                            "the default values of the options",
+                        )
+                        .to_string(),
+                    ),
+                },
+                SyntaxOptArg {
+                    name: "--clone-suggested".to_string(),
+                    desc: Some(
+                        concat!(
+                            "Whether we should clone suggested repositories found in the configuration ",
+                            "of the repository if any (yes/ask/no) ",
+                            "\x1B[90m(default: no)\x1B[0m",
+                        )
+                        .to_string(),
+                    ),
+                },
+                SyntaxOptArg {
+                    name: "--trust".to_string(),
+                    desc: Some(
+                        "Define how to trust the repository (always/yes/no) to run the command"
+                            .to_string(),
+                    ),
+                },
+                SyntaxOptArg {
                     name: "--update-repository".to_string(),
                     desc: Some(
                         concat!(
@@ -237,13 +332,6 @@ impl UpCommand {
                             "\x1B[90m(default: no)\x1B[0m",
                         )
                         .to_string(),
-                    ),
-                },
-                SyntaxOptArg {
-                    name: "--trust".to_string(),
-                    desc: Some(
-                        "Define how to trust the repository (always/yes/no) to run the command"
-                            .to_string(),
                     ),
                 },
             ],
@@ -306,6 +394,10 @@ impl UpCommand {
             }
         }
 
+        let suggest_clone = self.is_up()
+            && self.should_suggest_clone()
+            && !config.suggest_clone.repositories.is_empty();
+
         let mut env_vars = None;
         if self.is_up() {
             if !config.env.is_empty() {
@@ -314,7 +406,7 @@ impl UpCommand {
         }
 
         let has_up_config = !(up_config.is_none() || !up_config.clone().unwrap().has_steps());
-        if !has_up_config && suggest_config.is_none() && env_vars.is_none() {
+        if !has_up_config && suggest_config.is_none() && !suggest_clone && env_vars.is_none() {
             omni_info!(format!(
                 "No {} configuration found, nothing to do.",
                 "up".to_string().italic(),
@@ -388,6 +480,10 @@ impl UpCommand {
 
         if suggest_config.is_some() {
             self.suggest_config(suggest_config.unwrap());
+        }
+
+        if suggest_clone {
+            self.suggest_clone();
         }
 
         exit(0);
@@ -525,6 +621,14 @@ impl UpCommand {
             UpCommandArgsUpdateUserConfigOptions::Yes => true,
             UpCommandArgsUpdateUserConfigOptions::Ask => ENV.interactive_shell,
             UpCommandArgsUpdateUserConfigOptions::No => false,
+        }
+    }
+
+    fn should_suggest_clone(&self) -> bool {
+        match self.cli_args().clone_suggested {
+            UpCommandArgsCloneSuggestedOptions::Yes => true,
+            UpCommandArgsCloneSuggestedOptions::Ask => ENV.interactive_shell,
+            UpCommandArgsCloneSuggestedOptions::No => false,
         }
     }
 
@@ -715,6 +819,360 @@ impl UpCommand {
         after
     }
 
+    fn suggest_clone(&self) {
+        if !self.should_suggest_clone() {
+            return;
+        }
+
+        let to_clone = self.suggest_clone_from_config(".");
+        if to_clone.is_empty() {
+            return;
+        }
+
+        let cloned = self.suggest_clone_recursive(to_clone, HashSet::new());
+        if cloned.is_empty() {
+            return;
+        }
+
+        let current_exe = std::env::current_exe();
+        if current_exe.is_err() {
+            omni_error!("failed to get current executable path");
+            exit(1);
+        }
+        let current_exe = current_exe.unwrap();
+
+        let mut any_error = false;
+        for repo in cloned {
+            omni_info!(format!(
+                "running {} in {}",
+                "omni up --bootstrap".to_string().light_yellow(),
+                repo.clone_path.display().to_string().light_cyan(),
+            ));
+
+            let mut omni_up_command = std::process::Command::new(current_exe.clone());
+            omni_up_command.arg("up");
+            omni_up_command.arg("--bootstrap");
+            omni_up_command.arg("--clone-suggested=no");
+            omni_up_command.current_dir(repo.clone_path);
+            omni_up_command.env_remove("OMNI_FORCE_UPDATE");
+            omni_up_command.env("OMNI_SKIP_UPDATE", "1");
+
+            let child = omni_up_command.spawn();
+            match child {
+                Ok(mut child) => {
+                    let status = child.wait();
+                    match status {
+                        Ok(status) => {
+                            if !status.success() {
+                                any_error = true;
+                            }
+                        }
+                        Err(err) => {
+                            omni_error!(format!("failed to wait on process: {}", err));
+                        }
+                    }
+                }
+                Err(err) => {
+                    omni_error!(format!("failed to spawn process: {}", err));
+                }
+            }
+        }
+
+        omni_info!(format!("done!").light_green());
+        if any_error {
+            omni_error!(format!("some errors occurred!").light_red());
+            exit(1);
+        }
+    }
+
+    fn suggest_clone_from_config(&self, path: &str) -> HashSet<RepositoryToClone> {
+        let git_env = git_env(path);
+        let repo_id = git_env.id();
+        if repo_id.is_none() {
+            omni_error!("Unable to get repository id for path {}", path);
+            return HashSet::new();
+        }
+        let repo_id = repo_id.unwrap();
+
+        let config = config(path);
+
+        let mut to_clone = HashSet::new();
+        for repo_config in config.suggest_clone.repositories.iter() {
+            let mut repo = None;
+
+            for org in ORG_LOADER.orgs.iter() {
+                if let (Some(clone_url), Some(clone_path)) = (
+                    org.get_repo_git_url(&repo_config.handle),
+                    org.get_repo_path(&repo_config.handle),
+                ) {
+                    repo = Some(RepositoryToClone {
+                        suggested_by: vec![repo_id.clone()],
+                        clone_url: clone_url,
+                        clone_path: clone_path,
+                        clone_args: repo_config.args.clone(),
+                    });
+                    break;
+                }
+            }
+
+            if repo.is_none() {
+                if let Ok(clone_url) = safe_git_url_parse(&repo_config.handle) {
+                    if clone_url.scheme.to_string() != "file"
+                        && clone_url.name != ""
+                        && clone_url.owner.is_some()
+                        && clone_url.host.is_some()
+                    {
+                        let worktree = config.worktree();
+                        repo = Some(RepositoryToClone {
+                            suggested_by: vec![repo_id.clone()],
+                            clone_url: clone_url.clone(),
+                            clone_path: format_path(&worktree, &clone_url),
+                            clone_args: repo_config.args.clone(),
+                        });
+                    }
+                }
+            }
+
+            if repo.is_none() {
+                omni_warning!(format!(
+                    "Unable to determine repository path for {}",
+                    repo_config.handle
+                ));
+                continue;
+            }
+
+            let repo = repo.unwrap();
+
+            if repo.clone_path.exists() {
+                // Skip repository if it already exists
+                continue;
+            }
+
+            to_clone.insert(repo);
+        }
+
+        to_clone
+    }
+
+    fn suggest_clone_recursive(
+        &self,
+        to_clone: HashSet<RepositoryToClone>,
+        skipped: HashSet<RepositoryToClone>,
+    ) -> HashSet<RepositoryToClone> {
+        if to_clone.is_empty() {
+            // No repositories to clone, we can end here
+            return HashSet::new();
+        }
+
+        let (to_clone, new_skipped) = self.suggest_clone_ask(to_clone);
+        if to_clone.is_empty() {
+            // End here if there are no repositories to clone after asking
+            return HashSet::new();
+        }
+        let skipped: HashSet<_> = skipped.union(&new_skipped).cloned().collect();
+
+        let mut new_suggest_clone = HashSet::<RepositoryToClone>::new();
+        let mut cloned = HashSet::new();
+
+        let total = to_clone.len();
+        for (idx, repo) in to_clone.iter().enumerate() {
+            let desc = format!("cloning {}:", repo.clone_url.to_string().light_cyan()).light_blue();
+            let progress = Some((idx + 1, total));
+            let progress_handler: Box<dyn ProgressHandler> = if ENV.interactive_shell {
+                Box::new(SpinnerProgressHandler::new(desc, progress))
+            } else {
+                Box::new(PrintProgressHandler::new(desc, progress))
+            };
+            let progress_handler: Option<Box<&dyn ProgressHandler>> =
+                Some(Box::new(progress_handler.as_ref()));
+
+            let mut cmd_args = vec!["git".to_string(), "clone".to_string()];
+            cmd_args.push(repo.clone_url.to_string());
+            cmd_args.push(repo.clone_path.to_string_lossy().to_string());
+            cmd_args.extend(repo.clone_args.clone());
+
+            let mut cmd = TokioCommand::new(&cmd_args[0]);
+            cmd.args(&cmd_args[1..]);
+            cmd.stdout(std::process::Stdio::piped());
+            cmd.stderr(std::process::Stdio::piped());
+
+            let result = run_progress(&mut cmd, progress_handler.clone(), RunConfig::default());
+            if result.is_ok() {
+                progress_handler
+                    .clone()
+                    .map(|handler| handler.progress("cloned".to_string()));
+
+                cloned.insert(repo.clone());
+
+                let new_to_clone =
+                    self.suggest_clone_from_config(repo.clone_path.to_str().unwrap());
+                let mut num_suggested = 0;
+                for new_repo in new_to_clone {
+                    if skipped.contains(&new_repo) {
+                        // Skip repository if it was already skipped
+                        continue;
+                    }
+
+                    num_suggested += 1;
+
+                    if let Some(existing_repo) = new_suggest_clone.take(&new_repo) {
+                        let mut suggested_by = existing_repo.suggested_by.clone();
+                        suggested_by.extend(new_repo.suggested_by.clone());
+
+                        let args = if existing_repo.clone_args.is_empty()
+                            || new_repo.clone_args.is_empty()
+                        {
+                            vec![]
+                        } else {
+                            existing_repo.clone_args.clone()
+                        };
+
+                        new_suggest_clone.insert(RepositoryToClone {
+                            suggested_by: suggested_by,
+                            clone_url: existing_repo.clone_url.clone(),
+                            clone_path: existing_repo.clone_path.clone(),
+                            clone_args: args,
+                        });
+                    } else {
+                        new_suggest_clone.insert(new_repo.clone());
+                    }
+                }
+
+                let msg = if num_suggested > 0 {
+                    format!(
+                        "cloned {}",
+                        format!("({} suggested)", num_suggested).light_black()
+                    )
+                } else {
+                    format!("cloned")
+                };
+                progress_handler
+                    .clone()
+                    .map(|handler| handler.success_with_message(msg));
+            } else {
+                progress_handler
+                    .clone()
+                    .map(|handler| handler.error_with_message("failed".to_string()));
+            }
+        }
+
+        // Call it recursively so we make sure we clone all the required repositories
+        cloned.extend(self.suggest_clone_recursive(new_suggest_clone, skipped));
+
+        cloned
+    }
+
+    fn suggest_clone_ask(
+        &self,
+        to_clone: HashSet<RepositoryToClone>,
+    ) -> (Vec<RepositoryToClone>, HashSet<RepositoryToClone>) {
+        // Convert from HashSet to Vec but keep content as objects, and sort by clone_url
+        let to_clone = {
+            let mut to_clone = to_clone.into_iter().collect::<Vec<_>>();
+            to_clone.sort_by(|a, b| a.clone_url.to_string().cmp(&b.clone_url.to_string()));
+            to_clone
+        };
+
+        omni_info!("The following repositories are being suggested to clone:");
+        for repo in to_clone.iter() {
+            omni_info!(format!(
+                "- {} {}",
+                repo.clone_url.to_string().light_green(),
+                format!(
+                    "{} {}{}",
+                    "(from".to_string().light_black(),
+                    repo.suggested_by
+                        .iter()
+                        .map(|x| x.to_string().light_blue())
+                        .collect::<Vec<_>>()
+                        .join(", "),
+                    ")".to_string().light_black(),
+                )
+                .to_string()
+                .italic(),
+            ));
+        }
+
+        if self.cli_args().clone_suggested == UpCommandArgsCloneSuggestedOptions::Yes {
+            return (to_clone.clone(), HashSet::new());
+        }
+
+        let mut choices = vec![
+            ('y', "Yes, clone the suggested repositories"),
+            ('n', "No, do not clone the suggested repositories"),
+        ];
+        if to_clone.len() > 1 {
+            choices.push(('s', "Split (choose which repositories to clone)"));
+        }
+
+        let question = requestty::Question::expand("clone_suggested_repositories")
+            .ask_if_answered(true)
+            .on_esc(requestty::OnEsc::Terminate)
+            .message("Do you want to clone the suggested repositories?")
+            .choices(choices)
+            .default('y')
+            .build();
+
+        match requestty::prompt_one(question) {
+            Ok(answer) => match answer {
+                requestty::Answer::ExpandItem(expanditem) => match expanditem.key {
+                    'y' => {
+                        return (to_clone.clone(), HashSet::new());
+                    }
+                    'n' => {
+                        return (vec![], HashSet::new());
+                    }
+                    's' => {}
+                    _ => unreachable!(),
+                },
+                _ => unreachable!(),
+            },
+            Err(err) => {
+                println!("{}", format!("[✘] {:?}", err).red());
+                return (vec![], HashSet::new());
+            }
+        }
+
+        // If we get here, we want to split the repositories
+        let mut choices = vec![];
+        for repo in to_clone.iter() {
+            choices.push((repo.clone_url.to_string(), true));
+        }
+
+        let question = requestty::Question::multi_select("select_repositories_to_clone")
+            .ask_if_answered(true)
+            .on_esc(requestty::OnEsc::Terminate)
+            .message("Which repositories do you want to clone?")
+            .transform(|selected, _, backend| {
+                write!(backend, "{} selected", format!("{}", selected.len()).bold())
+            })
+            .choices_with_default(choices)
+            .should_loop(false)
+            .build();
+
+        let mut selected_to_clone = vec![];
+        match requestty::prompt_one(question) {
+            Ok(answer) => match answer {
+                requestty::Answer::ListItems(items) => {
+                    for item in items {
+                        selected_to_clone.push(to_clone[item.index].clone());
+                    }
+                }
+                _ => unreachable!(),
+            },
+            Err(err) => {
+                println!("{}", format!("[✘] {:?}", err).red());
+            }
+        };
+
+        let skipped = to_clone
+            .into_iter()
+            .filter(|repo| !selected_to_clone.contains(repo))
+            .collect::<HashSet<_>>();
+
+        (selected_to_clone, skipped)
+    }
+
     fn update_repository(&self) -> bool {
         if !self.cli_args().update_repository {
             return true;
@@ -730,6 +1188,26 @@ impl UpCommand {
 
         let config = config(".");
         config.path_repo_updates.update(&repo_id)
+    }
+}
+
+#[derive(Debug, Eq, Clone)]
+struct RepositoryToClone {
+    suggested_by: Vec<String>,
+    clone_url: GitUrl,
+    clone_path: PathBuf,
+    clone_args: Vec<String>,
+}
+
+impl Hash for RepositoryToClone {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.clone_path.hash(state);
+    }
+}
+
+impl PartialEq for RepositoryToClone {
+    fn eq(&self, other: &Self) -> bool {
+        self.clone_path == other.clone_path
     }
 }
 

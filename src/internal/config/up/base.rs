@@ -20,7 +20,12 @@ pub struct UpConfig {
 }
 
 impl UpConfig {
-    pub fn from_config_value(config_value: &ConfigValue) -> Option<Self> {
+    pub fn from_config_value(config_value: Option<ConfigValue>) -> Option<Self> {
+        if config_value.is_none() {
+            return None;
+        }
+
+        let config_value = config_value.unwrap();
         if !config_value.is_array() {
             return None;
         }
