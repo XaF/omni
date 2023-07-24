@@ -6,6 +6,7 @@ use serde::Deserialize;
 use serde::Serialize;
 
 use crate::internal::config::config_loader;
+use crate::internal::config::flush_config_loader;
 use crate::internal::config::global_config_loader;
 use crate::internal::config::up::UpConfig;
 use crate::internal::config::ConfigSource;
@@ -52,6 +53,21 @@ pub fn config(path: &str) -> OmniConfig {
         .to_owned();
     let mut config_per_path = CONFIG_PER_PATH.lock().unwrap();
     config_per_path.get(&path).clone()
+}
+
+pub fn flush_config(path: &str) {
+    let path = std::fs::canonicalize(path)
+        .unwrap_or(path.to_owned().into())
+        .to_str()
+        .unwrap()
+        .to_owned();
+
+    // Flush the config loader for the path
+    flush_config_loader(&path);
+
+    // Then flush the configuration
+    let mut config_per_path = CONFIG_PER_PATH.lock().unwrap();
+    config_per_path.config.remove(&path);
 }
 
 pub fn global_config() -> OmniConfig {

@@ -41,6 +41,16 @@ pub fn config_loader(path: &str) -> ConfigLoader {
     config_loader_per_path.get(&path).clone()
 }
 
+pub fn flush_config_loader(path: &str) {
+    let path = std::fs::canonicalize(path)
+        .unwrap_or(path.to_owned().into())
+        .to_str()
+        .unwrap()
+        .to_owned();
+    let mut config_loader_per_path = CONFIG_LOADER_PER_PATH.lock().unwrap();
+    config_loader_per_path.loaders.remove(&path);
+}
+
 pub fn global_config_loader() -> ConfigLoader {
     CONFIG_LOADER_GLOBAL.clone()
 }

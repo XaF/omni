@@ -5,11 +5,13 @@ pub use config_value::ConfigValue;
 
 pub mod loader;
 pub use loader::config_loader;
+pub use loader::flush_config_loader;
 pub use loader::global_config_loader;
 pub use loader::ConfigLoader;
 
 pub mod parser;
 pub use parser::config;
+pub use parser::flush_config;
 pub use parser::global_config;
 pub use parser::CacheConfig;
 pub use parser::CdConfig;

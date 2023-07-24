@@ -22,6 +22,7 @@ use crate::internal::commands::builtin::HelpCommand;
 use crate::internal::commands::Command;
 use crate::internal::config::config;
 use crate::internal::config::config_loader;
+use crate::internal::config::flush_config;
 use crate::internal::config::up::run_progress;
 use crate::internal::config::up::utils::PrintProgressHandler;
 use crate::internal::config::up::utils::RunConfig;
@@ -1187,7 +1188,13 @@ impl UpCommand {
         let repo_id = repo_id.unwrap();
 
         let config = config(".");
-        config.path_repo_updates.update(&repo_id)
+        let updated = config.path_repo_updates.update(&repo_id);
+
+        if updated {
+            flush_config(".");
+        }
+
+        updated
     }
 }
 
