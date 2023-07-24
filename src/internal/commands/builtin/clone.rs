@@ -370,14 +370,11 @@ impl CloneCommand {
                 exit(1);
             }
 
-            eprintln!(
-                "{}",
-                format!("$ omni up --update-user-config").light_black()
-            );
+            eprintln!("{}", format!("$ omni up --bootstrap").light_black());
 
             let up_cmd = UpCommand::new_command();
             up_cmd.exec(
-                vec!["--update-user-config".to_string()],
+                vec!["--bootstrap".to_string()],
                 Some(vec!["up".to_string()]),
             );
 
