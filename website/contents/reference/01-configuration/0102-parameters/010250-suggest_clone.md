@@ -17,7 +17,7 @@ Contains a list of objects with the following parameters:
 
 | Parameter        | Type      | Description                                           |
 |------------------|-----------|-------------------------------------------------------|
-| `handle` | string | The repository handle, corresponding to the URL allowing the clone the repository |
+| `handle` | string | The repository handle, corresponding to the URL allowing to clone the repository |
 | `args` | string | The optional arguments to pass to the `git clone` command |
 
 
