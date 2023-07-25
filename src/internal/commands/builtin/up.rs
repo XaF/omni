@@ -495,6 +495,8 @@ impl UpCommand {
     }
 
     pub fn autocomplete(&self, _comp_cword: usize, _argv: Vec<String>) {
+        println!("--bootstrap");
+        println!("--clone-suggested");
         println!("--trust");
         println!("--update-repository");
         println!("--update-user-config");
