@@ -31,6 +31,8 @@ use crate::omni_info;
 struct TidyCommandArgs {
     yes: bool,
     search_paths: HashSet<String>,
+    up_all: bool,
+    up_args: Vec<String>,
 }
 
 impl TidyCommandArgs {
@@ -52,6 +54,16 @@ impl TidyCommandArgs {
                     .short('p')
                     .long("search-path")
                     .action(clap::ArgAction::Append),
+            )
+            .arg(
+                clap::Arg::new("up-all")
+                    .long("up-all")
+                    .action(clap::ArgAction::SetTrue),
+            )
+            .arg(
+                clap::Arg::new("up-args")
+                    .action(clap::ArgAction::Append)
+                    .last(true),
             )
             .try_get_matches_from(&parse_argv);
 
@@ -90,9 +102,20 @@ impl TidyCommandArgs {
                 HashSet::new()
             };
 
+        let up_args = if let Some(up_args) = matches.get_many::<String>("up-args").clone() {
+            up_args
+                .into_iter()
+                .map(|arg| arg.to_string())
+                .collect::<Vec<_>>()
+        } else {
+            vec![]
+        };
+
         Self {
             yes: *matches.get_one::<bool>("yes").unwrap_or(&false),
             search_paths: search_paths,
+            up_all: *matches.get_one::<bool>("up-all").unwrap_or(&false),
+            up_args: up_args,
         }
     }
 }
@@ -160,6 +183,19 @@ impl TidyCommand {
                         .to_string(),
                     ),
                 },
+                SyntaxOptArg {
+                    name: "--up-all".to_string(),
+                    desc: Some(
+                        concat!(
+                            "Run \x1B[3momni up\x1B[0m in all the repositories ",
+                            "with an omni configuration; any argument passed to the ",
+                            "\x1B[3mtidy\x1B[0m command after \x1B[3m--\x1B[0m will ",
+                            "be passed to \x1B[3momni up\x1B[0m (e.g. ",
+                            "\x1B[3momni tidy --up-all -- --update-repository\x1B[0m)",
+                        )
+                        .to_string(),
+                    ),
+                },
             ],
         })
     }
@@ -173,16 +209,20 @@ impl TidyCommand {
             unreachable!();
         }
 
-        let repositories = self.list_repositories();
+        let all_repositories = self.list_repositories();
 
         // Filter the repositories that are already organized
-        let repositories = repositories
+        let repositories = all_repositories
             .iter()
             .filter(|r| !r.organized)
             .collect::<Vec<_>>();
 
         if repositories.is_empty() {
-            omni_info!("Everything is already tidied up! \u{1F389}"); // party popper emoji code
+            if self.cli_args().up_all {
+                self.up_repositories(&all_repositories);
+            } else {
+                omni_info!("Everything is already tidied up! \u{1F389}"); // party popper emoji code
+            }
             exit(0);
         }
 
@@ -245,7 +285,11 @@ impl TidyCommand {
         };
 
         if selected_repositories.is_empty() {
-            omni_info!("Nothing to do! \u{1F971}"); // yawning face emoji
+            if self.cli_args().up_all {
+                self.up_repositories(&all_repositories);
+            } else {
+                omni_info!("Nothing to do! \u{1F971}"); // yawning face emoji
+            }
             exit(0);
         }
 
@@ -299,7 +343,10 @@ impl TidyCommand {
         progress_bar.map(|pb| pb.finish_and_clear());
 
         // TODO: should we offer to up the moved repositories ?
-        // TODO: should we support --up-all which will offer to up _all_ the repositories ?
+
+        if self.cli_args().up_all {
+            self.up_repositories(&all_repositories);
+        }
 
         exit(0);
     }
@@ -314,6 +361,7 @@ impl TidyCommand {
         println!("--search-path");
         println!("-y");
         println!("--yes");
+        println!("--up-all");
         println!("-h");
         println!("--help");
         exit(0);
@@ -423,6 +471,80 @@ impl TidyCommand {
         spinner.clone().map(|s| s.finish_and_clear());
 
         tidy_repos.into_iter().collect::<Vec<_>>()
+    }
+
+    fn up_repositories(&self, repositories: &Vec<TidyGitRepo>) {
+        let current_exe = std::env::current_exe();
+        if current_exe.is_err() {
+            omni_error!("failed to get current executable path");
+            exit(1);
+        }
+        let current_exe = current_exe.unwrap();
+
+        // We get all paths so we don't have to know if the repository
+        // was organized or not; we also use an hashset to remove duplicates
+        // and then convert back to a vector to sort the paths
+        let mut all_paths = repositories
+            .iter()
+            .map(|repo| vec![repo.current_path.clone(), repo.expected_path.clone()])
+            .flatten()
+            .collect::<HashSet<_>>()
+            .into_iter()
+            .collect::<Vec<_>>();
+        all_paths.sort();
+
+        let mut any_error = false;
+        for repo_path in all_paths.iter() {
+            if !repo_path.exists() {
+                continue;
+            }
+
+            let config_exists = vec![".omni.yaml", ".omni/config.yaml"]
+                .iter()
+                .any(|file| repo_path.join(file).exists());
+            if !config_exists {
+                continue;
+            }
+
+            omni_info!(format!(
+                "running {} in {}",
+                "omni up".to_string().light_yellow(),
+                repo_path.display().to_string().light_cyan(),
+            ));
+
+            let mut omni_up_command = std::process::Command::new(current_exe.clone());
+            omni_up_command.arg("up");
+            omni_up_command.args(self.cli_args().up_args.clone());
+            omni_up_command.current_dir(repo_path.clone());
+            omni_up_command.env_remove("OMNI_FORCE_UPDATE");
+            omni_up_command.env("OMNI_SKIP_UPDATE", "1");
+
+            let child = omni_up_command.spawn();
+            match child {
+                Ok(mut child) => {
+                    let status = child.wait();
+                    match status {
+                        Ok(status) => {
+                            if !status.success() {
+                                any_error = true;
+                            }
+                        }
+                        Err(err) => {
+                            omni_error!(format!("failed to wait on process: {}", err));
+                        }
+                    }
+                }
+                Err(err) => {
+                    omni_error!(format!("failed to spawn process: {}", err));
+                }
+            }
+        }
+
+        omni_info!(format!("done!").light_green());
+        if any_error {
+            omni_error!(format!("some errors occurred!").light_red());
+            exit(1);
+        }
     }
 }
 
