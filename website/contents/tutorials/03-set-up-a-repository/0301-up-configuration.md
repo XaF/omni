@@ -7,7 +7,7 @@ import TabItem from '@theme/TabItem';
 
 # Write the `up` configuration
 
-Omni can be added to manage a repository dependencies pretty easily: just create a `.omni.yaml` file at the root of your repository and define the `up` configuration for your dependencies.
+Omni can be added to manage a repository dependencies pretty easily: just create an `.omni.yaml` file at the root of your repository and define the `up` configuration for your dependencies.
 
 Let's consider a simple repository with two tools we want to work on. One in Go, and one in Python:
 

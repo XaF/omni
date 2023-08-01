@@ -8,7 +8,7 @@ Omni offers [a number of configuration parameters](/reference/configuration/para
 
 ## Create a configuration file
 
-Omni can work without configuration file and will use the default parameters. However, we want to make it a bit more personnal, so let's create the main global configuration file.
+Omni can work without configuration file and will use the default parameters. However, we want to make it a bit more personal, so let's create the main global configuration file.
 
 If you're not twiggling with the `XDG_CONFIG_HOME` environment variable, you can create this file at `~/.config/omni/config.yaml`.
 
