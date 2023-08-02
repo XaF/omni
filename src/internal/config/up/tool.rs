@@ -84,7 +84,7 @@ impl UpConfigTool {
 
     pub fn down(&self, progress: Option<(usize, usize)>) -> Result<(), UpError> {
         match self {
-            UpConfigTool::Bash(config) => config.up(progress),
+            UpConfigTool::Bash(config) => config.down(progress),
             UpConfigTool::Bundler(config) => config.down(progress),
             UpConfigTool::Custom(config) => config.down(progress),
             UpConfigTool::Go(config) => config.down(progress),
