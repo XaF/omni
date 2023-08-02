@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 use std::os::unix::process::CommandExt;
-use std::path::Path;
+use std::path::PathBuf;
 use std::process::Command as ProcessCommand;
 
 use crate::internal::commands::utils::abs_or_rel_path;
@@ -150,12 +150,9 @@ impl ConfigCommand {
         let current_dir = std::env::current_dir().expect("Failed to get current directory");
         std::env::set_var("OMNI_CWD", current_dir.display().to_string());
 
-        let config_file = self.source();
-        let config_dir = Path::new(&config_file)
-            .parent()
-            .expect("Failed to get config directory");
-        if std::env::set_current_dir(config_dir).is_err() {
-            println!("Failed to change directory to {}", config_dir.display());
+        let project_root = git_show_toplevel();
+        if std::env::set_current_dir(&project_root).is_err() {
+            println!("Failed to change directory to {}", project_root.display());
         }
 
         ProcessCommand::new("bash")
@@ -166,5 +163,22 @@ impl ConfigCommand {
             .exec();
 
         panic!("Something went wrong");
+    }
+}
+
+fn git_show_toplevel() -> PathBuf {
+    let error_text = "Failed to exec git to get project root";
+
+    let cmd = ProcessCommand::new("git")
+        .arg("rev-parse")
+        .arg("--show-toplevel")
+        .output()
+        .expect(error_text);
+
+    if !cmd.status.success() {
+        panic!("Failed to get git project root");
+    } else {
+        let s = std::str::from_utf8(&cmd.stdout).expect("Failed to parse git output as utf8");
+        PathBuf::from(s.trim_end_matches("\n"))
     }
 }
