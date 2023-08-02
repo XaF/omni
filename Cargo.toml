@@ -14,9 +14,16 @@ exclude = [
     "website/*",
 ]
 
+[features]
+unstable-apis = [] # export apis with no stability guarantees
+
+[lib]
+name = "omni"
+
 [[bin]]
 name = "omni"
 path = "src/main.rs"
+required-features = ["unstable-apis"]
 
 [build-dependencies]
 time = { version = "0.3.24", features = ["serde-well-known"] }

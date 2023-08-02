@@ -1,15 +1,14 @@
 use std::env;
 use std::process::exit;
 
-mod internal;
-use internal::command_loader;
-use internal::dynenv::update_dynamic_env;
-use internal::dynenv::DynamicEnvExportMode;
-use internal::env::determine_shell;
-use internal::git::auto_path_update;
-use internal::hooks::init_hook;
-use internal::hooks::uuid_hook;
-use internal::StringColor;
+use omni::command_loader;
+use omni::dynenv::update_dynamic_env;
+use omni::dynenv::DynamicEnvExportMode;
+use omni::env::determine_shell;
+use omni::git::auto_path_update;
+use omni::hooks::init_hook;
+use omni::hooks::uuid_hook;
+use omni::StringColor;
 
 fn complete_omni_subcommand(argv: &[String]) {
     let comp_cword = env::var("COMP_CWORD")
