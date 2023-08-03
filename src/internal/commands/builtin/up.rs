@@ -39,6 +39,8 @@ use crate::internal::git::safe_git_url_parse;
 use crate::internal::git::ORG_LOADER;
 use crate::internal::git_env;
 use crate::internal::user_interface::StringColor;
+use crate::internal::workdir;
+use crate::internal::workdir_or_init;
 use crate::internal::CACHE;
 use crate::internal::ENV;
 use crate::omni_error;
@@ -348,23 +350,19 @@ impl UpCommand {
             unreachable!();
         }
 
-        let git = git_env(".");
-        if !git.in_repo() {
-            omni_error!("can only be run from a git repository");
-            exit(1);
-        }
-        let git_root = git.root().unwrap();
-
-        // Switch directory to the git repository root so it can
-        // be assumed that all up commands will be ran from there
-        // (e.g. custom commands, bundler commands, etc.)
-        if let Err(err) = std::env::set_current_dir(&git_root) {
-            omni_error!(format!(
-                "failed to change directory {}: {}",
-                format!("({})", git_root).light_black(),
-                format!("{}", err).red()
-            ));
-            exit(1);
+        let wd = workdir(".");
+        if let Some(wd_root) = wd.root() {
+            // Switch directory to the work directory root so it can
+            // be assumed that all up commands will be ran from there
+            // (e.g. custom commands, bundler commands, etc.)
+            if let Err(err) = std::env::set_current_dir(&wd_root) {
+                omni_error!(format!(
+                    "failed to change directory {}: {}",
+                    format!("({})", wd_root).light_black(),
+                    format!("{}", err).red()
+                ));
+                exit(1);
+            }
         }
 
         if !self.update_repository() {
@@ -406,6 +404,11 @@ impl UpCommand {
             }
         }
 
+        if self.is_down() && (!wd.in_workdir() || !wd.has_id()) {
+            omni_info!(format!("Outside of a work directory, nothing to do."));
+            exit(0);
+        }
+
         let has_up_config = !(up_config.is_none() || !up_config.clone().unwrap().has_steps());
         if !has_up_config && suggest_config.is_none() && !suggest_clone && env_vars.is_none() {
             omni_info!(format!(
@@ -425,6 +428,13 @@ impl UpCommand {
             exit(0);
         }
 
+        // If we get here, we're about to run the command, so make sure we
+        // have a workdir id
+        if let Err(err) = workdir_or_init(".") {
+            omni_error!(format!("{}", err));
+            exit(1);
+        }
+
         // No matter what's happening after, we want a clean cache for that
         // repository, as we're rebuilding the up environment from scratch
         UpConfig::clear_cache();
@@ -432,8 +442,8 @@ impl UpCommand {
         // If there are environment variables to set, do it
         if env_vars.is_some() {
             if let Err(err) = Cache::exclusive(|cache| {
-                let git_env = git_env(".");
-                let repo_id = git_env.id();
+                let wd = workdir(".");
+                let repo_id = wd.id();
                 if repo_id.is_none() {
                     return false;
                 }
@@ -511,9 +521,9 @@ impl UpCommand {
         self.subcommand() == "up"
     }
 
-    // fn is_down(&self) -> bool {
-    // self.subcommand() == "down"
-    // }
+    fn is_down(&self) -> bool {
+        self.subcommand() == "down"
+    }
 
     fn trust(&self) -> bool {
         match self.cli_args().trust {
@@ -524,13 +534,16 @@ impl UpCommand {
         }
 
         let git = git_env(".");
-        for org in ORG_LOADER.orgs() {
-            if org.config.trusted && org.hosts_repo(&git.origin().unwrap()) {
-                return true;
+        if git.in_repo() && git.has_origin() {
+            for org in ORG_LOADER.orgs() {
+                if org.config.trusted && org.hosts_repo(&git.origin().unwrap()) {
+                    return true;
+                }
             }
         }
 
-        let repo_id = git.id();
+        let workdir = workdir(".");
+        let repo_id = workdir.id();
         if repo_id.is_some() {
             if let Some(trusted_repos) = &CACHE.trusted_repositories {
                 if trusted_repos
@@ -592,8 +605,8 @@ impl UpCommand {
     }
 
     fn add_trust(&self) -> bool {
-        let git = git_env(".");
-        let repo_id = git.id();
+        let wd = workdir(".");
+        let repo_id = wd.id();
         if repo_id.is_some() {
             let updated = Cache::exclusive(|cache| {
                 let mut trusted = vec![];

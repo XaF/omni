@@ -12,7 +12,7 @@ use crate::internal::commands::utils::abs_or_rel_path;
 use crate::internal::commands::utils::split_name;
 use crate::internal::config::config;
 use crate::internal::config::CommandSyntax;
-use crate::internal::env::git_env;
+use crate::internal::workdir;
 
 #[derive(Debug, Clone)]
 pub struct MakefileCommand {
@@ -37,7 +37,7 @@ impl MakefileCommand {
         let mut path = Path::new(abs_path.to_str().unwrap());
 
         // Get the git environment
-        let git_env = git_env(path.to_str().unwrap());
+        let wd = workdir(path.to_str().unwrap());
 
         let mut commands = vec![];
         while let Some(parent) = path.parent() {
@@ -65,7 +65,7 @@ impl MakefileCommand {
                 }
             }
 
-            if git_env.in_repo() && git_env.root().unwrap() == path.to_str().unwrap() {
+            if wd.in_workdir() && wd.root().unwrap() == path.to_str().unwrap() {
                 break;
             }
 

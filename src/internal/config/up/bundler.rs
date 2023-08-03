@@ -16,8 +16,8 @@ use crate::internal::config::up::utils::RunConfig;
 use crate::internal::config::up::utils::SpinnerProgressHandler;
 use crate::internal::config::up::UpError;
 use crate::internal::config::ConfigValue;
-use crate::internal::git_env;
 use crate::internal::user_interface::StringColor;
+use crate::internal::workdir;
 use crate::internal::Cache;
 use crate::internal::ENV;
 
@@ -56,8 +56,8 @@ impl UpConfigBundler {
             .map(|progress_handler| progress_handler.progress("updating cache".to_string()));
 
         let result = Cache::exclusive(|cache| {
-            let git_env = git_env(".");
-            let repo_id = git_env.id();
+            let workdir = workdir(".");
+            let repo_id = workdir.id();
             if repo_id.is_none() {
                 return false;
             }

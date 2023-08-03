@@ -9,8 +9,8 @@ use serde_json;
 use shell_escape::escape;
 
 use crate::internal::config::up::ASDF_PATH;
-use crate::internal::env::git_env;
 use crate::internal::user_interface::StringColor;
+use crate::internal::workdir;
 use crate::internal::Cache;
 
 const DATA_SEPARATOR: &str = "\x1C";
@@ -150,15 +150,15 @@ impl DynamicEnv {
     pub fn id(&self) -> u64 {
         self.id
             .get_or_init(|| {
-                // Get the git environment
+                // Get the workdir environment
                 let path = self.path.clone().unwrap_or(".".to_string());
-                let git_env = git_env(&path);
-                if !git_env.in_repo() {
+                let workdir = workdir(&path);
+                if !workdir.in_workdir() {
                     return 0;
                 }
 
-                // Get the repository id
-                let repo_id = git_env.id();
+                // Get the workdir id
+                let repo_id = workdir.id();
                 if repo_id.is_none() {
                     return 0;
                 }
@@ -182,10 +182,10 @@ impl DynamicEnv {
                 hasher.update(ppid.as_bytes());
                 hasher.update(DATA_SEPARATOR.as_bytes());
 
-                // Let's add the repo location and the repo id to the hash
-                hasher.update(git_env.root().unwrap().as_bytes());
+                // Let's add the workdir location and the workdir id to the hash
+                hasher.update(workdir.root().unwrap().as_bytes());
                 hasher.update(DATA_SEPARATOR.as_bytes());
-                hasher.update(git_env.id().unwrap().as_bytes());
+                hasher.update(workdir.id().unwrap().as_bytes());
                 hasher.update(DATA_SEPARATOR.as_bytes());
 
                 // Add the requested environments to the hash, sorted by key
@@ -223,9 +223,9 @@ impl DynamicEnv {
 
         let mut up_env = None;
         let path = self.path.clone().unwrap_or(".".to_string());
-        let git_env = git_env(&path);
-        if git_env.in_repo() {
-            let repo_id = git_env.id();
+        let workdir = workdir(&path);
+        if workdir.in_workdir() {
+            let repo_id = workdir.id();
             if repo_id.is_none() {
                 return;
             }

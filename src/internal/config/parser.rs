@@ -11,11 +11,11 @@ use crate::internal::config::global_config_loader;
 use crate::internal::config::up::UpConfig;
 use crate::internal::config::ConfigSource;
 use crate::internal::config::ConfigValue;
-use crate::internal::env::git_env;
 use crate::internal::env::ENV;
 use crate::internal::env::HOME;
 use crate::internal::env::OMNI_GIT;
 use crate::internal::git::update_git_repo;
+use crate::internal::workdir;
 
 lazy_static! {
     #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -87,13 +87,13 @@ impl OmniConfigPerPath {
     }
 
     pub fn get(&mut self, path: &str) -> &OmniConfig {
-        let mut key = "/";
-
         // Get the git root path, if any
-        let git_repo = git_env(path);
-        if git_repo.in_repo() {
-            key = git_repo.root().unwrap();
-        }
+        let wd = workdir(path);
+        let key = if let Some(wd_root) = wd.root() {
+            wd_root
+        } else {
+            path
+        };
 
         // Get the config for the path
         if !self.config.contains_key(key) {

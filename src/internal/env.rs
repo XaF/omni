@@ -1,14 +1,23 @@
 use std::collections::HashMap;
 use std::collections::HashSet;
+use std::fs::OpenOptions;
+use std::io::Write;
+use std::path::PathBuf;
 use std::sync::Mutex;
 
+use blake3::Hasher;
 use git2::Repository;
 use is_terminal::IsTerminal;
 use lazy_static::lazy_static;
 use once_cell::sync::OnceCell;
+use petname;
 
 use crate::internal::config::OrgConfig;
 use crate::internal::git::safe_git_url_parse;
+use crate::internal::user_interface::StringColor;
+use crate::omni_warning;
+
+extern crate machine_uid;
 
 lazy_static! {
     #[derive(Debug)]
@@ -16,6 +25,9 @@ lazy_static! {
 
     #[derive(Debug)]
     pub static ref GIT_ENV: Mutex<GitRepoEnvByPath> = Mutex::new(GitRepoEnvByPath::new());
+
+    #[derive(Debug)]
+    static ref WORKDIR_ENV: Mutex<WorkDirEnvByPath> = Mutex::new(WorkDirEnvByPath::new());
 
     #[derive(Debug)]
     pub static ref HOME: String = std::env::var("HOME").expect("Failed to determine user's home directory");
@@ -39,6 +51,84 @@ pub fn git_env(path: &str) -> GitRepoEnv {
         .to_owned();
     let mut git_env = GIT_ENV.lock().unwrap();
     git_env.get(&path).clone()
+}
+
+pub fn workdir(path: &str) -> WorkDirEnv {
+    let path = std::fs::canonicalize(path)
+        .unwrap_or(path.to_owned().into())
+        .to_str()
+        .unwrap()
+        .to_owned();
+    let mut workdir_env = WORKDIR_ENV.lock().unwrap();
+    workdir_env.get(&path).clone()
+}
+
+pub fn workdir_or_init(path: &str) -> Result<WorkDirEnv, String> {
+    let path = std::fs::canonicalize(path)
+        .unwrap_or(path.to_owned().into())
+        .to_str()
+        .unwrap()
+        .to_owned();
+    let mut workdir_env = WORKDIR_ENV.lock().unwrap();
+
+    let wd = workdir_env.get(&path).clone();
+    if wd.in_workdir() && wd.has_id() {
+        return Ok(wd);
+    }
+
+    let wd_root = if let Some(wd_root) = wd.root() {
+        wd_root
+    } else {
+        &path
+    };
+
+    workdir_env.remove(&path);
+
+    let local_config_dir = PathBuf::from(wd_root).join(".omni");
+    if let Err(err) = std::fs::create_dir_all(local_config_dir.clone()) {
+        return Err(format!(
+            "failed to create directory '{}': {}",
+            local_config_dir.display(),
+            err
+        ));
+    }
+
+    // Open the 'id' file in the local config directory in write/create mode
+    // and write a uuid to it
+    let id_file = local_config_dir.join("id");
+    match OpenOptions::new()
+        .write(true)
+        .create(true)
+        .truncate(true)
+        .open(id_file.clone())
+    {
+        Ok(mut file) => {
+            let id = WorkDirEnv::generate_id();
+            if let Err(err) = file.write_all(id.as_bytes()) {
+                return Err(format!(
+                    "failed to write to '{}': {}",
+                    id_file.display(),
+                    err,
+                ));
+            }
+
+            omni_warning!(format!(
+                "generated workdir id {}",
+                id.to_string().light_yellow()
+            ));
+        }
+        Err(err) => {
+            return Err(format!("failed to open '{}': {}", id_file.display(), err,));
+        }
+    }
+
+    let wd = workdir_env.get(&path).clone();
+
+    if !wd.in_workdir() {
+        return Err(format!("failed to create workdir for '{}'", path));
+    }
+
+    Ok(wd)
 }
 
 #[derive(Debug, Clone)]
@@ -258,11 +348,12 @@ impl GitRepoEnv {
             }
         }
 
+        git_repo_env.in_repo = true;
+        git_repo_env.root = git_repo_root;
+
         match repository.find_remote("origin") {
             Ok(remote) => {
                 if let Some(url) = remote.url() {
-                    git_repo_env.in_repo = true;
-                    git_repo_env.root = git_repo_root;
                     git_repo_env.origin = Some(url.to_string());
                     return git_repo_env;
                 }
@@ -301,8 +392,6 @@ impl GitRepoEnv {
                                 match repository.find_remote(upstream_name) {
                                     Ok(remote) => {
                                         if let Some(url) = remote.url() {
-                                            git_repo_env.in_repo = true;
-                                            git_repo_env.root = git_repo_root;
                                             git_repo_env.origin = Some(url.to_string());
                                             return git_repo_env;
                                         }
@@ -325,8 +414,6 @@ impl GitRepoEnv {
                     match repository.find_remote(remote.unwrap()) {
                         Ok(remote) => {
                             if let Some(url) = remote.url() {
-                                git_repo_env.in_repo = true;
-                                git_repo_env.root = git_repo_root;
                                 git_repo_env.origin = Some(url.to_string());
                                 return git_repo_env;
                             }
@@ -343,6 +430,10 @@ impl GitRepoEnv {
 
     pub fn in_repo(&self) -> bool {
         self.in_repo
+    }
+
+    pub fn has_origin(&self) -> bool {
+        self.in_repo && self.origin.is_some()
     }
 
     pub fn root(&self) -> Option<&str> {
@@ -374,6 +465,170 @@ impl GitRepoEnv {
                 None
             })
             .clone()
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct WorkDirEnvByPath {
+    env_by_path: HashMap<String, WorkDirEnv>,
+}
+
+impl WorkDirEnvByPath {
+    fn new() -> Self {
+        Self {
+            env_by_path: HashMap::new(),
+        }
+    }
+
+    pub fn get(&mut self, path: &str) -> &WorkDirEnv {
+        if !self.env_by_path.contains_key(path) {
+            self.env_by_path
+                .insert(path.to_string(), WorkDirEnv::new(path));
+        }
+        self.env_by_path.get(path).unwrap()
+    }
+
+    pub fn remove(&mut self, path: &str) {
+        self.env_by_path.remove(path);
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct WorkDirEnv {
+    in_workdir: bool,
+    root: Option<String>,
+    id: OnceCell<Option<String>>,
+}
+
+impl WorkDirEnv {
+    fn new(path: &str) -> Self {
+        let mut workdir_env = Self {
+            in_workdir: false,
+            root: None,
+            id: OnceCell::new(),
+        };
+
+        let git = git_env(&path);
+        if git.in_repo() {
+            workdir_env.in_workdir = true;
+            workdir_env.root = git.root().map(|s| s.to_string());
+        } else {
+            // Start from `path` and go up until finding a `.omni/id` file
+            let mut path = PathBuf::from(path.clone());
+            loop {
+                if let Some(id) = Self::read_id_file(&path.to_str().unwrap().to_string()) {
+                    workdir_env.in_workdir = true;
+                    workdir_env.root = Some(path.to_str().unwrap().to_string());
+                    if let Err(_) = workdir_env.id.set(Some(id)) {
+                        unreachable!();
+                    }
+                    break;
+                }
+                if !path.pop() {
+                    break;
+                }
+            }
+        }
+
+        workdir_env
+    }
+
+    pub fn in_workdir(&self) -> bool {
+        self.in_workdir
+    }
+
+    pub fn root(&self) -> Option<&str> {
+        match &self.root {
+            Some(root) => Some(root.as_str()),
+            None => None,
+        }
+    }
+
+    pub fn id(&self) -> Option<String> {
+        self.id
+            .get_or_init(|| {
+                if self.root.is_none() {
+                    return None;
+                }
+
+                if let Some(id) = Self::read_id_file(self.root.as_ref().unwrap()) {
+                    return Some(id);
+                }
+
+                if let Some(id) = git_env(&self.root.as_ref().unwrap()).id() {
+                    return Some(id);
+                }
+
+                None
+            })
+            .clone()
+    }
+
+    pub fn has_id(&self) -> bool {
+        self.id().is_some()
+    }
+
+    fn read_id_file(path: &str) -> Option<String> {
+        let id_file = PathBuf::from(path).join(".omni/id");
+        if id_file.exists() {
+            if let Ok(id) = std::fs::read_to_string(id_file) {
+                // if the id is valid, then we can use it, otherwise ignore it
+                let id = id.trim();
+                if Self::verify_id(&id) {
+                    return Some(id.to_string());
+                }
+            }
+        }
+        None
+    }
+
+    fn generate_id() -> String {
+        let petname_id = petname::petname(3, "-");
+        format!("{}:{:016x}", petname_id, Self::machine_id_hash(&petname_id))
+    }
+
+    fn verify_id(id: &str) -> bool {
+        // Split id over ':'
+        let id_parts: Vec<&str> = id.split(':').collect();
+
+        // Check if id has 2 parts
+        if id_parts.len() != 2 {
+            return false;
+        }
+
+        // Check if first part is words with lowercase letters separated by '-'
+        if !id_parts[0]
+            .chars()
+            .all(|c| c.is_ascii_lowercase() || c == '-')
+        {
+            return false;
+        }
+
+        // Check if second part is 16 characters long
+        if id_parts[1].len() != 16 {
+            return false;
+        }
+
+        // Check if second part is a hexadecimal u64
+        if let Ok(hash_u64) = u64::from_str_radix(id_parts[1], 16) {
+            // Compare hash_u64 with machine_id_hash
+            return hash_u64 == WorkDirEnv::machine_id_hash(id_parts[0]);
+        }
+
+        false
+    }
+
+    fn machine_id_hash(uuid: &str) -> u64 {
+        let machine_id = machine_uid::get().unwrap();
+
+        let mut hasher = Hasher::new();
+        hasher.update(machine_id.as_bytes());
+        hasher.update(uuid.as_bytes());
+
+        let hash_bytes = hasher.finalize();
+        let hash_u64 = u64::from_le_bytes(hash_bytes.as_bytes()[..8].try_into().unwrap());
+
+        hash_u64
     }
 }
 

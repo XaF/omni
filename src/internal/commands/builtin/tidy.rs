@@ -559,7 +559,7 @@ struct TidyGitRepo {
 impl TidyGitRepo {
     fn new(path: &str) -> Option<Self> {
         let git_env = git_env(path);
-        if !git_env.in_repo() || git_env.origin().is_none() {
+        if !git_env.in_repo() || !git_env.has_origin() {
             return None;
         }
         let origin_url = git_env.origin().unwrap();

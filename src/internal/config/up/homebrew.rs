@@ -16,9 +16,9 @@ use crate::internal::config::up::utils::RunConfig;
 use crate::internal::config::up::utils::SpinnerProgressHandler;
 use crate::internal::config::up::UpError;
 use crate::internal::config::ConfigValue;
-use crate::internal::env::git_env;
 use crate::internal::env::ENV;
 use crate::internal::user_interface::StringColor;
+use crate::internal::workdir;
 use crate::omni_warning;
 
 static LOCAL_TAP: &str = "omni/local";
@@ -84,8 +84,8 @@ impl UpConfigHomebrew {
         let mut return_value = Ok(());
 
         if let Err(err) = Cache::exclusive(|cache| {
-            let git_env = git_env(".");
-            let repo_id = git_env.id();
+            let workdir = workdir(".");
+            let repo_id = workdir.id();
             if repo_id.is_none() {
                 return false;
             }
@@ -319,8 +319,8 @@ impl HomebrewTap {
             let mut installed = Vec::new();
             let mut tapped = Vec::new();
 
-            let git_env = git_env(".");
-            let repo_id = git_env.id();
+            let workdir = workdir(".");
+            let repo_id = workdir.id();
             if repo_id.is_none() {
                 return false;
             }
@@ -671,8 +671,8 @@ impl HomebrewInstall {
             let mut installed = Vec::new();
             let mut tapped = Vec::new();
 
-            let git_env = git_env(".");
-            let repo_id = git_env.id();
+            let workdir = workdir(".");
+            let repo_id = workdir.id();
             if repo_id.is_none() {
                 return false;
             }

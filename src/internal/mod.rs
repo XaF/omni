@@ -36,6 +36,8 @@ pub use config::UpConfigTool;
 
 pub mod env;
 pub use env::git_env;
+pub use env::workdir;
+pub use env::workdir_or_init;
 pub use env::ENV;
 pub use env::GIT_ENV;
 

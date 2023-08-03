@@ -8,8 +8,8 @@ use crate::internal::config::up::UpConfigTool;
 use crate::internal::config::up::UpError;
 use crate::internal::config::ConfigValue;
 use crate::internal::dynenv::update_dynamic_env_for_command;
-use crate::internal::git_env;
 use crate::internal::user_interface::colors::StringColor;
+use crate::internal::workdir;
 use crate::internal::Cache;
 use crate::omni_warning;
 
@@ -105,8 +105,8 @@ impl UpConfig {
 
     pub fn clear_cache() {
         if let Err(err) = Cache::exclusive(|cache| {
-            let git_env = git_env(".");
-            let repo_id = git_env.id();
+            let workdir = workdir(".");
+            let repo_id = workdir.id();
             if repo_id.is_none() {
                 return false;
             }

@@ -24,8 +24,8 @@ use crate::internal::config::up::utils::RunConfig;
 use crate::internal::config::up::utils::SpinnerProgressHandler;
 use crate::internal::config::up::UpError;
 use crate::internal::config::ConfigValue;
-use crate::internal::env::git_env;
 use crate::internal::user_interface::StringColor;
+use crate::internal::workdir;
 use crate::internal::ENV;
 
 lazy_static! {
@@ -191,8 +191,8 @@ impl UpConfigAsdfBase {
         let result = Cache::exclusive(|cache| {
             let mut updated = false;
 
-            let git_env = git_env(".");
-            let repo_id = git_env.id();
+            let workdir = workdir(".");
+            let repo_id = workdir.id();
             if repo_id.is_none() {
                 return false;
             }
@@ -564,8 +564,8 @@ impl UpConfigAsdfBase {
 
         let mut uninstalled = Vec::new();
         let write_cache = Cache::exclusive(|cache| {
-            let git_env = git_env(".");
-            let repo_id = git_env.id();
+            let workdir = workdir(".");
+            let repo_id = workdir.id();
             if repo_id.is_none() {
                 return false;
             }

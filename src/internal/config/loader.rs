@@ -17,10 +17,10 @@ use serde_yaml;
 use crate::internal::config::ConfigExtendStrategy;
 use crate::internal::config::ConfigSource;
 use crate::internal::config::ConfigValue;
-use crate::internal::env::git_env;
 use crate::internal::env::ENV;
 use crate::internal::env::HOME;
 use crate::internal::user_interface::StringColor;
+use crate::internal::workdir;
 use crate::omni_error;
 
 lazy_static! {
@@ -245,24 +245,27 @@ impl ConfigLoader {
             raw_config: self.raw_config.clone(),
         };
 
-        let git_repo = git_env(path);
-        if !git_repo.in_repo() {
-            return new_config_loader;
-        }
+        let wd = workdir(path);
+        let wd_root = if let Some(wd_root) = wd.root() {
+            wd_root
+        } else {
+            path
+        };
 
-        let git_repo_root = git_repo.root().clone().unwrap();
-        let mut git_config_files = vec![];
-        git_config_files.push(format!("{}/.omni.yaml", git_repo_root));
-        git_config_files.push(format!("{}/.omni/config.yaml", git_repo_root));
+        let mut workdir_config_files = vec![];
+        workdir_config_files.push(format!("{}/.omni.yaml", wd_root));
+        workdir_config_files.push(format!("{}/.omni/config.yaml", wd_root));
 
-        new_config_loader.import_config_files(git_config_files, vec!["git_repo".to_owned()]);
+        new_config_loader.import_config_files(workdir_config_files, vec!["git_repo".to_owned()]);
 
         new_config_loader
     }
 
     pub fn import_config_files(&mut self, config_files: Vec<String>, labels: Vec<String>) {
         for config_file in &config_files.clone() {
-            self.import_config_file(config_file, labels.clone());
+            if !self.loaded_config_files.contains(config_file) {
+                self.import_config_file(config_file, labels.clone());
+            }
         }
     }
 
