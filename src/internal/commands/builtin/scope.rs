@@ -268,7 +268,7 @@ impl ScopeCommand {
             return;
         }
 
-        if let Some(repo_path) = ORG_LOADER.find_repo(repo) {
+        if let Some(repo_path) = ORG_LOADER.find_repo(repo, true) {
             if let Err(err) = std::env::set_current_dir(&repo_path) {
                 if !silent_failure {
                     omni_error!(format!(

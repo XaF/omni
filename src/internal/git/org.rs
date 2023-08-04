@@ -112,11 +112,11 @@ impl OrgLoader {
         results
     }
 
-    pub fn find_repo(&self, repo: &str) -> Option<PathBuf> {
+    pub fn find_repo(&self, repo: &str, allow_interactive: bool) -> Option<PathBuf> {
         if let Some(path) = self.basic_naive_lookup(repo) {
             return Some(path);
         }
-        if let Some(path) = self.file_system_lookup(repo) {
+        if let Some(path) = self.file_system_lookup(repo, allow_interactive) {
             return Some(path);
         }
         None
@@ -133,7 +133,9 @@ impl OrgLoader {
         None
     }
 
-    fn file_system_lookup(&self, repo: &str) -> Option<PathBuf> {
+    fn file_system_lookup(&self, repo: &str, allow_interactive: bool) -> Option<PathBuf> {
+        let interactive = allow_interactive && ENV.interactive_shell;
+
         let repo_url = Repo::parse(repo);
         if repo_url.is_err() {
             dbg!("repo_url.is_err()");
@@ -157,7 +159,7 @@ impl OrgLoader {
         }
 
         // Prepare a spinner for the research
-        let spinner = if ENV.interactive_shell {
+        let spinner = if interactive {
             let spinner = ProgressBar::new_spinner();
             spinner.set_style(
                 ProgressStyle::default_spinner()
@@ -257,7 +259,7 @@ impl OrgLoader {
             return Some(with_score[0].abspath.to_path_buf());
         }
 
-        if ENV.interactive_shell {
+        if interactive {
             let page_size = 7;
             let question = if with_score.len() > 1 {
                 requestty::Question::select("did_you_mean_repo")

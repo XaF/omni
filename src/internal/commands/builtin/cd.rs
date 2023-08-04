@@ -16,6 +16,7 @@ use crate::omni_error;
 
 #[derive(Debug, Clone)]
 struct CdCommandArgs {
+    locate: bool,
     repository: Option<String>,
 }
 
@@ -27,6 +28,12 @@ impl CdCommandArgs {
         let matches = clap::Command::new("")
             .disable_help_subcommand(true)
             .disable_version_flag(true)
+            .arg(
+                clap::Arg::new("locate")
+                    .short('l')
+                    .long("locate")
+                    .action(clap::ArgAction::SetTrue),
+            )
             .arg(clap::Arg::new("repo").action(clap::ArgAction::Set))
             .try_get_matches_from(&parse_argv);
 
@@ -56,6 +63,7 @@ impl CdCommandArgs {
         let matches = matches.unwrap();
 
         Self {
+            locate: *matches.get_one::<bool>("locate").unwrap_or(&false),
             repository: matches.get_one::<String>("repo").map(|arg| arg.to_string()),
         }
     }
@@ -107,8 +115,28 @@ impl CdCommand {
             arguments: vec![],
             options: vec![
                 SyntaxOptArg {
+                    name: "--locate".to_string(),
+                    desc: Some(
+                        concat!(
+                            "If provided, will only return the path to the repository instead of switching ",
+                            "directory to it. When this flag is passed, interactions are also disabled, ",
+                            "as it is assumed to be used for command line purposes. ",
+                            "This will exit with 0 if the repository is found, 1 otherwise.",
+                        )
+                        .to_string()
+                    ),
+                },
+                SyntaxOptArg {
                     name: "repo".to_string(),
-                    desc: Some("The name of the repo to change directory to; this can be in the format <org>/<repo>, or just <repo>, in which case the repo will be searched for in all the organizations, trying to use \x1B[3mOMNI_ORG\x1B[0m if it is set, and then trying all the other organizations alphabetically.".to_string()),
+                    desc: Some(
+                        concat!(
+                            "The name of the repo to change directory to; this can be in the format <org>/<repo>, ",
+                            "or just <repo>, in which case the repo will be searched for in all the organizations, ",
+                            "trying to use \x1B[3mOMNI_ORG\x1B[0m if it is set, and then trying all the other ",
+                            "organizations alphabetically.",
+                        )
+                        .to_string()
+                    ),
                 },
             ],
         })
@@ -123,7 +151,7 @@ impl CdCommand {
             unreachable!();
         }
 
-        if ENV.omni_cmd_file.is_none() {
+        if ENV.omni_cmd_file.is_none() && !self.cli_args().locate {
             omni_error!("not available without the shell integration");
             exit(1);
         }
@@ -206,6 +234,12 @@ impl CdCommand {
         };
 
         let path_str = format!("{}", path);
+
+        if self.cli_args().locate {
+            println!("{}", path_str);
+            exit(0);
+        }
+
         let path_escaped = escape(std::borrow::Cow::Borrowed(path_str.as_str()));
         match omni_cmd(format!("cd {}", path_escaped).as_str()) {
             Ok(_) => {}
@@ -218,6 +252,32 @@ impl CdCommand {
     }
 
     fn cd_repo(&self, repo: &str) {
+        if let Some(path_str) = self.cd_repo_find(repo) {
+            if self.cli_args().locate {
+                println!("{}", path_str);
+                exit(0);
+            }
+
+            let path_escaped = escape(std::borrow::Cow::Borrowed(path_str.as_str()));
+            match omni_cmd(format!("cd {}", path_escaped).as_str()) {
+                Ok(_) => {}
+                Err(e) => {
+                    omni_error!(e);
+                    exit(1);
+                }
+            }
+            return;
+        }
+
+        if self.cli_args().locate {
+            exit(1);
+        }
+
+        omni_error!(format!("{}: No such repository", repo.to_string().yellow()));
+        exit(1);
+    }
+
+    fn cd_repo_find(&self, repo: &str) -> Option<String> {
         // Delegate to the shell if this is a path
         if repo.starts_with("/")
             || repo.starts_with(".")
@@ -225,46 +285,18 @@ impl CdCommand {
             || repo == "~"
             || repo == "-"
         {
-            let repo_str = format!("{}", repo);
-            let repo_escaped = escape(std::borrow::Cow::Borrowed(repo_str.as_str()));
-            match omni_cmd(format!("cd {}", repo_escaped).as_str()) {
-                Ok(_) => {}
-                Err(e) => {
-                    omni_error!(e);
-                    exit(1);
-                }
-            }
-            return;
+            return Some(format!("{}", repo));
         }
 
         // Check if the requested repo is actually a path that exists from the current directory
         if let Ok(repo_path) = std::fs::canonicalize(repo) {
-            let repo_path_str = format!("{}", repo_path.display());
-            let repo_path_escaped = escape(std::borrow::Cow::Borrowed(repo_path_str.as_str()));
-            match omni_cmd(format!("cd {}", repo_path_escaped).as_str()) {
-                Ok(_) => {}
-                Err(e) => {
-                    omni_error!(e);
-                    exit(1);
-                }
-            }
-            return;
+            return Some(format!("{}", repo_path.display()));
         }
 
-        if let Some(repo_path) = ORG_LOADER.find_repo(repo) {
-            let repo_path_str = format!("{}", repo_path.display());
-            let repo_path_escaped = escape(std::borrow::Cow::Borrowed(repo_path_str.as_str()));
-            match omni_cmd(format!("cd {}", repo_path_escaped).as_str()) {
-                Ok(_) => {}
-                Err(e) => {
-                    omni_error!(e);
-                    exit(1);
-                }
-            }
-            return;
+        if let Some(repo_path) = ORG_LOADER.find_repo(repo, !self.cli_args().locate) {
+            return Some(format!("{}", repo_path.display()));
         }
 
-        omni_error!(format!("{}: No such repository", repo.to_string().yellow()));
-        exit(1);
+        None
     }
 }
