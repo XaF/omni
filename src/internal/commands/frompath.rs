@@ -28,6 +28,8 @@ impl PathCommand {
         let mut known_sources: HashMap<String, usize> = HashMap::new();
 
         for path in &omnipath() {
+            // Aggregate all the files first, since WalkDir does not sort the list
+            let mut files_to_process = Vec::new();
             for entry in WalkDir::new(path).follow_links(true) {
                 if let Ok(entry) = entry {
                     let filetype = entry.file_type();
@@ -37,46 +39,54 @@ impl PathCommand {
                         continue;
                     }
 
-                    let mut partitions = filepath
-                        .strip_prefix(format!("{}/", path))
-                        .unwrap()
-                        .to_str()
-                        .unwrap()
-                        .split("/")
-                        .collect::<Vec<&str>>();
+                    files_to_process.push(filepath.to_path_buf());
+                }
+            }
 
-                    let num_partitions = partitions.len();
+            // Sort the files by path
+            files_to_process.sort();
 
-                    // For each partition that is not the last one, remove
-                    // the suffix `.d` if it exists
-                    for partition in &mut partitions[0..num_partitions - 1] {
-                        if partition.ends_with(".d") {
-                            *partition = &partition[0..partition.len() - 2];
-                        }
+            // Process the files
+            for filepath in files_to_process {
+                let mut partitions = filepath
+                    .strip_prefix(format!("{}/", path))
+                    .unwrap()
+                    .to_str()
+                    .unwrap()
+                    .split("/")
+                    .collect::<Vec<&str>>();
+
+                let num_partitions = partitions.len();
+
+                // For each partition that is not the last one, remove
+                // the suffix `.d` if it exists
+                for partition in &mut partitions[0..num_partitions - 1] {
+                    if partition.ends_with(".d") {
+                        *partition = &partition[0..partition.len() - 2];
                     }
+                }
 
-                    // For the last partition, remove any file extension
-                    if let Some(filename) = partitions.last_mut() {
-                        if let Some(dotpos) = filename.rfind('.') {
-                            *filename = &filename[0..dotpos];
-                        }
+                // For the last partition, remove any file extension
+                if let Some(filename) = partitions.last_mut() {
+                    if let Some(dotpos) = filename.rfind('.') {
+                        *filename = &filename[0..dotpos];
                     }
+                }
 
-                    let new_command = PathCommand::new(
-                        partitions.iter().map(|s| s.to_string()).collect(),
-                        filepath.to_str().unwrap().to_string(),
-                    );
+                let new_command = PathCommand::new(
+                    partitions.iter().map(|s| s.to_string()).collect(),
+                    filepath.to_str().unwrap().to_string(),
+                );
 
-                    // Check if the source is already known
-                    if let Some(idx) = known_sources.get_mut(&new_command.real_source()) {
-                        // Add this command's name to the command's aliases
-                        let cmd: &mut _ = &mut all_commands[*idx];
-                        cmd.add_alias(new_command.name());
-                    } else {
-                        // Add the new command
-                        all_commands.push(new_command.clone());
-                        known_sources.insert(new_command.real_source(), all_commands.len() - 1);
-                    }
+                // Check if the source is already known
+                if let Some(idx) = known_sources.get_mut(&new_command.real_source()) {
+                    // Add this command's name to the command's aliases
+                    let cmd: &mut _ = &mut all_commands[*idx];
+                    cmd.add_alias(new_command.name());
+                } else {
+                    // Add the new command
+                    all_commands.push(new_command.clone());
+                    known_sources.insert(new_command.real_source(), all_commands.len() - 1);
                 }
             }
         }
