@@ -108,6 +108,14 @@ impl PathCommand {
     }
 
     fn add_alias(&mut self, alias: Vec<String>) {
+        if alias == self.name {
+            return;
+        }
+
+        if self.aliases.iter().any(|a| a == &alias) {
+            return;
+        }
+
         self.aliases.push(alias);
     }
 
