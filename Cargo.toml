@@ -25,7 +25,7 @@ time = { version = "0.3.25", features = ["serde-well-known"] }
 blake3 = "1.4.1"
 clap = "4.3.21"
 duct = "0.13.6"
-flate2 = "1.0.26"
+flate2 = "1.0.27"
 fs4 = "0.6.6"
 git-url-parse = "0.4.4"
 git2 = "0.17.2"
