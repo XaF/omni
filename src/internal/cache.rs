@@ -1,3 +1,4 @@
+use std::collections::BTreeMap;
 use std::collections::HashMap;
 use std::fs::File;
 use std::fs::OpenOptions;
@@ -9,13 +10,11 @@ use std::path::PathBuf;
 use std::time::Duration;
 
 use fs4::FileExt;
-
-use time::OffsetDateTime;
-
 use lazy_static::lazy_static;
 use serde::Deserialize;
 use serde::Serialize;
 use serde_json;
+use time::OffsetDateTime;
 
 use crate::internal::config;
 
@@ -286,12 +285,39 @@ impl UpEnvironment {
             env_vars: HashMap::new(),
         }
     }
+
+    pub fn versions_for_dir(&self, dir: &str) -> Vec<UpVersion> {
+        let mut versions: BTreeMap<String, UpVersion> = BTreeMap::new();
+
+        for version in self.versions.iter() {
+            // Check if that version applies to the requested dir
+            if version.dir != ""
+                && dir != version.dir
+                && !dir.starts_with(format!("{}/", version.dir).as_str())
+            {
+                continue;
+            }
+
+            // If there is already a version, check if the current one's dir is more specific
+            if let Some(existing_version) = versions.get(&version.tool) {
+                if existing_version.dir.len() > version.dir.len() {
+                    continue;
+                }
+            }
+
+            versions.insert(version.tool.clone(), version.clone());
+        }
+
+        versions.values().cloned().collect()
+    }
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct UpVersion {
     pub tool: String,
     pub version: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub dir: String,
 }
 
 fn set_false() -> bool {

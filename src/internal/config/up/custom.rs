@@ -18,6 +18,7 @@ pub struct UpConfigCustom {
     pub met: Option<String>,
     pub unmeet: Option<String>,
     pub name: Option<String>,
+    pub dir: Option<String>,
 }
 
 impl UpConfigCustom {
@@ -26,6 +27,7 @@ impl UpConfigCustom {
         let mut met = None;
         let mut unmeet = None;
         let mut name = None;
+        let mut dir = None;
 
         if let Some(config_value) = config_value {
             if let Some(value) = config_value.get("meet") {
@@ -40,6 +42,9 @@ impl UpConfigCustom {
             if let Some(value) = config_value.get("name") {
                 name = Some(value.as_str().unwrap().to_string());
             }
+            if let Some(value) = config_value.get("dir") {
+                dir = Some(value.as_str().unwrap().to_string());
+            }
         }
 
         if meet == None {
@@ -51,6 +56,15 @@ impl UpConfigCustom {
             met: met,
             unmeet: unmeet,
             name: name,
+            dir: dir,
+        }
+    }
+
+    pub fn dir(&self) -> Option<String> {
+        if let Some(dir) = &self.dir {
+            Some(dir.to_string())
+        } else {
+            None
         }
     }
 

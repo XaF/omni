@@ -120,4 +120,11 @@ impl UpConfigTool {
             _ => None,
         }
     }
+
+    pub fn dir(&self) -> Option<String> {
+        match self {
+            UpConfigTool::Custom(config) => config.dir(),
+            _ => None,
+        }
+    }
 }

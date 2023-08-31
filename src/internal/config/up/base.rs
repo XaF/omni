@@ -136,6 +136,9 @@ impl UpConfig {
     }
 
     pub fn up(&self) -> Result<(), UpError> {
+        // Get current directory
+        let current_dir = std::env::current_dir().expect("Failed to get current directory");
+
         // Filter the steps to only the available ones
         let steps = self
             .steps
@@ -147,6 +150,16 @@ impl UpConfig {
         // Go through the steps
         let num_steps = steps.len() + 1;
         for (idx, step) in steps.iter().enumerate() {
+            // Make sure that we're in the right directory
+            let step_dir = current_dir.join(step.dir().unwrap_or("".to_string()));
+            if let Err(error) = std::env::set_current_dir(&step_dir) {
+                return Err(UpError::Exec(format!(
+                    "failed to change directory to {}: {}",
+                    step_dir.display(),
+                    error
+                )));
+            }
+
             // Update the dynamic environment so that if anything has changed
             // the command can consider it right away
             update_dynamic_env_for_command(".");

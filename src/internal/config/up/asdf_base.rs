@@ -131,6 +131,7 @@ pub struct UpConfigAsdfBase {
     pub tool: String,
     pub tool_url: Option<String>,
     pub version: String,
+    pub dirs: HashSet<String>,
     #[serde(skip)]
     actual_version: OnceCell<String>,
 }
@@ -141,6 +142,7 @@ impl UpConfigAsdfBase {
             tool: tool.to_string(),
             tool_url: None,
             version: version.to_string(),
+            dirs: HashSet::new(),
             actual_version: OnceCell::new(),
         }
     }
@@ -163,6 +165,8 @@ impl UpConfigAsdfBase {
         config_value: Option<&ConfigValue>,
     ) -> Self {
         let mut version = "latest".to_string();
+        let mut dirs = HashSet::new();
+
         if let Some(config_value) = config_value {
             if let Some(value) = config_value.as_str() {
                 version = value.to_string();
@@ -170,8 +174,18 @@ impl UpConfigAsdfBase {
                 version = value.to_string();
             } else if let Some(value) = config_value.as_integer() {
                 version = value.to_string();
-            } else if let Some(value) = config_value.get("version") {
-                version = value.as_str().unwrap().to_string();
+            } else {
+                if let Some(value) = config_value.get("version") {
+                    version = value.as_str().unwrap().to_string();
+                }
+
+                if let Some(value) = config_value.get_as_str("dir") {
+                    dirs.insert(value.to_string());
+                } else if let Some(array) = config_value.get_as_array("dir") {
+                    for value in array {
+                        dirs.insert(value.as_str().unwrap().to_string());
+                    }
+                }
             }
         }
 
@@ -179,6 +193,7 @@ impl UpConfigAsdfBase {
             tool: tool.to_string(),
             tool_url: tool_url,
             version: version,
+            dirs: dirs,
             actual_version: OnceCell::new(),
         }
     }
@@ -203,6 +218,11 @@ impl UpConfigAsdfBase {
                 return false;
             }
             let version = version.unwrap().to_string();
+
+            let mut dirs = self.dirs.clone();
+            if dirs.is_empty() {
+                dirs.insert("".to_string());
+            }
 
             // Update the asdf versions cache
             let mut installed = Vec::new();
@@ -247,19 +267,23 @@ impl UpConfigAsdfBase {
             }
             let repo_up_env = up_env.get_mut(&repo_id).unwrap();
 
-            let mut found = false;
             for exists in repo_up_env.versions.iter_mut() {
                 if exists.tool == self.tool && exists.version == version {
-                    found = true;
-                    break;
+                    dirs.remove(&exists.dir);
+                    if dirs.is_empty() {
+                        break;
+                    }
                 }
             }
 
-            if !found {
-                repo_up_env.versions.push(UpVersion {
-                    tool: self.tool.clone(),
-                    version: version.clone(),
-                });
+            if !dirs.is_empty() {
+                for dir in dirs {
+                    repo_up_env.versions.push(UpVersion {
+                        tool: self.tool.clone(),
+                        version: version.clone(),
+                        dir: dir.clone(),
+                    });
+                }
 
                 cache.up_environments = Some(UpEnvironments {
                     env: up_env.clone(),

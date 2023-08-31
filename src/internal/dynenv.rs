@@ -150,8 +150,10 @@ impl DynamicEnv {
     pub fn id(&self) -> u64 {
         self.id
             .get_or_init(|| {
-                // Get the workdir environment
+                // Get the current path
                 let path = self.path.clone().unwrap_or(".".to_string());
+
+                // Get the workdir environment
                 let workdir = workdir(&path);
                 if !workdir.in_workdir() {
                     return 0;
@@ -163,6 +165,9 @@ impl DynamicEnv {
                     return 0;
                 }
                 let repo_id = repo_id.unwrap();
+
+                // Get the relative directory
+                let dir = workdir.reldir(&path).unwrap_or("".to_string());
 
                 // Check if repo is 'up' and should have its environment loaded
                 let up_env = if let Some(up_cache) = &self.cache.up_environments {
@@ -197,7 +202,7 @@ impl DynamicEnv {
                 }
 
                 // Go over the tool versions in the up environment cache
-                for toolversion in up_env.versions.iter() {
+                for toolversion in up_env.versions_for_dir(&dir).iter() {
                     hasher.update(toolversion.tool.as_bytes());
                     hasher.update(DATA_SEPARATOR.as_bytes());
                     hasher.update(toolversion.version.as_bytes());
@@ -230,6 +235,7 @@ impl DynamicEnv {
                 return;
             }
             let repo_id = repo_id.unwrap();
+
             if let Some(up_cache) = &self.cache.up_environments {
                 if up_cache.env.contains_key(&repo_id) {
                     up_env = Some(up_cache.env.get(&repo_id).unwrap().clone());
@@ -247,7 +253,8 @@ impl DynamicEnv {
             }
 
             // Go over the tool versions in the up environment cache
-            for toolversion in up_env.versions.iter() {
+            let dir = workdir.reldir(&path).unwrap_or("".to_string());
+            for toolversion in up_env.versions_for_dir(&dir).iter() {
                 let tool = toolversion.tool.clone();
                 let version = toolversion.version.clone();
                 let version_minor = version.split(".").take(2).join(".");

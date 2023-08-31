@@ -544,6 +544,24 @@ impl WorkDirEnv {
         }
     }
 
+    pub fn reldir(&self, path: &str) -> Option<String> {
+        if let Some(root) = &self.root {
+            if let Ok(path) = std::fs::canonicalize(path) {
+                if let Ok(path) = path.strip_prefix(root) {
+                    let mut path = path.to_str().unwrap().to_string();
+                    while path.starts_with('/') {
+                        path = path[1..].to_string();
+                    }
+                    while path.ends_with('/') {
+                        path = path[..path.len() - 1].to_string();
+                    }
+                    return Some(path);
+                }
+            }
+        }
+        None
+    }
+
     pub fn id(&self) -> Option<String> {
         self.id
             .get_or_init(|| {
