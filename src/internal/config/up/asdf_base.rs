@@ -1,3 +1,5 @@
+use std::collections::BTreeMap;
+use std::collections::BTreeSet;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::os::unix::fs::PermissionsExt;
@@ -9,6 +11,7 @@ use serde::Deserialize;
 use serde::Serialize;
 use time::OffsetDateTime;
 use tokio::process::Command as TokioCommand;
+use walkdir::WalkDir;
 
 use crate::internal::cache::AsdfInstalled;
 use crate::internal::cache::AsdfOperation;
@@ -131,9 +134,13 @@ pub struct UpConfigAsdfBase {
     pub tool: String,
     pub tool_url: Option<String>,
     pub version: String,
-    pub dirs: HashSet<String>,
+    pub dirs: BTreeSet<String>,
+    #[serde(skip)]
+    detect_version_funcs: Vec<fn(String, PathBuf) -> Option<String>>,
     #[serde(skip)]
     actual_version: OnceCell<String>,
+    #[serde(skip)]
+    actual_versions: OnceCell<BTreeSet<String>>,
 }
 
 impl UpConfigAsdfBase {
@@ -142,8 +149,22 @@ impl UpConfigAsdfBase {
             tool: tool.to_string(),
             tool_url: None,
             version: version.to_string(),
-            dirs: HashSet::new(),
+            dirs: BTreeSet::new(),
+            detect_version_funcs: vec![],
             actual_version: OnceCell::new(),
+            actual_versions: OnceCell::new(),
+        }
+    }
+
+    fn new_from_auto(&self, version: &str, dirs: BTreeSet<String>) -> Self {
+        UpConfigAsdfBase {
+            tool: self.tool.clone(),
+            tool_url: self.tool_url.clone(),
+            version: version.to_string(),
+            dirs: dirs.clone(),
+            detect_version_funcs: vec![],
+            actual_version: OnceCell::new(),
+            actual_versions: OnceCell::new(),
         }
     }
 
@@ -165,7 +186,7 @@ impl UpConfigAsdfBase {
         config_value: Option<&ConfigValue>,
     ) -> Self {
         let mut version = "latest".to_string();
-        let mut dirs = HashSet::new();
+        let mut dirs = BTreeSet::new();
 
         if let Some(config_value) = config_value {
             if let Some(value) = config_value.as_str() {
@@ -194,7 +215,9 @@ impl UpConfigAsdfBase {
             tool_url: tool_url,
             version: version,
             dirs: dirs,
+            detect_version_funcs: vec![],
             actual_version: OnceCell::new(),
+            actual_versions: OnceCell::new(),
         }
     }
 
@@ -337,37 +360,195 @@ impl UpConfigAsdfBase {
             return Err(err);
         }
 
-        let install_version = self.install_version(progress_handler.clone());
-        if install_version.is_err() {
-            let err = install_version.err().unwrap();
+        if self.version == "auto" {
+            let mut detected_versions: BTreeMap<String, BTreeSet<String>> = BTreeMap::new();
+
+            // Get the current directory
+            let current_dir = std::env::current_dir().expect("failed to get current directory");
+
+            let mut search_dirs = self.dirs.clone();
+            if search_dirs.is_empty() {
+                search_dirs.insert("".to_string());
+            }
+
+            let mut detect_version_funcs = self.detect_version_funcs.clone();
+            detect_version_funcs.push(detect_version_from_asdf_version_file);
+            detect_version_funcs.push(detect_version_from_version_file);
+
+            for search_dir in search_dirs.iter() {
+                // For safety, we remove any leading slashes from the search directory,
+                // as we only want to search in the workdir
+                let mut search_dir = search_dir.clone();
+                while search_dir.starts_with("/") {
+                    search_dir.remove(0);
+                }
+
+                // Append the search directory to the current directory, since we are
+                // at the root of the workdir
+                let search_path = current_dir.join(search_dir);
+
+                for entry in WalkDir::new(search_path).follow_links(true) {
+                    if let Ok(entry) = entry {
+                        if !entry.path().is_dir() {
+                            continue;
+                        }
+
+                        for detect_version_func in detect_version_funcs.iter() {
+                            if let Some(detected_version) =
+                                detect_version_func(self.tool.clone(), entry.path().to_path_buf())
+                            {
+                                let mut dir = entry
+                                    .path()
+                                    .strip_prefix(&current_dir)
+                                    .expect("failed to strip prefix")
+                                    .to_string_lossy()
+                                    .to_string();
+                                while dir.starts_with("/") {
+                                    dir.remove(0);
+                                }
+                                while dir.ends_with("/") {
+                                    dir.pop();
+                                }
+
+                                if let Some(dirs) = detected_versions.get_mut(&detected_version) {
+                                    dirs.insert(dir);
+                                } else {
+                                    let mut dirs = BTreeSet::new();
+                                    dirs.insert(dir);
+                                    detected_versions.insert(detected_version.to_string(), dirs);
+                                }
+
+                                break;
+                            }
+                        }
+                    }
+                }
+            }
+
+            if detected_versions.is_empty() {
+                progress_handler.clone().map(|progress_handler| {
+                    progress_handler.success_with_message("no version detected".to_string())
+                });
+                return Ok(());
+            }
+
+            let mut installed_versions = Vec::new();
+            let mut already_installed_versions = Vec::new();
+            let mut all_versions = BTreeSet::new();
+
+            for (version, dirs) in detected_versions.iter() {
+                let asdf_base = self.new_from_auto(version, dirs.clone());
+                let installed = asdf_base.install_version(progress_handler.clone());
+                if installed.is_err() {
+                    let err = installed.err().unwrap();
+                    if progress_handler.is_some() {
+                        progress_handler
+                            .clone()
+                            .unwrap()
+                            .error_with_message(format!("error: {}", err));
+                    }
+                    return Err(err);
+                }
+
+                let version = asdf_base.version(None).unwrap();
+                all_versions.insert(version.clone());
+                if installed.unwrap() {
+                    installed_versions.push(version.clone());
+                } else {
+                    already_installed_versions.push(version.clone());
+                }
+
+                asdf_base.update_cache(progress_handler.clone());
+            }
+
+            self.actual_versions
+                .set(all_versions)
+                .expect("failed to set installed versions");
+
             if progress_handler.is_some() {
+                let mut msgs = Vec::new();
+
+                if !installed_versions.is_empty() {
+                    msgs.push(
+                        format!(
+                            "{} {} installed",
+                            self.tool,
+                            installed_versions
+                                .iter()
+                                .map(|version| format!("{}", version))
+                                .collect::<Vec<String>>()
+                                .join(", ")
+                        )
+                        .green(),
+                    );
+                }
+
+                if !already_installed_versions.is_empty() {
+                    msgs.push(
+                        format!(
+                            "{} {} already installed",
+                            self.tool,
+                            already_installed_versions
+                                .iter()
+                                .map(|version| format!("{}", version))
+                                .collect::<Vec<String>>()
+                                .join(", ")
+                        )
+                        .light_black(),
+                    );
+                }
+
                 progress_handler
                     .clone()
                     .unwrap()
-                    .error_with_message(format!("error: {}", err));
+                    .success_with_message(msgs.join(", "));
             }
-            return Err(err);
+        } else {
+            let install_version = self.install_version(progress_handler.clone());
+            if install_version.is_err() {
+                let err = install_version.err().unwrap();
+                if progress_handler.is_some() {
+                    progress_handler
+                        .clone()
+                        .unwrap()
+                        .error_with_message(format!("error: {}", err));
+                }
+                return Err(err);
+            }
+
+            self.update_cache(progress_handler.clone());
+
+            if progress_handler.is_some() {
+                let msg = if install_version.unwrap() {
+                    format!("{} {} installed", self.tool, self.version(None).unwrap()).green()
+                } else {
+                    format!(
+                        "{} {} already installed",
+                        self.tool,
+                        self.version(None).unwrap(),
+                    )
+                    .light_black()
+                };
+                progress_handler.clone().unwrap().success_with_message(msg);
+            }
         }
 
-        if progress_handler.is_some() {
-            self.update_cache(progress_handler.clone());
-            let msg = if install_version.unwrap() {
-                format!("{} {} installed", self.tool, self.version(None).unwrap()).green()
-            } else {
-                format!(
-                    "{} {} already installed",
-                    self.tool,
-                    self.version(None).unwrap(),
-                )
-                .light_black()
-            };
-            progress_handler.clone().unwrap().success_with_message(msg);
-        }
         Ok(())
     }
 
     pub fn down(&self, _progress: Option<(usize, usize)>) -> Result<(), UpError> {
         Ok(())
+    }
+
+    fn versions(&self) -> BTreeSet<String> {
+        if self.version != "auto" {
+            let mut versions = BTreeSet::new();
+            if let Ok(version) = self.version(None) {
+                versions.insert(version.clone());
+            }
+            return versions;
+        }
+        self.actual_versions.get_or_init(|| BTreeSet::new()).clone()
     }
 
     fn version(
@@ -576,15 +757,19 @@ impl UpConfigAsdfBase {
         let progress_handler: Option<Box<&dyn ProgressHandler>> =
             Some(Box::new(progress_handler.as_ref()));
 
-        let expected_tools = steps
+        let mut expected_tools = HashSet::new();
+        let all_tool_versions = steps
             .iter()
             .map(|step| step.asdf_tool())
             .filter(|tool| tool.is_some())
             .map(|tool| tool.unwrap())
-            .map(|tool| (tool.tool.clone(), tool.version(None)))
-            .filter(|(_, version)| version.is_ok())
-            .map(|(tool, version)| (tool, version.unwrap().clone()))
-            .collect::<HashSet<_>>();
+            .map(|tool| (tool.tool.clone(), tool.versions()))
+            .filter(|(_, version)| !version.is_empty());
+        for (tool, versions) in all_tool_versions {
+            for version in versions {
+                expected_tools.insert((tool.clone(), version));
+            }
+        }
 
         let mut uninstalled = Vec::new();
         let write_cache = Cache::exclusive(|cache| {
@@ -696,4 +881,69 @@ fn version_match(expect: &str, version: &str) -> bool {
     };
 
     rest_of_line.chars().all(|c| c.is_digit(10) || c == '.')
+}
+
+fn detect_version_from_asdf_version_file(tool_name: String, path: PathBuf) -> Option<String> {
+    let version_file_path = path.join(".tool-versions");
+    if !version_file_path.exists() || version_file_path.is_dir() {
+        return None;
+    }
+
+    // Read the contents of the file
+    match std::fs::read_to_string(&version_file_path) {
+        Ok(contents) => {
+            let tool_name = tool_name.to_lowercase();
+
+            // Read line by line
+            for line in contents.lines() {
+                // Trim all leading and trailing whitespaces
+                let line = line.trim();
+
+                // Go to next line if the line does not start by the tool name
+                if !line.starts_with(&tool_name) {
+                    continue;
+                }
+
+                // Split the line by whitespace
+                let mut parts = line.split_whitespace();
+
+                // Remove first entry
+                parts.next();
+
+                // Find the first part that contains only digits and dots, starting with a digit;
+                // any other version format is not supported by omni
+                for part in parts {
+                    if part.chars().all(|c| c.is_digit(10) || c == '.')
+                        && part.starts_with(|c: char| c.is_digit(10))
+                    {
+                        return Some(part.to_string());
+                    }
+                }
+            }
+        }
+        Err(_err) => {}
+    };
+
+    None
+}
+
+fn detect_version_from_version_file(tool_name: String, path: PathBuf) -> Option<String> {
+    let version_file_path = path.join(format!(".{}-version", tool_name.to_lowercase()));
+    if !version_file_path.exists() || version_file_path.is_dir() {
+        return None;
+    }
+
+    // Read the contents of the file
+    match std::fs::read_to_string(&version_file_path) {
+        Ok(contents) => {
+            // Strip contents of all leading or trailing whitespaces
+            let version = contents.trim();
+            if !version.is_empty() {
+                return Some(version.to_string());
+            }
+        }
+        Err(_err) => {}
+    };
+
+    None
 }
