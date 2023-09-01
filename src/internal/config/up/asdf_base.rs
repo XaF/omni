@@ -156,6 +156,10 @@ impl UpConfigAsdfBase {
         }
     }
 
+    pub fn add_detect_version_func(&mut self, func: fn(String, PathBuf) -> Option<String>) {
+        self.detect_version_funcs.push(func);
+    }
+
     fn new_from_auto(&self, version: &str, dirs: BTreeSet<String>) -> Self {
         UpConfigAsdfBase {
             tool: self.tool.clone(),

@@ -1,6 +1,8 @@
 use std::fs::File;
 use std::io::BufRead;
 use std::io::BufReader;
+use std::path::Path;
+use std::path::PathBuf;
 
 use once_cell::sync::OnceCell;
 use serde::{Deserialize, Serialize};
@@ -64,7 +66,10 @@ impl UpConfigGolang {
                 "latest".to_string()
             };
 
-            Ok(UpConfigAsdfBase::new("golang", version.as_ref()))
+            let mut asdf_base = UpConfigAsdfBase::new("golang", version.as_ref());
+            asdf_base.add_detect_version_func(detect_version_from_gomod);
+
+            Ok(asdf_base)
         })
     }
 
@@ -73,49 +78,64 @@ impl UpConfigGolang {
             return Ok(None);
         }
 
-        // Get the version file abs path
-        let version_file = abs_path(self.version_file.as_ref().unwrap());
-
-        // Open the file and read it line by line
-        let file = File::open(version_file.clone());
-        if let Err(err) = &file {
-            return Err(UpError::Exec(format!(
-                "failed to open version file ({}): {}",
-                version_file.display(),
-                err,
-            )));
-        }
-
-        let file = file.unwrap();
-        let reader = BufReader::new(file);
-
-        // Prepare the regex to extract the version
-        let goversion = regex::Regex::new(r"(?m)^go (?<version>\d+\.\d+(?:\.\d+)?)$").unwrap();
-
-        for line in reader.lines() {
-            if line.is_err() {
-                continue;
-            }
-            let line = line.unwrap();
-
-            // Check if the line contains the version, we use simple string matching first
-            // as it is way faster than regex
-            if line.starts_with("go ") {
-                // Try and match the regex to extract the version
-                if let Some(captures) = goversion.captures(&line) {
-                    // Get the version
-                    let version = captures.name("version").unwrap().as_str().to_string();
-
-                    // Return the version
-                    return Ok(Some(version));
-                }
-            }
-        }
-
-        // Return None if we didn't find the version
-        Err(UpError::Exec(format!(
-            "no version found in version file ({})",
-            version_file.display(),
-        )))
+        extract_version_from_gomod_file(self.version_file.as_ref().unwrap().clone())
     }
+}
+
+fn detect_version_from_gomod(_tool_name: String, path: PathBuf) -> Option<String> {
+    let version_file_path = path.join("go.mod");
+    if !version_file_path.exists() || version_file_path.is_dir() {
+        return None;
+    }
+
+    extract_version_from_gomod_file(version_file_path).unwrap_or(None)
+}
+
+fn extract_version_from_gomod_file(
+    version_file: impl AsRef<Path>,
+) -> Result<Option<String>, UpError> {
+    // Get the version file abs path
+    let version_file = abs_path(version_file);
+
+    // Open the file and read it line by line
+    let file = File::open(version_file.clone());
+    if let Err(err) = &file {
+        return Err(UpError::Exec(format!(
+            "failed to open version file ({}): {}",
+            version_file.display(),
+            err,
+        )));
+    }
+
+    let file = file.unwrap();
+    let reader = BufReader::new(file);
+
+    // Prepare the regex to extract the version
+    let goversion = regex::Regex::new(r"(?m)^go (?<version>\d+\.\d+(?:\.\d+)?)$").unwrap();
+
+    for line in reader.lines() {
+        if line.is_err() {
+            continue;
+        }
+        let line = line.unwrap();
+
+        // Check if the line contains the version, we use simple string matching first
+        // as it is way faster than regex
+        if line.starts_with("go ") {
+            // Try and match the regex to extract the version
+            if let Some(captures) = goversion.captures(&line) {
+                // Get the version
+                let version = captures.name("version").unwrap().as_str().to_string();
+
+                // Return the version
+                return Ok(Some(version));
+            }
+        }
+    }
+
+    // Return None if we didn't find the version
+    Err(UpError::Exec(format!(
+        "no version found in version file ({})",
+        version_file.display(),
+    )))
 }
