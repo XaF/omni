@@ -49,9 +49,10 @@ impl UpConfigTool {
             "homebrew" | "brew" => Some(UpConfigTool::Homebrew(
                 UpConfigHomebrew::from_config_value(config_value),
             )),
-            "nodejs" | "node" | "npm" => Some(UpConfigTool::Nodejs(
-                UpConfigAsdfBase::from_config_value("nodejs", config_value),
-            )),
+            "nodejs" | "node" => Some(UpConfigTool::Nodejs(UpConfigAsdfBase::from_config_value(
+                "nodejs",
+                config_value,
+            ))),
             "python" => Some(UpConfigTool::Python(UpConfigAsdfBase::from_config_value(
                 "python",
                 config_value,

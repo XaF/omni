@@ -941,7 +941,6 @@ fn detect_version_from_version_file(tool_name: String, path: PathBuf) -> Option<
         "node" => vec![
             "node",
             "nodejs",
-            "npm",
         ],
         _ => vec![&tool_name],
     }
