@@ -30,20 +30,20 @@ impl UpConfigCustom {
         let mut dir = None;
 
         if let Some(config_value) = config_value {
-            if let Some(value) = config_value.get("meet") {
-                meet = Some(value.as_str().unwrap().to_string());
+            if let Some(value) = config_value.get_as_str_forced("meet") {
+                meet = Some(value.to_string());
             }
-            if let Some(value) = config_value.get("met?") {
-                met = Some(value.as_str().unwrap().to_string());
+            if let Some(value) = config_value.get_as_str_forced("met?") {
+                met = Some(value.to_string());
             }
-            if let Some(value) = config_value.get("unmeet") {
-                unmeet = Some(value.as_str().unwrap().to_string());
+            if let Some(value) = config_value.get_as_str_forced("unmeet") {
+                unmeet = Some(value.to_string());
             }
-            if let Some(value) = config_value.get("name") {
-                name = Some(value.as_str().unwrap().to_string());
+            if let Some(value) = config_value.get_as_str_forced("name") {
+                name = Some(value.to_string());
             }
-            if let Some(value) = config_value.get("dir") {
-                dir = Some(value.as_str().unwrap().to_string());
+            if let Some(value) = config_value.get_as_str_forced("dir") {
+                dir = Some(value.to_string());
             }
         }
 

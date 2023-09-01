@@ -232,7 +232,7 @@ repo_path_format: "%{host}/%{org}/%{repo}"
                 }
             }
         }
-        return None;
+        None
     }
 
     pub fn dig(&self, keypath: Vec<&str>) -> Option<ConfigValue> {
@@ -267,7 +267,7 @@ repo_path_format: "%{host}/%{org}/%{repo}"
                 ConfigData::Value(_) => {}
             }
         }
-        return None;
+        None
     }
 
     pub fn dig_mut(&mut self, keypath: Vec<&str>) -> Option<&mut ConfigValue> {
@@ -308,7 +308,7 @@ repo_path_format: "%{host}/%{org}/%{repo}"
     }
 
     pub fn is_str(&self) -> bool {
-        return self.as_str().is_some();
+        self.as_str().is_some()
     }
 
     pub fn as_str(&self) -> Option<String> {
@@ -322,7 +322,24 @@ repo_path_format: "%{host}/%{org}/%{repo}"
                 _ => {}
             }
         }
-        return None;
+        None
+    }
+
+    pub fn as_str_forced(&self) -> Option<String> {
+        if let Some(data) = self.value.as_ref().map(|data| data.as_ref()) {
+            if let ConfigData::Value(value) = data {
+                match value {
+                    serde_yaml::Value::Null => return None,
+                    serde_yaml::Value::Bool(value) => return Some(value.to_string()),
+                    serde_yaml::Value::String(value) => return Some(value.to_string()),
+                    serde_yaml::Value::Number(value) => return Some(value.to_string()),
+                    serde_yaml::Value::Sequence(_) => return None,
+                    serde_yaml::Value::Mapping(_) => return None,
+                    serde_yaml::Value::Tagged(_) => return None,
+                }
+            }
+        }
+        None
     }
 
     pub fn as_str_mut(&mut self) -> Option<&mut String> {
@@ -338,7 +355,7 @@ repo_path_format: "%{host}/%{org}/%{repo}"
 
     #[allow(dead_code)]
     pub fn is_bool(&self) -> bool {
-        return self.as_bool().is_some();
+        self.as_bool().is_some()
     }
 
     pub fn as_bool(&self) -> Option<bool> {
@@ -352,12 +369,12 @@ repo_path_format: "%{host}/%{org}/%{repo}"
                 _ => {}
             }
         }
-        return None;
+        None
     }
 
     #[allow(dead_code)]
     pub fn is_float(&self) -> bool {
-        return self.as_float().is_some();
+        self.as_float().is_some()
     }
 
     pub fn as_float(&self) -> Option<f64> {
@@ -371,12 +388,12 @@ repo_path_format: "%{host}/%{org}/%{repo}"
                 _ => {}
             }
         }
-        return None;
+        None
     }
 
     #[allow(dead_code)]
     pub fn is_integer(&self) -> bool {
-        return self.as_integer().is_some();
+        self.as_integer().is_some()
     }
 
     pub fn as_integer(&self) -> Option<i64> {
@@ -390,7 +407,7 @@ repo_path_format: "%{host}/%{org}/%{repo}"
                 _ => {}
             }
         }
-        return None;
+        None
     }
 
     pub fn as_unsigned_integer(&self) -> Option<u64> {
@@ -404,7 +421,7 @@ repo_path_format: "%{host}/%{org}/%{repo}"
                 _ => {}
             }
         }
-        return None;
+        None
     }
 
     pub fn is_array(&self) -> bool {
@@ -416,7 +433,7 @@ repo_path_format: "%{host}/%{org}/%{repo}"
                 _ => {}
             }
         }
-        return false;
+        false
     }
 
     pub fn as_array(&self) -> Option<Vec<ConfigValue>> {
@@ -432,7 +449,7 @@ repo_path_format: "%{host}/%{org}/%{repo}"
                 _ => {}
             }
         }
-        return None;
+        None
     }
 
     pub fn as_array_mut(&mut self) -> Option<&mut Vec<ConfigValue>> {
@@ -453,7 +470,7 @@ repo_path_format: "%{host}/%{org}/%{repo}"
                 _ => {}
             }
         }
-        return false;
+        false
     }
 
     pub fn as_table(&self) -> Option<HashMap<String, ConfigValue>> {
@@ -469,7 +486,7 @@ repo_path_format: "%{host}/%{org}/%{repo}"
                 _ => {}
             }
         }
-        return None;
+        None
     }
 
     pub fn as_table_mut(&mut self) -> Option<&mut HashMap<String, ConfigValue>> {
@@ -500,7 +517,7 @@ repo_path_format: "%{host}/%{org}/%{repo}"
                 _ => {}
             }
         }
-        return None;
+        None
     }
 
     pub fn get(&self, key: &str) -> Option<ConfigValue> {
@@ -525,28 +542,35 @@ repo_path_format: "%{host}/%{org}/%{repo}"
     }
 
     pub fn get_mut(&mut self, key: &str) -> Option<&mut ConfigValue> {
-        return self.dig_mut(vec![key]);
+        self.dig_mut(vec![key])
     }
 
     pub fn get_as_str(&self, key: &str) -> Option<String> {
         if let Some(value) = self.get(key) {
             return value.as_str();
         }
-        return None;
+        None
+    }
+
+    pub fn get_as_str_forced(&self, key: &str) -> Option<String> {
+        if let Some(value) = self.get(key) {
+            return value.as_str_forced();
+        }
+        None
     }
 
     pub fn get_as_bool(&self, key: &str) -> Option<bool> {
         if let Some(value) = self.get(key) {
             return value.as_bool();
         }
-        return None;
+        None
     }
 
     pub fn get_as_float(&self, key: &str) -> Option<f64> {
         if let Some(value) = self.get(key) {
             return value.as_float();
         }
-        return None;
+        None
     }
 
     #[allow(dead_code)]
@@ -554,21 +578,21 @@ repo_path_format: "%{host}/%{org}/%{repo}"
         if let Some(value) = self.get(key) {
             return value.as_integer();
         }
-        return None;
+        None
     }
 
     pub fn get_as_unsigned_integer(&self, key: &str) -> Option<u64> {
         if let Some(value) = self.get(key) {
             return value.as_unsigned_integer();
         }
-        return None;
+        None
     }
 
     pub fn get_as_array(&self, key: &str) -> Option<Vec<ConfigValue>> {
         if let Some(value) = self.get(key) {
             return value.as_array();
         }
-        return None;
+        None
     }
 
     #[allow(dead_code)]
@@ -576,21 +600,21 @@ repo_path_format: "%{host}/%{org}/%{repo}"
         if let Some(&mut ref mut value) = self.get_mut(key) {
             return value.as_array_mut();
         }
-        return None;
+        None
     }
 
     pub fn get_as_table(&self, key: &str) -> Option<HashMap<String, ConfigValue>> {
         if let Some(value) = self.get(key) {
             return value.as_table();
         }
-        return None;
+        None
     }
 
     pub fn get_as_table_mut(&mut self, key: &str) -> Option<&mut HashMap<String, ConfigValue>> {
         if let Some(&mut ref mut value) = self.get_mut(key) {
             return value.as_table_mut();
         }
-        return None;
+        None
     }
 
     pub fn unwrap(&self) -> serde_yaml::Value {
