@@ -932,22 +932,38 @@ fn detect_version_from_asdf_version_file(tool_name: String, path: PathBuf) -> Op
 }
 
 fn detect_version_from_version_file(tool_name: String, path: PathBuf) -> Option<String> {
-    let version_file_path = path.join(format!(".{}-version", tool_name.to_lowercase()));
-    if !version_file_path.exists() || version_file_path.is_dir() {
-        return None;
+    let tool_name = tool_name.to_lowercase();
+    let version_file_prefixes = match tool_name {
+        "golang" => vec![
+            "go",
+            "golang",
+        ],
+        "node" => vec![
+            "node",
+            "nodejs",
+            "npm",
+        ],
+        _ => vec![&tool_name],
     }
 
-    // Read the contents of the file
-    match std::fs::read_to_string(&version_file_path) {
-        Ok(contents) => {
-            // Strip contents of all leading or trailing whitespaces
-            let version = contents.trim();
-            if !version.is_empty() {
-                return Some(version.to_string());
-            }
+    for version_file_prefix in version_file_prefixes {
+        let version_file_path = path.join(format!(".{}-version", version_file_prefix));
+        if !version_file_path.exists() || version_file_path.is_dir() {
+            continue;
         }
-        Err(_err) => {}
-    };
+
+        // Read the contents of the file
+        match std::fs::read_to_string(&version_file_path) {
+            Ok(contents) => {
+                // Strip contents of all leading or trailing whitespaces
+                let version = contents.trim();
+                if !version.is_empty() {
+                    return Some(version.to_string());
+                }
+            }
+            Err(_err) => {}
+        };
+    }
 
     None
 }
