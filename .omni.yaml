@@ -1,13 +1,13 @@
 up:
   - rust
-  - node
+  - node: auto
   - custom:
       name: Install yarn & dependencies
+      dir: website
       meet: |
-        cd website
         npm install -g yarn
         yarn
-      unmeet: rm -rf "website/node_modules"
+      unmeet: rm -rf node_modules
 
 commands:
   create-tag:
@@ -46,6 +46,7 @@ commands:
       Most changes are reflected live without having to restart the server.
     run: |
       cd website
+      eval "$(omni hook env 2>/dev/null)"
       yarn start
 
   cargo-package:
