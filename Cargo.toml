@@ -60,4 +60,4 @@ time = { version = "0.3.28", features = ["serde-well-known"] }
 tokio = { version = "1.32.0", features = ["full"] }
 url = "2.4.1"
 uuid = { version = "1.4.1", features = ["v4", "fast-rng"] }
-walkdir = "2.3.3"
+walkdir = "2.4.0"
