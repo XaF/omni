@@ -1,6 +1,8 @@
 use std::env;
 use std::process::exit;
 
+use mimalloc::MiMalloc;
+
 mod internal;
 use internal::command_loader;
 use internal::dynenv::update_dynamic_env;
@@ -10,6 +12,9 @@ use internal::git::auto_path_update;
 use internal::hooks::init_hook;
 use internal::hooks::uuid_hook;
 use internal::StringColor;
+
+#[global_allocator]
+static GLOBAL: MiMalloc = MiMalloc;
 
 fn complete_omni_subcommand(argv: &[String]) {
     let comp_cword = env::var("COMP_CWORD")
