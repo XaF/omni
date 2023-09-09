@@ -127,7 +127,7 @@ jobs:
       - name: Generate SHA-256
         run: |
           shasum --algorithm 256 ${{ env.BUILD_FILENAME }}.tar.gz | \
-            tee --append ${{ env.BUILD_FILENAME }}.sha256
+            tee -a ${{ env.BUILD_FILENAME }}.sha256
 
       - name: Publish artifacts
         uses: actions/upload-artifact@v3
