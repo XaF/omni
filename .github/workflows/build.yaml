@@ -188,7 +188,7 @@ jobs:
       - name: Verify checksum
         shell: bash
         run: |
-          sha256sum=$(command -v shasum && echo "shasum --algorithm 256" || echo "sha256sum")
+          sha256sum=$(command -v shasum 2>/dev/null && echo "shasum --algorithm 256" || echo "sha256sum")
           $sha256sum --check "${{ env.BUILD_FILENAME }}.sha256"
 
       - name: Unarchive the artifact
