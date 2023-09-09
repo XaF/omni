@@ -126,8 +126,8 @@ jobs:
 
       - name: Generate SHA-256
         run: |
-          shasum --algorithm 256 ${{ env.BUILD_FILENAME }}.tar.gz | \
-            tee -a ${{ env.BUILD_FILENAME }}.sha256
+          sha256sum=$(command -v sha256sum || echo "shasum --algorithm 256")
+          $sha256sum ${{ env.BUILD_FILENAME }}.tar.gz | tee -a ${{ env.BUILD_FILENAME }}.sha256
 
       - name: Publish artifacts
         uses: actions/upload-artifact@v3
@@ -188,7 +188,7 @@ jobs:
       - name: Verify checksum
         shell: bash
         run: |
-          sha256sum=$(command -v shasum 2>/dev/null && echo "shasum --algorithm 256" || echo "sha256sum")
+          sha256sum=$(command -v sha256sum || echo "shasum --algorithm 256")
           $sha256sum --check "${{ env.BUILD_FILENAME }}.sha256"
 
       - name: Unarchive the artifact
