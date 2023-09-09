@@ -1,7 +1,8 @@
 use std::path::PathBuf;
+use std::str::FromStr;
 
+use node_semver::Range as semverRange;
 use package_json::PackageJsonManager;
-use semver::VersionReq;
 use serde::{Deserialize, Serialize};
 
 use crate::internal::config::up::UpConfigAsdfBase;
@@ -62,74 +63,8 @@ fn detect_version_from_package_json(_tool_name: String, path: PathBuf) -> Option
     let engines = pkgfile.engines.clone().unwrap();
 
     if let Some(node_version) = engines.get("node") {
-        if let Ok(requirements) = VersionReq::parse(node_version) {
-            for comparator in requirements.comparators {
-                match comparator.op {
-                    semver::Op::Exact
-                    | semver::Op::Tilde
-                    | semver::Op::Wildcard
-                    | semver::Op::LessEq => {
-                        let mut version = if let (Some(minor), Some(patch)) =
-                            (comparator.minor, comparator.patch)
-                        {
-                            format!("{}.{}.{}", comparator.major, minor, patch)
-                        } else if let Some(minor) = comparator.minor {
-                            format!("{}.{}", comparator.major, minor)
-                        } else {
-                            format!("{}", comparator.major)
-                        };
-
-                        if comparator.pre != semver::Prerelease::EMPTY {
-                            version = format!("{}-{}", version, comparator.pre.as_str());
-                        }
-
-                        return Some(version);
-                    }
-                    semver::Op::Caret => {
-                        let major = comparator.major;
-                        let mut minor = comparator.minor.unwrap_or(0);
-                        let mut patch = comparator.patch.unwrap_or(0);
-
-                        if major > 0 {
-                            minor = 0;
-                            patch = 0;
-                        } else if minor > 0 {
-                            patch = 0;
-                        }
-
-                        let parts = vec![major, minor, patch];
-                        let version = parts
-                            .iter()
-                            .filter(|part| **part > 0)
-                            .map(|part| part.to_string())
-                            .collect::<Vec<String>>()
-                            .join(".");
-
-                        return Some(version);
-                    }
-                    semver::Op::Less => {
-                        let version = if let (Some(minor), Some(patch)) =
-                            (comparator.minor, comparator.patch)
-                        {
-                            format!("{}.{}.{}", comparator.major, minor, patch - 1)
-                        } else if let Some(minor) = comparator.minor {
-                            format!("{}.{}", comparator.major, minor - 1)
-                        } else {
-                            format!("{}", comparator.major - 1)
-                        };
-
-                        return Some(version);
-                    }
-                    semver::Op::Greater | semver::Op::GreaterEq => {
-                        // Nothing to do, we can still install the latest
-                    }
-                    _ => {
-                        unreachable!();
-                    }
-                }
-
-                return Some("latest".to_string());
-            }
+        if let Ok(_requirements) = semverRange::from_str(node_version) {
+            return Some(node_version.to_string());
         }
     }
 

@@ -4,8 +4,11 @@ use std::collections::HashMap;
 use std::collections::HashSet;
 use std::os::unix::fs::PermissionsExt;
 use std::path::PathBuf;
+use std::str::FromStr;
 
 use lazy_static::lazy_static;
+use node_semver::Range as semverRange;
+use node_semver::Version as semverVersion;
 use once_cell::sync::OnceCell;
 use serde::Deserialize;
 use serde::Serialize;
@@ -876,14 +879,25 @@ impl UpConfigAsdfBase {
 }
 
 fn version_match(expect: &str, version: &str) -> bool {
-    let rest_of_line = if expect == "latest" {
-        version
-    } else if version.starts_with(&expect) {
-        version.strip_prefix(&expect).unwrap()
-    } else {
-        return false;
-    };
+    if expect == "latest" {
+        return true;
+    }
 
+    if let Ok(requirements) = semverRange::from_str(expect) {
+        if let Ok(version) = semverVersion::from_str(version) {
+            // By not directly returning, we allow to keep the prefix
+            // check in case the version is not a semver version
+            if version.satisfies(&requirements) {
+                return true;
+            }
+        }
+    }
+
+    if !version.starts_with(&expect) {
+        return false;
+    }
+
+    let rest_of_line = version.strip_prefix(&expect).unwrap();
     rest_of_line.chars().all(|c| c.is_digit(10) || c == '.')
 }
 
