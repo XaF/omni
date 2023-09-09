@@ -41,7 +41,7 @@ fn get_git_version() -> Option<String> {
     if let Ok(output) = command.output() {
         if output.status.success() {
             if let Ok(version) = String::from_utf8(output.stdout) {
-                return Some(format!("0.0.0-{}", version));
+                return Some(format!("0.0.0-g{}", version));
             }
         }
     }

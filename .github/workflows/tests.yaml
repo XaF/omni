@@ -48,7 +48,7 @@ jobs:
         run: |
           RELEASE_VERSION=$(git describe --tags --broken --dirty --match v* 2>/dev/null || true)
           [ -z "$RELEASE_VERSION" ] && \
-            RELEASE_VERSION=0.0.0-$(git describe --tags --always --broken --dirty --match v*)
+            RELEASE_VERSION=0.0.0-g$(git describe --tags --always --broken --dirty --match v*)
           RELEASE_VERSION=${RELEASE_VERSION##v}
           echo "RELEASE_VERSION=${RELEASE_VERSION}" | tee -a "$GITHUB_ENV"
 
