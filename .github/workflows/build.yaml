@@ -166,13 +166,13 @@ jobs:
             suffix: x86_64-darwin
 
     steps:
-     - name: Install os/container dependencies
-       run: |
-         if command -v pacman >/dev/null; then
-           yes | sudo pacman -Sy --noconfirm perl
-         elif command -v dnf >/dev/null; then
-           sudo dnf -y install perl-Digest-SHA-1
-         fi
+      - name: Install os/container dependencies
+        run: |
+          if command -v pacman >/dev/null; then
+            yes | sudo pacman -Sy --noconfirm perl
+          elif command -v dnf >/dev/null; then
+            sudo dnf -y install perl-Digest-SHA-1
+          fi
 
       - name: Checkout current commit
         uses: actions/checkout@v3
