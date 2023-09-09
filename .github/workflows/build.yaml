@@ -45,7 +45,7 @@ jobs:
     timeout-minutes: 120
 
     env:
-      FILENAME: omni-${{ inputs.release_version }}-${{ matrix.suffix }}
+      BUILD_FILENAME: omni-${{ inputs.release_version }}-${{ matrix.suffix }}
 
     strategy:
       fail-fast: true
@@ -121,19 +121,19 @@ jobs:
         shell: bash
         run: |
           cd target/${{ matrix.target }}/release && \
-            tar czvf ../../../${{ env.FILENAME }}.tar.gz omni && \
+            tar czvf ../../../${{ env.BUILD_FILENAME }}.tar.gz omni && \
             cd -
 
       - name: Generate SHA-256
         run: |
-          shasum -a 256 ${{ env.FILENAME }}.tar.gz | \
-            tee -a ${{ env.FILENAME }}.sha256
+          shasum -a 256 ${{ env.BUILD_FILENAME }}.tar.gz | \
+            tee -a ${{ env.BUILD_FILENAME }}.sha256
 
       - name: Publish artifacts
         uses: actions/upload-artifact@v3
         with:
-          name: ${{ env.FILENAME }}
-          path: ${{ env.FILENAME }}.*
+          name: ${{ env.BUILD_FILENAME }}
+          path: ${{ env.BUILD_FILENAME }}.*
           retention-days: 1
 
 
@@ -145,7 +145,7 @@ jobs:
       - build-and-upload-artifacts
 
     env:
-      FILENAME: omni-${{ inputs.release_version }}-${{ matrix.suffix }}
+      BUILD_FILENAME: omni-${{ inputs.release_version }}-${{ matrix.suffix }}
 
     runs-on: ${{ matrix.os }}
     container: ${{ matrix.container }}
@@ -174,17 +174,17 @@ jobs:
       - name: Download artifact for ${{ matrix.suffix }}
         uses: actions/download-artifact@v3
         with:
-          name: ${{ env.FILENAME }}
+          name: ${{ env.BUILD_FILENAME }}
 
       - name: Verify checksum
         shell: bash
         run: |
-          sha256sum --check "${{ env.FILENAME }}.sha256"
+          sha256sum --check "${{ env.BUILD_FILENAME }}.sha256"
 
       - name: Unarchive the artifact
         shell: bash
         run: |
-          tar xzvf "${{ env.FILENAME }}.tar.gz"
+          tar xzvf "${{ env.BUILD_FILENAME }}.tar.gz"
 
       - name: Try running 'omni help'
         shell: bash
