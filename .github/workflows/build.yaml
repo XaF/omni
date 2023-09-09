@@ -1,0 +1,197 @@
+name: Build and test release
+run-name: Build and test ${{ inputs.git_sha }} for ${{ inputs.release_version }}
+
+
+on:
+  # Allows to run this workflow by being called from another workflow
+  workflow_call:
+    inputs:
+      git_sha:
+        description: The git sha to build the release for
+        type: string
+      release_version:
+        description: The release version to use for the build
+        type: string
+    outputs:
+      release_version:
+        description: The release version that was used for the build
+        value: ${{ inputs.release_version }}
+
+  # Allows to run this workflow manually from the Actions tab
+  workflow_dispatch:
+    inputs:
+      git_sha:
+        description: The git sha to build the release for
+        type: string
+      release_version:
+        description: The release version to use for the build
+        type: string
+
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
+  RELEASE_VERSION: ${{ inputs.release_version }}
+
+
+concurrency:
+  group: ${{ github.workflow }}-${{ inputs.git_sha }}
+  cancel-in-progress: false
+
+
+jobs:
+  build-and-upload-artifacts:
+    name: Build binary for ${{ matrix.suffix }}
+    timeout-minutes: 120
+
+    env:
+      FILENAME: omni-${{ inputs.release_version }}-${{ matrix.suffix }}
+
+    strategy:
+      fail-fast: true
+      matrix:
+        include:
+          - target: aarch64-unknown-linux-gnu
+            os: ubuntu-latest
+            suffix: arm64-linux
+            run_tests: false
+          - target: aarch64-apple-darwin
+            os: macos-latest
+            suffix: arm64-darwin
+            run_tests: false
+          - target: x86_64-unknown-linux-gnu
+            os: ubuntu-latest
+            suffix: x86_64-linux
+            run_tests: true
+          - target: x86_64-apple-darwin
+            os: macos-latest
+            suffix: x86_64-darwin
+            run_tests: true
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - name: Checkout commit
+        uses: actions/checkout@v3
+        with:
+          ref: ${{ inputs.git_sha || github.sha }}
+
+      - name: Set up cargo cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: omni-build
+
+      - name: Install cross
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cross
+
+      - name: Install musl-tools
+        run: |
+          sudo apt-get update --yes && sudo apt-get install --yes musl-tools
+        if: contains(matrix.target, 'musl')
+
+      - name: Override Cargo.toml and Cargo.lock version
+        run: |
+          perl -i -pe 's/^version = "0\.0\.0-git"$/version = "${{ env.RELEASE_VERSION }}"/' Cargo.toml
+          perl -i -pe 's/^version = "0\.0\.0-git"$/version = "${{ env.RELEASE_VERSION }}"/' Cargo.lock
+
+      - name: Build binary
+        uses: houseabsolute/actions-rust-cross@v0
+        timeout-minutes: 30
+        env:
+          OMNI_RELEASE_VERSION: ${{ env.RELEASE_VERSION }}
+        with:
+          command: build
+          target: ${{ matrix.target }}
+          toolchain: stable
+          args: "--locked --release"
+          strip: true
+
+      - name: Run tests
+        if: matrix.run_tests
+        uses: houseabsolute/actions-rust-cross@v0
+        with:
+          command: test
+          target: ${{ matrix.target }}
+          toolchain: stable
+          args: "--locked --release"
+
+      - name: Package as archive
+        shell: bash
+        run: |
+          cd target/${{ matrix.target }}/release && \
+            tar czvf ../../../${{ env.FILENAME }}.tar.gz omni && \
+            cd -
+
+      - name: Generate SHA-256
+        run: |
+          shasum -a 256 ${{ env.FILENAME }}.tar.gz | \
+            tee -a ${{ env.FILENAME }}.sha256
+
+      - name: Publish artifacts
+        uses: actions/upload-artifact@v3
+        with:
+          name: ${{ env.FILENAME }}
+          path: ${{ env.FILENAME }}.*
+          retention-days: 1
+
+
+  check-binaries:
+    name: Check that ${{ matrix.suffix }} binary works on ${{ matrix.container || matrix.os }}
+    timeout-minutes: 5
+
+    needs:
+      - build-and-upload-artifacts
+
+    env:
+      FILENAME: omni-${{ inputs.release_version }}-${{ matrix.suffix }}
+
+    runs-on: ${{ matrix.os }}
+    container: ${{ matrix.container }}
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            suffix: x86_64-linux
+          - os: ubuntu-latest
+            container: archlinux:base-devel
+            suffix: x86_64-linux
+          - os: ubuntu-latest
+            container: fedora:latest
+            suffix: x86_64-linux
+          - os: macos-latest
+            suffix: x86_64-darwin
+
+    steps:
+      - name: Checkout current commit
+        uses: actions/checkout@v3
+        with:
+          ref: ${{ inputs.git_sha || github.sha }}
+
+      - name: Download artifact for ${{ matrix.suffix }}
+        uses: actions/download-artifact@v3
+        with:
+          name: ${{ env.FILENAME }}
+
+      - name: Verify checksum
+        shell: bash
+        run: |
+          sha256sum --check "${{ env.FILENAME }}.sha256"
+
+      - name: Unarchive the artifact
+        shell: bash
+        run: |
+          tar xzvf "${{ env.FILENAME }}.tar.gz"
+
+      - name: Try running 'omni help'
+        shell: bash
+        run: |
+          ./omni help
+
+      - name: Try running 'omni status'
+        shell: bash
+        run: |
+          ./omni status

@@ -1,5 +1,6 @@
 name: Continuous testing
 
+
 on:
   # Runs on a push
   push:
@@ -24,71 +25,55 @@ on:
   # Allows to run this workflow manually from the Actions tab
   workflow_dispatch:
 
+
 concurrency:
   group: ${{ github.workflow }}-${{ github.head_ref || github.run_id }}
   cancel-in-progress: true
 
-env:
-  CARGO_TERM_COLOR: always
 
 jobs:
-  check-changed-files:
-    name: Check changed files
+  prepare-release-version:
+    name: Prepare build version
+
     runs-on: ubuntu-latest
 
     outputs:
-      run-tests: ${{ steps.changed-files.outputs.any_modified }}
+      release_version: ${{ env.RELEASE_VERSION }}
 
     steps:
-      - uses: actions/checkout@v3
-        with:
-          fetch-depth: 0
+      - name: Checkout commit
+        uses: actions/checkout@v3
 
-      - name: Get changed source files
-        id: changed-files
-        uses: tj-actions/changed-files@v38
-        with:
-          files_ignore: |
-            .github/workflows/release.yaml
-            .github/workflows/website.yaml
-            README.md
-            website
-
-      - name: List all changed files
+      - name: Get release version
         run: |
-          for file in ${{ steps.changed-files.outputs.all_modified_files }}; do
-            echo "$file was modified"
-          done
+          RELEASE_VERSION=$(git describe --tags --broken --dirty --match v* 2>/dev/null || true)
+          [ -z "$RELEASE_VERSION" ] && \
+            RELEASE_VERSION=0.0.0-$(git describe --tags --always --broken --dirty --match v*)
+          RELEASE_VERSION=${RELEASE_VERSION##v}
+          echo "RELEASE_VERSION=${RELEASE_VERSION}" | tee -a "$GITHUB_ENV"
 
 
-  run-tests:
-    name: Run tests
+  build-and-test-binaries:
+    name: Build and test binaries
 
     needs:
-      - check-changed-files
-    if: needs.check-changed-files.outputs.run-tests == 'true'
+      - prepare-release-version
 
-    runs-on: ubuntu-latest
-
-    steps:
-    - name: Checkout current commit
-      uses: actions/checkout@v3
-
-    - name: Build
-      run: cargo build --verbose
-
-    - name: Run tests
-      run: cargo test --verbose
+    uses: ./.github/workflows/build.yaml
+    with:
+      git_sha: ${{ github.sha }}
+      release_version: ${{ needs.prepare-release-version.outputs.release_version }}
 
 
   auto-merge:
     name: Auto-merge Dependabot pull-requests
-    runs-on: "ubuntu-latest"
+
+    runs-on: ubuntu-latest
 
     if: github.event_name == 'pull_request' && github.actor == 'dependabot[bot]'
 
     needs:
-      - run-tests
+      - build-and-test-binaries
 
     permissions:
       contents: none
