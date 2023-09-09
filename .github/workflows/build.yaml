@@ -170,11 +170,9 @@ jobs:
         run: |
           if command -v pacman >/dev/null; then
             yes | sudo pacman -Sy --noconfirm perl
-            ln -s "$(command -v sha1sum)" /usr/bin/shasum
           elif command -v dnf >/dev/null; then
             echo "fastestmirror=1" | sudo tee -a /etc/dnf/dnf.conf
             sudo dnf -y install perl-Digest-SHA
-            ln -s "$(command -v sha1sum)" /usr/bin/shasum
           fi
 
       - name: Checkout current commit
@@ -190,7 +188,8 @@ jobs:
       - name: Verify checksum
         shell: bash
         run: |
-          shasum --algorithm 256 --check "${{ env.BUILD_FILENAME }}.sha256"
+          sha256sum=$(command -v shasum && echo "shasum --algorithm 256" || echo "sha256sum")
+          $sha256sum --check "${{ env.BUILD_FILENAME }}.sha256"
 
       - name: Unarchive the artifact
         shell: bash
