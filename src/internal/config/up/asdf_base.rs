@@ -893,11 +893,12 @@ fn version_match(expect: &str, version: &str) -> bool {
         }
     }
 
-    if !version.starts_with(&expect) {
+    let expect_prefix = format!("{}.", expect);
+    if !version.starts_with(&expect_prefix) {
         return false;
     }
 
-    let rest_of_line = version.strip_prefix(&expect).unwrap();
+    let rest_of_line = version.strip_prefix(&expect_prefix).unwrap();
     rest_of_line.chars().all(|c| c.is_digit(10) || c == '.')
 }
 
