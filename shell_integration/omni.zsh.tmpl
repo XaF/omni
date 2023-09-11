@@ -45,14 +45,53 @@ function omni() {
 }
 
 
+{% if OMNI_ALIASES or OMNI_COMMAND_ALIASES -%}
+# Setup aliases for omni
+{% for alias in OMNI_ALIASES -%}
+alias {{alias}}="omni"
+{% endfor -%}
+{% for alias in OMNI_COMMAND_ALIASES -%}
+alias {{alias.alias}}={{alias.full_command}}
+{% endfor %}
+
+{% endif -%}
+
+
 # Setup autocompletion for omni
 _omni_complete_zsh() {
+	{% if OMNI_COMMAND_ALIASES -%}
+	# Handle command aliases
+	# Get the first word to check if it is a command alias
+	local alias_prefix
+	local alias_skip
+	case "${words[1]}" in
+		{% for alias in OMNI_COMMAND_ALIASES -%}
+		"{{alias.alias}}")
+			alias_prefix={{alias.command}}
+			alias_skip={{alias.command_size}}
+			;;
+		{% endfor -%}
+		*)
+			# Not a command alias
+			;;
+	esac
+
+	{% endif -%}
+	autocomplete="{{OMNI_BIN}} --complete"
+	{%- if OMNI_COMMAND_ALIASES %}
+	[[ -n "${alias_prefix}" ]] && autocomplete="${autocomplete} ${alias_prefix}"
+	{%- endif %}
+	{% raw -%}
+	[[ ${#words[@]} -gt 1 ]] && autocomplete="${autocomplete} ${words[2,CURRENT]}"
+	{%- endraw %}
+
 	local opts=$(\
-		COMP_CWORD=$((CURRENT-1)) \
+		eval "COMP_CWORD=$((CURRENT - 1{% if OMNI_COMMAND_ALIASES %} + alias_skip{% endif %})) \
 		COMP_TYPE=$compstate[quote] \
-		{{OMNI_BIN}} --complete ${words[2,CURRENT]})
+		$autocomplete")
 	local reply=($(echo $opts))
 
+	{% raw -%}
 	if [[ "${#reply[@]}" -lt 1 ]]; then
 		return
 	fi
@@ -65,9 +104,17 @@ _omni_complete_zsh() {
 		fi
 	done
 	compadd -Q -S '' -- $reply
+	{%- endraw %}
 }
 compdef _omni_complete_zsh omni
-
+{% if OMNI_ALIASES or OMNI_COMMAND_ALIASES -%}
+{% for alias in OMNI_ALIASES -%}
+compdef _omni_complete_zsh {{alias}}
+{% endfor -%}
+{% for alias in OMNI_COMMAND_ALIASES -%}
+compdef _omni_complete_zsh {{alias.alias}}
+{% endfor -%}
+{% endif %}
 
 # Prepare omni's hook
 __omni_hook() {
