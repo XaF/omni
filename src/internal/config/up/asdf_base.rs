@@ -558,7 +558,7 @@ impl UpConfigAsdfBase {
         self.actual_versions.get_or_init(|| BTreeSet::new()).clone()
     }
 
-    fn version(
+    pub fn version(
         &self,
         progress_handler: Option<Box<&dyn ProgressHandler>>,
     ) -> Result<&String, UpError> {

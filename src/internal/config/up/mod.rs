@@ -16,6 +16,9 @@ pub use golang::UpConfigGolang;
 pub mod nodejs;
 pub use nodejs::UpConfigNodejs;
 
+pub mod python;
+pub use python::UpConfigPython;
+
 pub mod homebrew;
 pub use homebrew::UpConfigHomebrew;
 

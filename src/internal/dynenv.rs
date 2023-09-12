@@ -325,11 +325,13 @@ impl DynamicEnv {
                     // envsetter.set_value("NVM_BIN", "$NVM_DIR/versions/node/$NODE_VERSION/bin");
                     // envsetter.set_value("NODE_VERSION", &toolversion.version);
                     // }
-                    // "python" => {
-                    // envsetter.set_value("PYENV_ROOT", "$HOME/.pyenv");
-                    // envsetter.set_value("PYENV_BIN", "$PYENV_ROOT/versions/$PYTHON_VERSION/bin");
-                    // envsetter.set_value("PYTHON_VERSION", &toolversion.version);
-                    // }
+                    "python" => {
+                        envsetter.prepend_to_list("PATH", &format!("{}/bin", tool_prefix));
+                        if let Some(venv) = up_env.env_vars.get("VIRTUAL_ENV") {
+                            envsetter.unset_value("PYTHONHOME");
+                            envsetter.prepend_to_list("PATH", &format!("{}/bin", venv));
+                        }
+                    }
                     _ => {
                         envsetter.prepend_to_list("PATH", &format!("{}/bin", tool_prefix));
                     }
