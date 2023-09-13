@@ -45,19 +45,58 @@ function omni() {
 }
 
 
+{% if OMNI_ALIASES or OMNI_COMMAND_ALIASES -%}
+# Setup aliases for omni
+{% for alias in OMNI_ALIASES -%}
+alias {{alias}}="omni"
+{% endfor -%}
+{% for alias in OMNI_COMMAND_ALIASES -%}
+alias {{alias.alias}}={{alias.full_command}}
+{% endfor %}
+
+{% endif -%}
+
 # Setup autocompletion for omni
 if [[ "${BASH_VERSINFO[0]}" -lt 4 ]]; then
 	echo -e "\033[96momni:\033[0m \033[91mBash version 4 or higher is required for autocompletion (current: ${BASH_VERSION})\033[0m"
 else
 	_omni_complete_bash() {
 		local cur prev opts
+
+		{% if OMNI_COMMAND_ALIASES -%}
+		# Handle command aliases
+		# Get the first word to check if it is a command alias
+		local alias_prefix
+		local alias_skip
+		case "${COMP_WORDS[0]}" in
+			{% for alias in OMNI_COMMAND_ALIASES -%}
+			"{{alias.alias}}")
+				alias_prefix={{alias.command}}
+				alias_skip={{alias.command_size}}
+				;;
+			{% endfor -%}
+			*)
+				# Not a command alias
+				;;
+		esac
+
+		{% endif -%}
+		words=()
+		{%- if OMNI_COMMAND_ALIASES %}
+		[[ -n "${alias_prefix}" ]] && words+=("${alias_prefix}")
+		{%- endif %}
+		{% raw -%}
+		[[ ${#COMP_WORDS[@]} -gt 1 ]] && words+=("${COMP_WORDS[@]:1:$COMP_CWORD}")
+		{%- endraw %}
+
+		# Handle completion
 		COMPREPLY=()
 		cur="${COMP_WORDS[COMP_CWORD]}"
 		prev="${COMP_WORDS[COMP_CWORD-1]}"
 		opts=$(\
-			COMP_CWORD=$COMP_CWORD \
+			COMP_CWORD=$((COMP_CWORD + alias_skip)) \
 			COMP_TYPE=$COMP_TYPE \
-			{{OMNI_BIN}} --complete ${COMP_WORDS[@]:1:$COMP_CWORD})
+			{{OMNI_BIN}} --complete ${words[@]})
 		COMPREPLY=( $(compgen -W "${opts}" -- ${cur}) )
 
 		# For each completion, override them by adding a space
@@ -72,6 +111,14 @@ else
 		return 0
 	}
 	complete -F _omni_complete_bash omni
+	{% if OMNI_ALIASES or OMNI_COMMAND_ALIASES -%}
+	{% for alias in OMNI_ALIASES -%}
+	complete -F _omni_complete_bash {{alias}}
+	{% endfor -%}
+	{% for alias in OMNI_COMMAND_ALIASES -%}
+	complete -F _omni_complete_bash {{alias.alias}}
+	{% endfor -%}
+	{% endif -%}
 fi
 
 

@@ -62,16 +62,8 @@ fn run_omni_subcommand(argv: &[String]) {
                     exit(0);
                 }
                 "init" => {
-                    let shell = if argv.len() > 2 {
-                        argv[2].clone()
-                    } else {
-                        let mut shell = env::var("SHELL").unwrap_or("bash".to_string());
-                        if shell.contains("/") {
-                            shell = shell.split("/").last().unwrap().to_string();
-                        }
-                        shell
-                    };
-                    init_hook(&shell);
+                    let argv = argv[2..].to_vec();
+                    init_hook(argv);
                     exit(0);
                 }
                 _ => {}

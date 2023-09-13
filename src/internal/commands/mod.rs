@@ -2,6 +2,7 @@ pub mod base;
 pub use base::Command;
 
 mod builtin;
+pub use builtin::HelpCommand;
 
 mod fromconfig;
 
