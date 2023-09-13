@@ -880,6 +880,19 @@ impl UpConfigAsdfBase {
 
 fn version_match(expect: &str, version: &str) -> bool {
     if expect == "latest" {
+        let mut prev = '.';
+        for c in version.chars() {
+            if !c.is_digit(10) {
+                if c == '.' {
+                    if prev == '.' {
+                        return false;
+                    }
+                } else {
+                    return false;
+                }
+            }
+            prev = c;
+        }
         return true;
     }
 
