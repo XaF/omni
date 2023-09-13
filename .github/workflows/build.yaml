@@ -72,7 +72,7 @@ jobs:
 
     steps:
       - name: Checkout commit
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
         with:
           ref: ${{ inputs.git_sha || github.sha }}
 
@@ -176,7 +176,7 @@ jobs:
           fi
 
       - name: Checkout current commit
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
         with:
           ref: ${{ inputs.git_sha || github.sha }}
 
