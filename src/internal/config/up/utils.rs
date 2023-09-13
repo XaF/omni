@@ -11,9 +11,24 @@ use tokio::process::Command as TokioCommand;
 use tokio::runtime::Runtime;
 use tokio::time::Duration;
 
+//use std::process::Command as StdCommand;
+// use std::io::Send;
+use bkt::Bkt;
+use bkt::CommandDesc;
+use bkt::CommandState;
+use std::collections::BTreeMap;
+use std::ffi::OsStr;
+use std::ffi::OsString;
+use std::io::Write;
+use std::sync::mpsc;
+use std::sync::mpsc::Receiver;
+use std::sync::mpsc::Sender;
+use std::thread;
+
 use crate::internal::config::up::UpError;
 use crate::internal::user_interface::StringColor;
 
+#[derive(Debug, Clone)]
 pub struct RunConfig {
     pub timeout: Option<Duration>,
     pub strip_ctrl_chars: bool,
@@ -45,7 +60,7 @@ pub fn run_progress(
     run_config: RunConfig,
 ) -> Result<(), UpError> {
     let rt = Runtime::new().unwrap();
-    rt.block_on(async_run_progress_readblocks(
+    rt.block_on(async_run_progress_readblocks2(
         process_command,
         |stdout, stderr| {
             if let Some(progress_handler) = &progress_handler {
@@ -87,6 +102,205 @@ where
 // command, handler_fn, run_config,
 // ))
 // }
+
+async fn async_run_progress_readblocks2<F>(
+    tokio_command: &mut TokioCommand,
+    handler_fn: F,
+    run_config: RunConfig,
+) -> Result<(), UpError>
+where
+    F: Fn(Option<String>, Option<String>) -> (),
+{
+    let std_command = tokio_command.as_std();
+
+    let mut args: Vec<OsString> = Vec::new();
+    args.push(std_command.get_program().to_owned());
+    args.extend(
+        std_command
+            .get_args()
+            .collect::<Vec<&OsStr>>()
+            .iter()
+            .map(|arg| arg.to_owned().to_owned()),
+    );
+
+    let mut bkt_command = CommandDesc::new(args)
+        .with_discard_failures(true)
+        .capture_state()
+        .expect("Failed to capture state");
+
+    if let Some(cwd) = std_command.get_current_dir() {
+        bkt_command = bkt_command.with_working_dir(cwd);
+    }
+
+    for (env_var, env_value) in std_command.get_envs() {
+        bkt_command =
+            bkt_command.with_env(env_var.to_owned(), env_value.unwrap_or_default().to_owned());
+    }
+
+    let (tx, rx): (Sender<StreamHandlerMessage>, Receiver<StreamHandlerMessage>) = mpsc::channel();
+
+    let command_runner = thread::spawn(move || {
+        let (stdout_stream_handler, stderr_stream_handler) =
+            StreamHandler::new_both(tx.clone(), run_config.clone());
+
+        let bkt = Bkt::in_tmp();
+
+        if let Err(err) = bkt {
+            return Err(UpError::Exec(format!(
+                "Failed to create temporary directory: {}",
+                err
+            )));
+        }
+        let bkt = bkt.unwrap();
+
+        let resp = bkt.retrieve_streaming(
+            bkt_command.clone(),
+            Duration::from_secs(60),
+            stdout_stream_handler,
+            stderr_stream_handler,
+        );
+
+        // End main command
+        if let Err(err) = tx.send(StreamHandlerMessage::End) {
+            return Err(UpError::Exec(format!(
+                "Failed to send end message: {}",
+                err
+            )));
+        }
+
+        if let Err(err) = resp {
+            return Err(UpError::Exec(format!("Failed to execute command: {}", err)));
+        }
+
+        let (invocation, status) = resp.unwrap();
+
+        eprintln!(
+            "DEBUG:\n\tCOMMAND: {:?}\n\tSTATUS: {:?}",
+            bkt_command, status
+        );
+
+        Ok(())
+    });
+
+    let mut receive_data = true;
+    while receive_data {
+        match rx.recv() {
+            Ok(message) => match message {
+                StreamHandlerMessage::Stdout(data) => {
+                    handler_fn(Some(data), None);
+                }
+                StreamHandlerMessage::Stderr(data) | StreamHandlerMessage::Unknown(data) => {
+                    handler_fn(None, Some(data));
+                }
+                StreamHandlerMessage::End => {
+                    receive_data = false;
+                    break;
+                }
+            },
+            Err(err) => {
+                return Err(UpError::Exec(format!("Failed to receive message: {}", err)));
+            }
+        }
+    }
+
+    if let Err(err) = command_runner.join() {
+        return Err(UpError::Exec(format!(
+            "Failed to join command runner: {:?}",
+            err
+        )));
+    }
+
+    Ok(())
+}
+
+struct StreamHandler {
+    is_stdout: bool,
+    is_stderr: bool,
+    sender: Sender<StreamHandlerMessage>,
+    run_config: RunConfig,
+}
+
+impl StreamHandler {
+    fn new_both(sender: Sender<StreamHandlerMessage>, run_config: RunConfig) -> (Self, Self) {
+        (
+            Self::new(sender.clone(), run_config.clone(), true, false),
+            Self::new(sender.clone(), run_config.clone(), false, true),
+        )
+    }
+
+    fn new(
+        sender: Sender<StreamHandlerMessage>,
+        run_config: RunConfig,
+        is_stdout: bool,
+        is_stderr: bool,
+    ) -> Self {
+        StreamHandler {
+            is_stdout: is_stdout,
+            is_stderr: is_stderr,
+            sender: sender,
+            run_config: run_config,
+        }
+    }
+
+    fn new_stdout(sender: Sender<StreamHandlerMessage>, run_config: RunConfig) -> Self {
+        Self::new(sender, run_config, true, false)
+    }
+
+    fn new_stderr(sender: Sender<StreamHandlerMessage>, run_config: RunConfig) -> Self {
+        Self::new(sender, run_config, false, true)
+    }
+}
+
+impl Write for StreamHandler {
+    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+        let stdout_str = if let Ok(stdout_str) = std::str::from_utf8(buf) {
+            stdout_str.trim_end()
+        } else {
+            ""
+        };
+
+        let stdout_str = if let Some(index) = stdout_str.rfind('\n') {
+            &stdout_str[index + 1..]
+        } else {
+            stdout_str
+        };
+
+        let contents = if self.run_config.strip_ctrl_chars {
+            filter_control_characters(stdout_str)
+        } else {
+            stdout_str.to_string()
+        };
+
+        let stream_handler_message = if self.is_stdout {
+            StreamHandlerMessage::Stdout(contents)
+        } else if self.is_stderr {
+            StreamHandlerMessage::Stderr(contents)
+        } else {
+            StreamHandlerMessage::Unknown(contents)
+        };
+
+        if let Err(err) = self.sender.send(stream_handler_message) {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::Other,
+                format!("Failed to send message: {}", err),
+            ));
+        }
+
+        Ok(buf.len())
+    }
+
+    fn flush(&mut self) -> std::io::Result<()> {
+        Ok(())
+    }
+}
+
+#[derive(Debug)]
+enum StreamHandlerMessage {
+    Stdout(String),
+    Stderr(String),
+    Unknown(String),
+    End,
+}
 
 async fn async_run_progress_readblocks<F>(
     process_command: &mut TokioCommand,
