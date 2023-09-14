@@ -109,7 +109,7 @@ fn update_asdf(progress_handler: Option<Box<&dyn ProgressHandler>>) -> Result<()
     run_progress(
         &mut asdf_update,
         progress_handler.clone(),
-        RunConfig::default(),
+        RunConfig::with_cache_ttl(3600),
     )
 }
 
@@ -700,7 +700,7 @@ impl UpConfigAsdfBase {
         run_progress(
             &mut asdf_plugin_update,
             progress_handler.clone(),
-            RunConfig::default(),
+            RunConfig::with_cache_ttl(3600),
         )
     }
 
