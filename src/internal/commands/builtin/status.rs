@@ -3,14 +3,12 @@ use std::process::exit;
 use clap;
 use once_cell::sync::OnceCell;
 use regex::Regex;
-use serde_yaml;
 
 use crate::internal::commands::builtin::HelpCommand;
 use crate::internal::commands::path::omnipath;
 use crate::internal::config::config;
 use crate::internal::config::config_loader;
 use crate::internal::config::CommandSyntax;
-use crate::internal::get_cache;
 use crate::internal::git::ORG_LOADER;
 use crate::internal::user_interface::StringColor;
 use crate::internal::ENV;
@@ -125,7 +123,6 @@ impl StatusCommand {
 
         self.print_shell_integration();
         self.print_configuration();
-        self.print_cache();
         self.print_worktree();
         self.print_orgs();
         self.print_path();
@@ -166,14 +163,6 @@ impl StatusCommand {
                 println!("  - {}", config_file);
             }
         }
-    }
-
-    fn print_cache(&self) {
-        println!("\n{}", format!("Cache").bold());
-
-        // Use serde_yaml to convert the cache to yaml
-        let yaml_code = serde_yaml::to_string(&get_cache()).unwrap();
-        println!("{}", self.color_yaml(&yaml_code));
     }
 
     fn print_worktree(&self) {

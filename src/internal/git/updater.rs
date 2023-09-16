@@ -6,7 +6,8 @@ use std::time::Duration;
 
 use indicatif::MultiProgress;
 
-use crate::internal::cache::OmniPathUpdates;
+use crate::internal::cache::CacheObject;
+use crate::internal::cache::OmniPathCache;
 use crate::internal::commands::path::global_omnipath;
 use crate::internal::config::config;
 use crate::internal::config::up::utils::PrintProgressHandler;
@@ -15,7 +16,6 @@ use crate::internal::config::up::utils::SpinnerProgressHandler;
 use crate::internal::git_env;
 use crate::internal::self_update;
 use crate::internal::user_interface::StringColor;
-use crate::internal::Cache;
 use crate::internal::ENV;
 use crate::omni_error;
 use crate::omni_info;
@@ -41,19 +41,13 @@ fn should_update() -> bool {
 
     // Check first without exclusive lock (less costly)
     let mut require_update = false;
-    if !Cache::omni_path_updated() {
+    if !OmniPathCache::get().updated() {
         // If the update is due, let's take the lock and check again
-        if let Err(err) = Cache::exclusive(|cache| {
-            if let Some(omni_path_updates) = &mut cache.omni_path_updates {
-                if !omni_path_updates.updated() {
-                    omni_path_updates.update();
-                    require_update = true;
-                }
-            } else {
-                cache.omni_path_updates = Some(OmniPathUpdates::new());
+        if let Err(err) = OmniPathCache::exclusive(|omnipath| {
+            if !omnipath.updated() {
+                omnipath.update();
                 require_update = true;
             }
-
             require_update
         }) {
             omni_error!(format!("Failed to update cache (update skipped): {}", err));

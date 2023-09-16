@@ -559,7 +559,7 @@ impl PathConfig {
 pub struct PathRepoUpdatesConfig {
     pub enabled: bool,
     pub self_update: PathRepoUpdatesSelfUpdateEnum,
-    pub interval: u64,
+    pub interval: i64,
     pub ref_type: String,
     pub ref_match: Option<String>,
     pub per_repo_config: HashMap<String, PathRepoUpdatesPerRepoConfig>,
@@ -602,7 +602,7 @@ impl PathRepoUpdatesConfig {
                 (None, None) => PathRepoUpdatesSelfUpdateEnum::Ask,
             },
             interval: match config_value.get("interval") {
-                Some(value) => value.as_integer().unwrap() as u64,
+                Some(value) => value.as_integer().unwrap() as i64,
                 None => 12 * 60 * 60,
             },
             ref_type: match config_value.get("ref_type") {
