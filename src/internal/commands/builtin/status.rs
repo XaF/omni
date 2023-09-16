@@ -10,9 +10,9 @@ use crate::internal::commands::path::omnipath;
 use crate::internal::config::config;
 use crate::internal::config::config_loader;
 use crate::internal::config::CommandSyntax;
+use crate::internal::get_cache;
 use crate::internal::git::ORG_LOADER;
 use crate::internal::user_interface::StringColor;
-use crate::internal::CACHE;
 use crate::internal::ENV;
 use crate::omni_error;
 use crate::omni_header;
@@ -172,7 +172,7 @@ impl StatusCommand {
         println!("\n{}", format!("Cache").bold());
 
         // Use serde_yaml to convert the cache to yaml
-        let yaml_code = serde_yaml::to_string(&*CACHE).unwrap();
+        let yaml_code = serde_yaml::to_string(&get_cache()).unwrap();
         println!("{}", self.color_yaml(&yaml_code));
     }
 

@@ -34,6 +34,7 @@ use crate::internal::config::ConfigExtendStrategy;
 use crate::internal::config::ConfigLoader;
 use crate::internal::config::ConfigValue;
 use crate::internal::config::SyntaxOptArg;
+use crate::internal::get_cache;
 use crate::internal::git::format_path;
 use crate::internal::git::safe_git_url_parse;
 use crate::internal::git::ORG_LOADER;
@@ -41,7 +42,6 @@ use crate::internal::git_env;
 use crate::internal::user_interface::StringColor;
 use crate::internal::workdir;
 use crate::internal::workdir_or_init;
-use crate::internal::CACHE;
 use crate::internal::ENV;
 use crate::omni_error;
 use crate::omni_info;
@@ -545,7 +545,7 @@ impl UpCommand {
         let workdir = workdir(".");
         let repo_id = workdir.id();
         if repo_id.is_some() {
-            if let Some(trusted_repos) = &CACHE.trusted_repositories {
+            if let Some(trusted_repos) = get_cache().trusted_repositories {
                 if trusted_repos
                     .repositories
                     .contains(&repo_id.clone().unwrap())
