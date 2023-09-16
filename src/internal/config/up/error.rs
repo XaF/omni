@@ -10,6 +10,7 @@ pub enum UpError {
     Config(String),
     Exec(String),
     Timeout(String),
+    Cache(String),
     HomebrewTapInUse,
 }
 
@@ -30,6 +31,7 @@ impl Display for UpError {
             UpError::Config(message) => write!(f, "configuration error: {}", message),
             UpError::Exec(message) => write!(f, "execution error: {}", message),
             UpError::Timeout(message) => write!(f, "timeout: {}", message),
+            UpError::Cache(message) => write!(f, "cache error: {}", message),
             UpError::HomebrewTapInUse => write!(f, "tap in use"),
         }
     }

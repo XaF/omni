@@ -7,6 +7,7 @@ use std::io::Read;
 use std::io::Seek;
 use std::io::Write;
 use std::path::PathBuf;
+use std::sync::Mutex;
 use std::time::Duration;
 
 use fs4::FileExt;
@@ -19,7 +20,17 @@ use time::OffsetDateTime;
 use crate::internal::config;
 
 lazy_static! {
-    pub static ref CACHE: Cache = Cache::new();
+    static ref CACHE: Mutex<Cache> = Mutex::new(Cache::new());
+}
+
+pub fn get_cache() -> Cache {
+    let cache = CACHE.lock().unwrap();
+    cache.clone()
+}
+
+fn set_cache(cache_set: Cache) {
+    let mut cache = CACHE.lock().unwrap();
+    *cache = cache_set;
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -56,7 +67,7 @@ impl Cache {
     }
 
     pub fn omni_path_updated() -> bool {
-        if let Some(omni_path_updates) = &CACHE.omni_path_updates {
+        if let Some(omni_path_updates) = get_cache().omni_path_updates {
             return omni_path_updates.updated();
         }
         false
@@ -110,10 +121,71 @@ impl Cache {
             file.set_len(0)?;
             file.seek(io::SeekFrom::Start(0))?;
             file.write_all(serialized.as_bytes())?;
+
+            // Update the CACHE global variable with the new data
+            set_cache(cache.clone());
         }
 
         // Return the cache as modified by the closure, no matter if the file was updated or not
         Ok(cache)
+    }
+
+    pub fn set_asdf_operation_installed(&mut self, installed: Vec<AsdfInstalled>) {
+        if let None = self.asdf_operation {
+            self.asdf_operation = Some(AsdfOperation::new());
+        }
+        self.asdf_operation
+            .as_mut()
+            .unwrap()
+            .set_installed(installed);
+    }
+
+    pub fn should_update_asdf(&self) -> bool {
+        if let Some(asdf_operation) = &self.asdf_operation {
+            return asdf_operation.should_update_asdf();
+        }
+        true
+    }
+
+    pub fn should_update_asdf_plugin(&self, plugin: &str) -> bool {
+        if let Some(asdf_operation) = &self.asdf_operation {
+            return asdf_operation.should_update_asdf_plugin(plugin);
+        }
+        true
+    }
+
+    pub fn get_asdf_plugin_versions(&self, plugin: &str) -> Option<Vec<String>> {
+        if let Some(asdf_operation) = &self.asdf_operation {
+            return asdf_operation.get_asdf_plugin_versions(plugin);
+        }
+        None
+    }
+
+    pub fn updated_asdf(&mut self) {
+        if let None = self.asdf_operation {
+            self.asdf_operation = Some(AsdfOperation::new());
+        }
+        self.asdf_operation.as_mut().unwrap().updated_asdf();
+    }
+
+    pub fn updated_asdf_plugin(&mut self, plugin: &str) {
+        if let None = self.asdf_operation {
+            self.asdf_operation = Some(AsdfOperation::new());
+        }
+        self.asdf_operation
+            .as_mut()
+            .unwrap()
+            .updated_asdf_plugin(plugin);
+    }
+
+    pub fn set_asdf_plugin_versions(&mut self, plugin: &str, versions: Vec<String>) {
+        if let None = self.asdf_operation {
+            self.asdf_operation = Some(AsdfOperation::new());
+        }
+        self.asdf_operation
+            .as_mut()
+            .unwrap()
+            .set_asdf_plugin_versions(plugin, versions);
     }
 }
 
@@ -167,8 +239,62 @@ pub struct HomebrewTapped {
 pub struct AsdfOperation {
     #[serde(default = "Vec::new", skip_serializing_if = "Vec::is_empty")]
     pub installed: Vec<AsdfInstalled>,
+    #[serde(
+        default = "AsdfOperationUpdateCache::new",
+        skip_serializing_if = "AsdfOperationUpdateCache::is_empty"
+    )]
+    pub update_cache: AsdfOperationUpdateCache,
     #[serde(default = "set_origin_of_time", with = "time::serde::rfc3339")]
     pub updated_at: OffsetDateTime,
+}
+
+impl AsdfOperation {
+    pub fn new() -> Self {
+        Self {
+            installed: Vec::new(),
+            update_cache: AsdfOperationUpdateCache::new(),
+            updated_at: set_origin_of_time(),
+        }
+    }
+
+    pub fn updated(&mut self) {
+        self.updated_at = OffsetDateTime::now_utc();
+    }
+
+    pub fn set_installed(&mut self, installed: Vec<AsdfInstalled>) {
+        self.installed = installed;
+        self.updated();
+    }
+
+    pub fn updated_asdf(&mut self) {
+        self.update_cache.updated_asdf();
+        self.updated();
+    }
+
+    pub fn updated_asdf_plugin(&mut self, plugin: &str) {
+        self.update_cache.updated_asdf_plugin(plugin);
+        self.updated();
+    }
+
+    pub fn set_asdf_plugin_versions(&mut self, plugin: &str, versions: Vec<String>) {
+        self.update_cache.set_asdf_plugin_versions(plugin, versions);
+        self.updated();
+    }
+
+    pub fn should_update_asdf(&self) -> bool {
+        self.update_cache
+            .should_update_asdf(Duration::from_secs(86400))
+    }
+
+    pub fn should_update_asdf_plugin(&self, plugin: &str) -> bool {
+        self.update_cache
+            .should_update_asdf_plugin(plugin, Duration::from_secs(86400))
+    }
+
+    pub fn get_asdf_plugin_versions(&self, plugin: &str) -> Option<Vec<String>> {
+        self.update_cache
+            .get_asdf_plugin_versions(plugin, Duration::from_secs(3600))
+    }
 }
 
 impl Empty for AsdfOperation {
@@ -183,6 +309,100 @@ pub struct AsdfInstalled {
     pub version: String,
     #[serde(default = "Vec::new", skip_serializing_if = "Vec::is_empty")]
     pub required_by: Vec<String>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct AsdfOperationUpdateCache {
+    #[serde(default = "set_origin_of_time", with = "time::serde::rfc3339")]
+    pub asdf_updated_at: OffsetDateTime,
+    #[serde(default = "HashMap::new", skip_serializing_if = "HashMap::is_empty")]
+    pub plugins_updated_at: HashMap<String, OffsetDateTime>,
+    #[serde(default = "HashMap::new", skip_serializing_if = "HashMap::is_empty")]
+    pub plugins_versions: HashMap<String, AsdfOperationUpdateCachePluginVersions>,
+}
+
+impl AsdfOperationUpdateCache {
+    pub fn new() -> Self {
+        Self {
+            asdf_updated_at: set_origin_of_time(),
+            plugins_updated_at: HashMap::new(),
+            plugins_versions: HashMap::new(),
+        }
+    }
+
+    pub fn updated_asdf(&mut self) {
+        self.asdf_updated_at = OffsetDateTime::now_utc();
+    }
+
+    pub fn updated_asdf_plugin(&mut self, plugin: &str) {
+        self.plugins_updated_at
+            .insert(plugin.to_string(), OffsetDateTime::now_utc());
+    }
+
+    pub fn set_asdf_plugin_versions(&mut self, plugin: &str, versions: Vec<String>) {
+        self.plugins_versions.insert(
+            plugin.to_string(),
+            AsdfOperationUpdateCachePluginVersions::new(versions),
+        );
+    }
+
+    pub fn should_update_asdf(&self, expire_after: Duration) -> bool {
+        (self.asdf_updated_at + expire_after) < OffsetDateTime::now_utc()
+    }
+
+    pub fn should_update_asdf_plugin(&self, plugin: &str, expire_after: Duration) -> bool {
+        if let Some(plugin_updated_at) = self.plugins_updated_at.get(plugin) {
+            (*plugin_updated_at + expire_after) < OffsetDateTime::now_utc()
+        } else {
+            true
+        }
+    }
+
+    pub fn get_asdf_plugin_versions(
+        &self,
+        plugin: &str,
+        expire_after: Duration,
+    ) -> Option<Vec<String>> {
+        if let Some(plugin_versions) = self.plugins_versions.get(plugin) {
+            if (plugin_versions.updated_at + expire_after) < OffsetDateTime::now_utc() {
+                return None;
+            }
+            Some(plugin_versions.versions.clone())
+        } else {
+            None
+        }
+    }
+}
+
+impl Empty for AsdfOperationUpdateCache {
+    fn is_empty(&self) -> bool {
+        self.plugins_versions.is_empty()
+            && self.plugins_updated_at.is_empty()
+            && self.asdf_updated_at == set_origin_of_time()
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct AsdfOperationUpdateCachePluginVersions {
+    #[serde(default = "set_origin_of_time", with = "time::serde::rfc3339")]
+    pub updated_at: OffsetDateTime,
+    #[serde(default = "Vec::new", skip_serializing_if = "Vec::is_empty")]
+    pub versions: Vec<String>,
+}
+
+impl AsdfOperationUpdateCachePluginVersions {
+    pub fn new(versions: Vec<String>) -> Self {
+        Self {
+            updated_at: OffsetDateTime::now_utc(),
+            versions: versions,
+        }
+    }
+}
+
+impl Empty for AsdfOperationUpdateCachePluginVersions {
+    fn is_empty(&self) -> bool {
+        self.versions.is_empty()
+    }
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]

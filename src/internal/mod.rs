@@ -1,6 +1,6 @@
 pub mod cache;
+pub use cache::get_cache;
 pub use cache::Cache;
-pub use cache::CACHE;
 
 pub mod commands;
 pub use commands::command_loader;

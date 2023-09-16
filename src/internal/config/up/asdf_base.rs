@@ -17,7 +17,6 @@ use tokio::process::Command as TokioCommand;
 use walkdir::WalkDir;
 
 use crate::internal::cache::AsdfInstalled;
-use crate::internal::cache::AsdfOperation;
 use crate::internal::cache::Cache;
 use crate::internal::cache::UpEnvironment;
 use crate::internal::cache::UpEnvironments;
@@ -30,9 +29,11 @@ use crate::internal::config::up::utils::RunConfig;
 use crate::internal::config::up::utils::SpinnerProgressHandler;
 use crate::internal::config::up::UpError;
 use crate::internal::config::ConfigValue;
+use crate::internal::get_cache;
 use crate::internal::user_interface::StringColor;
 use crate::internal::workdir;
 use crate::internal::ENV;
+use crate::omni_error;
 
 lazy_static! {
     pub static ref ASDF_PATH: String = {
@@ -92,6 +93,10 @@ fn install_asdf(progress_handler: Option<Box<&dyn ProgressHandler>>) -> Result<(
 }
 
 fn update_asdf(progress_handler: Option<Box<&dyn ProgressHandler>>) -> Result<(), UpError> {
+    if !get_cache().should_update_asdf() {
+        return Ok(());
+    }
+
     if progress_handler.is_some() {
         progress_handler
             .clone()
@@ -106,11 +111,22 @@ fn update_asdf(progress_handler: Option<Box<&dyn ProgressHandler>>) -> Result<()
     asdf_update.stdout(std::process::Stdio::piped());
     asdf_update.stderr(std::process::Stdio::piped());
 
-    run_progress(
+    if let Err(err) = run_progress(
         &mut asdf_update,
         progress_handler.clone(),
         RunConfig::default(),
-    )
+    ) {
+        return Err(err);
+    }
+
+    if let Err(err) = Cache::exclusive(|cache| {
+        cache.updated_asdf();
+        true
+    }) {
+        return Err(UpError::Cache(err.to_string()));
+    }
+
+    Ok(())
 }
 
 fn is_asdf_tool_version_installed(tool: &str, version: &str) -> bool {
@@ -281,10 +297,7 @@ impl UpConfigAsdfBase {
                 updated = true;
             }
 
-            cache.asdf_operation = Some(AsdfOperation {
-                installed: installed.clone(),
-                updated_at: OffsetDateTime::now_utc(),
-            });
+            cache.set_asdf_operation_installed(installed);
 
             // Update the repository up cache
             let mut up_env = HashMap::new();
@@ -574,36 +587,64 @@ impl UpConfigAsdfBase {
                     .progress(format!("checking available versions"));
             }
 
-            let mut asdf_list_all = std::process::Command::new(format!("{}", *ASDF_BIN));
-            asdf_list_all.arg("list");
-            asdf_list_all.arg("all");
-            asdf_list_all.arg(self.tool.clone());
-            asdf_list_all.env("ASDF_DIR", &*ASDF_PATH);
-            asdf_list_all.env("ASDF_DATA_DIR", &*ASDF_PATH);
-            asdf_list_all.stdout(std::process::Stdio::piped());
-            asdf_list_all.stderr(std::process::Stdio::piped());
+            let available_versions =
+                if let Some(versions) = get_cache().get_asdf_plugin_versions(&self.tool) {
+                    versions
+                } else {
+                    let mut asdf_list_all = std::process::Command::new(format!("{}", *ASDF_BIN));
+                    asdf_list_all.arg("list");
+                    asdf_list_all.arg("all");
+                    asdf_list_all.arg(self.tool.clone());
+                    asdf_list_all.env("ASDF_DIR", &*ASDF_PATH);
+                    asdf_list_all.env("ASDF_DATA_DIR", &*ASDF_PATH);
+                    asdf_list_all.stdout(std::process::Stdio::piped());
+                    asdf_list_all.stderr(std::process::Stdio::piped());
 
-            if let Ok(output) = asdf_list_all.output() {
-                if output.status.success() {
-                    let stdout = String::from_utf8(output.stdout).unwrap();
-                    let mut lines = stdout.lines();
-                    let mut version = "".to_string();
-                    while let Some(line) = lines.next() {
-                        let line = line.trim();
+                    if let Ok(output) = asdf_list_all.output() {
+                        if output.status.success() {
+                            let stdout = String::from_utf8(output.stdout).unwrap();
+                            let mut versions = Vec::new();
+                            let mut lines = stdout.lines();
+                            while let Some(line) = lines.next() {
+                                let line = line.trim();
 
-                        if line.is_empty() {
-                            continue;
+                                if line.is_empty() {
+                                    continue;
+                                }
+
+                                versions.push(line.to_string());
+                            }
+
+                            if let Err(err) = Cache::exclusive(|cache| {
+                                cache.set_asdf_plugin_versions(&self.tool, versions.clone());
+                                true
+                            }) {
+                                omni_error!(format!("failed to update cache: {}", err));
+                                return "".to_string();
+                            }
+
+                            versions
+                        } else {
+                            omni_error!(format!(
+                                "failed to list versions for {}; exited with status {}",
+                                self.tool, output.status
+                            ));
+                            return "".to_string();
                         }
-
-                        if version_match(&self.version, line) {
-                            version = line.to_string();
-                        }
+                    } else {
+                        omni_error!(format!("failed to list versions for {}", self.tool));
+                        return "".to_string();
                     }
-                    return version;
+                };
+
+            let mut version = "".to_string();
+            for available_version in available_versions {
+                if version_match(&self.version, available_version.as_str()) {
+                    version = available_version;
                 }
             }
 
-            "".to_string()
+            version
         });
 
         if version.is_empty() {
@@ -681,6 +722,10 @@ impl UpConfigAsdfBase {
         &self,
         progress_handler: Option<Box<&dyn ProgressHandler>>,
     ) -> Result<(), UpError> {
+        if !get_cache().should_update_asdf_plugin(&self.tool) {
+            return Ok(());
+        }
+
         if progress_handler.is_some() {
             progress_handler
                 .clone()
@@ -697,11 +742,23 @@ impl UpConfigAsdfBase {
         asdf_plugin_update.stdout(std::process::Stdio::piped());
         asdf_plugin_update.stderr(std::process::Stdio::piped());
 
-        run_progress(
+        if let Err(err) = run_progress(
             &mut asdf_plugin_update,
             progress_handler.clone(),
             RunConfig::default(),
-        )
+        ) {
+            return Err(err);
+        }
+
+        // Update the cache
+        if let Err(err) = Cache::exclusive(|cache| {
+            cache.updated_asdf_plugin(&self.tool);
+            true
+        }) {
+            return Err(UpError::Cache(err.to_string()));
+        }
+
+        Ok(())
     }
 
     fn is_version_installed(&self) -> bool {
