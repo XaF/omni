@@ -296,26 +296,24 @@ impl UpConfigAsdfBase {
             Some(Box::new(progress_handler.as_ref()));
 
         if let Err(err) = install_asdf(progress_handler.clone()) {
-            if progress_handler.is_some() {
-                progress_handler
-                    .clone()
-                    .unwrap()
-                    .error_with_message(format!("error: {}", err));
-            }
+            progress_handler
+                .clone()
+                .map(|ph| ph.error_with_message(format!("error: {}", err)));
             return Err(err);
         }
 
         if let Err(err) = self.install_plugin(progress_handler.clone()) {
-            if progress_handler.is_some() {
-                progress_handler
-                    .clone()
-                    .unwrap()
-                    .error_with_message(format!("error: {}", err));
-            }
+            progress_handler
+                .clone()
+                .map(|ph| ph.error_with_message(format!("error: {}", err)));
             return Err(err);
         }
 
         if self.version == "auto" {
+            progress_handler
+                .clone()
+                .map(|ph| ph.progress("detecting required versions and paths".to_string()));
+
             let mut detected_versions: BTreeMap<String, BTreeSet<String>> = BTreeMap::new();
 
             // Get the current directory
