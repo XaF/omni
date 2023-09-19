@@ -8,10 +8,11 @@ use serde::Serialize;
 use serde_json;
 use shell_escape::escape;
 
+use crate::internal::cache::CacheObject;
+use crate::internal::cache::UpEnvironmentsCache;
 use crate::internal::config::up::ASDF_PATH;
 use crate::internal::user_interface::StringColor;
 use crate::internal::workdir;
-use crate::internal::Cache;
 
 const DATA_SEPARATOR: &str = "\x1C";
 const DYNENV_VAR: &str = "__omni_dynenv";
@@ -26,7 +27,7 @@ pub fn update_dynamic_env_for_command(path: &str) {
 }
 
 pub fn update_dynamic_env_with_path(export_mode: DynamicEnvExportMode, path: Option<String>) {
-    let cache = Cache::new();
+    let cache = UpEnvironmentsCache::get();
     let mut current_env = DynamicEnv::from_env(cache.clone());
     let mut expected_env = DynamicEnv::new_with_path(path, cache.clone());
 
@@ -116,11 +117,11 @@ pub struct DynamicEnv {
     data_str: Option<String>,
     data: Option<DynamicEnvData>,
     features: Vec<String>,
-    cache: Cache,
+    cache: UpEnvironmentsCache,
 }
 
 impl DynamicEnv {
-    fn new_with_path(path: Option<String>, cache: Cache) -> Self {
+    fn new_with_path(path: Option<String>, cache: UpEnvironmentsCache) -> Self {
         Self {
             path: path,
             id: OnceCell::new(),
@@ -131,7 +132,7 @@ impl DynamicEnv {
         }
     }
 
-    pub fn from_env(cache: Cache) -> Self {
+    pub fn from_env(cache: UpEnvironmentsCache) -> Self {
         let (cur_id, cur_data) = current_env();
 
         let id = OnceCell::new();
@@ -170,11 +171,8 @@ impl DynamicEnv {
                 let dir = workdir.reldir(&path).unwrap_or("".to_string());
 
                 // Check if repo is 'up' and should have its environment loaded
-                let up_env = if let Some(up_cache) = &self.cache.up_environments {
-                    if !up_cache.env.contains_key(&repo_id) {
-                        return 0;
-                    }
-                    up_cache.env.get(&repo_id).unwrap().clone()
+                let up_env = if let Some(up_env) = self.cache.get_env(&repo_id) {
+                    up_env
                 } else {
                     return 0;
                 };
@@ -230,16 +228,10 @@ impl DynamicEnv {
         let path = self.path.clone().unwrap_or(".".to_string());
         let workdir = workdir(&path);
         if workdir.in_workdir() {
-            let repo_id = workdir.id();
-            if repo_id.is_none() {
+            if let Some(repo_id) = workdir.id() {
+                up_env = self.cache.get_env(&repo_id).clone();
+            } else {
                 return;
-            }
-            let repo_id = repo_id.unwrap();
-
-            if let Some(up_cache) = &self.cache.up_environments {
-                if up_cache.env.contains_key(&repo_id) {
-                    up_env = Some(up_cache.env.get(&repo_id).unwrap().clone());
-                }
             }
         }
 

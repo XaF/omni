@@ -1,6 +1,5 @@
 use std::collections::BTreeMap;
 use std::collections::BTreeSet;
-use std::collections::HashMap;
 use std::collections::HashSet;
 use std::os::unix::fs::PermissionsExt;
 use std::path::PathBuf;
@@ -12,15 +11,12 @@ use node_semver::Version as semverVersion;
 use once_cell::sync::OnceCell;
 use serde::Deserialize;
 use serde::Serialize;
-use time::OffsetDateTime;
 use tokio::process::Command as TokioCommand;
 use walkdir::WalkDir;
 
-use crate::internal::cache::AsdfInstalled;
-use crate::internal::cache::Cache;
-use crate::internal::cache::UpEnvironment;
-use crate::internal::cache::UpEnvironments;
-use crate::internal::cache::UpVersion;
+use crate::internal::cache::AsdfOperationCache;
+use crate::internal::cache::CacheObject;
+use crate::internal::cache::UpEnvironmentsCache;
 use crate::internal::config::up::tool::UpConfigTool;
 use crate::internal::config::up::utils::run_progress;
 use crate::internal::config::up::utils::PrintProgressHandler;
@@ -29,7 +25,6 @@ use crate::internal::config::up::utils::RunConfig;
 use crate::internal::config::up::utils::SpinnerProgressHandler;
 use crate::internal::config::up::UpError;
 use crate::internal::config::ConfigValue;
-use crate::internal::get_cache;
 use crate::internal::user_interface::StringColor;
 use crate::internal::workdir;
 use crate::internal::ENV;
@@ -93,7 +88,7 @@ fn install_asdf(progress_handler: Option<Box<&dyn ProgressHandler>>) -> Result<(
 }
 
 fn update_asdf(progress_handler: Option<Box<&dyn ProgressHandler>>) -> Result<(), UpError> {
-    if !get_cache().should_update_asdf() {
+    if !AsdfOperationCache::get().should_update_asdf() {
         return Ok(());
     }
 
@@ -119,8 +114,8 @@ fn update_asdf(progress_handler: Option<Box<&dyn ProgressHandler>>) -> Result<()
         return Err(err);
     }
 
-    if let Err(err) = Cache::exclusive(|cache| {
-        cache.updated_asdf();
+    if let Err(err) = AsdfOperationCache::exclusive(|asdf_cache| {
+        asdf_cache.updated_asdf();
         true
     }) {
         return Err(UpError::Cache(err.to_string()));
@@ -245,109 +240,49 @@ impl UpConfigAsdfBase {
     }
 
     fn update_cache(&self, progress_handler: Option<Box<&dyn ProgressHandler>>) {
+        let workdir = workdir(".");
+        let repo_id = workdir.id();
+        if repo_id.is_none() {
+            return;
+        }
+        let repo_id = repo_id.unwrap();
+
+        let version = self.version(None);
+        if version.is_err() {
+            return;
+        }
+        let version = version.unwrap().to_string();
+
         progress_handler
             .clone()
             .map(|progress_handler| progress_handler.progress("updating cache".to_string()));
 
-        let result = Cache::exclusive(|cache| {
-            let mut updated = false;
+        if let Err(err) = AsdfOperationCache::exclusive(|asdf_cache| {
+            asdf_cache.add_installed(&repo_id, &self.tool, &version)
+        }) {
+            progress_handler.clone().map(|progress_handler| {
+                progress_handler.progress(format!("failed to update tool cache: {}", err))
+            });
+            return;
+        }
 
-            let workdir = workdir(".");
-            let repo_id = workdir.id();
-            if repo_id.is_none() {
-                return false;
-            }
-            let repo_id = repo_id.unwrap();
-
-            let version = self.version(None);
-            if version.is_err() {
-                return false;
-            }
-            let version = version.unwrap().to_string();
-
+        if let Err(err) = UpEnvironmentsCache::exclusive(|up_env| {
             let mut dirs = self.dirs.clone();
             if dirs.is_empty() {
                 dirs.insert("".to_string());
             }
 
-            // Update the asdf versions cache
-            let mut installed = Vec::new();
-            if let Some(asdf_cache) = &cache.asdf_operation {
-                installed.extend(asdf_cache.installed.clone());
-            }
-
-            let mut found = false;
-            for exists in installed.iter_mut() {
-                if exists.tool == self.tool && exists.version == version {
-                    if !exists.required_by.contains(&repo_id) {
-                        exists.required_by.push(repo_id.clone());
-                        updated = true;
-                    }
-                    found = true;
-                    break;
-                }
-            }
-
-            if !found {
-                installed.push(AsdfInstalled {
-                    tool: self.tool.clone(),
-                    version: version.clone(),
-                    required_by: vec![repo_id.clone()],
-                });
-                updated = true;
-            }
-
-            cache.set_asdf_operation_installed(installed);
-
-            // Update the repository up cache
-            let mut up_env = HashMap::new();
-            if let Some(up_cache) = &cache.up_environments {
-                up_env = up_cache.env.clone();
-            }
-
-            if !up_env.contains_key(&repo_id) {
-                up_env.insert(repo_id.clone(), UpEnvironment::new());
-            }
-            let repo_up_env = up_env.get_mut(&repo_id).unwrap();
-
-            for exists in repo_up_env.versions.iter_mut() {
-                if exists.tool == self.tool && exists.version == version {
-                    dirs.remove(&exists.dir);
-                    if dirs.is_empty() {
-                        break;
-                    }
-                }
-            }
-
-            if !dirs.is_empty() {
-                for dir in dirs {
-                    repo_up_env.versions.push(UpVersion {
-                        tool: self.tool.clone(),
-                        version: version.clone(),
-                        dir: dir.clone(),
-                    });
-                }
-
-                cache.up_environments = Some(UpEnvironments {
-                    env: up_env.clone(),
-                    updated_at: OffsetDateTime::now_utc(),
-                });
-
-                updated = true;
-            }
-
-            updated
-        });
-
-        if let Err(err) = result {
+            up_env.add_version(&repo_id, &self.tool, &version, dirs.clone())
+        }) {
             progress_handler.clone().map(|progress_handler| {
-                progress_handler.progress(format!("failed to update cache: {}", err))
+                progress_handler.progress(format!("failed to update tool cache: {}", err))
             });
-        } else {
-            progress_handler
-                .clone()
-                .map(|progress_handler| progress_handler.progress("updated cache".to_string()));
+            return;
         }
+
+        progress_handler
+            .clone()
+            .map(|progress_handler| progress_handler.progress("updated cache".to_string()));
     }
 
     pub fn up(&self, progress: Option<(usize, usize)>) -> Result<(), UpError> {
@@ -587,55 +522,56 @@ impl UpConfigAsdfBase {
                     .progress(format!("checking available versions"));
             }
 
-            let available_versions =
-                if let Some(versions) = get_cache().get_asdf_plugin_versions(&self.tool) {
-                    versions
-                } else {
-                    let mut asdf_list_all = std::process::Command::new(format!("{}", *ASDF_BIN));
-                    asdf_list_all.arg("list");
-                    asdf_list_all.arg("all");
-                    asdf_list_all.arg(self.tool.clone());
-                    asdf_list_all.env("ASDF_DIR", &*ASDF_PATH);
-                    asdf_list_all.env("ASDF_DATA_DIR", &*ASDF_PATH);
-                    asdf_list_all.stdout(std::process::Stdio::piped());
-                    asdf_list_all.stderr(std::process::Stdio::piped());
+            let available_versions = if let Some(versions) =
+                AsdfOperationCache::get().get_asdf_plugin_versions(&self.tool)
+            {
+                versions
+            } else {
+                let mut asdf_list_all = std::process::Command::new(format!("{}", *ASDF_BIN));
+                asdf_list_all.arg("list");
+                asdf_list_all.arg("all");
+                asdf_list_all.arg(self.tool.clone());
+                asdf_list_all.env("ASDF_DIR", &*ASDF_PATH);
+                asdf_list_all.env("ASDF_DATA_DIR", &*ASDF_PATH);
+                asdf_list_all.stdout(std::process::Stdio::piped());
+                asdf_list_all.stderr(std::process::Stdio::piped());
 
-                    if let Ok(output) = asdf_list_all.output() {
-                        if output.status.success() {
-                            let stdout = String::from_utf8(output.stdout).unwrap();
-                            let mut versions = Vec::new();
-                            let mut lines = stdout.lines();
-                            while let Some(line) = lines.next() {
-                                let line = line.trim();
+                if let Ok(output) = asdf_list_all.output() {
+                    if output.status.success() {
+                        let stdout = String::from_utf8(output.stdout).unwrap();
+                        let mut versions = Vec::new();
+                        let mut lines = stdout.lines();
+                        while let Some(line) = lines.next() {
+                            let line = line.trim();
 
-                                if line.is_empty() {
-                                    continue;
-                                }
-
-                                versions.push(line.to_string());
+                            if line.is_empty() {
+                                continue;
                             }
 
-                            if let Err(err) = Cache::exclusive(|cache| {
-                                cache.set_asdf_plugin_versions(&self.tool, versions.clone());
-                                true
-                            }) {
-                                omni_error!(format!("failed to update cache: {}", err));
-                                return "".to_string();
-                            }
+                            versions.push(line.to_string());
+                        }
 
-                            versions
-                        } else {
-                            omni_error!(format!(
-                                "failed to list versions for {}; exited with status {}",
-                                self.tool, output.status
-                            ));
+                        if let Err(err) = AsdfOperationCache::exclusive(|cache| {
+                            cache.set_asdf_plugin_versions(&self.tool, versions.clone());
+                            true
+                        }) {
+                            omni_error!(format!("failed to update cache: {}", err));
                             return "".to_string();
                         }
+
+                        versions
                     } else {
-                        omni_error!(format!("failed to list versions for {}", self.tool));
+                        omni_error!(format!(
+                            "failed to list versions for {}; exited with status {}",
+                            self.tool, output.status
+                        ));
                         return "".to_string();
                     }
-                };
+                } else {
+                    omni_error!(format!("failed to list versions for {}", self.tool));
+                    return "".to_string();
+                }
+            };
 
             let mut version = "".to_string();
             for available_version in available_versions {
@@ -722,7 +658,7 @@ impl UpConfigAsdfBase {
         &self,
         progress_handler: Option<Box<&dyn ProgressHandler>>,
     ) -> Result<(), UpError> {
-        if !get_cache().should_update_asdf_plugin(&self.tool) {
+        if !AsdfOperationCache::get().should_update_asdf_plugin(&self.tool) {
             return Ok(());
         }
 
@@ -751,7 +687,7 @@ impl UpConfigAsdfBase {
         }
 
         // Update the cache
-        if let Err(err) = Cache::exclusive(|cache| {
+        if let Err(err) = AsdfOperationCache::exclusive(|cache| {
             cache.updated_asdf_plugin(&self.tool);
             true
         }) {
@@ -836,7 +772,7 @@ impl UpConfigAsdfBase {
         }
 
         let mut uninstalled = Vec::new();
-        let write_cache = Cache::exclusive(|cache| {
+        let write_cache = AsdfOperationCache::exclusive(|asdf_cache| {
             let workdir = workdir(".");
             let repo_id = workdir.id();
             if repo_id.is_none() {
@@ -846,67 +782,64 @@ impl UpConfigAsdfBase {
 
             // Update the asdf versions cache
             let mut updated = false;
-            if let Some(asdf_cache) = &mut cache.asdf_operation {
-                let mut to_remove = Vec::new();
+            let mut to_remove = Vec::new();
 
-                for (idx, exists) in asdf_cache.installed.iter_mut().enumerate() {
-                    if exists.required_by.contains(&repo_id)
-                        && !expected_tools.contains(&(exists.tool.clone(), exists.version.clone()))
-                    {
-                        exists.required_by.retain(|id| id != &repo_id);
-                        updated = true;
-                    }
-                    if exists.required_by.is_empty() {
-                        to_remove.push((idx, exists.clone()));
-                    }
+            for (idx, exists) in asdf_cache.installed.iter_mut().enumerate() {
+                if exists.required_by.contains(&repo_id)
+                    && !expected_tools.contains(&(exists.tool.clone(), exists.version.clone()))
+                {
+                    exists.required_by.retain(|id| id != &repo_id);
+                    updated = true;
                 }
+                if exists.required_by.is_empty() {
+                    to_remove.push((idx, exists.clone()));
+                }
+            }
 
-                if to_remove.len() == 0 {
+            if to_remove.len() == 0 {
+                progress_handler.clone().map(|handler| {
+                    handler.success_with_message(format!("nothing to do").light_black());
+                });
+                return updated;
+            }
+
+            for (idx, to_remove) in to_remove.iter().rev() {
+                if is_asdf_tool_version_installed(&to_remove.tool, &to_remove.version) {
                     progress_handler.clone().map(|handler| {
-                        handler.success_with_message(format!("nothing to do").light_black());
+                        handler.progress(format!(
+                            "uninstalling {} {}",
+                            to_remove.tool, to_remove.version,
+                        ));
                     });
-                    return updated;
-                }
 
-                for (idx, to_remove) in to_remove.iter().rev() {
-                    if is_asdf_tool_version_installed(&to_remove.tool, &to_remove.version) {
+                    let mut asdf_uninstall = tokio::process::Command::new(format!("{}", *ASDF_BIN));
+                    asdf_uninstall.arg("uninstall");
+                    asdf_uninstall.arg(to_remove.tool.clone());
+                    asdf_uninstall.arg(to_remove.version.clone());
+                    asdf_uninstall.env("ASDF_DIR", &*ASDF_PATH);
+                    asdf_uninstall.env("ASDF_DATA_DIR", &*ASDF_PATH);
+                    asdf_uninstall.stdout(std::process::Stdio::piped());
+                    asdf_uninstall.stderr(std::process::Stdio::piped());
+
+                    if let Err(_err) = run_progress(
+                        &mut asdf_uninstall,
+                        progress_handler.clone(),
+                        RunConfig::default(),
+                    ) {
                         progress_handler.clone().map(|handler| {
-                            handler.progress(format!(
-                                "uninstalling {} {}",
+                            handler.error_with_message(format!(
+                                "failed to uninstall {} {}",
                                 to_remove.tool, to_remove.version,
                             ));
                         });
-
-                        let mut asdf_uninstall =
-                            tokio::process::Command::new(format!("{}", *ASDF_BIN));
-                        asdf_uninstall.arg("uninstall");
-                        asdf_uninstall.arg(to_remove.tool.clone());
-                        asdf_uninstall.arg(to_remove.version.clone());
-                        asdf_uninstall.env("ASDF_DIR", &*ASDF_PATH);
-                        asdf_uninstall.env("ASDF_DATA_DIR", &*ASDF_PATH);
-                        asdf_uninstall.stdout(std::process::Stdio::piped());
-                        asdf_uninstall.stderr(std::process::Stdio::piped());
-
-                        if let Err(_err) = run_progress(
-                            &mut asdf_uninstall,
-                            progress_handler.clone(),
-                            RunConfig::default(),
-                        ) {
-                            progress_handler.clone().map(|handler| {
-                                handler.error_with_message(format!(
-                                    "failed to uninstall {} {}",
-                                    to_remove.tool, to_remove.version,
-                                ));
-                            });
-                            return updated;
-                        }
-
-                        uninstalled.push(format!("{}:{}", to_remove.tool, to_remove.version));
+                        return updated;
                     }
 
-                    asdf_cache.installed.remove(*idx);
-                    updated = true;
+                    uninstalled.push(format!("{}:{}", to_remove.tool, to_remove.version));
                 }
+
+                asdf_cache.installed.remove(*idx);
+                updated = true;
             }
 
             updated

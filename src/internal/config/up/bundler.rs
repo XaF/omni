@@ -1,13 +1,11 @@
-use std::collections::HashMap;
 use std::path::Path;
 
 use serde::Deserialize;
 use serde::Serialize;
-use time::OffsetDateTime;
 use tokio::process::Command as TokioCommand;
 
-use crate::internal::cache::UpEnvironment;
-use crate::internal::cache::UpEnvironments;
+use crate::internal::cache::CacheObject;
+use crate::internal::cache::UpEnvironmentsCache;
 use crate::internal::commands::utils::abs_path;
 use crate::internal::config::up::utils::run_progress;
 use crate::internal::config::up::utils::PrintProgressHandler;
@@ -18,7 +16,6 @@ use crate::internal::config::up::UpError;
 use crate::internal::config::ConfigValue;
 use crate::internal::user_interface::StringColor;
 use crate::internal::workdir;
-use crate::internal::Cache;
 use crate::internal::ENV;
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -51,42 +48,21 @@ impl UpConfigBundler {
     }
 
     fn update_cache(&self, progress_handler: Option<Box<&dyn ProgressHandler>>) {
+        let workdir = workdir(".");
+        let workdir_id = workdir.id();
+        if workdir_id.is_none() {
+            return;
+        }
+        let workdir_id = workdir_id.unwrap();
+
         progress_handler
             .clone()
             .map(|progress_handler| progress_handler.progress("updating cache".to_string()));
 
-        let result = Cache::exclusive(|cache| {
-            let workdir = workdir(".");
-            let repo_id = workdir.id();
-            if repo_id.is_none() {
-                return false;
-            }
-            let repo_id = repo_id.unwrap();
-
-            // Update the repository up cache
-            let mut up_env = HashMap::new();
-            if let Some(up_cache) = &cache.up_environments {
-                up_env = up_cache.env.clone();
-            }
-
-            if !up_env.contains_key(&repo_id) {
-                up_env.insert(repo_id.clone(), UpEnvironment::new());
-            }
-            let repo_up_env = up_env.get_mut(&repo_id).unwrap();
-
-            repo_up_env
-                .env_vars
-                .insert("BUNDLE_GEMFILE".to_string(), self.gemfile_abs_path());
-
-            cache.up_environments = Some(UpEnvironments {
-                env: up_env.clone(),
-                updated_at: OffsetDateTime::now_utc(),
-            });
-
+        if let Err(err) = UpEnvironmentsCache::exclusive(|up_env| {
+            up_env.add_env_var(&workdir_id, "BUNDLE_GEMFILE", &self.gemfile_abs_path());
             true
-        });
-
-        if let Err(err) = result {
+        }) {
             progress_handler.clone().map(|progress_handler| {
                 progress_handler.progress(format!("failed to update cache: {}", err))
             });

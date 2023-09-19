@@ -1,8 +1,8 @@
 use serde::Deserialize;
 use serde::Serialize;
-use time::OffsetDateTime;
 
-use crate::internal::cache::UpEnvironments;
+use crate::internal::cache::CacheObject;
+use crate::internal::cache::UpEnvironmentsCache;
 use crate::internal::config::up::UpConfigAsdfBase;
 use crate::internal::config::up::UpConfigTool;
 use crate::internal::config::up::UpError;
@@ -10,7 +10,6 @@ use crate::internal::config::ConfigValue;
 use crate::internal::dynenv::update_dynamic_env_for_command;
 use crate::internal::user_interface::colors::StringColor;
 use crate::internal::workdir;
-use crate::internal::Cache;
 use crate::omni_warning;
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -104,34 +103,11 @@ impl UpConfig {
     }
 
     pub fn clear_cache() {
-        if let Err(err) = Cache::exclusive(|cache| {
-            let workdir = workdir(".");
-            let repo_id = workdir.id();
-            if repo_id.is_none() {
-                return false;
+        let workdir = workdir(".");
+        if let Some(repo_id) = workdir.id() {
+            if let Err(err) = UpEnvironmentsCache::exclusive(|up_env| up_env.clear(&repo_id)) {
+                omni_warning!(format!("failed to update cache: {}", err));
             }
-            let repo_id = repo_id.unwrap();
-
-            // Update the repository up cache
-            let mut up_env = if let Some(up_cache) = &cache.up_environments {
-                up_cache.env.clone()
-            } else {
-                return false;
-            };
-
-            if !up_env.contains_key(&repo_id) {
-                return false;
-            }
-
-            up_env.remove(&repo_id);
-            cache.up_environments = Some(UpEnvironments {
-                env: up_env.clone(),
-                updated_at: OffsetDateTime::now_utc(),
-            });
-
-            true
-        }) {
-            omni_warning!(format!("failed to update cache: {}", err));
         }
     }
 

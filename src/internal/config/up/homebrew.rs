@@ -2,13 +2,11 @@ use duct::cmd;
 use once_cell::sync::OnceCell;
 use serde::Deserialize;
 use serde::Serialize;
-use time::OffsetDateTime;
 use tokio::process::Command as TokioCommand;
 
-use crate::internal::cache::Cache;
+use crate::internal::cache::CacheObject;
 use crate::internal::cache::HomebrewInstalled;
-use crate::internal::cache::HomebrewOperation;
-use crate::internal::cache::HomebrewTapped;
+use crate::internal::cache::HomebrewOperationCache;
 use crate::internal::config::up::utils::run_progress;
 use crate::internal::config::up::utils::PrintProgressHandler;
 use crate::internal::config::up::utils::ProgressHandler;
@@ -81,114 +79,108 @@ impl UpConfigHomebrew {
     }
 
     pub fn down(&self, progress: Option<(usize, usize)>) -> Result<(), UpError> {
+        let workdir = workdir(".");
+        let repo_id = workdir.id();
+        if repo_id.is_none() {
+            return Ok(());
+        }
+        let repo_id = repo_id.unwrap();
+
         let mut return_value = Ok(());
 
-        if let Err(err) = Cache::exclusive(|cache| {
-            let workdir = workdir(".");
-            let repo_id = workdir.id();
-            if repo_id.is_none() {
-                return false;
-            }
-            let repo_id = repo_id.unwrap();
+        if let Err(err) = HomebrewOperationCache::exclusive(|brew_cache| {
+            let desc = format!("uninstall (unused) homebrew dependencies:").light_blue();
+            let main_progress_handler = PrintProgressHandler::new(desc, progress);
+            main_progress_handler.progress("".to_string());
 
-            if let Some(brew_cache) = &mut cache.homebrew_operation {
-                let desc = format!("uninstall (unused) homebrew dependencies:").light_blue();
-                let main_progress_handler = PrintProgressHandler::new(desc, progress);
-                main_progress_handler.progress("".to_string());
+            let mut updated = false;
 
-                let mut updated = false;
-
-                let mut to_uninstall = Vec::new();
-                for (idx, install) in brew_cache.installed.iter_mut().enumerate().rev() {
-                    if install.required_by.contains(&repo_id) {
-                        install.required_by.retain(|id| id != &repo_id);
-                        updated = true;
-                    }
-                    if install.required_by.is_empty() && install.installed {
-                        to_uninstall.push((idx, HomebrewInstall::from_cache(install)));
-                    }
+            let mut to_uninstall = Vec::new();
+            for (idx, install) in brew_cache.installed.iter_mut().enumerate().rev() {
+                if install.required_by.contains(&repo_id) {
+                    install.required_by.retain(|id| id != &repo_id);
+                    updated = true;
                 }
+                if install.required_by.is_empty() && install.installed {
+                    to_uninstall.push((idx, HomebrewInstall::from_cache(install)));
+                }
+            }
 
-                let num_uninstalls = to_uninstall.len();
-                for (idx, (rmidx, install)) in to_uninstall.iter().enumerate() {
-                    if let Err(err) =
-                        install.down(progress.clone(), Some((idx + 1, num_uninstalls)))
-                    {
+            let num_uninstalls = to_uninstall.len();
+            for (idx, (rmidx, install)) in to_uninstall.iter().enumerate() {
+                if let Err(err) = install.down(progress.clone(), Some((idx + 1, num_uninstalls))) {
+                    main_progress_handler.error();
+                    return_value = Err(err);
+                    return updated;
+                }
+                brew_cache.installed.remove(*rmidx);
+                updated = true;
+            }
+
+            let current_installed = brew_cache.installed.len();
+            brew_cache
+                .installed
+                .retain(|install| !install.required_by.is_empty());
+            if current_installed != brew_cache.installed.len() {
+                updated = true;
+            }
+
+            let mut to_untap = Vec::new();
+            for (idx, tap) in brew_cache.tapped.iter_mut().enumerate().rev() {
+                if tap.required_by.contains(&repo_id) {
+                    tap.required_by.retain(|id| id != &repo_id);
+                    updated = true;
+                }
+                if tap.required_by.is_empty() && tap.tapped {
+                    to_untap.push((idx, HomebrewTap::from_name(&tap.name)));
+                }
+            }
+
+            let num_untaps = to_untap.len();
+            for (idx, (rmidx, tap)) in to_untap.iter().enumerate() {
+                if let Err(err) = tap.down(progress.clone(), Some((idx + 1, num_untaps))) {
+                    if err != UpError::HomebrewTapInUse {
                         main_progress_handler.error();
                         return_value = Err(err);
                         return updated;
                     }
-                    brew_cache.installed.remove(*rmidx);
-                    updated = true;
-                }
-
-                let current_installed = brew_cache.installed.len();
-                brew_cache
-                    .installed
-                    .retain(|install| !install.required_by.is_empty());
-                if current_installed != brew_cache.installed.len() {
-                    updated = true;
-                }
-
-                let mut to_untap = Vec::new();
-                for (idx, tap) in brew_cache.tapped.iter_mut().enumerate().rev() {
-                    if tap.required_by.contains(&repo_id) {
-                        tap.required_by.retain(|id| id != &repo_id);
-                        updated = true;
-                    }
-                    if tap.required_by.is_empty() && tap.tapped {
-                        to_untap.push((idx, HomebrewTap::from_name(&tap.name)));
-                    }
-                }
-
-                let num_untaps = to_untap.len();
-                for (idx, (rmidx, tap)) in to_untap.iter().enumerate() {
-                    if let Err(err) = tap.down(progress.clone(), Some((idx + 1, num_untaps))) {
-                        if err != UpError::HomebrewTapInUse {
-                            main_progress_handler.error();
-                            return_value = Err(err);
-                            return updated;
-                        }
-                    } else {
-                        brew_cache.tapped.remove(*rmidx);
-                        updated = true;
-                    }
-                }
-
-                let current_tapped = brew_cache.tapped.len();
-                brew_cache
-                    .tapped
-                    .retain(|tap| !tap.required_by.is_empty() || tap.tapped);
-                if current_tapped != brew_cache.tapped.len() {
-                    updated = true;
-                }
-
-                if updated {
-                    let num_handled_taps = to_untap
-                        .iter()
-                        .filter(|(_idx, tap)| tap.was_handled())
-                        .count();
-                    let num_handled_installs = to_uninstall
-                        .iter()
-                        .filter(|(_idx, install)| install.was_handled())
-                        .count();
-
-                    main_progress_handler.success_with_message(format!(
-                        "uninstalled {} tap{} and {} formula{}",
-                        num_handled_taps,
-                        if num_handled_taps > 1 { "s" } else { "" },
-                        num_handled_installs,
-                        if num_handled_installs > 1 { "s" } else { "" },
-                    ));
-
-                    true
                 } else {
-                    main_progress_handler
-                        .success_with_message(format!("no homebrew dependencies to uninstall",));
-
-                    false
+                    brew_cache.tapped.remove(*rmidx);
+                    updated = true;
                 }
+            }
+
+            let current_tapped = brew_cache.tapped.len();
+            brew_cache
+                .tapped
+                .retain(|tap| !tap.required_by.is_empty() || tap.tapped);
+            if current_tapped != brew_cache.tapped.len() {
+                updated = true;
+            }
+
+            if updated {
+                let num_handled_taps = to_untap
+                    .iter()
+                    .filter(|(_idx, tap)| tap.was_handled())
+                    .count();
+                let num_handled_installs = to_uninstall
+                    .iter()
+                    .filter(|(_idx, install)| install.was_handled())
+                    .count();
+
+                main_progress_handler.success_with_message(format!(
+                    "uninstalled {} tap{} and {} formula{}",
+                    num_handled_taps,
+                    if num_handled_taps > 1 { "s" } else { "" },
+                    num_handled_installs,
+                    if num_handled_installs > 1 { "s" } else { "" },
+                ));
+
+                true
             } else {
+                main_progress_handler
+                    .success_with_message(format!("no homebrew dependencies to uninstall",));
+
                 false
             }
         }) {
@@ -311,56 +303,20 @@ impl HomebrewTap {
     }
 
     fn update_cache(&self, progress_handler: Option<Box<&dyn ProgressHandler>>) {
+        let workdir = workdir(".");
+        let workdir_id = workdir.id();
+        if workdir_id.is_none() {
+            return;
+        }
+        let workdir_id = workdir_id.unwrap();
+
         progress_handler
             .clone()
             .map(|progress_handler| progress_handler.progress("updating cache".to_string()));
 
-        let result = Cache::exclusive(|cache| {
-            let mut installed = Vec::new();
-            let mut tapped = Vec::new();
-
-            let workdir = workdir(".");
-            let repo_id = workdir.id();
-            if repo_id.is_none() {
-                return false;
-            }
-            let repo_id = repo_id.unwrap();
-
-            if let Some(brew_cache) = &cache.homebrew_operation {
-                installed.extend(brew_cache.installed.clone());
-                tapped.extend(brew_cache.tapped.clone());
-            }
-
-            let mut found = false;
-            for exists in tapped.iter_mut() {
-                if exists.name == self.name {
-                    exists.tapped = exists.tapped || self.was_handled();
-                    if !exists.required_by.contains(&repo_id) {
-                        exists.required_by.push(repo_id.clone());
-                    }
-                    found = true;
-                    break;
-                }
-            }
-
-            if !found {
-                tapped.push(HomebrewTapped {
-                    name: self.name.clone(),
-                    tapped: self.was_handled(),
-                    required_by: vec![repo_id.clone()],
-                });
-            }
-
-            cache.homebrew_operation = Some(HomebrewOperation {
-                installed: installed.clone(),
-                tapped: tapped.clone(),
-                updated_at: OffsetDateTime::now_utc(),
-            });
-
-            true
-        });
-
-        if let Err(err) = result {
+        if let Err(err) = HomebrewOperationCache::exclusive(|brew_cache| {
+            brew_cache.add_tap(&workdir_id, &self.name, self.was_handled())
+        }) {
             progress_handler.clone().map(|progress_handler| {
                 progress_handler.progress(format!("failed to update cache: {}", err))
             });
@@ -663,58 +619,25 @@ impl HomebrewInstall {
     }
 
     fn update_cache(&self, progress_handler: Option<Box<&dyn ProgressHandler>>) {
+        let workdir = workdir(".");
+        let workdir_id = workdir.id();
+        if workdir_id.is_none() {
+            return;
+        }
+        let workdir_id = workdir_id.unwrap();
+
         progress_handler
             .clone()
             .map(|progress_handler| progress_handler.progress("updating cache".to_string()));
 
-        let result = Cache::exclusive(|cache| {
-            let mut installed = Vec::new();
-            let mut tapped = Vec::new();
-
-            let workdir = workdir(".");
-            let repo_id = workdir.id();
-            if repo_id.is_none() {
-                return false;
-            }
-            let repo_id = repo_id.unwrap();
-
-            if let Some(brew_cache) = &cache.homebrew_operation {
-                installed.extend(brew_cache.installed.clone());
-                tapped.extend(brew_cache.tapped.clone());
-            }
-
-            let mut found = false;
-            for exists in installed.iter_mut() {
-                if exists.name == self.name
-                    && exists.version == self.version
-                    && exists.cask == self.is_cask()
-                {
-                    exists.installed = exists.installed || self.was_handled();
-                    if !exists.required_by.contains(&repo_id) {
-                        exists.required_by.push(repo_id.clone());
-                    }
-                    found = true;
-                    break;
-                }
-            }
-
-            if !found {
-                installed.push(HomebrewInstalled {
-                    name: self.name.clone(),
-                    version: self.version.clone(),
-                    cask: self.is_cask(),
-                    installed: self.was_handled(),
-                    required_by: vec![repo_id.clone()],
-                });
-            }
-
-            cache.homebrew_operation = Some(HomebrewOperation {
-                installed: installed.clone(),
-                tapped: tapped.clone(),
-                updated_at: OffsetDateTime::now_utc(),
-            });
-
-            true
+        let result = HomebrewOperationCache::exclusive(|brew_cache| {
+            brew_cache.add_install(
+                &workdir_id,
+                &self.name,
+                self.version.clone(),
+                self.is_cask(),
+                self.was_handled(),
+            )
         });
 
         if let Err(err) = result {

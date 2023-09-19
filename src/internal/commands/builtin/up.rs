@@ -1,4 +1,3 @@
-use std::collections::HashMap;
 use std::collections::HashSet;
 use std::hash::Hash;
 use std::hash::Hasher;
@@ -11,13 +10,11 @@ use git_url_parse::GitUrl;
 use imara_diff::intern::InternedInput;
 use imara_diff::{diff, Algorithm, UnifiedDiffBuilder};
 use once_cell::sync::OnceCell;
-use time::OffsetDateTime;
 use tokio::process::Command as TokioCommand;
 
-use crate::internal::cache::Cache;
-use crate::internal::cache::TrustedRepositories;
-use crate::internal::cache::UpEnvironment;
-use crate::internal::cache::UpEnvironments;
+use crate::internal::cache::CacheObject;
+use crate::internal::cache::RepositoriesCache;
+use crate::internal::cache::UpEnvironmentsCache;
 use crate::internal::commands::builtin::HelpCommand;
 use crate::internal::commands::Command;
 use crate::internal::config::config;
@@ -34,7 +31,6 @@ use crate::internal::config::ConfigExtendStrategy;
 use crate::internal::config::ConfigLoader;
 use crate::internal::config::ConfigValue;
 use crate::internal::config::SyntaxOptArg;
-use crate::internal::get_cache;
 use crate::internal::git::format_path;
 use crate::internal::git::safe_git_url_parse;
 use crate::internal::git::ORG_LOADER;
@@ -440,34 +436,13 @@ impl UpCommand {
         UpConfig::clear_cache();
 
         // If there are environment variables to set, do it
-        if env_vars.is_some() {
-            if let Err(err) = Cache::exclusive(|cache| {
+        if let Some(env_vars) = env_vars.clone() {
+            if let Err(err) = UpEnvironmentsCache::exclusive(|up_env| {
                 let wd = workdir(".");
-                let repo_id = wd.id();
-                if repo_id.is_none() {
-                    return false;
+                if let Some(workdir_id) = wd.id() {
+                    up_env.set_env_vars(&workdir_id, env_vars.clone());
                 }
-                let repo_id = repo_id.unwrap();
-
-                // Update the repository up cache
-                let mut up_env = HashMap::new();
-                if let Some(up_cache) = &cache.up_environments {
-                    up_env = up_cache.env.clone();
-                }
-
-                if !up_env.contains_key(&repo_id) {
-                    up_env.insert(repo_id.clone(), UpEnvironment::new());
-                }
-                let repo_up_env = up_env.get_mut(&repo_id).unwrap();
-
-                repo_up_env.env_vars = env_vars.unwrap().clone();
-
-                cache.up_environments = Some(UpEnvironments {
-                    env: up_env.clone(),
-                    updated_at: OffsetDateTime::now_utc(),
-                });
-
-                true
+                false
             }) {
                 omni_warning!(format!("failed to update cache: {}", err));
             } else {
@@ -544,15 +519,8 @@ impl UpCommand {
 
         let workdir = workdir(".");
         let repo_id = workdir.id();
-        if repo_id.is_some() {
-            if let Some(trusted_repos) = get_cache().trusted_repositories {
-                if trusted_repos
-                    .repositories
-                    .contains(&repo_id.clone().unwrap())
-                {
-                    return true;
-                }
-            }
+        if repo_id.is_some() && RepositoriesCache::get().has_trusted(&repo_id.clone().unwrap()) {
+            return true;
         }
 
         if !ENV.interactive_shell {
@@ -607,21 +575,8 @@ impl UpCommand {
     fn add_trust(&self) -> bool {
         let wd = workdir(".");
         let repo_id = wd.id();
-        if repo_id.is_some() {
-            let updated = Cache::exclusive(|cache| {
-                let mut trusted = vec![];
-                let repo_id = repo_id.clone().unwrap();
-                if let Some(trusted_repos) = &cache.trusted_repositories {
-                    trusted.extend(trusted_repos.repositories.clone());
-                }
-                if !trusted.contains(&repo_id) {
-                    trusted.push(repo_id);
-                    cache.trusted_repositories = Some(TrustedRepositories::new(trusted));
-                    return true;
-                }
-                false
-            });
-            if let Err(err) = updated {
+        if let Some(repo_id) = repo_id {
+            if let Err(err) = RepositoriesCache::exclusive(|repos| repos.add_trusted(&repo_id)) {
                 omni_error!(format!("Unable to update cache: {:?}", err.to_string()));
                 return false;
             }
