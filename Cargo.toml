@@ -23,7 +23,7 @@ time = { version = "0.3.28", features = ["serde-well-known"] }
 
 [dependencies]
 blake3 = "1.4.1"
-clap = "4.4.3"
+clap = "4.4.4"
 duct = "0.13.6"
 flate2 = "1.0.27"
 fs4 = "0.6.6"
