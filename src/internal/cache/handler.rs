@@ -120,7 +120,9 @@ where
     let cache_path = cache_dir_path.join(format!("{}.json", cache_name));
 
     let file = File::open(cache_path)?;
-    let _file_lock = file.lock_shared();
+    // TODO: re-evaluate, but shared lock does not seem necessary
+    // let _file_lock = file.lock_shared();
+
     let cache: C = serde_json::from_reader(file)?;
     Ok(cache)
 }
