@@ -440,9 +440,10 @@ impl UpCommand {
             if let Err(err) = UpEnvironmentsCache::exclusive(|up_env| {
                 let wd = workdir(".");
                 if let Some(workdir_id) = wd.id() {
-                    up_env.set_env_vars(&workdir_id, env_vars.clone());
+                    up_env.set_env_vars(&workdir_id, env_vars.clone())
+                } else {
+                    false
                 }
-                false
             }) {
                 omni_warning!(format!("failed to update cache: {}", err));
             } else {

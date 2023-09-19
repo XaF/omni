@@ -26,7 +26,7 @@ pub struct UpEnvironmentsCache {
 }
 
 impl UpEnvironmentsCache {
-    pub fn set_env_vars(&mut self, workdir_id: &str, env_vars: HashMap<String, String>) {
+    pub fn set_env_vars(&mut self, workdir_id: &str, env_vars: HashMap<String, String>) -> bool {
         if let Some(env) = self.env.get_mut(workdir_id) {
             env.env_vars = env_vars;
         } else {
@@ -35,9 +35,10 @@ impl UpEnvironmentsCache {
             self.env.insert(workdir_id.to_string(), env);
         }
         self.updated_at = OffsetDateTime::now_utc();
+        true
     }
 
-    pub fn add_env_var(&mut self, workdir_id: &str, key: &str, value: &str) {
+    pub fn add_env_var(&mut self, workdir_id: &str, key: &str, value: &str) -> bool {
         if let Some(env) = self.env.get_mut(workdir_id) {
             env.env_vars.insert(key.to_string(), value.to_string());
         } else {
@@ -46,6 +47,7 @@ impl UpEnvironmentsCache {
             self.env.insert(workdir_id.to_string(), env);
         }
         self.updated_at = OffsetDateTime::now_utc();
+        true
     }
 
     pub fn add_version(
