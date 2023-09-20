@@ -21,15 +21,22 @@ use crate::internal::config;
 // now expect a separate file per cache category
 #[derive(Debug, Serialize, Deserialize)]
 struct OldCache {
+    #[serde(default)]
     asdf_operation: serde_json::Value,
+    #[serde(default)]
     homebrew_operation: serde_json::Value,
+    #[serde(default)]
     omni_path_updates: serde_json::Value,
+    #[serde(default)]
     trusted_repositories: OldCacheTrustedRepositories,
+    #[serde(default)]
     up_environments: serde_json::Value,
 }
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Default)]
 struct OldCacheTrustedRepositories {
+    #[serde(default)]
     repositories: serde_json::Value,
+    #[serde(default)]
     updated_at: serde_json::Value,
 }
 #[derive(Debug, Serialize, Deserialize)]
