@@ -18,7 +18,7 @@ pub enum ConfigSource {
     Null,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum ConfigData {
     Mapping(HashMap<String, ConfigValue>),
     Sequence(Vec<ConfigValue>),
@@ -35,7 +35,7 @@ pub enum ConfigExtendStrategy {
     Raw,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Deserialize)]
 pub struct ConfigValue {
     source: ConfigSource,
     labels: Vec<String>,
@@ -53,6 +53,15 @@ impl AsRef<ConfigData> for ConfigValue {
 impl std::fmt::Display for ConfigValue {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", serde_json::to_string(&self.unwrap()).unwrap())
+    }
+}
+
+impl Serialize for ConfigValue {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        self.as_yaml().serialize(serializer)
     }
 }
 
@@ -116,6 +125,8 @@ path_repo_updates:
   ref_match: null # regex or null
   per_repo_config: {}
 repo_path_format: "%{host}/%{org}/%{repo}"
+up_command:
+  auto_bootstrap: true
 "#;
 
         // Convert yaml_str from String to &str
@@ -188,6 +199,51 @@ repo_path_format: "%{host}/%{org}/%{repo}"
                 _ => {}
             }
         }
+    }
+
+    pub fn reject_label(&self, label: &str) -> Option<ConfigValue> {
+        if let Some(data) = self.value.as_ref().map(|data| data.as_ref()) {
+            match data {
+                ConfigData::Mapping(mapping) => {
+                    let mut new_mapping = HashMap::new();
+                    for (key, value) in mapping {
+                        let new_value = value.reject_label(label);
+                        if !new_value.is_none() {
+                            new_mapping.insert(key.to_owned(), new_value.unwrap());
+                        }
+                    }
+                    if !new_mapping.is_empty() {
+                        return Some(ConfigValue {
+                            source: self.source.clone(),
+                            labels: self.labels.clone(),
+                            value: Some(Box::new(ConfigData::Mapping(new_mapping))),
+                        });
+                    }
+                }
+                ConfigData::Sequence(sequence) => {
+                    let mut new_sequence = Vec::new();
+                    for value in sequence {
+                        let new_value = value.reject_label(label);
+                        if !new_value.is_none() {
+                            new_sequence.push(new_value.unwrap());
+                        }
+                    }
+                    if !new_sequence.is_empty() {
+                        return Some(ConfigValue {
+                            source: self.source.clone(),
+                            labels: self.labels.clone(),
+                            value: Some(Box::new(ConfigData::Sequence(new_sequence))),
+                        });
+                    }
+                }
+                ConfigData::Value(_) => {
+                    if !self.labels.contains(&label.to_string()) {
+                        return Some(self.clone());
+                    }
+                }
+            }
+        }
+        None
     }
 
     pub fn select_label(&self, label: &str) -> Option<ConfigValue> {

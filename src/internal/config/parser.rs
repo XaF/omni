@@ -124,6 +124,7 @@ pub struct OmniConfig {
     pub clone: CloneConfig,
     pub up: Option<UpConfig>,
     pub suggest_clone: SuggestCloneConfig,
+    pub up_command: UpCommandConfig,
 }
 
 impl OmniConfig {
@@ -193,6 +194,7 @@ impl OmniConfig {
             clone: CloneConfig::from_config_value(config_value.get("clone")),
             up: UpConfig::from_config_value(config_value.get("up")),
             suggest_clone: SuggestCloneConfig::from_config_value(config_value.get("suggest_clone")),
+            up_command: UpCommandConfig::from_config_value(config_value.get("up_command")),
         }
     }
 
@@ -846,5 +848,29 @@ impl SuggestCloneRepositoryConfig {
         }
 
         None
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct UpCommandConfig {
+    pub auto_bootstrap: bool,
+}
+
+impl UpCommandConfig {
+    fn from_config_value(config_value: Option<ConfigValue>) -> Self {
+        if let Some(config_value) = config_value {
+            if let Some(config_value) = config_value.reject_label("git_repo") {
+                return Self {
+                    auto_bootstrap: match config_value.get("auto_bootstrap") {
+                        Some(value) => value.as_bool().unwrap(),
+                        None => true,
+                    },
+                };
+            }
+        }
+
+        Self {
+            auto_bootstrap: true,
+        }
     }
 }

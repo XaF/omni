@@ -5,11 +5,13 @@ use std::path::PathBuf;
 use std::process::exit;
 use std::str::FromStr;
 
+use blake3::Hasher as Blake3Hasher;
 use clap;
 use git_url_parse::GitUrl;
 use imara_diff::intern::InternedInput;
 use imara_diff::{diff, Algorithm, UnifiedDiffBuilder};
 use once_cell::sync::OnceCell;
+use serde::Serialize;
 use tokio::process::Command as TokioCommand;
 
 use crate::internal::cache::CacheObject;
@@ -20,6 +22,7 @@ use crate::internal::commands::Command;
 use crate::internal::config::config;
 use crate::internal::config::config_loader;
 use crate::internal::config::flush_config;
+use crate::internal::config::global_config;
 use crate::internal::config::up::run_progress;
 use crate::internal::config::up::utils::PrintProgressHandler;
 use crate::internal::config::up::utils::RunConfig;
@@ -378,20 +381,56 @@ impl UpCommand {
         }
 
         let mut suggest_config = None;
+        let mut suggest_config_updated = false;
         let config_loader = config_loader(".");
-        if self.is_up() && self.should_suggest_config() {
+        if self.is_up() {
             if let Some(git_repo_config) = config_loader.raw_config.select_label("git_repo") {
                 if let Some(suggestion) = git_repo_config.get("suggest_config") {
                     if suggestion.is_table() {
-                        suggest_config = Some(suggestion);
+                        if self.should_suggest_config() {
+                            suggest_config = Some(suggestion);
+                        } else if let Some(wd_id) = wd.id() {
+                            let suggest_config_fingerprint = fingerprint(&suggestion);
+                            if !RepositoriesCache::get().check_fingerprint(
+                                &wd_id,
+                                "suggest_config",
+                                suggest_config_fingerprint,
+                            ) {
+                                if self.auto_bootstrap() {
+                                    suggest_config = Some(suggestion);
+                                } else {
+                                    suggest_config_updated = true;
+                                }
+                            }
+                        }
                     }
                 }
             }
         }
 
-        let suggest_clone = self.is_up()
-            && self.should_suggest_clone()
-            && !config.suggest_clone.repositories.is_empty();
+        let mut suggest_clone = false;
+        let mut suggest_clone_updated = false;
+        if self.is_up() {
+            if self.should_suggest_clone() {
+                suggest_clone = true;
+            } else if let Some(wd_id) = wd.id() {
+                let suggest_clone_fingerprint = match config.suggest_clone.repositories.len() {
+                    0 => 0,
+                    _ => fingerprint(&config.suggest_clone.repositories),
+                };
+                if !RepositoriesCache::get().check_fingerprint(
+                    &wd_id,
+                    "suggest_clone",
+                    suggest_clone_fingerprint,
+                ) {
+                    if self.auto_bootstrap() {
+                        suggest_clone = true;
+                    } else {
+                        suggest_clone_updated = true;
+                    }
+                }
+            }
+        }
 
         let mut env_vars = None;
         if self.is_up() {
@@ -471,6 +510,19 @@ impl UpCommand {
 
         if suggest_clone {
             self.suggest_clone();
+        }
+
+        if let Some(wd_id) = wd.id() {
+            if suggest_config_updated || suggest_clone_updated {
+                omni_info!(format!(
+                    "configuration suggestions for {} have an update",
+                    wd_id.light_blue(),
+                ));
+                omni_info!(format!(
+                    "run {} to get the latest suggestions",
+                    format!("omni up --bootstrap").light_yellow(),
+                ));
+            }
         }
 
         exit(0);
@@ -588,6 +640,11 @@ impl UpCommand {
         return true;
     }
 
+    fn auto_bootstrap(&self) -> bool {
+        let gconfig = global_config();
+        gconfig.up_command.auto_bootstrap
+    }
+
     fn should_suggest_config(&self) -> bool {
         match self.cli_args().update_user_config {
             UpCommandArgsUpdateUserConfigOptions::Yes => true,
@@ -605,7 +662,7 @@ impl UpCommand {
     }
 
     fn suggest_config(&self, suggest_config: ConfigValue) {
-        if !self.should_suggest_config() {
+        if !self.should_suggest_config() && !self.auto_bootstrap() {
             return;
         }
 
@@ -713,6 +770,15 @@ impl UpCommand {
         } else {
             omni_error!(format!("Unable to update user configuration: {:?}", result));
         }
+
+        if let Err(err) = RepositoriesCache::exclusive(|repos| match workdir(".").id() {
+            Some(wd_id) => {
+                repos.update_fingerprint(&wd_id, "suggest_config", fingerprint(&suggest_config))
+            }
+            None => false,
+        }) {
+            omni_warning!(format!("failed to update cache: {}", err));
+        }
     }
 
     fn suggest_config_split(
@@ -792,8 +858,24 @@ impl UpCommand {
     }
 
     fn suggest_clone(&self) {
-        if !self.should_suggest_clone() {
+        if !self.should_suggest_clone() && !self.auto_bootstrap() {
             return;
+        }
+
+        let wd = workdir(".");
+        if let Some(wd_id) = wd.id() {
+            let config = config(".");
+            if !config.suggest_clone.repositories.is_empty() {
+                if let Err(err) = RepositoriesCache::exclusive(|repos| {
+                    repos.update_fingerprint(
+                        &wd_id,
+                        "suggest_clone",
+                        fingerprint(&config.suggest_clone.repositories),
+                    )
+                }) {
+                    omni_warning!(format!("failed to update cache: {}", err));
+                }
+            }
         }
 
         let to_clone = self.suggest_clone_from_config(".");
@@ -801,7 +883,7 @@ impl UpCommand {
             return;
         }
 
-        let cloned = self.suggest_clone_recursive(to_clone, HashSet::new());
+        let cloned = self.suggest_clone_recursive(to_clone.clone(), HashSet::new());
         if cloned.is_empty() {
             return;
         }
@@ -1205,4 +1287,19 @@ fn color_diff(diff: &str) -> String {
         })
         .collect::<Vec<_>>()
         .join("\n")
+}
+
+fn fingerprint<T: Serialize>(value: &T) -> u64 {
+    let string = serde_yaml::to_string(value);
+    if string.is_err() {
+        return 0;
+    }
+    let string = string.unwrap();
+
+    let mut hasher = Blake3Hasher::new();
+    hasher.update(string.as_bytes());
+    let hash_bytes = hasher.finalize();
+    let hash_u64 = u64::from_le_bytes(hash_bytes.as_bytes()[..8].try_into().unwrap());
+
+    hash_u64
 }

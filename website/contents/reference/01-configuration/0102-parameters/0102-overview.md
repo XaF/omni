@@ -27,6 +27,7 @@ Omni configuration files accept the following parameters:
 | `suggest_config` | [suggest_config](parameters/suggest_config) | Configuration that a git repository suggests should be added to the user configuration. *Should only be used in git repositories configuration.* |
 | `suggest_clone` | [suggest_clone](parameters/suggest_clone) | Repositories that a git repository suggests should be clone. *Should only be used in git repositories configuration.* |
 | `up` | [up](parameters/up) (list) | List of operations needed to set up or tear down a repository |
+| `up_command` | [up_command](parameters/up_command) | Configuration related to the `omni up` command |
 | `worktree` | [worktree](parameters/worktree) (string) | Default location of the worktree, where the git repositories are expected to be located |
 
 ## Examples
@@ -82,4 +83,6 @@ path_repo_updates:
   ref_match: null # regex or null
   per_repo_config: {}
 repo_path_format: "%{host}/%{org}/%{repo}"
+up_command:
+  auto_bootstrap: true
 ```
