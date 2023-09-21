@@ -51,7 +51,7 @@ jobs:
       fail-fast: true
       matrix:
         include:
-          - target: aarch64-unknown-linux-gnu
+          - target: aarch64-unknown-linux-musl
             os: ubuntu-latest
             suffix: arm64-linux
             run_tests: false
@@ -59,7 +59,7 @@ jobs:
             os: macos-latest
             suffix: arm64-darwin
             run_tests: false
-          - target: x86_64-unknown-linux-gnu
+          - target: x86_64-unknown-linux-musl
             os: ubuntu-latest
             suffix: x86_64-linux
             run_tests: true
