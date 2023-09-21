@@ -26,6 +26,7 @@ pub enum UpConfigTool {
     Python(UpConfigAsdfBase),
     Ruby(UpConfigAsdfBase),
     Rust(UpConfigAsdfBase),
+    Terraform(UpConfigAsdfBase),
 }
 
 impl UpConfigTool {
@@ -65,6 +66,9 @@ impl UpConfigTool {
                 "rust",
                 config_value,
             ))),
+            "terraform" => Some(UpConfigTool::Terraform(
+                UpConfigAsdfBase::from_config_value("terraform", config_value),
+            )),
             _ => None,
         }
     }
@@ -80,6 +84,7 @@ impl UpConfigTool {
             UpConfigTool::Python(config) => config.up(progress),
             UpConfigTool::Ruby(config) => config.up(progress),
             UpConfigTool::Rust(config) => config.up(progress),
+            UpConfigTool::Terraform(config) => config.up(progress),
         }
     }
 
@@ -94,6 +99,7 @@ impl UpConfigTool {
             UpConfigTool::Python(config) => config.down(progress),
             UpConfigTool::Ruby(config) => config.down(progress),
             UpConfigTool::Rust(config) => config.down(progress),
+            UpConfigTool::Terraform(config) => config.down(progress),
         }
     }
 
@@ -118,6 +124,7 @@ impl UpConfigTool {
             UpConfigTool::Python(config) => Some(config),
             UpConfigTool::Ruby(config) => Some(config),
             UpConfigTool::Rust(config) => Some(config),
+            UpConfigTool::Terraform(config) => Some(config),
             _ => None,
         }
     }

@@ -326,7 +326,7 @@ impl UpConfigAsdfBase {
 
             let mut detect_version_funcs = self.detect_version_funcs.clone();
             detect_version_funcs.push(detect_version_from_asdf_version_file);
-            detect_version_funcs.push(detect_version_from_version_file);
+            detect_version_funcs.push(detect_version_from_tool_version_file);
 
             for search_dir in search_dirs.iter() {
                 // For safety, we remove any leading slashes from the search directory,
@@ -947,7 +947,7 @@ fn detect_version_from_asdf_version_file(tool_name: String, path: PathBuf) -> Op
     None
 }
 
-fn detect_version_from_version_file(tool_name: String, path: PathBuf) -> Option<String> {
+fn detect_version_from_tool_version_file(tool_name: String, path: PathBuf) -> Option<String> {
     let tool_name = tool_name.to_lowercase();
     let version_file_prefixes = match tool_name.as_str() {
         "golang" => vec!["go", "golang"],
