@@ -3,7 +3,9 @@ use std::io;
 use std::io::Read;
 use std::io::Seek;
 use std::io::SeekFrom;
+use std::os::unix::process::CommandExt;
 use std::path::Path;
+use std::process::Command as ProcessCommand;
 
 use lazy_static::lazy_static;
 use semver::{Prerelease, Version};
@@ -86,6 +88,13 @@ lazy_static! {
 }
 
 pub fn self_update() {
+    // Check if OMNI_SKIP_SELF_UPDATE is set
+    if let Some(skip_self_update) = std::env::var_os("OMNI_SKIP_SELF_UPDATE") {
+        if !skip_self_update.to_str().unwrap().is_empty() {
+            return;
+        }
+    }
+
     let config = config(".");
     if config.path_repo_updates.self_update.do_not_check() {
         return;
@@ -232,6 +241,14 @@ impl OmniRelease {
         if updated {
             progress_handler
                 .success_with_message(format!("updated to version {}", self.version).light_green());
+
+            // Replace current process with the new binary
+            ProcessCommand::new(std::env::current_exe().unwrap())
+                .args(std::env::args().skip(1))
+                .env("OMNI_SKIP_SELF_UPDATE", "1")
+                .exec();
+
+            panic!("Failed to replace current process with the new binary");
         } else {
             progress_handler.success_with_message("already up-to-date".to_string().light_black());
         }
