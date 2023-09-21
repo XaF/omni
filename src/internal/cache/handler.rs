@@ -13,7 +13,7 @@ use serde::Serialize;
 use serde_json;
 
 use crate::internal::cache::CacheObject;
-use crate::internal::config;
+use crate::internal::config::global_config;
 
 // Read the content of the cache file and parse it as structured JSON;
 // we will want to deprecate and remove that at some point, but it will
@@ -46,7 +46,7 @@ struct NewCacheRepositories {
 }
 
 fn convert_cache_to_dir() -> io::Result<()> {
-    let cache_path = PathBuf::from(config(".").cache.path.clone());
+    let cache_path = PathBuf::from(global_config().cache.path.clone());
 
     // If the cache path does not exist, there is nothing to do
     if !cache_path.exists() {
@@ -123,7 +123,7 @@ where
 {
     convert_cache_to_dir()?;
 
-    let cache_dir_path = PathBuf::from(config(".").cache.path.clone());
+    let cache_dir_path = PathBuf::from(global_config().cache.path.clone());
     let cache_path = cache_dir_path.join(format!("{}.json", cache_name));
 
     let file = File::open(cache_path)?;
@@ -143,7 +143,7 @@ where
     convert_cache_to_dir()?;
 
     // Check if the directory of the cache file exists, otherwise create it recursively
-    let cache_dir_path = PathBuf::from(config(".").cache.path.clone());
+    let cache_dir_path = PathBuf::from(global_config().cache.path.clone());
     if !cache_dir_path.exists() {
         std::fs::create_dir_all(&cache_dir_path)?;
     }
