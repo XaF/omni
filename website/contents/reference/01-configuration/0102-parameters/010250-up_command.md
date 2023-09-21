@@ -10,7 +10,7 @@ Configuration related to the `omni up` command.
 
 | Parameter       | Type      | Description                                         |
 |-----------------|-----------|-----------------------------------------------------|
-| `auto_bootstrap` | boolean | whether or not to automatically run `omni up` with the `--bootstrap` parameter when changes to the configuration suggestions from the work directory are detected |
+| `auto_bootstrap` | boolean | whether or not to automatically infer the `--bootstrap` parameter when running `omni up`, if changes to the configuration suggestions from the work directory are detected |
 
 ## Example
 
