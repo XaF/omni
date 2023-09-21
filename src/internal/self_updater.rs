@@ -130,10 +130,13 @@ impl OmniRelease {
     }
 
     fn is_newer(&self) -> bool {
-        let latest_version =
-            Version::parse(self.version.as_str()).expect("Failed to parse version");
-
-        latest_version > *CURRENT_VERSION
+        match Version::parse(self.version.as_str()) {
+            Ok(version) => version > *CURRENT_VERSION,
+            Err(_err) => {
+                omni_error!(format!("Failed to parse release version: {}", self.version));
+                false
+            }
+        }
     }
 
     fn compatible_binary(&self) -> Option<&OmniReleaseBinary> {

@@ -93,7 +93,7 @@ jobs:
         uses: softprops/action-gh-release@v1
         with:
           name: v${{ env.RELEASE_VERSION }}
-          tag_name: test-v${{ env.RELEASE_VERSION }}
+          tag_name: v${{ env.RELEASE_VERSION }}
           files: /tmp/binaries/**/*
           fail_on_unmatched_files: true
           body: ${{ env.RELEASE_CHANGELOG }}
