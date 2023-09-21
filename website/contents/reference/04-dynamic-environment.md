@@ -20,6 +20,7 @@ The following configuration parameters lead to dynamic environment.
 | [`python` operation](/reference/configuration/parameters/up/python) | [See details](/reference/configuration/parameters/up/python#dynamic-environment) |
 | [`ruby` operation](/reference/configuration/parameters/up/ruby) | [See details](/reference/configuration/parameters/up/ruby#dynamic-environment) |
 | [`rust` operation](/reference/configuration/parameters/up/rust) | [See details](/reference/configuration/parameters/up/rust#dynamic-environment) |
+| [`terraform` operation](/reference/configuration/parameters/up/terraform) | [See details](/reference/configuration/parameters/up/terraform#dynamic-environment) |
 
 ## Behind the scene
 
