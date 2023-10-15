@@ -43,6 +43,10 @@ pub mod git;
 pub use git::Org;
 pub use git::ORG_LOADER;
 
+pub mod workdir;
+pub use workdir::add_trust;
+pub use workdir::is_trusted;
+
 pub mod user_interface;
 pub use user_interface::StringColor;
 

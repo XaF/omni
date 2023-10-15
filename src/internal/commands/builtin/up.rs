@@ -40,6 +40,8 @@ use crate::internal::git::ORG_LOADER;
 use crate::internal::git_env;
 use crate::internal::user_interface::StringColor;
 use crate::internal::workdir;
+use crate::internal::workdir::add_trust;
+use crate::internal::workdir::is_trusted_or_ask;
 use crate::internal::workdir_or_init;
 use crate::internal::ENV;
 use crate::omni_error;
@@ -555,89 +557,19 @@ impl UpCommand {
 
     fn trust(&self) -> bool {
         match self.cli_args().trust {
-            UpCommandArgsTrustOptions::Always => return self.add_trust(),
+            UpCommandArgsTrustOptions::Always => return add_trust("."),
             UpCommandArgsTrustOptions::Yes => return true,
             UpCommandArgsTrustOptions::No => return false,
             UpCommandArgsTrustOptions::Check => {}
         }
 
-        let git = git_env(".");
-        if git.in_repo() && git.has_origin() {
-            for org in ORG_LOADER.orgs() {
-                if org.config.trusted && org.hosts_repo(&git.origin().unwrap()) {
-                    return true;
-                }
-            }
-        }
-
-        let workdir = workdir(".");
-        let repo_id = workdir.id();
-        if repo_id.is_some() && RepositoriesCache::get().has_trusted(&repo_id.clone().unwrap()) {
-            return true;
-        }
-
-        if !ENV.interactive_shell {
-            return false;
-        }
-
-        let mut choices = vec![('y', "Yes, this time (and ask me everytime)"), ('n', "No")];
-
-        let repo_mention = if repo_id.is_some() {
-            choices.insert(0, ('a', "Yes, always (add to trusted repositories)"));
-            format!("The repository {}", repo_id.clone().unwrap().light_blue())
-        } else {
-            "This repository".to_string()
-        };
-        omni_info!(format!(
-            "{} is not in your trusted repositories.",
-            repo_mention
-        ));
-        omni_info!(format!(
-            "{} repositories in your organizations are automatically trusted.",
-            "Tip:".to_string().bold()
-        ));
-
-        let question = requestty::Question::expand("trust_repo")
-            .ask_if_answered(true)
-            .on_esc(requestty::OnEsc::Terminate)
-            .message(format!(
-                "Do you want to run {} for this repository?",
+        is_trusted_or_ask(
+            ".",
+            format!(
+                "Do you want to run {} for this directory?",
                 format!("omni {}", self.subcommand()).light_yellow(),
-            ))
-            .choices(choices)
-            .default('y')
-            .build();
-
-        return match requestty::prompt_one(question) {
-            Ok(answer) => match answer {
-                requestty::Answer::ExpandItem(expanditem) => match expanditem.key {
-                    'y' => true,
-                    'n' => false,
-                    'a' => self.add_trust(),
-                    _ => unreachable!(),
-                },
-                _ => unreachable!(),
-            },
-            Err(err) => {
-                println!("{}", format!("[✘] {:?}", err).red());
-                false
-            }
-        };
-    }
-
-    fn add_trust(&self) -> bool {
-        let wd = workdir(".");
-        let repo_id = wd.id();
-        if let Some(repo_id) = repo_id {
-            if let Err(err) = RepositoriesCache::exclusive(|repos| repos.add_trusted(&repo_id)) {
-                omni_error!(format!("Unable to update cache: {:?}", err.to_string()));
-                return false;
-            }
-        } else {
-            omni_error!("Unable to get repository id");
-            return false;
-        }
-        return true;
+            ),
+        )
     }
 
     fn auto_bootstrap(&self) -> bool {

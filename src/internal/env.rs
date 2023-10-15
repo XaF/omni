@@ -6,7 +6,6 @@ use std::path::PathBuf;
 use std::sync::Mutex;
 
 use blake3::Hasher;
-use gethostname::gethostname;
 use git2::Repository;
 use is_terminal::IsTerminal;
 use lazy_static::lazy_static;

@@ -1,3 +1,5 @@
+use std::process::exit;
+
 use crate::internal::commands::builtin::CdCommand;
 use crate::internal::commands::builtin::CloneCommand;
 use crate::internal::commands::builtin::HelpCommand;
@@ -13,6 +15,9 @@ use crate::internal::commands::utils::abs_or_rel_path;
 use crate::internal::config::CommandSyntax;
 use crate::internal::dynenv::update_dynamic_env_for_command;
 use crate::internal::user_interface::StringColor;
+use crate::internal::workdir::is_trusted;
+use crate::internal::workdir::is_trusted_or_ask;
+use crate::omni_error;
 
 #[derive(Debug, Clone)]
 pub enum Command {
@@ -244,7 +249,27 @@ impl Command {
         } else {
             self.name().clone()
         };
-        std::env::set_var("OMNI_SUBCOMMAND", name.join(" "));
+        let name = name.join(" ");
+        std::env::set_var("OMNI_SUBCOMMAND", name.clone());
+
+        match self {
+            Command::FromPath(_) | Command::FromConfig(_) | Command::FromMakefile(_) => {
+                // Check if the workdir where the command is located is trusted
+                if !is_trusted_or_ask(
+                    &self.source_dir(),
+                    format!(
+                        "Do you want to run {} provided by this directory?",
+                        format!("omni {}", name).light_yellow(),
+                    ),
+                ) {
+                    omni_error!(format!(
+                        "skipping running command as directory is not trusted."
+                    ));
+                    exit(1);
+                }
+            }
+            _ => {}
+        }
 
         match self {
             Command::BuiltinCd(command) => command.exec(argv),
@@ -279,6 +304,16 @@ impl Command {
     }
 
     pub fn autocomplete(&self, comp_cword: usize, argv: Vec<String>) {
+        match self {
+            Command::FromPath(_) | Command::FromConfig(_) | Command::FromMakefile(_) => {
+                // Check if the workdir where the command is located is trusted
+                if !is_trusted(&self.source_dir()) {
+                    exit(1);
+                }
+            }
+            _ => {}
+        }
+
         match self {
             Command::BuiltinCd(command) => command.autocomplete(comp_cword, argv),
             Command::BuiltinClone(command) => command.autocomplete(comp_cword, argv),

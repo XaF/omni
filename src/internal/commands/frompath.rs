@@ -158,7 +158,7 @@ impl PathCommand {
     }
 
     pub fn exec(&self, argv: Vec<String>) {
-        // println!("executing {:?} with {:?}", self.name, argv);
+        // Execute the command
         let mut command = ProcessCommand::new(self.source.clone());
         command.args(argv);
         command.exec();
