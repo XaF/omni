@@ -6,6 +6,7 @@ use std::path::PathBuf;
 use std::sync::Mutex;
 
 use blake3::Hasher;
+use gethostname::gethostname;
 use git2::Repository;
 use is_terminal::IsTerminal;
 use lazy_static::lazy_static;
@@ -637,7 +638,14 @@ impl WorkDirEnv {
     }
 
     fn machine_id_hash(uuid: &str) -> u64 {
-        let machine_id = machine_uid::get().unwrap();
+        let machine_id = match machine_uid::get() {
+            Ok(machine_id) => machine_id,
+            // TODO: If unable to fetch the machine id, we use an empty string, which makes things
+            //      less secure; using the hostname would be better but the gethostname crate is
+            //      panicking if not working, not allowing us to fallback to an empty string; we
+            //      might
+            Err(_) => "".to_string(),
+        };
 
         let mut hasher = Hasher::new();
         hasher.update(machine_id.as_bytes());
