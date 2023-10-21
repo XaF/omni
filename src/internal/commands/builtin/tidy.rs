@@ -12,12 +12,15 @@ use once_cell::sync::OnceCell;
 use walkdir::WalkDir;
 
 use crate::internal::commands::builtin::HelpCommand;
+use crate::internal::commands::path::global_omnipath_entries;
 use crate::internal::config::config;
 use crate::internal::config::global_config_loader;
 use crate::internal::config::CommandSyntax;
 use crate::internal::config::ConfigSource;
 use crate::internal::config::SyntaxOptArg;
 use crate::internal::git::format_path;
+use crate::internal::git::package_root_path;
+use crate::internal::git::path_entry_config;
 use crate::internal::git::safe_git_url_parse;
 use crate::internal::git_env;
 use crate::internal::user_interface::StringColor;
@@ -209,6 +212,14 @@ impl TidyCommand {
             unreachable!();
         }
 
+        // Find the packages in the path that might not exist
+        let omnipath_entries = global_omnipath_entries();
+        let missing_packages = omnipath_entries
+            .iter()
+            .filter(|pe| pe.is_package() && !pe.package_path().unwrap_or(PathBuf::new()).exists())
+            .collect::<Vec<_>>();
+
+        // Find all the repositories
         let all_repositories = self.list_repositories();
 
         // Filter the repositories that are already organized
@@ -217,13 +228,70 @@ impl TidyCommand {
             .filter(|r| !r.organized)
             .collect::<Vec<_>>();
 
-        if repositories.is_empty() {
+        if repositories.is_empty() && missing_packages.is_empty() {
             if self.cli_args().up_all {
                 self.up_repositories(&all_repositories);
             } else {
                 omni_info!("Everything is already tidied up! \u{1F389}"); // party popper emoji code
             }
             exit(0);
+        }
+
+        if !missing_packages.is_empty() {
+            omni_info!(format!(
+                "Found {} missing package{}, cloning them.",
+                format!("{}", missing_packages.len()).underline(),
+                if missing_packages.len() > 1 { "s" } else { "" }
+            ));
+
+            let current_exe = std::env::current_exe();
+            if current_exe.is_err() {
+                omni_error!("failed to get current executable path");
+                exit(1);
+            }
+            let current_exe = current_exe.unwrap();
+
+            for package in missing_packages.iter() {
+                // Call 'omni clone' the missing packages but in a separate process so we don't
+                // kill the current process; however we want to make sure we link stdin, stdout and
+                // stderr
+                let mut omni_clone_command = std::process::Command::new(current_exe.clone());
+                omni_clone_command.arg("clone");
+                omni_clone_command.arg("--package");
+                omni_clone_command.arg(package.package.clone().unwrap());
+                omni_clone_command.env_remove("OMNI_FORCE_UPDATE");
+                omni_clone_command.env("OMNI_SKIP_UPDATE", "1");
+
+                // Run the process synchronously but capture the exit code
+                let child = omni_clone_command.spawn();
+                match child {
+                    Ok(mut child) => {
+                        let status = child.wait();
+                        match status {
+                            Ok(status) => {
+                                if !status.success() {
+                                    omni_error!(format!(
+                                        "failed to clone package: {}",
+                                        package.package.clone().unwrap()
+                                    ));
+                                }
+                            }
+                            Err(err) => {
+                                omni_error!(format!("failed to wait on process: {}", err));
+                                exit(1);
+                            }
+                        }
+                    }
+                    Err(err) => {
+                        omni_error!(format!("failed to spawn process: {}", err));
+                        exit(1);
+                    }
+                }
+            }
+
+            if repositories.is_empty() {
+                exit(0);
+            }
         }
 
         let selected_repositories = if self.cli_args().yes {
@@ -402,6 +470,9 @@ impl TidyCommand {
             }
         }
 
+        // And the package path
+        worktrees.insert(PathBuf::from(package_root_path()));
+
         // Cleanup the paths by removing each path for which
         // the parent is also in the list
         let mut worktrees = worktrees.into_iter().collect::<Vec<_>>();
@@ -506,10 +577,24 @@ impl TidyCommand {
                 continue;
             }
 
+            let path_entry = path_entry_config(repo_path.to_str().unwrap());
+            if !path_entry.is_valid() {
+                continue;
+            }
+
+            let location = match path_entry.package {
+                Some(ref package) => format!(
+                    "{}:{}",
+                    "package".to_string().underline(),
+                    package.to_string().light_cyan(),
+                ),
+                None => path_entry.as_string().light_cyan(),
+            };
+
             omni_info!(format!(
                 "running {} in {}",
                 "omni up".to_string().light_yellow(),
-                repo_path.display().to_string().light_cyan(),
+                location,
             ));
 
             let mut omni_up_command = std::process::Command::new(current_exe.clone());

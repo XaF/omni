@@ -35,6 +35,8 @@ use crate::internal::config::ConfigLoader;
 use crate::internal::config::ConfigValue;
 use crate::internal::config::SyntaxOptArg;
 use crate::internal::git::format_path;
+use crate::internal::git::package_path_from_git_url;
+use crate::internal::git::path_entry_config;
 use crate::internal::git::safe_git_url_parse;
 use crate::internal::git::ORG_LOADER;
 use crate::internal::git_env;
@@ -435,10 +437,8 @@ impl UpCommand {
         }
 
         let mut env_vars = None;
-        if self.is_up() {
-            if !config.env.is_empty() {
-                env_vars = Some(config.env.clone());
-            }
+        if self.is_up() && !config.env.is_empty() {
+            env_vars = Some(config.env.clone());
         }
 
         if self.is_down() && (!wd.in_workdir() || !wd.has_id()) {
@@ -834,17 +834,37 @@ impl UpCommand {
 
         let mut any_error = false;
         for repo in cloned {
+            let repo_clone_path = if repo.clone_as_package {
+                repo.package_path.unwrap()
+            } else {
+                repo.clone_path
+            };
+
+            let path_entry = path_entry_config(repo_clone_path.to_str().unwrap());
+            if !path_entry.is_valid() {
+                continue;
+            }
+
+            let location = match path_entry.package {
+                Some(ref package) => format!(
+                    "{}:{}",
+                    "package".to_string().underline(),
+                    package.to_string().light_cyan(),
+                ),
+                None => path_entry.as_string().light_cyan(),
+            };
+
             omni_info!(format!(
                 "running {} in {}",
                 "omni up".to_string().light_yellow(),
-                repo.clone_path.display().to_string().light_cyan(),
+                location,
             ));
 
             let mut omni_up_command = std::process::Command::new(current_exe.clone());
             omni_up_command.arg("up");
             omni_up_command.arg("--bootstrap");
             omni_up_command.arg("--clone-suggested=no");
-            omni_up_command.current_dir(repo.clone_path);
+            omni_up_command.current_dir(repo_clone_path);
             omni_up_command.env_remove("OMNI_FORCE_UPDATE");
             omni_up_command.env("OMNI_SKIP_UPDATE", "1");
 
@@ -898,9 +918,11 @@ impl UpCommand {
                 ) {
                     repo = Some(RepositoryToClone {
                         suggested_by: vec![repo_id.clone()],
-                        clone_url: clone_url,
+                        clone_url: clone_url.clone(),
                         clone_path: clone_path,
+                        package_path: package_path_from_git_url(&clone_url),
                         clone_args: repo_config.args.clone(),
+                        clone_as_package: repo_config.clone_as_package(),
                     });
                     break;
                 }
@@ -918,7 +940,9 @@ impl UpCommand {
                             suggested_by: vec![repo_id.clone()],
                             clone_url: clone_url.clone(),
                             clone_path: format_path(&worktree, &clone_url),
+                            package_path: package_path_from_git_url(&clone_url),
                             clone_args: repo_config.args.clone(),
+                            clone_as_package: repo_config.clone_as_package(),
                         });
                     }
                 }
@@ -934,7 +958,8 @@ impl UpCommand {
 
             let repo = repo.unwrap();
 
-            if repo.clone_path.exists() {
+            if repo.clone_path.exists() || repo.package_path.as_ref().map_or(false, |p| p.exists())
+            {
                 // Skip repository if it already exists
                 continue;
             }
@@ -955,18 +980,19 @@ impl UpCommand {
             return HashSet::new();
         }
 
-        let (to_clone, new_skipped) = self.suggest_clone_ask(to_clone);
+        let (mut to_clone, new_skipped) = self.suggest_clone_ask(to_clone);
         if to_clone.is_empty() {
             // End here if there are no repositories to clone after asking
             return HashSet::new();
         }
+        let to_clone_this_round = to_clone.clone();
         let skipped: HashSet<_> = skipped.union(&new_skipped).cloned().collect();
 
         let mut new_suggest_clone = HashSet::<RepositoryToClone>::new();
         let mut cloned = HashSet::new();
 
         let total = to_clone.len();
-        for (idx, repo) in to_clone.iter().enumerate() {
+        for (idx, repo) in to_clone.iter_mut().enumerate() {
             let desc = format!("cloning {}:", repo.clone_url.to_string().light_cyan()).light_blue();
             let progress = Some((idx + 1, total));
             let progress_handler: Box<dyn ProgressHandler> = if ENV.interactive_shell {
@@ -979,7 +1005,20 @@ impl UpCommand {
 
             let mut cmd_args = vec!["git".to_string(), "clone".to_string()];
             cmd_args.push(repo.clone_url.to_string());
-            cmd_args.push(repo.clone_path.to_string_lossy().to_string());
+            let repo_clone_path = if repo.clone_as_package {
+                if let Some(package_path) = &repo.package_path {
+                    package_path.clone()
+                } else {
+                    omni_error!(format!(
+                        "Unable to determine package path for {}; skipping",
+                        repo.clone_url.to_string().light_green()
+                    ));
+                    continue;
+                }
+            } else {
+                repo.clone_path.clone()
+            };
+            cmd_args.push(repo_clone_path.to_string_lossy().to_string());
             cmd_args.extend(repo.clone_args.clone());
 
             let mut cmd = TokioCommand::new(&cmd_args[0]);
@@ -996,10 +1035,13 @@ impl UpCommand {
                 cloned.insert(repo.clone());
 
                 let new_to_clone =
-                    self.suggest_clone_from_config(repo.clone_path.to_str().unwrap());
+                    self.suggest_clone_from_config(repo_clone_path.to_str().unwrap());
                 let mut num_suggested = 0;
                 for new_repo in new_to_clone {
-                    if skipped.contains(&new_repo) {
+                    if skipped.contains(&new_repo)
+                        || cloned.contains(&new_repo)
+                        || to_clone_this_round.contains(&new_repo)
+                    {
                         // Skip repository if it was already skipped
                         continue;
                     }
@@ -1022,7 +1064,10 @@ impl UpCommand {
                             suggested_by: suggested_by,
                             clone_url: existing_repo.clone_url.clone(),
                             clone_path: existing_repo.clone_path.clone(),
+                            package_path: package_path_from_git_url(&existing_repo.clone_url),
                             clone_args: args,
+                            clone_as_package: existing_repo.clone_as_package
+                                && new_repo.clone_as_package,
                         });
                     } else {
                         new_suggest_clone.insert(new_repo.clone());
@@ -1040,10 +1085,10 @@ impl UpCommand {
                 progress_handler
                     .clone()
                     .map(|handler| handler.success_with_message(msg));
-            } else {
+            } else if let Err(err) = result {
                 progress_handler
                     .clone()
-                    .map(|handler| handler.error_with_message("failed".to_string()));
+                    .map(|handler| handler.error_with_message(format!("failed: {}", err)));
             }
         }
 
@@ -1067,7 +1112,12 @@ impl UpCommand {
         omni_info!("The following repositories are being suggested to clone:");
         for repo in to_clone.iter() {
             omni_info!(format!(
-                "- {} {}",
+                "- {} {} {}",
+                if repo.clone_as_package {
+                    "📦".to_string()
+                } else {
+                    "🌳".to_string()
+                },
                 repo.clone_url.to_string().light_green(),
                 format!(
                     "{} {}{}",
@@ -1090,6 +1140,11 @@ impl UpCommand {
 
         let mut choices = vec![
             ('y', "Yes, clone the suggested repositories"),
+            ('p', "Yes, clone the suggested repositories as packages 📦"),
+            (
+                'w',
+                "Yes, clone the suggested repositories in the worktree 🌳",
+            ),
             ('n', "No, do not clone the suggested repositories"),
         ];
         if to_clone.len() > 1 {
@@ -1109,6 +1164,30 @@ impl UpCommand {
                 requestty::Answer::ExpandItem(expanditem) => match expanditem.key {
                     'y' => {
                         return (to_clone.clone(), HashSet::new());
+                    }
+                    'p' => {
+                        let clone_as_package = to_clone
+                            .clone()
+                            .into_iter()
+                            .map(|repo| {
+                                let mut repo = repo.clone();
+                                repo.clone_as_package = true;
+                                repo
+                            })
+                            .collect::<Vec<_>>();
+                        return (clone_as_package, HashSet::new());
+                    }
+                    'w' => {
+                        let clone_in_worktree = to_clone
+                            .clone()
+                            .into_iter()
+                            .map(|repo| {
+                                let mut repo = repo.clone();
+                                repo.clone_as_package = false;
+                                repo
+                            })
+                            .collect::<Vec<_>>();
+                        return (clone_in_worktree, HashSet::new());
                     }
                     'n' => {
                         return (vec![], HashSet::new());
@@ -1156,6 +1235,77 @@ impl UpCommand {
             }
         };
 
+        // If we get here and we have any repository selected, we want to ask
+        // how to clone them (package or regular cloning in the working directory)
+        if !selected_to_clone.is_empty() {
+            let mut choices = vec![];
+            for repo in selected_to_clone.iter() {
+                if repo.clone_as_package {
+                    choices.push(repo.clone_url.to_string());
+                }
+            }
+            let marker_initial_pos = choices.len();
+            choices.push(
+                "↑ clone as 📦 / ↓ clone in 🌳 (move this or repositories using <space>)"
+                    .to_string()
+                    .light_black(),
+            );
+            for repo in selected_to_clone.iter() {
+                if !repo.clone_as_package {
+                    choices.push(repo.clone_url.to_string());
+                }
+            }
+
+            let question = requestty::Question::order_select("select_how_to_clone")
+                .ask_if_answered(true)
+                .on_esc(requestty::OnEsc::Terminate)
+                .message("How do you want to clone the repositories?")
+                .transform(|selected, _, backend| {
+                    let marker_pos = selected
+                        .iter()
+                        .position(|item| item.initial_index() == marker_initial_pos);
+                    let count_pkg = marker_pos.unwrap_or(0);
+                    let count_wt = selected.len() - count_pkg - 1;
+                    write!(
+                        backend,
+                        "{} as 📦, {} in 🌳",
+                        format!("{}", count_pkg).bold(),
+                        format!("{}", count_wt).bold(),
+                    )
+                })
+                .choices(choices)
+                .build();
+
+            match requestty::prompt_one(question) {
+                Ok(answer) => match answer {
+                    requestty::Answer::ListItems(items) => {
+                        let mut clone_as_package = true;
+                        for item in &items {
+                            if item.index == marker_initial_pos {
+                                clone_as_package = false;
+                                continue;
+                            }
+
+                            let item_index = if item.index < marker_initial_pos {
+                                item.index
+                            } else {
+                                // Account for the marker
+                                item.index - 1
+                            };
+
+                            selected_to_clone[item_index].clone_as_package = clone_as_package;
+                        }
+                    }
+                    _ => unreachable!(),
+                },
+                Err(err) => {
+                    println!("{}", format!("[✘] {:?}", err).red());
+                    // If we get here, we want to cancel the cloning entirely
+                    selected_to_clone = vec![];
+                }
+            };
+        }
+
         let skipped = to_clone
             .into_iter()
             .filter(|repo| !selected_to_clone.contains(repo))
@@ -1193,7 +1343,9 @@ struct RepositoryToClone {
     suggested_by: Vec<String>,
     clone_url: GitUrl,
     clone_path: PathBuf,
+    package_path: Option<PathBuf>,
     clone_args: Vec<String>,
+    clone_as_package: bool,
 }
 
 impl Hash for RepositoryToClone {

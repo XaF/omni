@@ -24,6 +24,7 @@ Upon successful cloning, `omni clone` will run `omni up --update-user-config` in
 
 | Option          | Value type | Description                                         |
 |-----------------|------------|-----------------------------------------------------|
+| `--package`  | bool | Clone the repository as a package, instead of the worktree |
 | `options...` | any | Any additional options to pass to git clone. |
 
 ## Examples
@@ -44,4 +45,7 @@ omni clone omni --branch some_other_branch
 
 # Or really, any other parameter that `git clone` supports
 omni clone omni --depth 1
+
+# Clone the repository as a package
+omni clone --package https://github.com/XaF/omni
 ```

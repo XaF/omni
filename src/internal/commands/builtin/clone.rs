@@ -20,6 +20,7 @@ use crate::internal::config::up::utils::RunConfig;
 use crate::internal::config::CommandSyntax;
 use crate::internal::config::SyntaxOptArg;
 use crate::internal::git::format_path;
+use crate::internal::git::package_path_from_git_url;
 use crate::internal::git::safe_git_url_parse;
 use crate::internal::git::ORG_LOADER;
 use crate::internal::user_interface::StringColor;
@@ -29,6 +30,7 @@ use crate::omni_error;
 #[derive(Debug, Clone)]
 struct CloneCommandArgs {
     repository: String,
+    package: bool,
     options: Vec<String>,
 }
 
@@ -40,6 +42,11 @@ impl CloneCommandArgs {
         let matches = clap::Command::new("")
             .disable_help_subcommand(true)
             .disable_version_flag(true)
+            .arg(
+                clap::Arg::new("package")
+                    .long("package")
+                    .action(clap::ArgAction::SetTrue),
+            )
             .arg(clap::Arg::new("repo").action(clap::ArgAction::Set))
             .arg(
                 clap::Arg::new("options")
@@ -83,6 +90,7 @@ impl CloneCommandArgs {
 
         Self {
             repository: repository,
+            package: *matches.get_one::<bool>("package").unwrap_or(&false),
             options: matches
                 .get_many::<String>("options")
                 .map(|args| args.map(|arg| arg.to_string()).collect())
@@ -142,6 +150,10 @@ impl CloneCommand {
             ],
             options: vec![
                 SyntaxOptArg {
+                    name: "--package".to_string(),
+                    desc: Some("Clone the repository as a package \x1B[90m(default: no)\x1B[0m".to_string()),
+                },
+                SyntaxOptArg {
                     name: "options...".to_string(),
                     desc: Some("Any additional options to pass to git clone.".to_string()),
                 },
@@ -160,6 +172,7 @@ impl CloneCommand {
 
         let repo = self.cli_args().repository.clone();
         let clone_args = self.cli_args().options.clone();
+        let clone_as_package = self.cli_args().package;
 
         // Create a spinner
         let spinner = if ENV.interactive_shell {
@@ -183,7 +196,26 @@ impl CloneCommand {
             if let (Some(clone_url), Some(clone_path)) =
                 (org.get_repo_git_url(&repo), org.get_repo_path(&repo))
             {
-                if self.try_clone(&clone_url, &clone_path, &clone_args, spinner.clone()) {
+                let clone_path = if clone_as_package {
+                    if let Some(clone_path) = package_path_from_git_url(&clone_url) {
+                        clone_path
+                    } else {
+                        omni_error!(format!(
+                            "could not format package path for {}",
+                            repo.yellow()
+                        ));
+                        exit(1);
+                    }
+                } else {
+                    clone_path
+                };
+                if self.try_clone(
+                    &clone_url,
+                    &clone_path,
+                    &clone_args,
+                    spinner.clone(),
+                    !clone_as_package,
+                ) {
                     cloned = true;
                     break;
                 }
@@ -202,7 +234,27 @@ impl CloneCommand {
                     let config = config(".");
                     let worktree = config.worktree();
                     let clone_path = format_path(&worktree, &clone_url);
-                    if self.try_clone(&clone_url, &clone_path, &clone_args, spinner.clone()) {
+                    let clone_path = if clone_as_package {
+                        if let Some(clone_path) = package_path_from_git_url(&clone_url) {
+                            clone_path
+                        } else {
+                            omni_error!(format!(
+                                "could not format package path for {}",
+                                repo.yellow()
+                            ));
+                            exit(1);
+                        }
+                    } else {
+                        clone_path
+                    };
+
+                    if self.try_clone(
+                        &clone_url,
+                        &clone_path,
+                        &clone_args,
+                        spinner.clone(),
+                        !clone_as_package,
+                    ) {
                         cloned = true;
                     }
                 }
@@ -264,6 +316,7 @@ impl CloneCommand {
         clone_path: &PathBuf,
         clone_args: &Vec<String>,
         spinner: Option<ProgressBar>,
+        auto_cd: bool,
     ) -> bool {
         let log_command = |message: String| {
             if let Some(spinner) = &spinner {
@@ -348,7 +401,7 @@ impl CloneCommand {
 
         // If we reach here, the repo either exists or just got cloned, so we can
         // directly cd into it
-        if ENV.omni_cmd_file.is_some() {
+        if auto_cd && ENV.omni_cmd_file.is_some() {
             let path_str = clone_path.to_string_lossy();
             let path_escaped = escape(path_str);
             match omni_cmd(format!("cd {}", path_escaped).as_str()) {
