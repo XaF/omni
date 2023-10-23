@@ -447,7 +447,12 @@ impl UpCommand {
         }
 
         let has_up_config = !(up_config.is_none() || !up_config.clone().unwrap().has_steps());
-        if !has_up_config && suggest_config.is_none() && !suggest_clone && env_vars.is_none() {
+        let has_clone_suggested = !config.suggest_clone.repositories.is_empty();
+        if !has_up_config
+            && suggest_config.is_none()
+            && (!has_clone_suggested || !suggest_clone)
+            && env_vars.is_none()
+        {
             omni_info!(format!(
                 "No {} configuration found, nothing to do.",
                 "up".to_string().italic(),
