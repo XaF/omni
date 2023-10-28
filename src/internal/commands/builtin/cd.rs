@@ -17,6 +17,7 @@ use crate::omni_error;
 #[derive(Debug, Clone)]
 struct CdCommandArgs {
     locate: bool,
+    include_packages: bool,
     repository: Option<String>,
 }
 
@@ -32,6 +33,17 @@ impl CdCommandArgs {
                 clap::Arg::new("locate")
                     .short('l')
                     .long("locate")
+                    .action(clap::ArgAction::SetTrue),
+            )
+            .arg(
+                clap::Arg::new("include-packages")
+                    .short('p')
+                    .long("include-packages")
+                    .action(clap::ArgAction::SetTrue),
+            )
+            .arg(
+                clap::Arg::new("no-include-packages")
+                    .long("no-include-packages")
                     .action(clap::ArgAction::SetTrue),
             )
             .arg(clap::Arg::new("repo").action(clap::ArgAction::Set))
@@ -62,8 +74,24 @@ impl CdCommandArgs {
 
         let matches = matches.unwrap();
 
+        let locate = *matches.get_one::<bool>("locate").unwrap_or(&false);
+        let include_packages = if *matches
+            .get_one::<bool>("no-include-packages")
+            .unwrap_or(&false)
+        {
+            false
+        } else if *matches
+            .get_one::<bool>("include-packages")
+            .unwrap_or(&false)
+        {
+            true
+        } else {
+            locate
+        };
+
         Self {
-            locate: *matches.get_one::<bool>("locate").unwrap_or(&false),
+            locate: locate,
+            include_packages: include_packages,
             repository: matches.get_one::<String>("repo").map(|arg| arg.to_string()),
         }
     }
@@ -122,6 +150,17 @@ impl CdCommand {
                             "directory to it. When this flag is passed, interactions are also disabled, ",
                             "as it is assumed to be used for command line purposes. ",
                             "This will exit with 0 if the repository is found, 1 otherwise.",
+                        )
+                        .to_string()
+                    ),
+                },
+                SyntaxOptArg {
+                    name: "--[no-]include-packages".to_string(),
+                    desc: Some(
+                        concat!(
+                            "If provided, will include (or not include) packages when running the command; ",
+                            "this defaults to including packages when using \x1B[3m--locate\x1B[0m, ",
+                            "and not including packages otherwise.",
                         )
                         .to_string()
                     ),
@@ -293,7 +332,11 @@ impl CdCommand {
             return Some(format!("{}", repo_path.display()));
         }
 
-        if let Some(repo_path) = ORG_LOADER.find_repo(repo, !self.cli_args().locate) {
+        if let Some(repo_path) = ORG_LOADER.find_repo(
+            repo,
+            self.cli_args().include_packages,
+            !self.cli_args().locate,
+        ) {
             return Some(format!("{}", repo_path.display()));
         }
 

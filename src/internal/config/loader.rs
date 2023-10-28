@@ -19,6 +19,7 @@ use crate::internal::config::ConfigSource;
 use crate::internal::config::ConfigValue;
 use crate::internal::env::ENV;
 use crate::internal::env::HOME;
+use crate::internal::git::path_entry_config;
 use crate::internal::user_interface::StringColor;
 use crate::internal::workdir;
 use crate::omni_error;
@@ -93,6 +94,11 @@ impl ConfigLoader {
             format!("{}/.omni.yaml", *HOME),
             format!("{}/omni.yaml", ENV.xdg_config_home),
             format!("{}/config.yaml", ENV.config_home),
+            if cfg!(debug_assertions) {
+                format!("{}/config-dev.yaml", ENV.config_home)
+            } else {
+                "".to_owned()
+            },
             std::env::var("OMNI_CONFIG").unwrap_or("".to_owned()),
         ]
         .into_iter()
@@ -292,11 +298,15 @@ impl ConfigLoader {
 
         if let Ok(value) = serde_yaml::from_str::<serde_yaml::Value>(&contents) {
             self.loaded_config_files.push(config_file.to_string());
-            let config_value = ConfigValue::from_value(
-                ConfigSource::File(config_file.to_string()),
-                labels.clone(),
-                value,
-            );
+
+            let path_entry_config = path_entry_config(config_file);
+            let source = if path_entry_config.package.is_some() {
+                ConfigSource::Package(path_entry_config)
+            } else {
+                ConfigSource::File(config_file.to_string())
+            };
+
+            let config_value = ConfigValue::from_value(source, labels.clone(), value);
             self.raw_config.extend(config_value, strategy, vec![]);
         }
     }

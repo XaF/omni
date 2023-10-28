@@ -6,6 +6,7 @@ use serde::Deserialize;
 use serde::Serialize;
 use serde_yaml;
 
+use crate::internal::config::parser::PathEntryConfig;
 use crate::internal::env::ENV;
 use crate::internal::env::HOME;
 use crate::internal::user_interface::colors::StringColor;
@@ -15,6 +16,7 @@ use crate::omni_error;
 pub enum ConfigSource {
     Default,
     File(String),
+    Package(PathEntryConfig),
     Null,
 }
 
@@ -896,10 +898,47 @@ up_command:
                                 .to_string();
                         }
                         if !abs_path.starts_with("/") {
-                            if let ConfigSource::File(source) = self.source.clone() {
-                                if let Some(source) = Path::new(&source).parent() {
-                                    abs_path = source.join(abs_path).to_str().unwrap().to_string();
+                            match self.source.clone() {
+                                ConfigSource::File(source) => {
+                                    if let Some(source) = Path::new(&source).parent() {
+                                        abs_path =
+                                            source.join(abs_path).to_str().unwrap().to_string();
+                                    }
                                 }
+                                ConfigSource::Package(source) => {
+                                    if let Some(relpath) = Path::new(&source.path).parent() {
+                                        let relpath =
+                                            relpath.join(&abs_path).to_str().unwrap().to_string();
+
+                                        let mut package_path = HashMap::new();
+                                        package_path.insert(
+                                            "package".to_string(),
+                                            ConfigValue {
+                                                source: self.source.clone(),
+                                                labels: self.labels.clone(),
+                                                value: Some(Box::new(ConfigData::Value(
+                                                    serde_yaml::Value::String(
+                                                        source.package.clone().unwrap().to_string(),
+                                                    ),
+                                                ))),
+                                            },
+                                        );
+                                        package_path.insert(
+                                            "path".to_string(),
+                                            ConfigValue {
+                                                source: self.source.clone(),
+                                                labels: self.labels.clone(),
+                                                value: Some(Box::new(ConfigData::Value(
+                                                    serde_yaml::Value::String(relpath),
+                                                ))),
+                                            },
+                                        );
+
+                                        *data = ConfigData::Mapping(package_path);
+                                        return;
+                                    }
+                                }
+                                _ => {}
                             }
                         }
                         *value = serde_yaml::Value::String(abs_path);

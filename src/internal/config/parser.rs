@@ -1,4 +1,6 @@
 use std::collections::HashMap;
+use std::path::PathBuf;
+use std::str::FromStr;
 use std::sync::Mutex;
 
 use lazy_static::lazy_static;
@@ -14,6 +16,7 @@ use crate::internal::config::ConfigValue;
 use crate::internal::env::ENV;
 use crate::internal::env::HOME;
 use crate::internal::env::OMNI_GIT;
+use crate::internal::git::package_path_from_handle;
 use crate::internal::git::update_git_repo;
 use crate::internal::workdir;
 
@@ -534,8 +537,10 @@ impl OrgConfig {
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct PathConfig {
-    pub append: Vec<String>,
-    pub prepend: Vec<String>,
+    // pub append: Vec<String>,
+    // pub prepend: Vec<String>,
+    pub append: Vec<PathEntryConfig>,
+    pub prepend: Vec<PathEntryConfig>,
 }
 
 impl PathConfig {
@@ -545,15 +550,130 @@ impl PathConfig {
                 .get_as_array("append")
                 .unwrap()
                 .iter()
-                .map(|value| value.as_str().unwrap().to_string())
+                // .map(|value| Self::entry_from_config_value(&value))
+                .map(|value| PathEntryConfig::from_config_value(&value))
                 .collect(),
             prepend: config_value
                 .get_as_array("prepend")
                 .unwrap()
                 .iter()
-                .map(|value| value.as_str().unwrap().to_string())
+                // .map(|value| Self::entry_from_config_value(&value))
+                .map(|value| PathEntryConfig::from_config_value(&value))
                 .collect(),
         }
+    }
+
+    // fn entry_from_config_value(config_value: &ConfigValue) -> String {
+    // if config_value.is_table() {
+    // let path = config_value
+    // .get_as_str("path")
+    // .unwrap_or("".to_string())
+    // .to_string();
+
+    // if !path.starts_with("/") {
+    // if let Some(package) = config_value.get("package") {
+    // let package = package.as_str().unwrap();
+    // if let Ok(git_url) = full_git_url_parse(&package) {
+    // let package_path = format_path_with_template(
+    // &PACKAGE_PATH.clone(),
+    // &git_url,
+    // PACKAGE_PATH_FORMAT.to_string(),
+    // );
+
+    // return PathBuf::from(package_path)
+    // .join(path)
+    // .to_str()
+    // .unwrap()
+    // .to_string();
+    // }
+    // }
+    // }
+
+    // path
+    // } else {
+    // config_value.as_str().unwrap_or("".to_string()).to_string()
+    // }
+    // }
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
+pub struct PathEntryConfig {
+    pub path: String,
+    pub package: Option<String>,
+    pub full_path: String,
+}
+
+impl PathEntryConfig {
+    pub fn from_path(path: &str) -> Self {
+        Self {
+            path: path.to_string(),
+            package: None,
+            full_path: if path.starts_with("/") {
+                path.to_string()
+            } else {
+                "".to_string()
+            },
+        }
+    }
+
+    fn from_config_value(config_value: &ConfigValue) -> Self {
+        if config_value.is_table() {
+            let path = config_value
+                .get_as_str("path")
+                .unwrap_or("".to_string())
+                .to_string();
+
+            if !path.starts_with("/") {
+                if let Some(package) = config_value.get("package") {
+                    let package = package.as_str().unwrap();
+                    if let Some(package_path) = package_path_from_handle(&package) {
+                        let mut full_path = PathBuf::from(package_path);
+                        if !path.is_empty() {
+                            full_path = full_path.join(path.clone());
+                        }
+
+                        return Self {
+                            path: path.clone(),
+                            package: Some(package.to_string()),
+                            full_path: full_path.to_str().unwrap().to_string(),
+                        };
+                    }
+                }
+            }
+
+            Self {
+                path: path.clone(),
+                package: None,
+                full_path: path,
+            }
+        } else {
+            let path = config_value.as_str().unwrap_or("".to_string()).to_string();
+            Self {
+                path: path.clone(),
+                package: None,
+                full_path: path,
+            }
+        }
+    }
+
+    pub fn is_package(&self) -> bool {
+        self.package.is_some()
+    }
+
+    pub fn package_path(&self) -> Option<PathBuf> {
+        if let Some(package) = &self.package {
+            return package_path_from_handle(&package);
+        }
+
+        None
+    }
+
+    pub fn is_valid(&self) -> bool {
+        !self.full_path.is_empty() && self.full_path.starts_with("/")
+    }
+
+    pub fn as_string(&self) -> String {
+        self.full_path.clone()
     }
 }
 
@@ -807,10 +927,29 @@ impl SuggestCloneConfig {
     }
 }
 
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
+pub enum SuggestCloneTypeEnum {
+    Package,
+    Worktree,
+}
+
+impl FromStr for SuggestCloneTypeEnum {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.to_lowercase().as_str() {
+            "package" => Ok(Self::Package),
+            "worktree" => Ok(Self::Worktree),
+            _ => Err(format!("Invalid: {}", s)),
+        }
+    }
+}
+
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct SuggestCloneRepositoryConfig {
     pub handle: String,
     pub args: Vec<String>,
+    pub clone_type: SuggestCloneTypeEnum,
 }
 
 impl SuggestCloneRepositoryConfig {
@@ -819,6 +958,7 @@ impl SuggestCloneRepositoryConfig {
             return Some(Self {
                 handle: value.to_string(),
                 args: vec![],
+                clone_type: SuggestCloneTypeEnum::Package,
             });
         } else if let Some(table) = config_value.as_table() {
             let mut handle = None;
@@ -841,13 +981,27 @@ impl SuggestCloneRepositoryConfig {
                 }
             }
 
+            let mut clone_type = SuggestCloneTypeEnum::Package;
+            if let Some(value) = table.get("clone_type") {
+                if let Some(value) = value.as_str() {
+                    if let Ok(value) = SuggestCloneTypeEnum::from_str(&value) {
+                        clone_type = value;
+                    }
+                }
+            }
+
             return Some(Self {
                 handle: handle.unwrap(),
                 args: args,
+                clone_type: clone_type,
             });
         }
 
         None
+    }
+
+    pub fn clone_as_package(&self) -> bool {
+        self.clone_type == SuggestCloneTypeEnum::Package
     }
 }
 

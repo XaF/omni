@@ -5,7 +5,7 @@ use once_cell::sync::OnceCell;
 use regex::Regex;
 
 use crate::internal::commands::builtin::HelpCommand;
-use crate::internal::commands::path::omnipath;
+use crate::internal::commands::path::omnipath_entries;
 use crate::internal::config::config;
 use crate::internal::config::config_loader;
 use crate::internal::config::CommandSyntax;
@@ -198,12 +198,29 @@ impl StatusCommand {
     fn print_path(&self) {
         println!("\n{}", format!("Current omnipath").bold());
 
-        let omnipath = omnipath();
+        let omnipath = omnipath_entries();
         if omnipath.is_empty() {
             println!("  {}", format!("none").light_red());
         } else {
             for path in &omnipath {
-                println!("  - {}", path);
+                if let Some(package) = &path.package {
+                    let mut pkg_string =
+                        format!("{} {}", "package:".to_string().light_cyan(), package);
+                    if !path.path.is_empty() {
+                        pkg_string.push_str(&format!(
+                            ", {} {}",
+                            "path:".to_string().light_cyan(),
+                            path.path
+                        ));
+                    }
+                    println!(
+                        "  - {}\n    {}",
+                        pkg_string,
+                        format!("({})", path.full_path).light_black()
+                    );
+                } else {
+                    println!("  - {}", path.path);
+                }
             }
         }
     }
@@ -215,7 +232,7 @@ impl StatusCommand {
             yaml_lines.remove(0);
         }
 
-        let pattern = r#"^(\s*)(\-\s*)?(("[^"]+"|[a-zA-Z0-9_\?!\-]+)\s*:)\s*"#;
+        let pattern = r#"^(\s*)(\-\s*)?(("[^"]+"|([^:]|:[^ ])+)\s*:)(\s+|$)"#;
         let regex_keys = Regex::new(pattern).unwrap();
         // Replace the keys by themselves, colored
         let yaml_lines = yaml_lines

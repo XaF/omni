@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::collections::HashSet;
 use std::process::exit;
 use std::sync::mpsc;
 use std::thread;
@@ -8,11 +9,12 @@ use indicatif::MultiProgress;
 
 use crate::internal::cache::CacheObject;
 use crate::internal::cache::OmniPathCache;
-use crate::internal::commands::path::global_omnipath;
+use crate::internal::commands::path::global_omnipath_entries;
 use crate::internal::config::config;
 use crate::internal::config::up::utils::PrintProgressHandler;
 use crate::internal::config::up::utils::ProgressHandler;
 use crate::internal::config::up::utils::SpinnerProgressHandler;
+use crate::internal::git::path_entry_config;
 use crate::internal::git_env;
 use crate::internal::self_update;
 use crate::internal::user_interface::StringColor;
@@ -63,8 +65,8 @@ pub fn auto_path_update() {
     let config = config(".");
 
     // Get the omnipath
-    let omnipath = global_omnipath();
-    if omnipath.is_empty() && config.path_repo_updates.self_update.do_not_check() {
+    let omnipath_entries = global_omnipath_entries();
+    if omnipath_entries.is_empty() && config.path_repo_updates.self_update.do_not_check() {
         // Nothing to do if nothing is in the omnipath and we
         // don't check for omni updates
         return;
@@ -76,7 +78,7 @@ pub fn auto_path_update() {
 
     self_update();
 
-    if omnipath.is_empty() {
+    if omnipath_entries.is_empty() {
         return;
     }
 
@@ -85,8 +87,11 @@ pub fn auto_path_update() {
     let multiprogress = MultiProgress::new();
     let mut threads = Vec::new();
     let (sender, receiver) = mpsc::channel();
+    let mut seen = HashSet::new();
 
-    for path in omnipath {
+    for path_entry in omnipath_entries {
+        let path = path_entry.as_string();
+
         let git_env = git_env(&path).clone();
         let repo_id = git_env.id();
         if repo_id.is_none() {
@@ -94,6 +99,11 @@ pub fn auto_path_update() {
         }
         let repo_id = repo_id.unwrap();
         let repo_root = format!("{}", git_env.root().unwrap());
+
+        // Avoid updating the same repository multiple times
+        if !seen.insert(repo_root.clone()) {
+            continue;
+        }
 
         // Get the configuration for that repository
         let (enabled, ref_type, ref_match) = config.path_repo_updates.update_config(&repo_id);
@@ -153,10 +163,24 @@ pub fn auto_path_update() {
     let current_exe = current_exe.unwrap();
 
     for (repo_path, _updated) in results.iter() {
+        let path_entry = path_entry_config(&repo_path);
+        if !path_entry.is_valid() {
+            continue;
+        }
+
+        let location = match path_entry.package {
+            Some(ref package) => format!(
+                "{}:{}",
+                "package".to_string().underline(),
+                package.to_string().light_cyan(),
+            ),
+            None => path_entry.as_string().light_cyan(),
+        };
+
         omni_info!(format!(
             "running {} in {}",
             "omni up".to_string().light_yellow(),
-            repo_path.to_string().light_cyan(),
+            location,
         ));
 
         let mut omni_up_command = std::process::Command::new(current_exe.clone());

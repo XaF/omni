@@ -120,6 +120,7 @@ impl ConfigCommand {
         match self.details.source {
             ConfigSource::Default => "/default".to_string(),
             ConfigSource::File(ref path) => path.clone(),
+            ConfigSource::Package(ref path_entry_config) => path_entry_config.full_path.clone(),
             ConfigSource::Null => "/null".to_string(),
         }
     }

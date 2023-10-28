@@ -12,12 +12,16 @@ use strsim::normalized_damerau_levenshtein;
 use url::Url;
 use walkdir::WalkDir;
 
+use crate::internal::commands::path::omnipath_entries;
 use crate::internal::config::config;
 use crate::internal::config::OrgConfig;
 use crate::internal::env::ENV;
 use crate::internal::git::format_path;
+use crate::internal::git::package_path_from_handle;
+use crate::internal::git::package_root_path;
 use crate::internal::git::safe_git_url_parse;
 use crate::internal::git::safe_normalize_url;
+use crate::internal::git_env;
 use crate::internal::user_interface::colors::StringColor;
 use crate::omni_print;
 
@@ -112,12 +116,72 @@ impl OrgLoader {
         results
     }
 
-    pub fn find_repo(&self, repo: &str, allow_interactive: bool) -> Option<PathBuf> {
+    pub fn find_repo(
+        &self,
+        repo: &str,
+        include_packages: bool,
+        allow_interactive: bool,
+    ) -> Option<PathBuf> {
+        if let Some(path) = self.omnipath_lookup(repo, include_packages) {
+            return Some(path);
+        }
         if let Some(path) = self.basic_naive_lookup(repo) {
             return Some(path);
         }
-        if let Some(path) = self.file_system_lookup(repo, allow_interactive) {
+        if let Some(path) = self.file_system_lookup(repo, include_packages, allow_interactive) {
             return Some(path);
+        }
+        None
+    }
+
+    fn omnipath_lookup(&self, repo: &str, include_packages: bool) -> Option<PathBuf> {
+        if let Ok(repo) = Repo::parse(repo) {
+            for path in omnipath_entries() {
+                let (path_repo, path_root) = if let Some(package) = &path.package {
+                    if !include_packages {
+                        println!(
+                            "{} {}",
+                            "omni:".to_string().light_cyan(),
+                            "Skipping package".to_string().yellow()
+                        );
+                        continue;
+                    }
+
+                    (
+                        Repo::parse(package),
+                        PathBuf::from(package_path_from_handle(package).unwrap()),
+                    )
+                } else {
+                    let git_env = git_env(&path.full_path);
+                    if let (Some(id), Some(root)) = (git_env.id(), git_env.root()) {
+                        (Repo::parse(&id), PathBuf::from(root))
+                    } else {
+                        continue;
+                    }
+                };
+
+                if let Ok(path_repo) = path_repo {
+                    // TODO: this is very basic checking that ignores user, password, port, scheme;
+                    // TODO: maybe we'll want to consider those for more security when doing a
+                    // TODO: repository lookup, but that does not seem necessary since this
+                    // TODO: considers elements of the omnipath. Maybe there's a security risk I'm
+                    // TODO: not seeing yet though.
+
+                    if repo.name != path_repo.name {
+                        continue;
+                    }
+
+                    if repo.owner.is_some() && path_repo.owner != repo.owner {
+                        continue;
+                    }
+
+                    if repo.host.is_some() && path_repo.host != repo.host {
+                        continue;
+                    }
+
+                    return Some(path_root);
+                }
+            }
         }
         None
     }
@@ -133,7 +197,12 @@ impl OrgLoader {
         None
     }
 
-    fn file_system_lookup(&self, repo: &str, allow_interactive: bool) -> Option<PathBuf> {
+    fn file_system_lookup(
+        &self,
+        repo: &str,
+        include_packages: bool,
+        allow_interactive: bool,
+    ) -> Option<PathBuf> {
         let interactive = allow_interactive && ENV.interactive_shell;
 
         let repo_url = Repo::parse(repo);
@@ -156,6 +225,10 @@ impl OrgLoader {
         let worktree = config(".").worktree();
         if seen.insert(worktree.clone()) {
             worktrees.push(worktree.clone());
+        }
+
+        if include_packages {
+            worktrees.push(package_root_path());
         }
 
         // Prepare a spinner for the research
