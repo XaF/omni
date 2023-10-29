@@ -244,11 +244,7 @@ impl HelpCommand {
         eprintln!("");
     }
 
-    fn print_categorized_command_help(
-        &self,
-        prefix: Vec<String>,
-        // category_prefix: Vec<String>,
-    ) -> bool {
+    fn print_categorized_command_help(&self, prefix: Vec<String>) -> bool {
         let command_loader = command_loader(".");
         let organizer = HelpCommandOrganizer::new_from_commands(command_loader.commands.clone());
         let commands = organizer.get_commands_with_fold(prefix.clone(), 1);
