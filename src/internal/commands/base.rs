@@ -12,6 +12,7 @@ use crate::internal::commands::fromconfig::ConfigCommand;
 use crate::internal::commands::frommakefile::MakefileCommand;
 use crate::internal::commands::frompath::PathCommand;
 use crate::internal::commands::utils::abs_or_rel_path;
+use crate::internal::commands::void::VoidCommand;
 use crate::internal::config::CommandSyntax;
 use crate::internal::dynenv::update_dynamic_env_for_command;
 use crate::internal::user_interface::StringColor;
@@ -32,6 +33,7 @@ pub enum Command {
     FromConfig(ConfigCommand),
     FromMakefile(MakefileCommand),
     FromPath(PathCommand),
+    Void(VoidCommand),
 }
 
 impl Command {
@@ -48,6 +50,7 @@ impl Command {
             Command::FromPath(command) => command.name(),
             Command::FromConfig(command) => command.name(),
             Command::FromMakefile(command) => command.name(),
+            Command::Void(command) => command.name(),
         }
     }
 
@@ -68,6 +71,7 @@ impl Command {
             Command::FromPath(command) => command.aliases(),
             Command::FromConfig(command) => command.aliases(),
             Command::FromMakefile(command) => command.aliases(),
+            Command::Void(command) => command.aliases(),
         }
     }
 
@@ -75,6 +79,15 @@ impl Command {
         let mut names = vec![self.name()];
         names.extend(self.aliases());
         names
+    }
+
+    pub fn all_names_with_prefix(&self, prefix: Vec<String>) -> Vec<Vec<String>> {
+        self.all_names()
+            .iter()
+            .filter(|name| name.starts_with(&prefix))
+            .cloned()
+            .map(|name| name[prefix.len()..].to_vec())
+            .collect()
     }
 
     pub fn source(&self) -> String {
@@ -90,6 +103,7 @@ impl Command {
             Command::FromPath(command) => command.source(),
             Command::FromConfig(command) => command.source(),
             Command::FromMakefile(command) => command.source(),
+            Command::Void(_) => "builtin".to_string(),
         }
     }
 
@@ -139,6 +153,7 @@ impl Command {
             Command::FromPath(command) => command.syntax(),
             Command::FromConfig(command) => command.syntax(),
             Command::FromMakefile(command) => command.syntax(),
+            Command::Void(command) => command.syntax(),
         }
     }
 
@@ -155,6 +170,7 @@ impl Command {
             Command::FromPath(command) => command.category(),
             Command::FromConfig(command) => command.category(),
             Command::FromMakefile(command) => command.category(),
+            Command::Void(command) => command.category(),
         }
     }
 
@@ -171,6 +187,7 @@ impl Command {
             Command::FromPath(command) => command.help(),
             Command::FromConfig(command) => command.help(),
             Command::FromMakefile(command) => command.help(),
+            Command::Void(command) => command.help(),
         };
 
         if let Some(help) = help {
@@ -239,6 +256,20 @@ impl Command {
         max_match
     }
 
+    pub fn is_subcommand_of(&self, argv: &[String]) -> bool {
+        for alias in self.all_names() {
+            if argv.len() > alias.len() {
+                continue;
+            }
+
+            if alias.starts_with(argv) {
+                return true;
+            }
+        }
+
+        false
+    }
+
     pub fn exec(&self, argv: Vec<String>, called_as: Option<Vec<String>>) {
         // Load the dynamic environment for that command
         update_dynamic_env_for_command(&self.source_dir());
@@ -283,6 +314,7 @@ impl Command {
             Command::FromPath(command) => command.exec(argv),
             Command::FromConfig(command) => command.exec(argv),
             Command::FromMakefile(command) => command.exec(argv),
+            Command::Void(_) => {}
         }
         panic!("Command::exec() not implemented");
     }
@@ -300,6 +332,7 @@ impl Command {
             Command::FromPath(command) => command.autocompletion(),
             Command::FromConfig(_command) => false,
             Command::FromMakefile(_command) => false,
+            Command::Void(_) => false,
         }
     }
 
@@ -331,6 +364,7 @@ impl Command {
             }
             Command::FromConfig(_command) => {}
             Command::FromMakefile(_command) => {}
+            Command::Void(_) => {}
         }
     }
 
@@ -338,10 +372,19 @@ impl Command {
         match self {
             Command::FromConfig(_) => 1,
             Command::FromMakefile(_) => 2,
+            Command::Void(command) => command.type_sort_order(),
             _ => 0,
         }
     }
 
+    pub fn category_sort_key(&self) -> (usize, Vec<String>) {
+        (
+            self.command_type_sort_order(),
+            self.category().clone().unwrap_or(vec![]),
+        )
+    }
+
+    #[allow(dead_code)]
     pub fn cmp_help(&self, other: &Command) -> std::cmp::Ordering {
         let self_category = self.category().clone();
         let other_category = other.category().clone();

@@ -1,3 +1,4 @@
+use std::collections::BTreeMap;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::sync::Mutex;
@@ -139,6 +140,16 @@ impl CommandLoader {
         }
     }
 
+    pub fn has_subcommand_of(&self, argv: &[String]) -> bool {
+        for command_candidate in &self.commands {
+            if command_candidate.is_subcommand_of(argv) {
+                return true;
+            }
+        }
+        false
+    }
+
+    #[allow(dead_code)]
     pub fn sorted(&self) -> Vec<&Command> {
         let mut commands = self.commands.iter().collect::<Vec<&Command>>();
         commands.sort_by(|a, b| a.cmp_help(b));
@@ -242,6 +253,96 @@ impl CommandLoader {
     }
 
     pub fn find_command(&self, argv: &[String]) -> Option<(Command, Vec<String>, Vec<String>)> {
+        let page_size = 7;
+
+        // This preempt the score search if we are in interactive mode and the arguments
+        // are prefix of an existing subcommand
+        if ENV.interactive_shell && !argv.is_empty() && self.has_subcommand_of(argv) {
+            let mut subcommands = BTreeMap::new();
+            for command in self.commands.iter() {
+                command
+                    .all_names_with_prefix(argv.to_vec())
+                    .iter()
+                    .for_each(|name| {
+                        if !subcommands.contains_key(name) {
+                            subcommands.insert(name.clone(), command.clone());
+                        }
+                    });
+            }
+
+            if !subcommands.is_empty() {
+                // Convert the subcommands into two vectors, one with the names and
+                // one with the commands; this is not the neatest way to do it, but
+                // it's the easiest for now
+                let mut sub_names = vec![];
+                let mut sub_commands = vec![];
+                for (name, command) in subcommands.iter() {
+                    let full_name = argv
+                        .to_vec()
+                        .into_iter()
+                        .chain(name.iter().cloned())
+                        .collect::<Vec<_>>()
+                        .join(" ");
+                    sub_names.push(full_name);
+                    sub_commands.push(command.clone());
+                }
+
+                let question = if subcommands.len() > 1 {
+                    requestty::Question::select("did_you_mean_command")
+                        .ask_if_answered(true)
+                        .on_esc(requestty::OnEsc::Terminate)
+                        .message(format!(
+                            "{} {}",
+                            "omni:".to_string().light_cyan(),
+                            "Did you mean?".to_string().yellow()
+                        ))
+                        .choices(sub_names.iter())
+                        .should_loop(false)
+                        .page_size(page_size)
+                        .build()
+                } else {
+                    requestty::Question::confirm("did_you_mean_command")
+                        .ask_if_answered(true)
+                        .on_esc(requestty::OnEsc::Terminate)
+                        .message(format!(
+                            "{} {} {} {}",
+                            "omni:".to_string().light_cyan(),
+                            "Did you mean?".to_string().yellow(),
+                            "·".to_string().light_black(),
+                            sub_names[0].normal(),
+                        ))
+                        .default(true)
+                        .build()
+                };
+
+                match requestty::prompt_one(question) {
+                    Ok(answer) => match answer {
+                        requestty::Answer::ListItem(listitem) => {
+                            return Some((
+                                sub_commands[listitem.index].clone(),
+                                argv.to_vec(),
+                                vec![],
+                            ));
+                        }
+                        requestty::Answer::Bool(confirmed) => {
+                            if confirmed {
+                                return Some((sub_commands[0].clone(), argv.to_vec(), vec![]));
+                            }
+                        }
+                        _ => {}
+                    },
+                    Err(err) => {
+                        if page_size < sub_names.len() {
+                            print!("\x1B[1A\x1B[2K"); // This clears the line, so there's no artifact left
+                        }
+                        println!("{}", format!("[✘] {:?}", err).red());
+                    }
+                }
+
+                return None;
+            }
+        }
+
         let mut with_score = self
             .commands
             .iter()
@@ -291,7 +392,6 @@ impl CommandLoader {
         }
 
         if ENV.interactive_shell {
-            let page_size = 7;
             let question = if with_score.len() > 1 {
                 requestty::Question::select("did_you_mean_command")
                     .ask_if_answered(true)
