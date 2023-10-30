@@ -1,23 +1,26 @@
-pub mod cd;
-pub use cd::CdCommand;
+pub(crate) mod cd;
+pub(crate) use cd::CdCommand;
 
-pub mod clone;
-pub use clone::CloneCommand;
+pub(crate) mod clone;
+pub(crate) use clone::CloneCommand;
 
-pub mod help;
-pub use help::HelpCommand;
+pub(crate) mod help;
+pub(crate) use help::HelpCommand;
 
-pub mod hook;
-pub use hook::HookCommand;
+pub(crate) mod hook;
+pub(crate) use hook::HookCommand;
+pub(crate) use hook::HookEnvCommand;
+pub(crate) use hook::HookInitCommand;
+pub(crate) use hook::HookUuidCommand;
 
-pub mod scope;
-pub use scope::ScopeCommand;
+pub(crate) mod scope;
+pub(crate) use scope::ScopeCommand;
 
-pub mod status;
-pub use status::StatusCommand;
+pub(crate) mod status;
+pub(crate) use status::StatusCommand;
 
-pub mod tidy;
-pub use tidy::TidyCommand;
+pub(crate) mod tidy;
+pub(crate) use tidy::TidyCommand;
 
-pub mod up;
-pub use up::UpCommand;
+pub(crate) mod up;
+pub(crate) use up::UpCommand;

@@ -1,8 +1,11 @@
-pub mod base;
-pub use base::Command;
+pub(crate) mod base;
+pub(crate) use base::Command;
 
 mod builtin;
-pub use builtin::HelpCommand;
+pub(crate) use builtin::HelpCommand;
+pub(crate) use builtin::HookEnvCommand;
+pub(crate) use builtin::HookInitCommand;
+pub(crate) use builtin::HookUuidCommand;
 
 mod fromconfig;
 
@@ -10,13 +13,11 @@ mod frommakefile;
 
 mod frompath;
 
-pub mod loader;
-pub use loader::command_loader;
-pub use loader::COMMAND_LOADER;
+pub(crate) mod loader;
+pub(crate) use loader::command_loader;
 
-pub mod path;
-pub use path::OMNIPATH;
+pub(crate) mod path;
 
-pub mod utils;
+pub(crate) mod utils;
 
-pub mod void;
+pub(crate) mod void;

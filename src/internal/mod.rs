@@ -1,58 +1,28 @@
-pub mod cache;
+pub(crate) mod cache;
 
-pub mod commands;
-pub use commands::command_loader;
-pub use commands::Command;
-pub use commands::OMNIPATH;
+pub(crate) mod commands;
+pub(crate) use commands::command_loader;
 
-pub mod config;
-pub use config::config;
-pub use config::config_loader;
-pub use config::CacheConfig;
-pub use config::CdConfig;
-pub use config::CommandDefinition;
-pub use config::CommandSyntax;
-pub use config::ConfigCommandsConfig;
-pub use config::ConfigExtendStrategy;
-pub use config::ConfigLoader;
-pub use config::ConfigSource;
-pub use config::ConfigValue;
-pub use config::MakefileCommandsConfig;
-pub use config::MatchSkipPromptIfConfig;
-pub use config::OmniConfig;
-pub use config::OrgConfig;
-pub use config::PathConfig;
-pub use config::PathRepoUpdatesConfig;
-pub use config::PathRepoUpdatesPerRepoConfig;
-pub use config::SyntaxOptArg;
-pub use config::UpConfig;
-pub use config::UpConfigAsdfBase;
-pub use config::UpConfigBundler;
-pub use config::UpConfigCustom;
-pub use config::UpConfigHomebrew;
-pub use config::UpConfigTool;
+pub(crate) mod config;
+pub(crate) use config::config;
+pub(crate) use config::ConfigLoader;
+pub(crate) use config::ConfigValue;
 
-pub mod env;
-pub use env::git_env;
-pub use env::workdir;
-pub use env::workdir_or_init;
-pub use env::ENV;
-pub use env::GIT_ENV;
+pub(crate) mod env;
+pub(crate) use env::git_env;
+pub(crate) use env::workdir;
+pub(crate) use env::workdir_or_init;
+pub(crate) use env::ENV;
 
-pub mod git;
-pub use git::Org;
-pub use git::ORG_LOADER;
+pub(crate) mod git;
+pub(crate) use git::ORG_LOADER;
 
-pub mod workdir;
-pub use workdir::add_trust;
-pub use workdir::is_trusted;
+pub(crate) mod workdir;
 
-pub mod user_interface;
-pub use user_interface::StringColor;
+pub(crate) mod user_interface;
+pub(crate) use user_interface::StringColor;
 
-pub mod dynenv;
+pub(crate) mod dynenv;
 
-pub mod hooks;
-
-pub mod self_updater;
-pub use self_updater::self_update;
+pub(crate) mod self_updater;
+pub(crate) use self_updater::self_update;
