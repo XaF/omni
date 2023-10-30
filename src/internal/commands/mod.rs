@@ -18,3 +18,5 @@ pub mod path;
 pub use path::OMNIPATH;
 
 pub mod utils;
+
+pub mod void;

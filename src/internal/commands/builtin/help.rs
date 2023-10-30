@@ -1,3 +1,4 @@
+use std::collections::BTreeMap;
 use std::collections::HashSet;
 use std::process::exit;
 
@@ -5,6 +6,7 @@ use clap;
 use once_cell::sync::OnceCell;
 
 use crate::internal::commands::command_loader;
+use crate::internal::commands::void::VoidCommand;
 use crate::internal::commands::Command;
 use crate::internal::config::CommandSyntax;
 use crate::internal::config::SyntaxOptArg;
@@ -139,11 +141,17 @@ impl HelpCommand {
             exit(0);
         }
 
-        if let Some((omni_cmd, called_as, argv)) = command_loader(".").to_serve(&argv) {
+        let command_loader = command_loader(".");
+        if let Some((omni_cmd, called_as, argv)) = command_loader.to_serve(&argv) {
             if argv.is_empty() {
                 self.help_command(omni_cmd, called_as);
                 exit(0);
             }
+        }
+
+        if command_loader.has_subcommand_of(&argv) {
+            self.help_void(argv.to_vec());
+            exit(0);
         }
 
         omni_print!(format!(
@@ -170,83 +178,7 @@ impl HelpCommand {
             "<command>".to_string().cyan(),
         );
 
-        let mut seen = HashSet::new();
-
-        let command_loader = command_loader(".");
-        let commands = command_loader.sorted();
-
-        // Get the longest command so we know how to justify the help
-        let longest_command = commands
-            .iter()
-            .map(|command| {
-                let name_len = command.name().join(" ").len();
-                let aliases_len: usize = command
-                    .aliases()
-                    .iter()
-                    .map(|alias| alias.join(" ").len() + 2)
-                    .sum();
-                name_len + aliases_len
-            })
-            .max()
-            .unwrap_or(0);
-        let ljust = std::cmp::max(longest_command + 2, 15);
-        let join_str = format!("\n  {}", " ".repeat(ljust));
-        let help_just = term_width() - ljust - 4;
-
-        // Keep track of the current category so we only print it once
-        let mut cur_category = None;
-
-        // Print the help
-        for command in commands {
-            let name = command.name().join(" ");
-            if !seen.insert(name.clone()) {
-                continue;
-            }
-
-            let mut category = command.category();
-            if category.is_some() && category.as_ref().unwrap().is_empty() {
-                category = None;
-            }
-
-            if category != cur_category {
-                cur_category = category.clone();
-                let new_category = if let Some(category) = category {
-                    let mut cat_elems = category.clone();
-                    let last_elem = cat_elems.pop().expect("Category should not be empty");
-                    cat_elems = cat_elems
-                        .iter()
-                        .map(|elem| elem.light_black().bold())
-                        .collect();
-                    cat_elems.push(last_elem.bold());
-                    cat_elems.reverse();
-                    cat_elems.join(" < ")
-                } else {
-                    "Uncategorized".to_string().bold()
-                };
-                let line = format!("{}", new_category);
-                eprintln!("\n{}", line);
-            }
-
-            let all_names = command
-                .all_names()
-                .iter()
-                .map(|name| name.join(" "))
-                .collect::<Vec<String>>();
-            let all_names_len = all_names.join(", ").len();
-            let all_names = all_names
-                .iter()
-                .map(|name| name.cyan())
-                .collect::<Vec<String>>()
-                .join(", ");
-
-            let missing_just = ljust - all_names_len;
-            let str_name = format!("  {}{}", all_names, " ".repeat(missing_just));
-
-            let help = wrap_text(&command.help_short(), help_just).join(join_str.as_str());
-
-            eprintln!("{}{}", str_name, help);
-        }
-
+        self.print_categorized_command_help(vec![]);
         eprintln!("");
     }
 
@@ -289,10 +221,275 @@ impl HelpCommand {
             }
         }
 
+        self.print_categorized_command_help(called_as);
+
         eprintln!(
             "\n{} {}",
             "Source:".to_string().light_black(),
             command.help_source().underline()
         );
+    }
+
+    fn help_void(&self, called_as: Vec<String>) {
+        eprintln!(
+            "{}\n\nProvides {} commands\n\n{} omni {} {} [options] ARG...",
+            omni_header!(),
+            called_as.join(" ").to_string().italic(),
+            "Usage:".to_string().italic(),
+            called_as.join(" "),
+            "<command>".to_string().cyan(),
+        );
+
+        self.print_categorized_command_help(called_as);
+        eprintln!("");
+    }
+
+    fn print_categorized_command_help(&self, prefix: Vec<String>) -> bool {
+        let command_loader = command_loader(".");
+        let organizer = HelpCommandOrganizer::new_from_commands(command_loader.commands.clone());
+        let commands = organizer.get_commands_with_fold(prefix.clone(), 1);
+
+        if commands.is_empty() {
+            return false;
+        }
+
+        let mut seen = HashSet::new();
+
+        // Get the longest command so we know how to justify the help
+        let longest_command = commands
+            .iter()
+            .map(|cmd| {
+                let command = &cmd.command;
+                let all_names = command
+                    .all_names_with_prefix(prefix.clone())
+                    .iter()
+                    .map(|name| name.join(" "))
+                    .collect::<Vec<String>>();
+                let all_names_len = all_names.join(", ").len();
+
+                let num_folded = match cmd.num_folded() {
+                    0 => 0,
+                    _ => 2,
+                };
+
+                all_names_len + num_folded
+            })
+            .max()
+            .unwrap_or(0);
+        let ljust = std::cmp::max(longest_command + 2, 15);
+        let join_str = format!("\n  {}", " ".repeat(ljust));
+        let help_just = term_width() - ljust - 4;
+
+        // Keep track of the current category so we only print it once
+        let mut cur_category = None;
+
+        // Print the help
+        for cmd in commands {
+            let command = &cmd.command;
+            let name = command.name().join(" ");
+            if !seen.insert(name.clone()) {
+                continue;
+            }
+
+            let mut category = command.category();
+            if category.is_some() && category.as_ref().unwrap().is_empty() {
+                category = None;
+            }
+
+            if category != cur_category {
+                cur_category = category.clone();
+                let new_category = if let Some(category) = category {
+                    let mut cat_elems = category.clone();
+                    let last_elem = cat_elems.pop().expect("Category should not be empty");
+                    cat_elems = cat_elems
+                        .iter()
+                        .map(|elem| elem.light_black().bold())
+                        .collect();
+                    cat_elems.push(last_elem.bold());
+                    cat_elems.reverse();
+                    cat_elems.join(" < ")
+                } else {
+                    "Uncategorized".to_string().bold()
+                };
+                let line = format!("{}", new_category);
+                eprintln!("\n{}", line);
+            }
+
+            let all_names = command
+                .all_names_with_prefix(prefix.clone())
+                .iter()
+                .map(|name| name.join(" "))
+                .collect::<Vec<String>>();
+            let all_names_len = all_names.join(", ").len();
+            let all_names = all_names
+                .iter()
+                .map(|name| name.cyan())
+                .collect::<Vec<String>>()
+                .join(", ");
+
+            let num_folded_len = match cmd.num_folded() {
+                0 => 0,
+                _ => 2,
+            };
+            let num_folded = match cmd.num_folded() {
+                0 => "".to_string(),
+                _ => " ▶".to_string().light_black(),
+            };
+
+            let missing_just = ljust - all_names_len - num_folded_len;
+            let str_name = format!("  {}{}{}", all_names, num_folded, " ".repeat(missing_just));
+
+            let help = wrap_text(&command.help_short(), help_just).join(join_str.as_str());
+
+            eprintln!("{}{}", str_name, help);
+        }
+
+        return true;
+    }
+}
+
+type HelpCommandMetadataKey = (usize, Vec<String>, Vec<String>);
+
+#[derive(Debug, Clone)]
+struct HelpCommandOrganizer {
+    commands: BTreeMap<HelpCommandMetadataKey, HelpCommandMetadata>,
+}
+
+impl HelpCommandOrganizer {
+    fn new() -> Self {
+        Self {
+            commands: BTreeMap::new(),
+        }
+    }
+
+    fn new_from_commands(commands: Vec<Command>) -> Self {
+        let mut metadata = Self::new();
+
+        for command in commands {
+            for command_name in command.all_names() {
+                metadata.add_command(command_name.clone(), &command);
+            }
+        }
+
+        metadata
+    }
+
+    fn add_command(&mut self, path: Vec<String>, command: &Command) {
+        let mut command_itself = true;
+
+        for i in (1..=path.len()).rev() {
+            let (cmdpath, _) = path.split_at(i);
+            let cmd_sort_key = cmdpath.to_vec();
+            let cat_sort_key = command.category_sort_key();
+            let key = (cat_sort_key.0, cat_sort_key.1, cmd_sort_key.clone());
+
+            // Check if that key already exists in the commands
+            if let Some(cmd) = self.commands.get_mut(&key) {
+                if !command_itself {
+                    cmd.subcommands.insert(path.clone());
+                    continue;
+                }
+
+                match cmd.command {
+                    Command::Void(_) => {
+                        cmd.command = command.clone();
+                        cmd.subcommands.insert(path.clone());
+                    }
+                    _ => {
+                        // Command exists twice in the path, but second entry in the path
+                        // won't ever be called; we can simply skip and go to next step
+                        continue;
+                    }
+                }
+            } else {
+                let insert_command = if command_itself {
+                    command.clone()
+                } else {
+                    Command::Void(VoidCommand::new(
+                        cmd_sort_key,
+                        cat_sort_key.0,
+                        command.category().unwrap_or(vec![]),
+                    ))
+                };
+
+                let mut new_command = HelpCommandMetadata::new(&insert_command);
+                new_command.subcommands.insert(path.clone());
+                self.commands.insert(key, new_command);
+            }
+
+            command_itself = false;
+        }
+    }
+
+    fn get_commands_with_fold(
+        &self,
+        prefix: Vec<String>,
+        max_before_fold: usize,
+    ) -> Vec<HelpCommandMetadata> {
+        let mut commands = vec![];
+
+        let considered_commands = if prefix.is_empty() {
+            // Get all commands
+            self.commands.iter().collect::<BTreeMap<_, _>>()
+        } else {
+            // Get all commands prefixed by `prefix` but not exactly `prefix`
+            self.commands
+                .iter()
+                .filter(|(key, _)| key.2.starts_with(&prefix) && key.2.len() > prefix.len())
+                .collect::<BTreeMap<_, _>>()
+        };
+
+        let mut seen = HashSet::new();
+
+        for (key, metadata) in considered_commands {
+            if !seen.insert(key.clone()) {
+                continue;
+            }
+
+            let mut metadata = metadata.clone();
+            metadata.folding = metadata.subcommands.len() > max_before_fold;
+
+            if metadata.folding {
+                for subcommand in metadata.subcommands.iter() {
+                    let sub_key = (key.0, key.1.clone(), subcommand.clone());
+                    seen.insert(sub_key);
+                }
+            }
+
+            let command_is_a_void = match &metadata.command {
+                Command::Void(_) => true,
+                _ => false,
+            };
+
+            if metadata.folding || !command_is_a_void {
+                commands.push(metadata.clone());
+            }
+        }
+
+        return commands;
+    }
+}
+
+#[derive(Debug, Clone)]
+struct HelpCommandMetadata {
+    command: Command,
+    subcommands: HashSet<Vec<String>>,
+    folding: bool,
+}
+
+impl HelpCommandMetadata {
+    fn new(command: &Command) -> Self {
+        Self {
+            command: command.clone(),
+            subcommands: HashSet::new(),
+            folding: false,
+        }
+    }
+
+    fn num_folded(&self) -> usize {
+        match self.folding {
+            true => self.subcommands.len(),
+            false => 0,
+        }
     }
 }
