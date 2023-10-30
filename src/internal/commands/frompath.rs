@@ -203,11 +203,13 @@ impl PathCommandFileDetails {
         let mut category = None;
         let mut help_lines = Vec::new();
 
-        let mut arguments_order = Vec::new();
-        let mut arguments = HashMap::new();
+        let mut parameters: Vec<SyntaxOptArg> = vec![];
 
-        let mut options_order = Vec::new();
-        let mut options = HashMap::new();
+        // let mut arguments_order = Vec::new();
+        // let mut arguments = HashMap::new();
+
+        // let mut options_order = Vec::new();
+        // let mut options = HashMap::new();
 
         let mut reading_help = false;
 
@@ -250,70 +252,53 @@ impl PathCommandFileDetails {
                 let help_line =
                     handle_color_codes(line.strip_prefix("# help:").unwrap().trim().to_string());
                 help_lines.push(help_line);
-            } else if line.starts_with("# arg:") {
-                let arg: Vec<String> = line
+            } else if line.starts_with("# arg:") || line.starts_with("# opt:") {
+                let param_required = line.starts_with("# arg:");
+                let param = line
                     .strip_prefix("# arg:")
+                    .or_else(|| line.strip_prefix("# opt:"))
                     .unwrap()
                     .splitn(2, ":")
                     .map(|s| s.trim().to_string())
-                    .collect();
-                if arg.len() != 2 {
+                    .collect::<Vec<String>>();
+                if param.len() != 2 {
                     continue;
                 }
 
-                let arg_name = arg[0].clone();
-                let mut arg_desc = arg[1].clone();
-                if let Some(cur_arg_desc) = arguments.get(&arg_name) {
-                    arg_desc = format!("{}\n{}", cur_arg_desc, arg_desc);
-                } else {
-                    arguments_order.push(arg_name.clone());
-                }
-                arguments.insert(arg_name, arg_desc);
-            } else if line.starts_with("# opt:") {
-                let opt: Vec<String> = line
-                    .strip_prefix("# opt:")
-                    .unwrap()
-                    .splitn(2, ":")
-                    .map(|s| s.trim().to_string())
-                    .collect();
-                if opt.len() != 2 {
-                    continue;
-                }
+                let param_name = param[0].clone();
+                let param_desc = param[1].clone();
 
-                let opt_name = opt[0].clone();
-                let mut opt_desc = opt[1].clone();
-                if let Some(cur_opt_desc) = options.get(&opt_name) {
-                    opt_desc = format!("{}\n{}", cur_opt_desc, opt_desc);
+                if let Some(cur_param_desc) = parameters
+                    .iter_mut()
+                    .find(|p| p.name == param_name && p.required == param_required)
+                {
+                    cur_param_desc.desc = Some(format!(
+                        "{}\n{}",
+                        cur_param_desc.desc.clone().unwrap_or(String::new()),
+                        param_desc
+                    ));
                 } else {
-                    options_order.push(opt_name.clone());
+                    parameters.push(SyntaxOptArg::new(
+                        param_name,
+                        Some(param_desc),
+                        param_required,
+                    ))
                 }
-                options.insert(opt_name, opt_desc);
             }
         }
 
-        let mut syntax = None;
-        if arguments.len() > 0 || options.len() > 0 {
-            syntax = Some(CommandSyntax::new());
-        }
+        let mut syntax = match parameters.len() {
+            0 => None,
+            _ => Some(CommandSyntax::new()),
+        };
 
-        if arguments.len() > 0 {
-            syntax.as_mut().unwrap().arguments = arguments_order
-                .into_iter()
-                .map(|arg_name| {
-                    let arg_desc = arguments.get(&arg_name).unwrap().clone();
-                    SyntaxOptArg::new(arg_name, Some(handle_color_codes(arg_desc)))
-                })
-                .collect();
-        }
-
-        if options.len() > 0 {
-            syntax.as_mut().unwrap().options = options_order
-                .into_iter()
-                .map(|opt_name| {
-                    let opt_desc = options.get(&opt_name).unwrap().clone();
-                    SyntaxOptArg::new(opt_name, Some(handle_color_codes(opt_desc)))
-                })
-                .collect();
+        if parameters.len() > 0 {
+            for parameter in &mut parameters {
+                if let Some(desc) = &parameter.desc {
+                    parameter.desc = Some(handle_color_codes(desc.clone()));
+                }
+            }
+            syntax.as_mut().unwrap().parameters = parameters;
         }
 
         // // Return the file details

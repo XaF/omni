@@ -302,34 +302,32 @@ impl CommandDefinition {
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct CommandSyntax {
     pub usage: Option<String>,
-    pub arguments: Vec<SyntaxOptArg>,
-    pub options: Vec<SyntaxOptArg>,
+    pub parameters: Vec<SyntaxOptArg>,
 }
 
 impl CommandSyntax {
     pub fn new() -> Self {
         CommandSyntax {
             usage: None,
-            arguments: vec![],
-            options: vec![],
+            parameters: vec![],
         }
     }
 
     fn from_config_value(config_value: &ConfigValue) -> Option<Self> {
         let mut usage = None;
-        let mut arguments = vec![];
-        let mut options = vec![];
+        let mut parameters = vec![];
 
         if config_value.is_table() {
             for key in ["arguments", "argument"] {
                 if let Some(value) = config_value.get(key) {
                     if let Some(value) = value.as_array() {
-                        arguments = value
+                        let arguments = value
                             .iter()
-                            .map(|value| SyntaxOptArg::from_config_value(&value))
-                            .collect();
+                            .map(|value| SyntaxOptArg::from_config_value(&value, true))
+                            .collect::<Vec<SyntaxOptArg>>();
+                        parameters.extend(arguments);
                     } else {
-                        arguments.push(SyntaxOptArg::from_config_value(&value));
+                        parameters.push(SyntaxOptArg::from_config_value(&value, true));
                     }
                     break;
                 }
@@ -338,12 +336,13 @@ impl CommandSyntax {
             for key in ["options", "option", "optional"] {
                 if let Some(value) = config_value.get(key) {
                     if let Some(value) = value.as_array() {
-                        options = value
+                        let options = value
                             .iter()
-                            .map(|value| SyntaxOptArg::from_config_value(&value))
-                            .collect();
+                            .map(|value| SyntaxOptArg::from_config_value(&value, false))
+                            .collect::<Vec<SyntaxOptArg>>();
+                        parameters.extend(options);
                     } else {
-                        options.push(SyntaxOptArg::from_config_value(&value));
+                        parameters.push(SyntaxOptArg::from_config_value(&value, false));
                     }
                     break;
                 }
@@ -352,14 +351,13 @@ impl CommandSyntax {
             usage = Some(config_value.as_str().unwrap().to_string());
         }
 
-        if arguments.len() == 0 && options.len() == 0 && usage.is_none() {
+        if parameters.len() == 0 && usage.is_none() {
             return None;
         }
 
         Some(Self {
             usage: usage,
-            arguments: arguments,
-            options: options,
+            parameters: parameters,
         })
     }
 }
@@ -368,20 +366,22 @@ impl CommandSyntax {
 pub struct SyntaxOptArg {
     pub name: String,
     pub desc: Option<String>,
+    pub required: bool,
 }
 
 impl SyntaxOptArg {
-    pub fn new(name: String, desc: Option<String>) -> Self {
+    pub fn new(name: String, desc: Option<String>, required: bool) -> Self {
         Self {
             name: name,
             desc: match desc {
                 Some(value) => Some(value),
                 None => None,
             },
+            required: required,
         }
     }
 
-    fn from_config_value(config_value: &ConfigValue) -> Self {
+    fn from_config_value(config_value: &ConfigValue, required: bool) -> Self {
         let mut name = "".to_string();
         let mut desc = None;
         if config_value.is_table() {
@@ -397,6 +397,7 @@ impl SyntaxOptArg {
         Self {
             name: name,
             desc: desc,
+            required: required,
         }
     }
 }

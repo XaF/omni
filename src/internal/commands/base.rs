@@ -213,15 +213,15 @@ impl Command {
             if let Some(syntax_usage) = syntax.usage {
                 usage += &format!(" {}", syntax_usage);
             } else {
-                if !syntax.arguments.is_empty() {
-                    for arg in syntax.arguments {
-                        usage += &format!(" <{}>", arg.name).cyan();
-                    }
-                }
-
-                if !syntax.options.is_empty() {
-                    for opt in syntax.options {
-                        usage += &format!(" [{}]", opt.name).cyan();
+                if !syntax.parameters.is_empty() {
+                    for param in syntax.parameters {
+                        let param_usage = if param.required {
+                            format!(" <{}>", param.name)
+                        } else {
+                            format!(" [{}]", param.name)
+                        }
+                        .cyan();
+                        usage += &param_usage;
                     }
                 }
             }
