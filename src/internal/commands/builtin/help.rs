@@ -172,10 +172,13 @@ impl HelpCommand {
 
     fn help_global(&self) {
         eprintln!(
-            "{}\n\n{} omni {} [options] ARG...",
+            "{}\n\n{} {} {} {} {}",
             omni_header!(),
-            "Usage:".to_string().italic(),
-            "<command>".to_string().cyan(),
+            "Usage:".to_string().italic().bold(),
+            "omni".to_string().bold(),
+            "<command>".to_string().cyan().bold(),
+            "[options]".to_string().cyan().bold(),
+            "ARG...".to_string().cyan().bold(),
         );
 
         self.print_categorized_command_help(vec![]);
@@ -233,17 +236,10 @@ impl HelpCommand {
     }
 
     fn help_void(&self, called_as: Vec<String>) {
-        eprintln!(
-            "{}\n\nProvides {} commands\n\n{} omni {} {} [options] ARG...",
-            omni_header!(),
-            called_as.join(" ").to_string().italic(),
-            "Usage:".to_string().italic(),
-            called_as.join(" "),
-            "<command>".to_string().cyan(),
+        self.help_command(
+            &Command::Void(VoidCommand::new_for_help(called_as.clone())),
+            called_as,
         );
-
-        self.print_categorized_command_help(called_as);
-        eprintln!("");
     }
 
     fn print_categorized_command_help(&self, prefix: Vec<String>) -> bool {

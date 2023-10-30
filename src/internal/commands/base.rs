@@ -4,6 +4,9 @@ use crate::internal::commands::builtin::CdCommand;
 use crate::internal::commands::builtin::CloneCommand;
 use crate::internal::commands::builtin::HelpCommand;
 use crate::internal::commands::builtin::HookCommand;
+use crate::internal::commands::builtin::HookEnvCommand;
+use crate::internal::commands::builtin::HookInitCommand;
+use crate::internal::commands::builtin::HookUuidCommand;
 use crate::internal::commands::builtin::ScopeCommand;
 use crate::internal::commands::builtin::StatusCommand;
 use crate::internal::commands::builtin::TidyCommand;
@@ -26,6 +29,9 @@ pub enum Command {
     BuiltinClone(CloneCommand),
     BuiltinHelp(HelpCommand),
     BuiltinHook(HookCommand),
+    BuiltinHookEnv(HookEnvCommand),
+    BuiltinHookInit(HookInitCommand),
+    BuiltinHookUuid(HookUuidCommand),
     BuiltinScope(ScopeCommand),
     BuiltinStatus(StatusCommand),
     BuiltinTidy(TidyCommand),
@@ -43,6 +49,9 @@ impl Command {
             Command::BuiltinClone(command) => command.name(),
             Command::BuiltinHelp(command) => command.name(),
             Command::BuiltinHook(command) => command.name(),
+            Command::BuiltinHookEnv(command) => command.name(),
+            Command::BuiltinHookInit(command) => command.name(),
+            Command::BuiltinHookUuid(command) => command.name(),
             Command::BuiltinScope(command) => command.name(),
             Command::BuiltinStatus(command) => command.name(),
             Command::BuiltinTidy(command) => command.name(),
@@ -64,6 +73,9 @@ impl Command {
             Command::BuiltinClone(command) => command.aliases(),
             Command::BuiltinHelp(command) => command.aliases(),
             Command::BuiltinHook(command) => command.aliases(),
+            Command::BuiltinHookEnv(command) => command.aliases(),
+            Command::BuiltinHookInit(command) => command.aliases(),
+            Command::BuiltinHookUuid(command) => command.aliases(),
             Command::BuiltinScope(command) => command.aliases(),
             Command::BuiltinStatus(command) => command.aliases(),
             Command::BuiltinTidy(command) => command.aliases(),
@@ -96,6 +108,9 @@ impl Command {
             Command::BuiltinClone(_) => "builtin".to_string(),
             Command::BuiltinHelp(_) => "builtin".to_string(),
             Command::BuiltinHook(_) => "builtin".to_string(),
+            Command::BuiltinHookEnv(_) => "builtin".to_string(),
+            Command::BuiltinHookInit(_) => "builtin".to_string(),
+            Command::BuiltinHookUuid(_) => "builtin".to_string(),
             Command::BuiltinScope(_) => "builtin".to_string(),
             Command::BuiltinStatus(_) => "builtin".to_string(),
             Command::BuiltinTidy(_) => "builtin".to_string(),
@@ -103,7 +118,7 @@ impl Command {
             Command::FromPath(command) => command.source(),
             Command::FromConfig(command) => command.source(),
             Command::FromMakefile(command) => command.source(),
-            Command::Void(_) => "builtin".to_string(),
+            Command::Void(_) => "auto-generated".to_string(),
         }
     }
 
@@ -146,6 +161,9 @@ impl Command {
             Command::BuiltinClone(command) => command.syntax(),
             Command::BuiltinHelp(command) => command.syntax(),
             Command::BuiltinHook(command) => command.syntax(),
+            Command::BuiltinHookEnv(command) => command.syntax(),
+            Command::BuiltinHookInit(command) => command.syntax(),
+            Command::BuiltinHookUuid(command) => command.syntax(),
             Command::BuiltinScope(command) => command.syntax(),
             Command::BuiltinStatus(command) => command.syntax(),
             Command::BuiltinTidy(command) => command.syntax(),
@@ -163,6 +181,9 @@ impl Command {
             Command::BuiltinClone(command) => command.category(),
             Command::BuiltinHelp(command) => command.category(),
             Command::BuiltinHook(command) => command.category(),
+            Command::BuiltinHookEnv(command) => command.category(),
+            Command::BuiltinHookInit(command) => command.category(),
+            Command::BuiltinHookUuid(command) => command.category(),
             Command::BuiltinScope(command) => command.category(),
             Command::BuiltinStatus(command) => command.category(),
             Command::BuiltinTidy(command) => command.category(),
@@ -180,6 +201,9 @@ impl Command {
             Command::BuiltinClone(command) => command.help(),
             Command::BuiltinHelp(command) => command.help(),
             Command::BuiltinHook(command) => command.help(),
+            Command::BuiltinHookEnv(command) => command.help(),
+            Command::BuiltinHookInit(command) => command.help(),
+            Command::BuiltinHookUuid(command) => command.help(),
             Command::BuiltinScope(command) => command.help(),
             Command::BuiltinStatus(command) => command.help(),
             Command::BuiltinTidy(command) => command.help(),
@@ -307,6 +331,9 @@ impl Command {
             Command::BuiltinClone(command) => command.exec(argv),
             Command::BuiltinHelp(command) => command.exec(argv),
             Command::BuiltinHook(_command) => {}
+            Command::BuiltinHookEnv(command) => command.exec(argv),
+            Command::BuiltinHookInit(command) => command.exec(argv),
+            Command::BuiltinHookUuid(command) => command.exec(argv),
             Command::BuiltinScope(command) => command.exec(argv),
             Command::BuiltinStatus(command) => command.exec(argv),
             Command::BuiltinTidy(command) => command.exec(argv),
@@ -325,6 +352,9 @@ impl Command {
             Command::BuiltinClone(command) => command.autocompletion(),
             Command::BuiltinHelp(command) => command.autocompletion(),
             Command::BuiltinHook(command) => command.autocompletion(),
+            Command::BuiltinHookEnv(command) => command.autocompletion(),
+            Command::BuiltinHookInit(command) => command.autocompletion(),
+            Command::BuiltinHookUuid(command) => command.autocompletion(),
             Command::BuiltinScope(command) => command.autocompletion(),
             Command::BuiltinStatus(command) => command.autocompletion(),
             Command::BuiltinTidy(command) => command.autocompletion(),
@@ -352,6 +382,9 @@ impl Command {
             Command::BuiltinClone(command) => command.autocomplete(comp_cword, argv),
             Command::BuiltinHelp(command) => command.autocomplete(comp_cword, argv),
             Command::BuiltinHook(command) => command.autocomplete(comp_cword, argv),
+            Command::BuiltinHookEnv(command) => command.autocomplete(comp_cword, argv),
+            Command::BuiltinHookInit(command) => command.autocomplete(comp_cword, argv),
+            Command::BuiltinHookUuid(command) => command.autocomplete(comp_cword, argv),
             Command::BuiltinScope(command) => command.autocomplete(comp_cword, argv),
             Command::BuiltinStatus(command) => command.autocomplete(comp_cword, argv),
             Command::BuiltinTidy(command) => command.autocomplete(comp_cword, argv),

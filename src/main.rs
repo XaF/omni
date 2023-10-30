@@ -3,12 +3,10 @@ use std::process::exit;
 
 mod internal;
 use internal::command_loader;
-use internal::dynenv::update_dynamic_env;
-use internal::dynenv::DynamicEnvExportMode;
-use internal::env::determine_shell;
+use internal::commands::HookEnvCommand;
+use internal::commands::HookInitCommand;
+use internal::commands::HookUuidCommand;
 use internal::git::auto_path_update;
-use internal::hooks::init_hook;
-use internal::hooks::uuid_hook;
 use internal::StringColor;
 
 fn complete_omni_subcommand(argv: &[String]) {
@@ -36,35 +34,19 @@ fn run_omni_subcommand(argv: &[String]) {
         if argv.len() > 1 {
             match argv[1].as_ref() {
                 "env" => {
-                    let shell_type = if argv.len() > 2 {
-                        argv[2].clone()
-                    } else {
-                        determine_shell()
-                    };
-                    let export_mode = match shell_type.as_ref() {
-                        "posix" | "bash" | "zsh" => DynamicEnvExportMode::Posix,
-                        "fish" => DynamicEnvExportMode::Fish,
-                        _ => {
-                            eprintln!(
-                                "{} {} {}",
-                                "omni:".to_string().light_cyan(),
-                                "invalid export mode:".to_string().red(),
-                                argv[2]
-                            );
-                            exit(1);
-                        }
-                    };
-                    update_dynamic_env(export_mode.clone());
-                    exit(0);
+                    let command = HookEnvCommand::new();
+                    command.exec(argv[2..].to_vec());
+                    panic!("exec returned");
                 }
                 "uuid" => {
-                    uuid_hook();
-                    exit(0);
+                    let command = HookUuidCommand::new();
+                    command.exec(argv[2..].to_vec());
+                    panic!("exec returned");
                 }
                 "init" => {
-                    let argv = argv[2..].to_vec();
-                    init_hook(argv);
-                    exit(0);
+                    let command = HookInitCommand::new();
+                    command.exec(argv[2..].to_vec());
+                    panic!("exec returned");
                 }
                 _ => {}
             }

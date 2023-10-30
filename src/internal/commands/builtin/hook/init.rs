@@ -9,6 +9,8 @@ use tera::Context;
 use tera::Tera;
 
 use crate::internal::commands::HelpCommand;
+use crate::internal::config::CommandSyntax;
+use crate::internal::config::SyntaxOptArg;
 use crate::internal::user_interface::StringColor;
 use crate::omni_error;
 
@@ -24,13 +26,13 @@ lazy_static! {
 }
 
 #[derive(Debug, Clone)]
-struct InitHookArgs {
+struct HookInitCommandArgs {
     shell: String,
     aliases: Vec<String>,
     command_aliases: Vec<InitHookAlias>,
 }
 
-impl InitHookArgs {
+impl HookInitCommandArgs {
     fn parse(argv: Vec<String>) -> Self {
         let mut parse_argv = vec!["".to_string()];
         parse_argv.extend(argv);
@@ -154,36 +156,124 @@ impl InitHookAlias {
     }
 }
 
-pub fn init_hook(argv: Vec<String>) {
-    let args = InitHookArgs::parse(argv);
+#[derive(Debug, Clone)]
+pub struct HookInitCommand {}
 
-    match args.shell.as_str() {
-        "bash" => dump_integration(
-            args,
-            include_bytes!("../../../shell_integration/omni.bash.tmpl"),
-        ),
-        "zsh" => dump_integration(
-            args,
-            include_bytes!("../../../shell_integration/omni.zsh.tmpl"),
-        ),
-        "fish" => dump_integration(
-            args,
-            include_bytes!("../../../shell_integration/omni.fish.tmpl"),
-        ),
-        _ => {
-            omni_error!(
-                format!(
-                    "invalid shell '{}', omni only supports bash, zsh and fish",
-                    args.shell
-                ),
-                "hook init"
-            );
-            exit(1);
+impl HookInitCommand {
+    pub fn new() -> Self {
+        Self {}
+    }
+
+    pub fn name(&self) -> Vec<String> {
+        vec!["hook".to_string(), "init".to_string()]
+    }
+
+    pub fn aliases(&self) -> Vec<Vec<String>> {
+        vec![]
+    }
+
+    pub fn help(&self) -> Option<String> {
+        Some(
+            concat!(
+            "Hook used to initialize the shell\n",
+            "\n",
+            "The \x1B[1m\x1B[4minit\x1B[0m hook will provide you with the command to run to ",
+            "initialize omni in your shell. You can specify which shell you wish to load it ",
+            "for by specifying either one of \x1B[1mzsh\x1B[0m, \x1B[1mbash\x1B[0m, or ",
+            "\x1B[1mfish\x1B[0m as optional parameter. If no argument is specified, the login ",
+            "shell, as provided by the \x1B[3mSHELL\x1B[0m environment variable, will be used. ",
+            "You can load omni in your shell by using \x1B[1meval \"$(omni hook init YOURSHELL)",
+            "\"\x1B[0m for bash or zsh, or \x1B[1momni hook init fish | source\x1B[0m for fish.\n",
+            "\n",
+            "The \x1B[1minit\x1B[0m hook supports the \x1B[1m--alias <alias>\x1B[0m ",
+            "option, which adds an alias to the omni command with autocompletion support. It ",
+            "also supports the \x1B[1m--command-alias <alias> <subcommand>\x1B[0m option, which ",
+            "adds an alias to the specified omni subcommand with autocompletion support.",
+        )
+            .to_string(),
+        )
+    }
+
+    pub fn syntax(&self) -> Option<CommandSyntax> {
+        Some(CommandSyntax {
+            usage: None,
+            parameters: vec![
+                SyntaxOptArg {
+                    name: format!("--alias <alias>"),
+                    desc: Some(
+                        "Create an alias for the omni command with autocompletion support."
+                            .to_string(),
+                    ),
+                    required: false,
+                },
+                SyntaxOptArg {
+                    name: format!("--command-alias <alias> <subcommand>"),
+                    desc: Some(
+                        concat!(
+                            "Create an alias for the specified omni subcommand with autocompletion ",
+                            "support. The <subcommand> argument can be any omni subcommand, including ",
+                            "custom subcommands.",
+                        )
+                        .to_string(),
+                    ),
+                    required: false,
+                },
+                SyntaxOptArg {
+                    name: format!("shell"),
+                    desc: Some(
+                        "Which shell to initialize omni for. Can be one of bash, zsh or fish."
+                            .to_string(),
+                    ),
+                    required: false,
+                },
+            ],
+        })
+    }
+
+    pub fn category(&self) -> Option<Vec<String>> {
+        Some(vec!["General".to_string()])
+    }
+
+    pub fn exec(&self, argv: Vec<String>) {
+        let args = HookInitCommandArgs::parse(argv);
+
+        match args.shell.as_str() {
+            "bash" => dump_integration(
+                args,
+                include_bytes!("../../../../../shell_integration/omni.bash.tmpl"),
+            ),
+            "zsh" => dump_integration(
+                args,
+                include_bytes!("../../../../../shell_integration/omni.zsh.tmpl"),
+            ),
+            "fish" => dump_integration(
+                args,
+                include_bytes!("../../../../../shell_integration/omni.fish.tmpl"),
+            ),
+            _ => {
+                omni_error!(
+                    format!(
+                        "invalid shell '{}', omni only supports bash, zsh and fish",
+                        args.shell
+                    ),
+                    "hook init"
+                );
+                exit(1);
+            }
         }
+        exit(0);
+    }
+
+    pub fn autocompletion(&self) -> bool {
+        false
+    }
+
+    pub fn autocomplete(&self, _comp_cword: usize, _argv: Vec<String>) {
+        exit(0);
     }
 }
 
-fn dump_integration(args: InitHookArgs, integration: &[u8]) {
+fn dump_integration(args: HookInitCommandArgs, integration: &[u8]) {
     let integration = String::from_utf8_lossy(integration).to_string();
 
     let mut context = Context::new();

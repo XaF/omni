@@ -10,6 +10,14 @@ pub struct VoidCommand {
 }
 
 impl VoidCommand {
+    pub fn new_for_help(name: Vec<String>) -> Self {
+        Self {
+            name: name,
+            type_ordering: 0,
+            category: vec![],
+        }
+    }
+
     pub fn new(name: Vec<String>, type_ordering: usize, category: Vec<String>) -> Self {
         Self {
             name: name,
