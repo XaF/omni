@@ -140,8 +140,7 @@ impl CdCommand {
     pub fn syntax(&self) -> Option<CommandSyntax> {
         Some(CommandSyntax {
             usage: None,
-            arguments: vec![],
-            options: vec![
+            parameters: vec![
                 SyntaxOptArg {
                     name: "--locate".to_string(),
                     desc: Some(
@@ -153,6 +152,7 @@ impl CdCommand {
                         )
                         .to_string()
                     ),
+                    required: false,
                 },
                 SyntaxOptArg {
                     name: "--[no-]include-packages".to_string(),
@@ -164,6 +164,7 @@ impl CdCommand {
                         )
                         .to_string()
                     ),
+                    required: false,
                 },
                 SyntaxOptArg {
                     name: "repo".to_string(),
@@ -176,6 +177,7 @@ impl CdCommand {
                         )
                         .to_string()
                     ),
+                    required: false,
                 },
             ],
         })

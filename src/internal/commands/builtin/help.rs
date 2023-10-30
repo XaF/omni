@@ -117,10 +117,10 @@ impl HelpCommand {
     pub fn syntax(&self) -> Option<CommandSyntax> {
         Some(CommandSyntax {
             usage: None,
-            arguments: vec![],
-            options: vec![SyntaxOptArg {
+            parameters: vec![SyntaxOptArg {
                 name: "command".to_string(),
                 desc: Some("The command to get help for".to_string()),
+                required: false,
             }],
         })
     }
@@ -199,19 +199,21 @@ impl HelpCommand {
         );
 
         if let Some(syntax) = command.syntax() {
-            if syntax.arguments.len() > 0 || syntax.options.len() > 0 {
+            if syntax.parameters.len() > 0 {
                 // Make a single vector with contents from both syntax.arguments and syntax.options
-                let mut args = syntax.arguments.clone();
-                args.extend(syntax.options.clone());
-
-                let longest = args.iter().map(|arg| arg.name.len()).max().unwrap_or(0);
+                let longest = syntax
+                    .parameters
+                    .iter()
+                    .map(|arg| arg.name.len())
+                    .max()
+                    .unwrap_or(0);
                 let ljust = std::cmp::max(longest + 2, 15);
                 let join_str = format!("\n  {}", " ".repeat(ljust));
 
-                for arg in args {
+                for arg in syntax.parameters.iter() {
                     let missing_just = ljust - arg.name.len();
                     let str_name = format!("  {}{}", arg.name.cyan(), " ".repeat(missing_just));
-                    let help = if let Some(desc) = arg.desc {
+                    let help = if let Some(desc) = &arg.desc {
                         wrap_text(&desc, max_width - ljust).join(join_str.as_str())
                     } else {
                         "".to_string()

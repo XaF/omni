@@ -285,8 +285,7 @@ impl UpCommand {
     pub fn syntax(&self) -> Option<CommandSyntax> {
         Some(CommandSyntax {
             usage: None,
-            arguments: vec![],
-            options: vec![
+            parameters: vec![
                 SyntaxOptArg {
                     name: "--bootstrap".to_string(),
                     desc: Some(
@@ -297,6 +296,7 @@ impl UpCommand {
                         )
                         .to_string(),
                     ),
+                    required: false,
                 },
                 SyntaxOptArg {
                     name: "--clone-suggested".to_string(),
@@ -308,6 +308,7 @@ impl UpCommand {
                         )
                         .to_string(),
                     ),
+                    required: false,
                 },
                 SyntaxOptArg {
                     name: "--trust".to_string(),
@@ -315,6 +316,7 @@ impl UpCommand {
                         "Define how to trust the repository (always/yes/no) to run the command"
                             .to_string(),
                     ),
+                    required: false,
                 },
                 SyntaxOptArg {
                     name: "--update-repository".to_string(),
@@ -326,6 +328,7 @@ impl UpCommand {
                         )
                         .to_string(),
                     ),
+                    required: false,
                 },
                 SyntaxOptArg {
                     name: "--update-user-config".to_string(),
@@ -339,6 +342,7 @@ impl UpCommand {
                         )
                         .to_string(),
                     ),
+                    required: false,
                 },
             ],
         })

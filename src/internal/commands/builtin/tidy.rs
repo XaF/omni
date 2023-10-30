@@ -168,13 +168,13 @@ impl TidyCommand {
     pub fn syntax(&self) -> Option<CommandSyntax> {
         Some(CommandSyntax {
             usage: None,
-            arguments: vec![],
-            options: vec![
+            parameters: vec![
                 SyntaxOptArg {
                     name: "--yes".to_string(),
                     desc: Some(
                         "Do not ask for confirmation before organizing repositories".to_string(),
                     ),
+                    required: false,
                 },
                 SyntaxOptArg {
                     name: "--search-path".to_string(),
@@ -185,6 +185,7 @@ impl TidyCommand {
                         )
                         .to_string(),
                     ),
+                    required: false,
                 },
                 SyntaxOptArg {
                     name: "--up-all".to_string(),
@@ -198,6 +199,7 @@ impl TidyCommand {
                         )
                         .to_string(),
                     ),
+                    required: false,
                 },
             ],
         })

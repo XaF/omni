@@ -105,8 +105,7 @@ impl StatusCommand {
     pub fn syntax(&self) -> Option<CommandSyntax> {
         Some(CommandSyntax {
             usage: None,
-            arguments: vec![],
-            options: vec![],
+            parameters: vec![],
         })
     }
 
