@@ -107,7 +107,7 @@ jobs:
                    "([`%s`](https://docs.rs/%s/%s/) -> "\
                    "[`%s`](https://docs.rs/%s/%s/))\n",
                    $2, $2, $3, $2, $3, $5, $2, $5
-            }' cargo_updates.log | tee -a body.md
+            }' cargo_update.log | tee -a body.md
 
       - name: git commit
         run: |
