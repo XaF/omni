@@ -22,15 +22,6 @@ defaults:
 env:
   # So cargo doesn't complain about unstable features
   RUSTC_BOOTSTRAP: 1
-  # Title of the pull-request created for the update
-  PR_TITLE: Weekly `cargo update`
-  # Content of the pull-request created for the update
-  PR_MESSAGE: |
-    Automation to keep dependencies in `Cargo.lock` current.
-
-    The following is the output from `cargo update`:
-  # Content of the commit message made for the update
-  COMMIT_MESSAGE: "cargo update \n\n"
 
 
 jobs:
@@ -51,8 +42,7 @@ jobs:
       - name: cargo update
         run: |
           # Remove first line that always just says "Updating crates.io index"
-          cargo update 2>&1 \
-            | sed '/crates.io index/d' \
+          cargo update --color=never 2>&1 \
             | tee -a cargo_update.log
 
       - name: upload Cargo.lock artifact for use in PR
@@ -108,10 +98,16 @@ jobs:
 
       - name: Craft pull-request body
         run: |
-          echo "${PR_MESSAGE}" | tee body.md
-          echo '```txt' | tee -a body.md
-          cat cargo_update.log | tee -a body.md
-          echo '```' | tee -a body.md
+          echo 'Updating `Cargo.lock` with `cargo update`' | tee body.md
+          echo | tee -a body.md
+          echo "Ran on $(date)." | tee -a body.md
+          echo | tee -a body.md
+          awk 'NR > 1 && /Updating/ { \
+            printf "- [`%s`](https://crates.io/crates/%s) "\
+                   "([`%s`](https://docs.rs/%s/%s/) -> "\
+                   "[`%s`](https://docs.rs/%s/%s/))\n",
+                   $2, $2, $3, $2, $3, $5, $2, $5
+            }' cargo_updates.log | tee -a body.md
 
       - name: git commit
         run: |
