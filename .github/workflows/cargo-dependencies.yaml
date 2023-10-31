@@ -126,7 +126,7 @@ jobs:
 
       - name: Create or update pull-request
         env:
-          GITHUB_TOKEN: ${{ github.token }}
+          GITHUB_TOKEN: ${{ secrets.REPOSITORY_DISPATCH_TOKEN }}
         run: |
           # Exit with error if PR is closed
           STATE=$(gh pr view "${{ env.PR_BRANCH }}" --repo "${{ github.repository }}" --json state --jq '.state' 2>/dev/null || echo "NOT FOUND")
