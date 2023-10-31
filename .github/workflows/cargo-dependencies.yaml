@@ -101,7 +101,7 @@ jobs:
         run: |
           echo 'Updating `Cargo.lock` with `cargo update`' | tee body.md
           echo | tee -a body.md
-          echo "Ran on $(date)." | tee -a body.md
+          echo "The following crate dependencies are to be updated:" | tee -a body.md
           echo | tee -a body.md
           awk 'NR > 1 && /Updating/ { \
             sub(/^v/, "", $3); \
