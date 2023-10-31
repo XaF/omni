@@ -104,9 +104,11 @@ jobs:
           echo "Ran on $(date)." | tee -a body.md
           echo | tee -a body.md
           awk 'NR > 1 && /Updating/ { \
+            sub(/^v/, "", $3); \
+            sub(/^v/, "", $5); \
             printf "- [`%s`](https://crates.io/crates/%s) "\
-                   "([`%s`](https://docs.rs/%s/%s/) -> "\
-                   "[`%s`](https://docs.rs/%s/%s/))\n",
+                   "([`v%s`](https://docs.rs/%s/%s/) -> "\
+                   "[`v%s`](https://docs.rs/%s/%s/))\n",
                    $2, $2, $3, $2, $3, $5, $2, $5
             }' cargo_update.log | tee -a body.md
 
