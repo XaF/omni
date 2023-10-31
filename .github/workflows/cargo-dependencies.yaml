@@ -71,6 +71,7 @@ jobs:
 
     env:
       PR_BRANCH: auto/cargo_update
+      PR_TITLE: chore(deps): 📦 cargo update
 
     permissions:
       contents: write
@@ -128,7 +129,7 @@ jobs:
           # Exit with error if PR is closed
           STATE=$(gh pr view "${{ env.PR_BRANCH }}" --repo "${{ github.repository }}" --json state --jq '.state' 2>/dev/null || echo "NOT FOUND")
           if [[ "$STATE" != "OPEN" ]]; then
-            gh pr create --title "chore(deps): 📦 cargo update" --body-file body.md --repo "${{ github.repository }}"
+            gh pr create --title "${{ env.PR_TITLE }}" --body-file body.md --repo "${{ github.repository }}"
           else
-            gh pr edit "${{ env.PR_BRANCH }}" --title "${PR_TITLE}" --body-file body.md --repo "${{ github.repository }}"
+            gh pr edit "${{ env.PR_BRANCH }}" --title "${{ env.PR_TITLE }}" --body-file body.md --repo "${{ github.repository }}"
           fi
