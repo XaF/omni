@@ -127,12 +127,12 @@ jobs:
 
       - name: Create or update pull-request
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ github.token }}
         run: |
           # Exit with error if PR is closed
-          STATE=$(gh pr view "${{ env.PR_BRANCH }}" --repo "${{ env.GITHUB_REPOSITORY }}" --json state --jq '.state')
+          STATE=$(gh pr view "${{ env.PR_BRANCH }}" --repo "${{ github.repository }}" --json state --jq '.state' 2>/dev/null || echo "NOT FOUND")
           if [[ "$STATE" != "OPEN" ]]; then
-            gh pr create --title "chore(deps): 📦 cargo update" --body-file body.md --repo "${{ env.GITHUB_REPOSITORY }}"
+            gh pr create --title "chore(deps): 📦 cargo update" --body-file body.md --repo "${{ github.repository }}"
           else
-            gh pr edit "${{ env.PR_BRANCH }}" --title "${PR_TITLE}" --body-file body.md --repo "${{ env.GITHUB_REPOSITORY }}"
+            gh pr edit "${{ env.PR_BRANCH }}" --title "${PR_TITLE}" --body-file body.md --repo "${{ github.repository }}"
           fi
