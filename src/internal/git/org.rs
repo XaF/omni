@@ -139,11 +139,6 @@ impl OrgLoader {
             for path in omnipath_entries() {
                 let (path_repo, path_root) = if let Some(package) = &path.package {
                     if !include_packages {
-                        println!(
-                            "{} {}",
-                            "omni:".to_string().light_cyan(),
-                            "Skipping package".to_string().yellow()
-                        );
                         continue;
                     }
 
