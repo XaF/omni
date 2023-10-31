@@ -1,0 +1,138 @@
+name: Bump dependencies in Cargo.lock
+
+
+on:
+  # Run weekly
+  schedule:
+    - cron: '0 0 * * Sun'
+
+  # Needed so we can run it manually
+  workflow_dispatch:
+
+
+permissions:
+  contents: read
+
+
+defaults:
+  run:
+    shell: bash
+
+
+env:
+  # So cargo doesn't complain about unstable features
+  RUSTC_BOOTSTRAP: 1
+  # Title of the pull-request created for the update
+  PR_TITLE: Weekly `cargo update`
+  # Content of the pull-request created for the update
+  PR_MESSAGE: |
+    Automation to keep dependencies in `Cargo.lock` current.
+
+    The following is the output from `cargo update`:
+  # Content of the commit message made for the update
+  COMMIT_MESSAGE: "cargo update \n\n"
+
+
+jobs:
+  run-cargo-update:
+    name: Update cargo dependencies
+
+    runs-on: ubuntu-latest
+
+    if: github.repository_owner == 'XaF'
+
+    steps:
+      - name: Checkout commit
+        uses: actions/checkout@v4
+
+      - name: Get rust stable
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: cargo update
+        run: |
+          # Remove first line that always just says "Updating crates.io index"
+          cargo update 2>&1 \
+            | sed '/crates.io index/d' \
+            | tee -a cargo_update.log
+
+      - name: upload Cargo.lock artifact for use in PR
+        uses: actions/upload-artifact@v3
+        with:
+          name: Cargo-lock
+          path: Cargo.lock
+          retention-days: 1
+
+      - name: upload cargo-update log artifact for use in PR
+        uses: actions/upload-artifact@v3
+        with:
+          name: cargo-updates
+          path: cargo_update.log
+          retention-days: 1
+
+  create-or-update-pr:
+    name: Create or update pull-request
+
+    runs-on: ubuntu-latest
+
+    needs:
+      - run-cargo-update
+
+    if: github.repository_owner == 'XaF'
+
+    env:
+      PR_BRANCH: auto/cargo_update
+
+    permissions:
+      contents: write
+      pull-requests: write
+
+    steps:
+      - name: Checkout commit
+        uses: actions/checkout@v4
+
+      - name: Download Cargo.lock from update job
+        uses: actions/download-artifact@v3
+        with:
+          name: Cargo-lock
+
+      - name: Download cargo-update log from update job
+        uses: actions/download-artifact@v3
+        with:
+          name: cargo-updates
+
+      - name: Craft commit message
+        run: |
+          echo "chore(deps): 📦 cargo update" | tee commit.txt
+          echo | tee -a commit.txt
+          cat cargo_update.log | tee -a commit.txt
+
+      - name: Craft pull-request body
+        run: |
+          echo "${PR_MESSAGE}" | tee body.md
+          echo '```txt' | tee -a body.md
+          cat cargo_update.log | tee -a body.md
+          echo '```' | tee -a body.md
+
+      - name: git commit
+        run: |
+          git config user.name github-actions
+          git config user.email github-actions@github.com
+          git switch --force-create "${{ env.PR_BRANCH }}"
+          git add ./Cargo.lock
+          git commit --no-verify --file=commit.txt
+
+      - name: git push
+        run: |
+          git push --no-verify --force --set-upstream origin "${{ env.PR_BRANCH }}"
+
+      - name: Create or update pull-request
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # Exit with error if PR is closed
+          STATE=$(gh pr view "${{ env.PR_BRANCH }}" --repo "${{ env.GITHUB_REPOSITORY }}" --json state --jq '.state')
+          if [[ "$STATE" != "OPEN" ]]; then
+            gh pr create --title "chore(deps): 📦 cargo update" --body-file body.md --repo "${{ env.GITHUB_REPOSITORY }}"
+          else
+            gh pr edit "${{ env.PR_BRANCH }}" --title "${PR_TITLE}" --body-file body.md --repo "${{ env.GITHUB_REPOSITORY }}"
+          fi

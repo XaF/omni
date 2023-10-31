@@ -196,10 +196,10 @@ jobs:
 
     runs-on: ubuntu-latest
 
-    if: github.event_name == 'pull_request' && github.actor == 'dependabot[bot]'
-
     needs:
       - check-results
+
+    if: always() && github.event_name == 'pull_request' && github.actor == 'dependabot[bot]' && needs.check-results.result == 'success'
 
     permissions:
       contents: none
