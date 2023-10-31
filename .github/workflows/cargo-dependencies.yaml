@@ -71,7 +71,7 @@ jobs:
 
     env:
       PR_BRANCH: auto/cargo_update
-      PR_TITLE: chore(deps): 📦 cargo update
+      PR_TITLE: "chore(deps): 📦 cargo update"
 
     permissions:
       contents: write
