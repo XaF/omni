@@ -19,6 +19,7 @@ Contains a list of objects with the following parameters:
 |------------------|-----------|-------------------------------------------------------|
 | `handle` | string | The repository handle, corresponding to the URL allowing to clone the repository |
 | `args` | string | The optional arguments to pass to the `git clone` command |
+| `clone_type` | enum | Suggests how the repository should be cloned. Can be one of `package` or `worktree`, and generally defaults to cloning as packages when following suggestions. |
 
 
 ## Examples
@@ -37,4 +38,9 @@ suggest_clone:
 suggest_clone:
   - handle: git@github.com:XaF/omni
     args: --depth 1
+
+# We can to suggest cloning the omni repository in the worktree
+suggest_clone:
+  - handle: git@github.com:XaF/omni
+    clone_type: worktree
 ```
