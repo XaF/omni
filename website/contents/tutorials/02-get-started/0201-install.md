@@ -8,7 +8,13 @@ Omni's installation requires to [get omni itself](#get-omni), and [setup its she
 
 ## Get omni
 
-Omni can be installed in one of four ways:
+The easier way to install omni is to use the single command, where `$REPOSITORY_URL` is any URL of any repository you wish to clone as soon as omni is installed:
+
+```bash
+$ sh -c "$(curl -fsLS get.omnicli.dev)" -- clone $REPOSITORY_URL
+```
+
+Otherwise, omni can be installed in one of four ways (the three first being tried by the installer script above):
 - Using homebrew *(recommended, if available)*
 - Downloading the pre-built binary
 - Using `cargo install` (with the `--root` parameter to install somewhere else than `$CARGO_HOME`)
