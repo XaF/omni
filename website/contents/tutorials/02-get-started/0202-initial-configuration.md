@@ -45,7 +45,7 @@ The `worktree` parameter accepts absolute, relative and home-prefixed (`~`) path
 A number of omni's magic is made available through configured organizations. For instance, with the `github.com/XaF` organization configured, you'll be able to run `omni clone omni` to clone omni's repository.
 
 :::note
-Before manually handling this configuration, if your organization provides a main omni repository, you might want to `omni clone path.to/that/repo` before pursuing this section: this repository might suggest you to setup the organization your need!
+Before manually handling this configuration, if your organization provides a main omni repository, you might want to `omni clone path.to/that/repo` before pursuing this section: this repository might suggest you to setup the organization you need!
 :::
 
 An organization is defined by a handle which provides the part of the URL that is always going to be used when cloning repositories for that organization. Organizations are evaluated in the order in which they are defined to look for repositories, so you will want to put first organizations that you clone repositories from most of the time.
