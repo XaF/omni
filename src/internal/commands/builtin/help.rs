@@ -20,6 +20,7 @@ use crate::omni_print;
 
 #[derive(Debug, Clone)]
 struct HelpCommandArgs {
+    unfold: bool,
     unparsed: Vec<String>,
 }
 
@@ -31,6 +32,12 @@ impl HelpCommandArgs {
         let matches = clap::Command::new("")
             .disable_help_subcommand(true)
             .disable_version_flag(true)
+            .arg(
+                clap::Arg::new("unfold")
+                    .long("unfold")
+                    .short('u')
+                    .action(clap::ArgAction::SetTrue),
+            )
             .arg(
                 clap::Arg::new("unparsed")
                     .action(clap::ArgAction::Append)
@@ -72,7 +79,10 @@ impl HelpCommandArgs {
             vec![]
         };
 
-        Self { unparsed: unparsed }
+        Self {
+            unfold: *matches.get_one::<bool>("unfold").unwrap_or(&false),
+            unparsed: unparsed,
+        }
     }
 }
 
@@ -117,11 +127,18 @@ impl HelpCommand {
     pub fn syntax(&self) -> Option<CommandSyntax> {
         Some(CommandSyntax {
             usage: None,
-            parameters: vec![SyntaxOptArg {
-                name: "command".to_string(),
-                desc: Some("The command to get help for".to_string()),
-                required: false,
-            }],
+            parameters: vec![
+                SyntaxOptArg {
+                    name: "unfold".to_string(),
+                    desc: Some("Show all subcommands".to_string()),
+                    required: false,
+                },
+                SyntaxOptArg {
+                    name: "command".to_string(),
+                    desc: Some("The command to get help for".to_string()),
+                    required: false,
+                },
+            ],
         })
     }
 
@@ -245,7 +262,13 @@ impl HelpCommand {
     fn print_categorized_command_help(&self, prefix: Vec<String>) -> bool {
         let command_loader = command_loader(".");
         let organizer = HelpCommandOrganizer::new_from_commands(command_loader.commands.clone());
-        let commands = organizer.get_commands_with_fold(prefix.clone(), 1);
+        let commands = organizer.get_commands_with_fold(
+            prefix.clone(),
+            match self.cli_args().unfold {
+                true => 0,
+                false => 1,
+            },
+        );
 
         if commands.is_empty() {
             return false;
@@ -445,7 +468,10 @@ impl HelpCommandOrganizer {
             }
 
             let mut metadata = metadata.clone();
-            metadata.folding = metadata.subcommands.len() > max_before_fold;
+            metadata.folding = match max_before_fold {
+                0 => false,
+                _ => metadata.subcommands.len() > max_before_fold,
+            };
 
             if metadata.folding {
                 for subcommand in metadata.subcommands.iter() {
