@@ -67,13 +67,31 @@ fn run_omni_subcommand(argv: &[String]) {
         argv[0] = "help".to_owned();
     }
 
+    let only_check_exists = if argv[0] == "--exists" || argv[0] == "-e" {
+        argv = argv[1..].to_vec();
+        true
+    } else {
+        false
+    };
+
     // Update the path if necessary
     auto_path_update();
 
     let command_loader = command_loader(".");
     if let Some((omni_cmd, called_as, argv)) = command_loader.to_serve(&argv) {
+        if only_check_exists {
+            exit(match argv.len() {
+                0 => 0,
+                _ => 1,
+            });
+        }
+
         omni_cmd.exec(argv, Some(called_as));
         panic!("exec returned");
+    }
+
+    if only_check_exists {
+        exit(1);
     }
 
     eprintln!(
