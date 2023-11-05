@@ -2,6 +2,17 @@ name: Bump dependencies in Cargo.lock
 
 
 on:
+  # Run on push to main
+  push:
+    branches:
+      - main
+    paths-ignore:
+      - '.github/**'
+      - 'website/**'
+      - .gitignore
+      - .omni.yaml
+      - README.md
+
   # Run weekly
   schedule:
     - cron: '0 0 * * Sun'
@@ -22,15 +33,46 @@ defaults:
 env:
   # So cargo doesn't complain about unstable features
   RUSTC_BOOTSTRAP: 1
-
+  # Which branch to use to make the pull request
+  PR_BRANCH: auto/cargo_update
 
 jobs:
+  check-pull-request:
+    name: Check if the pull request exists
+
+    runs-on: ubuntu-latest
+
+    if: github.repository_owner == 'XaF'
+
+    outputs:
+      pull_request_state: ${{ env.PR_STATE }}
+      should_run: ${{ github.event_name != "push" || env.PR_STATE == "OPEN" }}
+
+    steps:
+      - name: Checkout commit
+        uses: actions/checkout@v4
+
+      - name: Check if pull request already exists
+        run: |
+          STATE=$(gh pr view "${{ env.PR_BRANCH }}" \
+                    --repo "${{ github.repository }}" \
+                    --json state --jq '.state' 2>/dev/null || \
+                  echo "NOT FOUND")
+
+          echo "PR_STATE=${STATE}" | tee -a "$GITHUB_ENV"
+
   run-cargo-update:
     name: Update cargo dependencies
 
     runs-on: ubuntu-latest
 
-    if: github.repository_owner == 'XaF'
+    needs:
+      - check-pull-request
+
+    if: needs.check-pull-request.outputs.should_run == 'true'
+
+    outputs:
+      any_update: ${{ env.UPDATES }}
 
     steps:
       - name: Checkout commit
@@ -41,11 +83,18 @@ jobs:
 
       - name: cargo update
         run: |
-          # Remove first line that always just says "Updating crates.io index"
           cargo update --color=never 2>&1 \
             | tee -a cargo_update.log
 
+      - name: Check if there is any update
+        run : |
+          [[ $(cat cargo_update.log | wc -l) -gt 1 ]] && \
+            UPDATES=true || \
+            UPDATES=false
+          echo "UPDATES=${UPDATES}" | tee -a "$GITHUB_ENV"
+
       - name: upload Cargo.lock artifact for use in PR
+        if: ${{ env.UPDATES == 'true' }}
         uses: actions/upload-artifact@v3
         with:
           name: Cargo-lock
@@ -53,11 +102,13 @@ jobs:
           retention-days: 1
 
       - name: upload cargo-update log artifact for use in PR
+        if: ${{ env.UPDATES == 'true' }}
         uses: actions/upload-artifact@v3
         with:
           name: cargo-updates
           path: cargo_update.log
           retention-days: 1
+
 
   create-or-update-pr:
     name: Create or update pull-request
@@ -65,12 +116,12 @@ jobs:
     runs-on: ubuntu-latest
 
     needs:
+      - check-pull-request
       - run-cargo-update
 
-    if: github.repository_owner == 'XaF'
+    if: needs.check-pull-request.outputs.should_run == 'true' && needs.run-cargo-update.outputs.any_update == 'true'
 
     env:
-      PR_BRANCH: auto/cargo_update
       PR_TITLE: "chore(deps): 📦 cargo update"
 
     permissions:
@@ -93,7 +144,7 @@ jobs:
 
       - name: Craft commit message
         run: |
-          echo "chore(deps): 📦 cargo update" | tee commit.txt
+          echo "${{ env.PR_TITLE }}" | tee commit.txt
           echo | tee -a commit.txt
           cat cargo_update.log | tee -a commit.txt
 
@@ -127,10 +178,9 @@ jobs:
       - name: Create or update pull-request
         env:
           GITHUB_TOKEN: ${{ secrets.REPOSITORY_DISPATCH_TOKEN }}
+          PR_STATE: ${{ needs.check-pull-request.outputs.pull_request_state }}
         run: |
-          # Exit with error if PR is closed
-          STATE=$(gh pr view "${{ env.PR_BRANCH }}" --repo "${{ github.repository }}" --json state --jq '.state' 2>/dev/null || echo "NOT FOUND")
-          if [[ "$STATE" != "OPEN" ]]; then
+          if [[ "$PR_STATE" != "OPEN" ]]; then
             gh pr create \
               --title "${{ env.PR_TITLE }}" \
               --body-file body.md \
@@ -143,3 +193,35 @@ jobs:
               --repo "${{ github.repository }}" \
               --label dependencies
           fi
+
+
+  close-pr:
+    name: Close pull-request
+
+    runs-on: ubuntu-latest
+
+    needs:
+      - check-pull-request
+      - run-cargo-update
+
+    if: needs.check-pull-request.outputs.should_run == 'true' && needs.run-cargo-update.outputs.any_update == 'false' && needs.check-pull-request.outputs.pull_request_state == 'OPEN'
+
+    env:
+      PR_CLOSING_COMMENT: "Superseded. No more dependencies to be updated for now."
+
+    permissions:
+      contents: write
+      pull-requests: write
+
+    steps:
+      - name: Checkout commit
+        uses: actions/checkout@v4
+
+      - name: Close pull-request
+        env:
+          GITHUB_TOKEN: ${{ secrets.REPOSITORY_DISPATCH_TOKEN }}
+        run: |
+          gh pr close \
+            --title "${{ env.PR_TITLE }}" \
+            --comment "${{ env.PR_CLOSING_COMMENT }}" \
+            --delete-branch
