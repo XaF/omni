@@ -181,7 +181,7 @@ impl OrgLoader {
         None
     }
 
-    fn basic_naive_lookup(&self, repo: &str) -> Option<PathBuf> {
+    pub fn basic_naive_lookup(&self, repo: &str) -> Option<PathBuf> {
         for org in self.orgs.iter() {
             if let Some(path) = org.get_repo_path(repo) {
                 if path.is_dir() {

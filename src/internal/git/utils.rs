@@ -65,6 +65,16 @@ pub fn safe_git_url_parse(url: &str) -> Result<GitUrl, <GitUrl as FromStr>::Err>
     })
 }
 
+pub fn id_from_git_url(url: &GitUrl) -> Option<String> {
+    let url = url.clone();
+    if let (Some(host), Some(owner), name) = (url.host, url.owner, url.name) {
+        if !name.is_empty() {
+            return Some(format!("{}:{}/{}", host, owner, name));
+        }
+    }
+    None
+}
+
 pub fn full_git_url_parse(url: &str) -> Result<GitUrl, <GitUrl as FromStr>::Err> {
     // let url = safe_normalize_url(url)?;
     // let git_url = safe_git_url_parse(url.as_str())?;
@@ -128,25 +138,13 @@ pub fn package_path_from_git_url(git_url: &GitUrl) -> Option<PathBuf> {
     }
 
     let package_path = format_path_with_template(
-        &PACKAGE_PATH.clone(),
+        package_root_path().as_str(),
         &git_url,
         PACKAGE_PATH_FORMAT.to_string(),
     );
 
     Some(PathBuf::from(package_path))
 }
-
-// pub fn package_id(path: &str) -> Option<String> {
-// let git_env = git_env(path);
-
-// if let (Some(id), Some(root)) = (git_env.id(), git_env.root()) {
-// if root.starts_with(&*PACKAGE_PATH.as_str()) {
-// return Some(id.to_string());
-// }
-// }
-
-// None
-// }
 
 pub fn path_entry_config<T: AsRef<str>>(path: T) -> PathEntryConfig {
     let path: &str = path.as_ref();
@@ -159,7 +157,7 @@ pub fn path_entry_config<T: AsRef<str>>(path: T) -> PathEntryConfig {
     };
 
     if let (Some(id), Some(root)) = (git_env.id(), git_env.root()) {
-        if root.starts_with(&*PACKAGE_PATH.as_str()) {
+        if PathBuf::from(root).starts_with(package_root_path()) {
             path_entry_config.package = Some(id.to_string());
             path_entry_config.path = PathBuf::from(path)
                 .strip_prefix(root)

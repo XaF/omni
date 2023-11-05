@@ -10,6 +10,7 @@ use strsim::normalized_damerau_levenshtein;
 use crate::internal::commands::base::Command;
 use crate::internal::commands::builtin::CdCommand;
 use crate::internal::commands::builtin::CloneCommand;
+use crate::internal::commands::builtin::ConfigPathSwitchCommand;
 use crate::internal::commands::builtin::HelpCommand;
 use crate::internal::commands::builtin::HookCommand;
 use crate::internal::commands::builtin::HookEnvCommand;
@@ -80,6 +81,9 @@ impl CommandLoader {
         // Load all builtins first
         commands.push(Command::BuiltinCd(CdCommand::new()));
         commands.push(Command::BuiltinClone(CloneCommand::new()));
+        commands.push(Command::BuiltinConfigPathSwitch(
+            ConfigPathSwitchCommand::new(),
+        ));
         commands.push(Command::BuiltinHelp(HelpCommand::new()));
         commands.push(Command::BuiltinHook(HookCommand::new()));
         commands.push(Command::BuiltinHookEnv(HookEnvCommand::new()));

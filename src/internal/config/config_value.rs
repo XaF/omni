@@ -68,7 +68,7 @@ impl Serialize for ConfigValue {
 }
 
 impl ConfigValue {
-    fn new(source: ConfigSource, labels: Vec<String>, value: Option<Box<ConfigData>>) -> Self {
+    pub fn new(source: ConfigSource, labels: Vec<String>, value: Option<Box<ConfigData>>) -> Self {
         Self {
             source,
             labels,
@@ -400,6 +400,7 @@ up_command:
         None
     }
 
+    #[allow(dead_code)]
     pub fn as_str_mut(&mut self) -> Option<&mut String> {
         if let Some(data) = self.value.as_mut().map(|data| data.as_mut()) {
             if let ConfigData::Value(value) = data {

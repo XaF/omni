@@ -201,7 +201,79 @@ impl CloneCommand {
             None
         };
 
-        let mut cloned = false;
+        let cloned = self
+            .clone_repo_handle(
+                &repo,
+                &clone_args,
+                clone_as_package,
+                spinner.clone(),
+                None,
+                true,
+            )
+            .is_some();
+
+        // If we still haven't got a match, we can error out
+        if !cloned {
+            spinner.clone().map(|s| {
+                s.set_message("Not found");
+                s.finish_and_clear()
+            });
+            omni_error!(format!("could not find repository {}", repo.yellow()));
+            exit(1);
+        }
+
+        exit(0);
+    }
+
+    pub fn autocompletion(&self) -> bool {
+        false
+    }
+
+    pub fn autocomplete(&self, _comp_cword: usize, _argv: Vec<String>) {
+        // noop
+    }
+
+    pub fn lookup_repo_handle(
+        &self,
+        repo: &str,
+        clone_as_package: bool,
+        spinner: Option<ProgressBar>,
+    ) -> Option<(PathBuf, GitUrl)> {
+        self.try_repo_handle(repo, &vec![], clone_as_package, spinner, None, false, true)
+    }
+
+    pub fn clone_repo_handle(
+        &self,
+        repo: &str,
+        clone_args: &Vec<String>,
+        clone_as_package: bool,
+        spinner: Option<ProgressBar>,
+        should_run_cd: Option<bool>,
+        should_run_up: bool,
+    ) -> Option<(PathBuf, GitUrl)> {
+        self.try_repo_handle(
+            repo,
+            clone_args,
+            clone_as_package,
+            spinner,
+            should_run_cd,
+            should_run_up,
+            false,
+        )
+    }
+
+    fn try_repo_handle(
+        &self,
+        repo: &str,
+        clone_args: &Vec<String>,
+        clone_as_package: bool,
+        spinner: Option<ProgressBar>,
+        should_run_cd: Option<bool>,
+        should_run_up: bool,
+        lookup_only: bool,
+    ) -> Option<(PathBuf, GitUrl)> {
+        let mut cloned = None;
+        let repo = repo.to_string();
 
         // We check first among the orgs
         for org in ORG_LOADER.orgs.iter() {
@@ -221,14 +293,17 @@ impl CloneCommand {
                 } else {
                     clone_path
                 };
+
                 if self.try_clone(
                     &clone_url,
                     &clone_path,
                     &clone_args,
                     spinner.clone(),
-                    !clone_as_package,
+                    should_run_cd.unwrap_or(!clone_as_package),
+                    should_run_up,
+                    lookup_only,
                 ) {
-                    cloned = true;
+                    cloned = Some((clone_path, clone_url));
                     break;
                 }
             }
@@ -236,7 +311,7 @@ impl CloneCommand {
 
         // If no match, check if the link is a full git url, in which case
         // we can clone to the default worktree
-        if !cloned {
+        if cloned.is_none() {
             if let Ok(clone_url) = safe_git_url_parse(&repo) {
                 if clone_url.scheme.to_string() != "file"
                     && clone_url.name != ""
@@ -265,33 +340,17 @@ impl CloneCommand {
                         &clone_path,
                         &clone_args,
                         spinner.clone(),
-                        !clone_as_package,
+                        should_run_cd.unwrap_or(!clone_as_package),
+                        should_run_up,
+                        lookup_only,
                     ) {
-                        cloned = true;
+                        cloned = Some((clone_path, clone_url));
                     }
                 }
             }
         }
 
-        // If we still haven't got a match, we can error out
-        if !cloned {
-            spinner.clone().map(|s| {
-                s.set_message("Not found");
-                s.finish_and_clear()
-            });
-            omni_error!(format!("could not find repository {}", repo.yellow()));
-            exit(1);
-        }
-
-        exit(0);
-    }
-
-    pub fn autocompletion(&self) -> bool {
-        false
-    }
-
-    pub fn autocomplete(&self, _comp_cword: usize, _argv: Vec<String>) {
-        // noop
+        cloned
     }
 
     fn suggest_run_up(&self) -> bool {
@@ -329,9 +388,13 @@ impl CloneCommand {
         clone_args: &Vec<String>,
         spinner: Option<ProgressBar>,
         auto_cd: bool,
+        should_run_up: bool,
+        lookup_only: bool,
     ) -> bool {
         let log_command = |message: String| {
-            if let Some(spinner) = &spinner {
+            if lookup_only {
+                return;
+            } else if let Some(spinner) = &spinner {
                 spinner.println(message);
             } else {
                 eprintln!("{}", message);
@@ -339,25 +402,33 @@ impl CloneCommand {
         };
 
         let log_progress = |message: String| {
-            if let Some(spinner) = &spinner {
+            if lookup_only {
+                return;
+            } else if let Some(spinner) = &spinner {
                 spinner.set_message(message);
             } else {
                 eprintln!("{}", message);
             }
         };
 
-        let mut run_up = true;
+        let mut run_up = should_run_up;
 
         if clone_path.exists() {
             log_progress(format!("Found {}", clone_path.to_string_lossy()));
             spinner.map(|s| s.finish_and_clear());
+
+            if lookup_only {
+                return true;
+            }
 
             omni_error!(format!(
                 "repository already exists {}",
                 format!("({})", clone_path.to_string_lossy()).light_black()
             ));
 
-            run_up = self.suggest_run_up();
+            if should_run_up {
+                run_up = self.suggest_run_up();
+            }
         } else {
             log_progress(format!("Checking {}", clone_url.to_string()));
 
@@ -382,6 +453,10 @@ impl CloneCommand {
                     clone_url.to_string()
                 ));
                 return false;
+            }
+
+            if lookup_only {
+                return true;
             }
 
             log_progress(format!("Cloning {}", clone_url.to_string()));

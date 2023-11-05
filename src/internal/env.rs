@@ -13,6 +13,7 @@ use once_cell::sync::OnceCell;
 use petname;
 
 use crate::internal::config::OrgConfig;
+use crate::internal::git::id_from_git_url;
 use crate::internal::git::safe_git_url_parse;
 use crate::internal::user_interface::StringColor;
 use crate::omni_warning;
@@ -43,7 +44,8 @@ lazy_static! {
     };
 }
 
-pub fn git_env(path: &str) -> GitRepoEnv {
+pub fn git_env<T: AsRef<str>>(path: T) -> GitRepoEnv {
+    let path: &str = path.as_ref();
     let path = std::fs::canonicalize(path)
         .unwrap_or(path.to_owned().into())
         .to_str()
@@ -53,7 +55,19 @@ pub fn git_env(path: &str) -> GitRepoEnv {
     git_env.get(&path).clone()
 }
 
-pub fn workdir(path: &str) -> WorkDirEnv {
+pub fn git_env_flush_cache<T: AsRef<str>>(path: T) {
+    let path: &str = path.as_ref();
+    let path = std::fs::canonicalize(path)
+        .unwrap_or(path.to_owned().into())
+        .to_str()
+        .unwrap()
+        .to_owned();
+    let mut git_env = GIT_ENV.lock().unwrap();
+    git_env.remove(&path);
+}
+
+pub fn workdir<T: AsRef<str>>(path: T) -> WorkDirEnv {
+    let path: &str = path.as_ref();
     let path = std::fs::canonicalize(path)
         .unwrap_or(path.to_owned().into())
         .to_str()
@@ -63,7 +77,20 @@ pub fn workdir(path: &str) -> WorkDirEnv {
     workdir_env.get(&path).clone()
 }
 
-pub fn workdir_or_init(path: &str) -> Result<WorkDirEnv, String> {
+pub fn workdir_flush_cache<T: AsRef<str>>(path: T) {
+    let path: &str = path.as_ref();
+    let path = std::fs::canonicalize(path)
+        .unwrap_or(path.to_owned().into())
+        .to_str()
+        .unwrap()
+        .to_owned();
+    let mut workdir_env = WORKDIR_ENV.lock().unwrap();
+    workdir_env.remove(&path);
+    git_env_flush_cache(&path);
+}
+
+pub fn workdir_or_init<T: AsRef<str>>(path: T) -> Result<WorkDirEnv, String> {
+    let path: &str = path.as_ref();
     let path = std::fs::canonicalize(path)
         .unwrap_or(path.to_owned().into())
         .to_str()
@@ -313,6 +340,10 @@ impl GitRepoEnvByPath {
         }
         self.env_by_path.get(path).unwrap()
     }
+
+    pub fn remove(&mut self, path: &str) {
+        self.env_by_path.remove(path);
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -455,11 +486,7 @@ impl GitRepoEnv {
             .get_or_init(|| {
                 if let Some(origin) = &self.origin {
                     if let Ok(url) = safe_git_url_parse(origin) {
-                        if let (Some(host), Some(owner), name) = (url.host, url.owner, url.name) {
-                            if !name.is_empty() {
-                                return Some(format!("{}:{}/{}", host, owner, name));
-                            }
-                        }
+                        return id_from_git_url(&url);
                     }
                 }
                 None

@@ -13,6 +13,9 @@ pub(crate) use hook::HookEnvCommand;
 pub(crate) use hook::HookInitCommand;
 pub(crate) use hook::HookUuidCommand;
 
+pub(crate) mod config;
+pub(crate) use config::ConfigPathSwitchCommand;
+
 pub(crate) mod scope;
 pub(crate) use scope::ScopeCommand;
 
@@ -21,6 +24,7 @@ pub(crate) use status::StatusCommand;
 
 pub(crate) mod tidy;
 pub(crate) use tidy::TidyCommand;
+pub(crate) use tidy::TidyGitRepo;
 
 pub(crate) mod up;
 pub(crate) use up::UpCommand;
