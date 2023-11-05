@@ -148,7 +148,7 @@ impl ConfigPathSwitchCommand {
     pub fn help(&self) -> Option<String> {
         Some(
             concat!(
-                "Switch the source of a repository in the omnipath.\n",
+                "Switch the source of a repository in the omnipath\n",
                 "\n",
                 "This allows to change the omnipath source from using a package or ",
                 "a development version in a worktree.\n",

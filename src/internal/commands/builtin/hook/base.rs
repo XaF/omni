@@ -20,7 +20,7 @@ impl HookCommand {
     }
 
     pub fn help(&self) -> Option<String> {
-        Some(concat!("Call one of omni's hooks for the shell.\n",).to_string())
+        Some(concat!("Call one of omni's hooks for the shell\n",).to_string())
     }
 
     pub fn syntax(&self) -> Option<CommandSyntax> {
