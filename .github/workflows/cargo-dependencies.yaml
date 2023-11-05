@@ -46,7 +46,7 @@ jobs:
 
     outputs:
       pull_request_state: ${{ env.PR_STATE }}
-      should_run: ${{ github.event_name != "push" || env.PR_STATE == "OPEN" }}
+      should_run: ${{ github.event_name != 'push' || env.PR_STATE == 'OPEN' }}
 
     steps:
       - name: Checkout commit
