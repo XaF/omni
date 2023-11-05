@@ -11,6 +11,7 @@ pub(crate) use config::ConfigValue;
 pub(crate) mod env;
 pub(crate) use env::git_env;
 pub(crate) use env::workdir;
+pub(crate) use env::workdir_flush_cache;
 pub(crate) use env::workdir_or_init;
 pub(crate) use env::ENV;
 

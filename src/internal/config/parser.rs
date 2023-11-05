@@ -8,6 +8,7 @@ use serde::Deserialize;
 use serde::Serialize;
 
 use crate::internal::config::config_loader;
+use crate::internal::config::config_value::ConfigData;
 use crate::internal::config::flush_config_loader;
 use crate::internal::config::global_config_loader;
 use crate::internal::config::up::UpConfig;
@@ -17,6 +18,7 @@ use crate::internal::env::ENV;
 use crate::internal::env::HOME;
 use crate::internal::env::OMNI_GIT;
 use crate::internal::git::package_path_from_handle;
+use crate::internal::git::package_root_path;
 use crate::internal::git::update_git_repo;
 use crate::internal::workdir;
 
@@ -538,8 +540,6 @@ impl OrgConfig {
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct PathConfig {
-    // pub append: Vec<String>,
-    // pub prepend: Vec<String>,
     pub append: Vec<PathEntryConfig>,
     pub prepend: Vec<PathEntryConfig>,
 }
@@ -551,50 +551,16 @@ impl PathConfig {
                 .get_as_array("append")
                 .unwrap()
                 .iter()
-                // .map(|value| Self::entry_from_config_value(&value))
                 .map(|value| PathEntryConfig::from_config_value(&value))
                 .collect(),
             prepend: config_value
                 .get_as_array("prepend")
                 .unwrap()
                 .iter()
-                // .map(|value| Self::entry_from_config_value(&value))
                 .map(|value| PathEntryConfig::from_config_value(&value))
                 .collect(),
         }
     }
-
-    // fn entry_from_config_value(config_value: &ConfigValue) -> String {
-    // if config_value.is_table() {
-    // let path = config_value
-    // .get_as_str("path")
-    // .unwrap_or("".to_string())
-    // .to_string();
-
-    // if !path.starts_with("/") {
-    // if let Some(package) = config_value.get("package") {
-    // let package = package.as_str().unwrap();
-    // if let Ok(git_url) = full_git_url_parse(&package) {
-    // let package_path = format_path_with_template(
-    // &PACKAGE_PATH.clone(),
-    // &git_url,
-    // PACKAGE_PATH_FORMAT.to_string(),
-    // );
-
-    // return PathBuf::from(package_path)
-    // .join(path)
-    // .to_str()
-    // .unwrap()
-    // .to_string();
-    // }
-    // }
-    // }
-
-    // path
-    // } else {
-    // config_value.as_str().unwrap_or("".to_string()).to_string()
-    // }
-    // }
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
@@ -617,7 +583,7 @@ impl PathEntryConfig {
         }
     }
 
-    fn from_config_value(config_value: &ConfigValue) -> Self {
+    pub fn from_config_value(config_value: &ConfigValue) -> Self {
         if config_value.is_table() {
             let path = config_value
                 .get_as_str("path")
@@ -657,8 +623,23 @@ impl PathEntryConfig {
         }
     }
 
+    pub fn as_config_value(&self) -> ConfigValue {
+        if let Some(package) = &self.package {
+            let mut map = HashMap::new();
+            map.insert("path".to_string(), ConfigValue::from_str(&self.path));
+            map.insert("package".to_string(), ConfigValue::from_str(&package));
+            ConfigValue::new(
+                ConfigSource::Null,
+                vec![],
+                Some(Box::new(ConfigData::Mapping(map))),
+            )
+        } else {
+            ConfigValue::from_str(&self.full_path)
+        }
+    }
+
     pub fn is_package(&self) -> bool {
-        self.package.is_some()
+        self.package.is_some() || PathBuf::from(&self.full_path).starts_with(package_root_path())
     }
 
     pub fn package_path(&self) -> Option<PathBuf> {
@@ -675,6 +656,47 @@ impl PathEntryConfig {
 
     pub fn as_string(&self) -> String {
         self.full_path.clone()
+    }
+
+    pub fn starts_with(&self, path_entry: &PathEntryConfig) -> bool {
+        if !self.is_valid() {
+            return false;
+        }
+
+        PathBuf::from(&self.full_path).starts_with(&path_entry.full_path)
+    }
+
+    pub fn replace(&mut self, path_from: &PathEntryConfig, path_to: &PathEntryConfig) -> bool {
+        if self.starts_with(path_from) {
+            let new_full_path = format!(
+                "{}/{}",
+                path_to.full_path,
+                PathBuf::from(&self.full_path)
+                    .strip_prefix(&path_from.full_path)
+                    .unwrap()
+                    .display(),
+            );
+            if let Some(package) = path_to.package.clone() {
+                if let Some(package_path) = package_path_from_handle(&package) {
+                    self.full_path = new_full_path;
+                    self.package = Some(package);
+                    self.path = PathBuf::from(&self.full_path)
+                        .strip_prefix(&package_path)
+                        .unwrap()
+                        .display()
+                        .to_string();
+
+                    return true;
+                }
+            } else {
+                self.full_path = new_full_path;
+                self.package = None;
+                self.path = self.full_path.clone();
+
+                return true;
+            }
+        }
+        false
     }
 }
 

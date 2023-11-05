@@ -113,7 +113,16 @@ pub fn auto_path_update() {
             continue;
         }
 
-        let desc = format!("Updating {}:", repo_id.to_string().italic().light_cyan()).light_blue();
+        let desc = format!(
+            "Updating {} {}:",
+            if path_entry.is_package() {
+                "📦"
+            } else {
+                "🌳"
+            },
+            repo_id.to_string().italic().light_cyan()
+        )
+        .light_blue();
         let progress_handler: Box<dyn ProgressHandler + Send> = if ENV.interactive_shell {
             let mut spinner =
                 SpinnerProgressHandler::new_with_multi(desc, None, multiprogress.clone());

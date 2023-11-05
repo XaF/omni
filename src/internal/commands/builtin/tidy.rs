@@ -15,10 +15,12 @@ use crate::internal::commands::builtin::HelpCommand;
 use crate::internal::commands::path::global_omnipath_entries;
 use crate::internal::config::config;
 use crate::internal::config::global_config_loader;
+use crate::internal::config::parser::PathEntryConfig;
 use crate::internal::config::CommandSyntax;
 use crate::internal::config::ConfigSource;
 use crate::internal::config::SyntaxOptArg;
 use crate::internal::git::format_path;
+use crate::internal::git::package_path_from_handle;
 use crate::internal::git::package_root_path;
 use crate::internal::git::path_entry_config;
 use crate::internal::git::safe_git_url_parse;
@@ -636,7 +638,7 @@ impl TidyCommand {
 }
 
 #[derive(Debug, Clone)]
-struct TidyGitRepo {
+pub struct TidyGitRepo {
     current_path: PathBuf,
     expected_path: PathBuf,
     organized: bool,
@@ -644,6 +646,15 @@ struct TidyGitRepo {
 }
 
 impl TidyGitRepo {
+    pub fn new_with_paths(current_path: PathBuf, expected_path: PathBuf) -> Self {
+        Self {
+            current_path: current_path.clone(),
+            expected_path: expected_path.clone(),
+            organized: current_path == expected_path,
+            organizable: false,
+        }
+    }
+
     fn new(path: &str) -> Option<Self> {
         let git_env = git_env(path);
         if !git_env.in_repo() || !git_env.has_origin() {
@@ -656,27 +667,33 @@ impl TidyGitRepo {
         // Try and find the expected path
         let mut expected_path = None;
 
-        // We check first among the orgs
-        for org in ORG_LOADER.orgs.iter() {
-            if let Some(repo_path) = org.get_repo_path(&origin_url) {
-                expected_path = Some(PathBuf::from(repo_path));
-                break;
-            }
-        }
-
-        // If no match, check if the link is a full git url, in which case
-        // we can clone to the default worktree
-        if expected_path.is_none() {
-            if let Ok(repo_url) = safe_git_url_parse(&origin_url) {
-                if repo_url.scheme.to_string() != "file"
-                    && repo_url.name != ""
-                    && repo_url.owner.is_some()
-                    && repo_url.host.is_some()
-                {
-                    let config = config(".");
-                    let worktree = config.worktree();
-                    let repo_path = format_path(&worktree, &repo_url);
+        // If the path is in the package tree, we need to compare to the
+        // expected package path
+        if path.starts_with(package_root_path()) {
+            expected_path = package_path_from_handle(&origin_url);
+        } else {
+            // We check first among the orgs
+            for org in ORG_LOADER.orgs.iter() {
+                if let Some(repo_path) = org.get_repo_path(&origin_url) {
                     expected_path = Some(PathBuf::from(repo_path));
+                    break;
+                }
+            }
+
+            // If no match, check if the link is a full git url, in which case
+            // we can clone to the default worktree
+            if expected_path.is_none() {
+                if let Ok(repo_url) = safe_git_url_parse(&origin_url) {
+                    if repo_url.scheme.to_string() != "file"
+                        && repo_url.name != ""
+                        && repo_url.owner.is_some()
+                        && repo_url.host.is_some()
+                    {
+                        let config = config(".");
+                        let worktree = config.worktree();
+                        let repo_path = format_path(&worktree, &repo_url);
+                        expected_path = Some(PathBuf::from(repo_path));
+                    }
                 }
             }
         }
@@ -719,7 +736,6 @@ impl TidyGitRepo {
             self.to_string(),
         ));
 
-        // TODO: edit OMNIPATH ?
         self.edit_config(&println);
 
         // Cleanup the parents as long as they are empty directories
@@ -734,36 +750,27 @@ impl TidyGitRepo {
         true
     }
 
-    // fn edit_environment<T>(&self, printenv: T) -> bool {
-    // where
-    // T: Fn(String),
-    // {
-    // // TODO: edit OMNIPATH ?
-    // }
-
-    fn edit_config<T>(&self, println: T) -> bool
+    pub fn edit_config<T>(&self, println: T) -> bool
     where
         T: Fn(String),
     {
-        let config = global_config_loader().raw_config.clone();
-        let exact_match = format!("{}", self.current_path.to_str().unwrap());
-        let prefix_match = format!("{}/", self.current_path.to_str().unwrap());
         let mut files_to_edit = HashSet::new();
+
+        let config = global_config_loader().raw_config.clone();
+        let current_path = path_entry_config(self.current_path.to_str().unwrap());
+
         if let Some(config_path) = config.get_as_table("path") {
             for key in config_path.keys() {
                 if let Some(path_list) = config_path.get(key) {
                     if let Some(path_list) = path_list.as_array() {
                         for value in path_list {
-                            if let Some(path_value) = value.as_str() {
-                                if path_value == exact_match
-                                    || path_value.starts_with(&prefix_match)
-                                {
-                                    match value.get_source() {
-                                        ConfigSource::File(path) => {
-                                            files_to_edit.insert(path.clone());
-                                        }
-                                        _ => {}
+                            let path_entry = PathEntryConfig::from_config_value(&value);
+                            if path_entry.starts_with(&current_path) {
+                                match value.get_source() {
+                                    ConfigSource::File(path) => {
+                                        files_to_edit.insert(path.clone());
                                     }
+                                    _ => {}
                                 }
                             }
                         }
@@ -785,25 +792,18 @@ impl TidyGitRepo {
         T: Fn(String),
     {
         let mut edited = false;
-        let exact_match = format!("{}", self.current_path.to_str().unwrap());
-        let prefix_match = format!("{}/", self.current_path.to_str().unwrap());
+        let current_path = path_entry_config(self.current_path.to_str().unwrap());
+        let expected_path = path_entry_config(self.expected_path.to_str().unwrap());
+
         let result = ConfigLoader::edit_user_config_file(file_path.to_string(), |config_value| {
             if let Some(config_path) = config_value.get_as_table_mut("path") {
                 for (_key, path_list) in config_path.iter_mut() {
                     if let Some(path_list) = path_list.as_array_mut() {
-                        for path_config_value in path_list.iter_mut() {
-                            if let Some(path_value) = path_config_value.as_str_mut() {
-                                if *path_value == exact_match {
-                                    *path_value = self.expected_path.to_str().unwrap().to_string();
-                                    edited = true;
-                                } else if path_value.starts_with(&prefix_match) {
-                                    *path_value = format!(
-                                        "{}/{}",
-                                        self.expected_path.to_str().unwrap(),
-                                        &path_value[prefix_match.len()..]
-                                    );
-                                    edited = true;
-                                }
+                        for value in path_list.iter_mut() {
+                            let mut path_entry = PathEntryConfig::from_config_value(&value);
+                            if path_entry.replace(&current_path, &expected_path) {
+                                *value = path_entry.as_config_value().clone();
+                                edited = true;
                             }
                         }
                     }

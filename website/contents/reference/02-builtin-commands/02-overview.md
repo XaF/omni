@@ -15,6 +15,7 @@ Those commands take precedence over any custom commands, makefile commands or co
 
 | Builtin command         | Description                                               |
 |-------------------------|-----------------------------------------------------------|
+| [`config path switch`](builtin-commands/config/path/switch) | Switch the source of a repository in the omnipath |
 | [`help`](builtin-commands/help) | Show help for omni commands |
 | [`hook`](builtin-commands/hook) | Call one of omni's hooks for the shell |
 | [`status`](builtin-commands/status) | Show the status of omni |
