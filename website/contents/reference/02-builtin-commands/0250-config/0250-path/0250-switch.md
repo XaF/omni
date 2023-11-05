@@ -12,6 +12,8 @@ When switching into a mode, if the source of the requested type does not exist, 
 
 Upon switching to a package, `omni up --update-repository` will automatically be run to make sure the package is up to date. This will not happen when switching to a development version in a worktree.
 
+This command requires the target to be a repository, and for the repository to already be cloned, either in a worktree or as a package.
+
 ## Parameters
 
 ### Options

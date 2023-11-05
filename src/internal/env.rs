@@ -541,7 +541,7 @@ impl WorkDirEnv {
             workdir_env.root = git.root().map(|s| s.to_string());
         } else {
             // Start from `path` and go up until finding a `.omni/id` file
-            let mut path = PathBuf::from(path.clone());
+            let mut path = PathBuf::from(path);
             loop {
                 if let Some(id) = Self::read_id_file(&path.to_str().unwrap().to_string()) {
                     workdir_env.in_workdir = true;
