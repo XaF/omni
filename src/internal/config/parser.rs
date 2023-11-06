@@ -498,6 +498,7 @@ impl MakefileCommandsConfig {
 pub struct OrgConfig {
     pub handle: String,
     pub trusted: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub worktree: Option<String>,
 }
 

@@ -6,6 +6,7 @@ use internal::command_loader;
 use internal::commands::HookEnvCommand;
 use internal::commands::HookInitCommand;
 use internal::commands::HookUuidCommand;
+use internal::config::ensure_bootstrap;
 use internal::git::auto_path_update;
 use internal::StringColor;
 
@@ -74,8 +75,13 @@ fn run_omni_subcommand(argv: &[String]) {
         false
     };
 
-    // Update the path if necessary
-    auto_path_update();
+    if !only_check_exists {
+        // Ensures that omni has been bootstrapped
+        ensure_bootstrap();
+
+        // Update the path if necessary
+        auto_path_update();
+    }
 
     let command_loader = command_loader(".");
     if let Some((omni_cmd, called_as, argv)) = command_loader.to_serve(&argv) {

@@ -30,7 +30,7 @@ use crate::internal::config::up::ProgressHandler;
 use crate::internal::config::up::SpinnerProgressHandler;
 use crate::internal::config::up::UpConfig;
 use crate::internal::config::CommandSyntax;
-use crate::internal::config::ConfigExtendStrategy;
+use crate::internal::config::ConfigExtendOptions;
 use crate::internal::config::ConfigLoader;
 use crate::internal::config::ConfigValue;
 use crate::internal::config::SyntaxOptArg;
@@ -616,11 +616,7 @@ impl UpCommand {
             let mut suggest_config = suggest_config.clone();
             suggest_config.add_label("suggest_config");
             let mut after = config_value.clone();
-            after.extend(
-                suggest_config.clone(),
-                ConfigExtendStrategy::Default,
-                vec![],
-            );
+            after.extend(suggest_config.clone(), ConfigExtendOptions::new(), vec![]);
 
             // Get the yaml representation of the before and after config
             let before_yaml = before.as_yaml();
@@ -740,7 +736,7 @@ impl UpCommand {
                 let mut after = before.clone();
                 after.extend(
                     key_suggest_config.clone(),
-                    ConfigExtendStrategy::Default,
+                    ConfigExtendOptions::new(),
                     vec![],
                 );
 
@@ -783,7 +779,7 @@ impl UpCommand {
                     for item in items {
                         after.extend(
                             split_suggestions[item.index].clone(),
-                            ConfigExtendStrategy::Default,
+                            ConfigExtendOptions::new(),
                             vec![],
                         );
                     }

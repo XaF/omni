@@ -418,7 +418,7 @@ pub enum OrgError {
 pub struct Org {
     pub config: OrgConfig,
     url: Url,
-    owner: Option<String>,
+    pub owner: Option<String>,
     repo: Option<String>,
     enforce_scheme: bool,
     enforce_user: bool,
@@ -426,7 +426,7 @@ pub struct Org {
 }
 
 impl Org {
-    fn new(config: OrgConfig) -> Result<Self, OrgError> {
+    pub fn new(config: OrgConfig) -> Result<Self, OrgError> {
         let parsed_url = safe_normalize_url(&config.handle);
         if parsed_url.is_err() {
             return Err(OrgError::InvalidHandle(

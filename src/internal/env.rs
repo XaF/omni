@@ -158,6 +158,10 @@ pub fn workdir_or_init<T: AsRef<str>>(path: T) -> Result<WorkDirEnv, String> {
     Ok(wd)
 }
 
+pub fn user_home() -> String {
+    (*HOME).to_string()
+}
+
 #[derive(Debug, Clone)]
 pub struct Env {
     pub cache_home: String,
@@ -173,15 +177,9 @@ pub struct Env {
     pub interactive_shell: bool,
     pub shell: String,
 
-    // pub omnidir: String,
-    // pub omni_located: bool,
     pub omnipath: Vec<String>,
     pub omni_cmd_file: Option<String>,
     pub omni_org: Vec<OrgConfig>,
-    // pub omni_skip_update: bool,
-    // pub omni_force_update: bool,
-    // pub omni_subcommand: Option<String>,
-    // pub omni_uuid: Option<String>,
 }
 
 impl Env {

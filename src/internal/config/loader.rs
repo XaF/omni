@@ -14,6 +14,7 @@ use fs4::FileExt;
 use lazy_static::lazy_static;
 use serde_yaml;
 
+use crate::internal::config::ConfigExtendOptions;
 use crate::internal::config::ConfigExtendStrategy;
 use crate::internal::config::ConfigSource;
 use crate::internal::config::ConfigValue;
@@ -307,7 +308,11 @@ impl ConfigLoader {
             };
 
             let config_value = ConfigValue::from_value(source, labels.clone(), value);
-            self.raw_config.extend(config_value, strategy, vec![]);
+            self.raw_config.extend(
+                config_value,
+                ConfigExtendOptions::new().with_strategy(strategy),
+                vec![],
+            );
         }
     }
 }

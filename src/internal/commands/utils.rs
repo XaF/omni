@@ -5,7 +5,9 @@ use std::path::{Path, PathBuf};
 
 use path_clean::PathClean;
 use pathdiff;
+use requestty::question::{completions, Completions};
 
+use crate::internal::env::user_home;
 use crate::internal::ENV;
 
 pub fn split_name(string: &str, split_on: &str) -> Vec<String> {
@@ -51,6 +53,10 @@ pub fn abs_path(path: impl AsRef<Path>) -> PathBuf {
 
     let absolute_path = if path.is_absolute() {
         path.to_path_buf()
+    } else if path.starts_with("~") {
+        let home_dir = std::env::var("HOME").expect("Failed to determine user's home directory");
+        let path = path.strip_prefix("~").expect("Failed to strip prefix");
+        PathBuf::from(home_dir).join(path)
     } else {
         std::env::current_dir().unwrap().join(path)
     }
@@ -87,4 +93,72 @@ pub fn omni_cmd(cmd: &str) -> Result<(), io::Error> {
     drop(file);
 
     Ok(())
+}
+
+pub fn file_auto_complete(p: String) -> Completions<String> {
+    let current: &Path = p.as_ref();
+    let (mut dir, last) = if p.ends_with('/') {
+        (current, "")
+    } else {
+        let dir = current.parent().unwrap_or_else(|| "~/".as_ref());
+        let last = current
+            .file_name()
+            .and_then(std::ffi::OsStr::to_str)
+            .unwrap_or("");
+        (dir, last)
+    };
+
+    if dir.to_str().unwrap().is_empty() {
+        dir = ".".as_ref();
+    }
+
+    let full_path;
+    let dir_path = PathBuf::from(dir);
+    let used_tilde = if let Ok(suffix) = dir_path.strip_prefix("~") {
+        full_path = PathBuf::from(user_home()).join(suffix);
+        dir = full_path.as_path();
+        true
+    } else {
+        false
+    };
+
+    let files: Completions<_> = match dir.read_dir() {
+        Ok(files) => files
+            .flatten()
+            .flat_map(|file| {
+                let mut path = file.path();
+                let is_dir = path.is_dir();
+                if !path
+                    .file_name()
+                    .and_then(std::ffi::OsStr::to_str)
+                    .unwrap_or("")
+                    .to_lowercase()
+                    .starts_with(last.to_lowercase().as_str())
+                {
+                    return None;
+                }
+
+                if used_tilde {
+                    if let Ok(suffix) = path.strip_prefix(&user_home()) {
+                        path = PathBuf::from("~").join(suffix);
+                    }
+                }
+
+                match path.into_os_string().into_string() {
+                    Ok(s) if is_dir => Some(s + "/"),
+                    Ok(s) => Some(s),
+                    Err(_) => None,
+                }
+            })
+            .collect(),
+        Err(_) => {
+            return completions![p];
+        }
+    };
+
+    if files.is_empty() {
+        return completions![p];
+    }
+
+    files
 }

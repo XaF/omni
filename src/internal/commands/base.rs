@@ -2,6 +2,7 @@ use std::process::exit;
 
 use crate::internal::commands::builtin::CdCommand;
 use crate::internal::commands::builtin::CloneCommand;
+use crate::internal::commands::builtin::ConfigBootstrapCommand;
 use crate::internal::commands::builtin::ConfigPathSwitchCommand;
 use crate::internal::commands::builtin::HelpCommand;
 use crate::internal::commands::builtin::HookCommand;
@@ -28,6 +29,7 @@ use crate::omni_error;
 pub enum Command {
     BuiltinCd(CdCommand),
     BuiltinClone(CloneCommand),
+    BuiltinConfigBootstrap(ConfigBootstrapCommand),
     BuiltinConfigPathSwitch(ConfigPathSwitchCommand),
     BuiltinHelp(HelpCommand),
     BuiltinHook(HookCommand),
@@ -49,6 +51,7 @@ impl Command {
         match self {
             Command::BuiltinCd(command) => command.name(),
             Command::BuiltinClone(command) => command.name(),
+            Command::BuiltinConfigBootstrap(command) => command.name(),
             Command::BuiltinConfigPathSwitch(command) => command.name(),
             Command::BuiltinHelp(command) => command.name(),
             Command::BuiltinHook(command) => command.name(),
@@ -74,6 +77,7 @@ impl Command {
         match self {
             Command::BuiltinCd(command) => command.aliases(),
             Command::BuiltinClone(command) => command.aliases(),
+            Command::BuiltinConfigBootstrap(command) => command.aliases(),
             Command::BuiltinConfigPathSwitch(command) => command.aliases(),
             Command::BuiltinHelp(command) => command.aliases(),
             Command::BuiltinHook(command) => command.aliases(),
@@ -110,6 +114,7 @@ impl Command {
         match self {
             Command::BuiltinCd(_) => "builtin".to_string(),
             Command::BuiltinClone(_) => "builtin".to_string(),
+            Command::BuiltinConfigBootstrap(_) => "builtin".to_string(),
             Command::BuiltinConfigPathSwitch(_) => "builtin".to_string(),
             Command::BuiltinHelp(_) => "builtin".to_string(),
             Command::BuiltinHook(_) => "builtin".to_string(),
@@ -164,6 +169,7 @@ impl Command {
         match self {
             Command::BuiltinCd(command) => command.syntax(),
             Command::BuiltinClone(command) => command.syntax(),
+            Command::BuiltinConfigBootstrap(command) => command.syntax(),
             Command::BuiltinConfigPathSwitch(command) => command.syntax(),
             Command::BuiltinHelp(command) => command.syntax(),
             Command::BuiltinHook(command) => command.syntax(),
@@ -185,6 +191,7 @@ impl Command {
         match self {
             Command::BuiltinCd(command) => command.category(),
             Command::BuiltinClone(command) => command.category(),
+            Command::BuiltinConfigBootstrap(command) => command.category(),
             Command::BuiltinConfigPathSwitch(command) => command.category(),
             Command::BuiltinHelp(command) => command.category(),
             Command::BuiltinHook(command) => command.category(),
@@ -206,6 +213,7 @@ impl Command {
         let help: Option<String> = match self {
             Command::BuiltinCd(command) => command.help(),
             Command::BuiltinClone(command) => command.help(),
+            Command::BuiltinConfigBootstrap(command) => command.help(),
             Command::BuiltinConfigPathSwitch(command) => command.help(),
             Command::BuiltinHelp(command) => command.help(),
             Command::BuiltinHook(command) => command.help(),
@@ -337,6 +345,7 @@ impl Command {
         match self {
             Command::BuiltinCd(command) => command.exec(argv),
             Command::BuiltinClone(command) => command.exec(argv),
+            Command::BuiltinConfigBootstrap(command) => command.exec(argv),
             Command::BuiltinConfigPathSwitch(command) => command.exec(argv),
             Command::BuiltinHelp(command) => command.exec(argv),
             Command::BuiltinHook(_command) => {}
@@ -359,6 +368,7 @@ impl Command {
         match self {
             Command::BuiltinCd(command) => command.autocompletion(),
             Command::BuiltinClone(command) => command.autocompletion(),
+            Command::BuiltinConfigBootstrap(command) => command.autocompletion(),
             Command::BuiltinConfigPathSwitch(command) => command.autocompletion(),
             Command::BuiltinHelp(command) => command.autocompletion(),
             Command::BuiltinHook(command) => command.autocompletion(),
@@ -390,6 +400,7 @@ impl Command {
         match self {
             Command::BuiltinCd(command) => command.autocomplete(comp_cword, argv),
             Command::BuiltinClone(command) => command.autocomplete(comp_cword, argv),
+            Command::BuiltinConfigBootstrap(command) => command.autocomplete(comp_cword, argv),
             Command::BuiltinConfigPathSwitch(command) => command.autocomplete(comp_cword, argv),
             Command::BuiltinHelp(command) => command.autocomplete(comp_cword, argv),
             Command::BuiltinHook(command) => command.autocomplete(comp_cword, argv),
