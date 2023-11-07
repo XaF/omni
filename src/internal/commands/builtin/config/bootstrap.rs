@@ -134,9 +134,10 @@ impl ConfigBootstrapCommand {
         }
 
         match config_bootstrap() {
-            Ok(_) => {
-                omni_info!("Configuration updated");
+            Ok(true) => {
+                omni_info!("configuration updated");
             }
+            Ok(false) => {}
             Err(err) => {
                 omni_error!("{}", err);
                 exit(1);
