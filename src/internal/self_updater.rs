@@ -118,7 +118,6 @@ impl OmniRelease {
 
         let response = reqwest::blocking::get(json_url);
         if let Err(err) = response {
-            dbg!("Failed to get latest release: {:?}", err);
             return None;
         }
         let mut response = response.unwrap();
