@@ -88,10 +88,17 @@ jobs:
           PREVIOUS_TAGS=$(git --no-pager tag --sort=creatordate --merged "${{ github.ref_name }}" 2>/dev/null | tail -n2)
           if [[ -n "$PREVIOUS_TAGS" ]]; then
             # There are tags, try and get the last one
-            PREVIOUS_COMMIT=$(echo "$PREVIOUS_COMMIT" | ${{ startsWith(github.ref, 'refs/tags/v') || 'tail -n1 |' }} | head -n1)
+            echo >&2 "Found tags, getting the last one"
+            PREVIOUS_COMMIT=$(echo "$PREVIOUS_COMMIT" | ${{ startsWith(github.ref, 'refs/tags/v') && '|' || 'tail -n1 |' }} head -n1)
           else
             # There are no tags, let's just use the root commit
+            echo >&2 "Tags not found, using the root commit"
             PREVIOUS_COMMIT=$(git rev-list --max-parents=0 "${{ github.ref_name }}")
+          fi
+          if [[ -z "$PREVIOUS_COMMIT" ]]; then
+            # There has been an issue
+            echo >&2 "Unable to resolve previous commit"
+            exit 1
           fi
           echo "ref=$PREVIOUS_COMMIT" | tee -a "$GITHUB_OUTPUT"
 
