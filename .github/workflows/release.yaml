@@ -89,7 +89,7 @@ jobs:
           if [[ -n "$PREVIOUS_TAGS" ]]; then
             # There are tags, try and get the last one
             echo >&2 "Found tags, getting the last one"
-            PREVIOUS_COMMIT=$(echo "$PREVIOUS_COMMIT" | ${{ startsWith(github.ref, 'refs/tags/v') && '|' || 'tail -n1 |' }} head -n1)
+            PREVIOUS_COMMIT=$(echo "$PREVIOUS_COMMIT" ${{ startsWith(github.ref, 'refs/tags/v') && '|' || '| tail -n1 |' }} head -n1)
           else
             # There are no tags, let's just use the root commit
             echo >&2 "Tags not found, using the root commit"
