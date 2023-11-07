@@ -13,6 +13,7 @@ use walkdir::WalkDir;
 
 use crate::internal::commands::builtin::HelpCommand;
 use crate::internal::commands::path::global_omnipath_entries;
+use crate::internal::commands::utils::abs_path;
 use crate::internal::config::config;
 use crate::internal::config::global_config_loader;
 use crate::internal::config::parser::PathEntryConfig;
@@ -440,20 +441,6 @@ impl TidyCommand {
     }
 
     fn list_repositories(&self) -> Vec<TidyGitRepo> {
-        // Prepare a spinner for the research
-        let spinner = if ENV.interactive_shell {
-            let spinner = ProgressBar::new_spinner();
-            spinner.set_style(
-                ProgressStyle::default_spinner()
-                    .template("{spinner:.green} {msg:.green}")
-                    .unwrap(),
-            );
-            spinner.set_message("Searching repositories...");
-            Some(spinner)
-        } else {
-            None
-        };
-
         let mut worktrees = HashSet::new();
 
         // We want to search for repositories in all our worktrees
@@ -477,75 +464,8 @@ impl TidyCommand {
         // And the package path
         worktrees.insert(PathBuf::from(package_root_path()));
 
-        // Cleanup the paths by removing each path for which
-        // the parent is also in the list
-        let mut worktrees = worktrees.into_iter().collect::<Vec<_>>();
-        worktrees.sort_by(|a, b| a.cmp(b));
-        let worktrees = worktrees
-            .clone()
-            .into_iter()
-            .filter(|path| {
-                !worktrees
-                    .iter()
-                    .any(|other| path != other && path.starts_with(format!("{}/", other.display())))
-            })
-            .collect::<Vec<_>>();
-
-        let mut repositories = HashSet::new();
-        for worktree in worktrees.iter() {
-            for entry in WalkDir::new(worktree).follow_links(true) {
-                if let Ok(entry) = entry {
-                    let filetype = entry.file_type();
-                    let filepath = entry.path();
-
-                    // We only want places where there's a `.git` directory, since it generally
-                    // indicates that we are in a git repository
-                    if !filetype.is_dir()
-                        || !filepath.file_name().is_some()
-                        || filepath.file_name().unwrap() != ".git"
-                    {
-                        continue;
-                    }
-
-                    // Take the parent
-                    let filepath = filepath.parent().unwrap();
-
-                    spinner.clone().map(|s| {
-                        s.set_message(format!("Searching: {}", filepath.to_str().unwrap()))
-                    });
-
-                    // Convert to a string
-                    let filepath_str = filepath.to_str().unwrap();
-
-                    repositories.insert(filepath_str.to_string());
-                }
-                spinner.clone().map(|s| s.tick());
-            }
-        }
-
-        spinner
-            .clone()
-            .map(|s| s.set_message("Analyzing repositories..."));
-
-        let mut repositories = repositories.into_iter().collect::<Vec<_>>();
-        repositories.sort();
-
-        let mut tidy_repos = Vec::new();
-        for repository in repositories.iter() {
-            spinner
-                .clone()
-                .map(|s| s.set_message(format!("Analyzing: {}", repository)));
-
-            if let Some(tidy_repo) = TidyGitRepo::new(repository) {
-                tidy_repos.push(tidy_repo);
-            }
-
-            spinner.clone().map(|s| s.tick());
-        }
-
-        spinner.clone().map(|s| s.finish_and_clear());
-
-        tidy_repos.into_iter().collect::<Vec<_>>()
+        // And now we list the repositories
+        TidyGitRepo::list_repositories(worktrees)
     }
 
     fn up_repositories(&self, repositories: &Vec<TidyGitRepo>) {
@@ -641,15 +561,108 @@ impl TidyCommand {
 pub struct TidyGitRepo {
     current_path: PathBuf,
     expected_path: PathBuf,
+    pub origin_url: String,
     organized: bool,
     organizable: bool,
 }
 
 impl TidyGitRepo {
+    pub fn list_repositories(worktrees: HashSet<PathBuf>) -> Vec<Self> {
+        // Prepare a spinner for the research
+        let spinner = if ENV.interactive_shell {
+            let spinner = ProgressBar::new_spinner();
+            spinner.set_style(
+                ProgressStyle::default_spinner()
+                    .template("{spinner:.green} {msg:.green}")
+                    .unwrap(),
+            );
+            spinner.set_message("Searching repositories...");
+            Some(spinner)
+        } else {
+            None
+        };
+
+        let worktrees = worktrees
+            .into_iter()
+            .map(|path| abs_path(path))
+            .collect::<HashSet<_>>();
+
+        // Cleanup the paths by removing each path for which
+        // the parent is also in the list
+        let mut worktrees = worktrees.into_iter().collect::<Vec<_>>();
+        worktrees.sort_by(|a, b| a.cmp(b));
+        let worktrees = worktrees
+            .clone()
+            .into_iter()
+            .filter(|path| {
+                !worktrees
+                    .iter()
+                    .any(|other| path != other && path.starts_with(format!("{}/", other.display())))
+            })
+            .collect::<Vec<_>>();
+
+        let mut repositories = HashSet::new();
+        for worktree in worktrees.iter() {
+            for entry in WalkDir::new(worktree).follow_links(true) {
+                if let Ok(entry) = entry {
+                    let filetype = entry.file_type();
+                    let filepath = entry.path();
+
+                    // We only want places where there's a `.git` directory, since it generally
+                    // indicates that we are in a git repository
+                    if !filetype.is_dir()
+                        || !filepath.file_name().is_some()
+                        || filepath.file_name().unwrap() != ".git"
+                    {
+                        continue;
+                    }
+
+                    // Take the parent
+                    let filepath = filepath.parent().unwrap();
+
+                    spinner.clone().map(|s| {
+                        s.set_message(format!("Searching: {}", filepath.to_str().unwrap()))
+                    });
+
+                    // Convert to a string
+                    let filepath_str = filepath.to_str().unwrap();
+
+                    repositories.insert(filepath_str.to_string());
+                }
+                spinner.clone().map(|s| s.tick());
+            }
+        }
+
+        spinner
+            .clone()
+            .map(|s| s.set_message("Analyzing repositories..."));
+
+        let mut repositories = repositories.into_iter().collect::<Vec<_>>();
+        repositories.sort();
+
+        let mut tidy_repos = Vec::new();
+        for repository in repositories.iter() {
+            spinner
+                .clone()
+                .map(|s| s.set_message(format!("Analyzing: {}", repository)));
+
+            if let Some(tidy_repo) = Self::new(repository) {
+                tidy_repos.push(tidy_repo);
+            }
+
+            spinner.clone().map(|s| s.tick());
+        }
+
+        spinner.clone().map(|s| s.finish_and_clear());
+
+        tidy_repos.into_iter().collect::<Vec<_>>()
+    }
+
     pub fn new_with_paths(current_path: PathBuf, expected_path: PathBuf) -> Self {
         Self {
             current_path: current_path.clone(),
             expected_path: expected_path.clone(),
+            origin_url: "".to_string(),
             organized: current_path == expected_path,
             organizable: false,
         }
@@ -706,6 +719,7 @@ impl TidyGitRepo {
         Some(Self {
             current_path: path.clone(),
             expected_path: expected_path.clone(),
+            origin_url: origin_url.to_string(),
             organized: path == expected_path,
             organizable: !expected_path.exists(),
         })

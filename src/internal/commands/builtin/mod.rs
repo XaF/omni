@@ -14,6 +14,8 @@ pub(crate) use hook::HookInitCommand;
 pub(crate) use hook::HookUuidCommand;
 
 pub(crate) mod config;
+pub(crate) use config::config_bootstrap;
+pub(crate) use config::ConfigBootstrapCommand;
 pub(crate) use config::ConfigPathSwitchCommand;
 
 pub(crate) mod scope;

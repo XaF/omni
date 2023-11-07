@@ -28,6 +28,35 @@ pub enum ConfigData {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+pub struct ConfigExtendOptions {
+    strategy: ConfigExtendStrategy,
+    transform: bool,
+}
+
+impl ConfigExtendOptions {
+    pub fn new() -> Self {
+        Self {
+            strategy: ConfigExtendStrategy::Default,
+            transform: true,
+        }
+    }
+
+    pub fn with_strategy(&self, strategy: ConfigExtendStrategy) -> Self {
+        Self {
+            strategy: strategy.clone(),
+            transform: self.transform,
+        }
+    }
+
+    pub fn with_transform(&self, transform: bool) -> Self {
+        Self {
+            strategy: self.strategy.clone(),
+            transform: transform.clone(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub enum ConfigExtendStrategy {
     Default,
     Append,
@@ -704,10 +733,10 @@ up_command:
     pub fn extend(
         &mut self,
         other: ConfigValue,
-        strategy: ConfigExtendStrategy,
+        options: ConfigExtendOptions,
         keypath: Vec<String>,
     ) {
-        if strategy == ConfigExtendStrategy::Keep && !self.is_none_or_empty() {
+        if options.strategy == ConfigExtendStrategy::Keep && !self.is_none_or_empty() {
             return;
         }
 
@@ -719,27 +748,35 @@ up_command:
                     for (orig_key, value) in other_mapping {
                         let mut key = orig_key.to_owned();
                         let children_strategy =
-                            ConfigValue::key_strategy(&mut key, &keypath, &strategy);
+                            ConfigValue::key_strategy(&mut key, &keypath, &options.strategy);
 
                         let mut keypath = keypath.clone();
                         keypath.push(key.clone());
 
                         if let Some(self_value) = self_mapping.get_mut(&key) {
-                            self_value.extend(value, children_strategy, keypath);
+                            self_value.extend(
+                                value,
+                                options.with_strategy(children_strategy),
+                                keypath,
+                            );
                         } else {
                             let mut new_value =
                                 ConfigValue::new_null(other.source.clone(), other.labels.clone());
-                            new_value.extend(value, children_strategy, keypath);
+                            new_value.extend(
+                                value,
+                                options.with_strategy(children_strategy),
+                                keypath,
+                            );
                             self_mapping.insert(key, new_value);
                         }
                     }
                 }
                 (ConfigData::Sequence(self_sequence), ConfigData::Sequence(other_sequence)) => {
-                    if strategy == ConfigExtendStrategy::Keep && !self_sequence.is_empty() {
+                    if options.strategy == ConfigExtendStrategy::Keep && !self_sequence.is_empty() {
                         return;
                     }
 
-                    let init_index = if strategy == ConfigExtendStrategy::Append {
+                    let init_index = if options.strategy == ConfigExtendStrategy::Append {
                         self_sequence.len()
                     } else {
                         0
@@ -747,19 +784,23 @@ up_command:
 
                     let mut new_sequence = Vec::new();
                     let children_strategy =
-                        ConfigValue::key_strategy(&mut "".to_string(), &keypath, &strategy);
+                        ConfigValue::key_strategy(&mut "".to_string(), &keypath, &options.strategy);
                     for (index, value) in other_sequence.iter().enumerate() {
                         let mut keypath = keypath.clone();
                         keypath.push((init_index + index).to_string());
 
                         let mut new_value =
                             ConfigValue::new_null(other.source.clone(), other.labels.clone());
-                        new_value.extend(value.clone(), children_strategy.clone(), keypath);
+                        new_value.extend(
+                            value.clone(),
+                            options.with_strategy(children_strategy.clone()),
+                            keypath,
+                        );
 
                         new_sequence.push(new_value);
                     }
 
-                    match strategy {
+                    match options.strategy {
                         ConfigExtendStrategy::Append => {
                             'outer: for new_value in new_sequence {
                                 let new_value_serde_yaml = new_value.as_serde_yaml();
@@ -791,50 +832,56 @@ up_command:
                     }
                 }
                 (ConfigData::Value(self_null), ConfigData::Mapping(other_mapping))
-                    if self_null.is_null() || strategy != ConfigExtendStrategy::Keep =>
+                    if self_null.is_null() || options.strategy != ConfigExtendStrategy::Keep =>
                 {
                     let mut new_mapping = HashMap::new();
                     for (orig_key, value) in other_mapping {
                         let mut key = orig_key.to_owned();
                         let children_strategy =
-                            ConfigValue::key_strategy(&mut key, &keypath, &strategy);
+                            ConfigValue::key_strategy(&mut key, &keypath, &options.strategy);
 
                         let mut keypath = keypath.clone();
                         keypath.push(key.clone());
 
                         let mut new_value =
                             ConfigValue::new_null(other.source.clone(), other.labels.clone());
-                        new_value.extend(value, children_strategy, keypath);
+                        new_value.extend(value, options.with_strategy(children_strategy), keypath);
                         new_mapping.insert(key, new_value);
                     }
                     *self_value = Box::new(ConfigData::Mapping(new_mapping));
                 }
                 (ConfigData::Value(self_null), ConfigData::Sequence(other_sequence))
-                    if self_null.is_null() || strategy != ConfigExtendStrategy::Keep =>
+                    if self_null.is_null() || options.strategy != ConfigExtendStrategy::Keep =>
                 {
                     let mut new_sequence = Vec::new();
                     let children_strategy =
-                        ConfigValue::key_strategy(&mut "".to_string(), &keypath, &strategy);
+                        ConfigValue::key_strategy(&mut "".to_string(), &keypath, &options.strategy);
                     for (index, value) in other_sequence.iter().enumerate() {
                         let mut keypath = keypath.clone();
                         keypath.push(index.to_string());
 
                         let mut new_value =
                             ConfigValue::new_null(other.source.clone(), other.labels.clone());
-                        new_value.extend(value.clone(), children_strategy.clone(), keypath);
+                        new_value.extend(
+                            value.clone(),
+                            options.with_strategy(children_strategy.clone()),
+                            keypath,
+                        );
 
                         new_sequence.push(new_value);
                     }
                     *self_value = Box::new(ConfigData::Sequence(new_sequence));
                 }
                 (ConfigData::Value(self_null), ConfigData::Value(other_val))
-                    if self_null.is_null() || strategy != ConfigExtendStrategy::Keep =>
+                    if self_null.is_null() || options.strategy != ConfigExtendStrategy::Keep =>
                 {
                     self.source = other.source.clone();
                     self.labels.clear();
                     self.labels.extend(other.labels.clone());
                     *self_value = Box::new(ConfigData::Value(other_val));
-                    self.transform(&keypath);
+                    if options.transform {
+                        self.transform(&keypath);
+                    }
                 }
                 _ => {
                     // Nothing to do
