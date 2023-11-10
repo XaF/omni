@@ -106,6 +106,9 @@ _omni_complete_zsh() {
 	compadd -Q -S '' -- $reply
 	{%- endraw %}
 }
+if ! type compdef >/dev/null 2>&1; then
+	autoload -U compinit && compinit
+fi
 compdef _omni_complete_zsh omni
 {% if OMNI_ALIASES or OMNI_COMMAND_ALIASES -%}
 {% for alias in OMNI_ALIASES -%}
