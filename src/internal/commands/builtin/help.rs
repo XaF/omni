@@ -305,7 +305,7 @@ impl HelpCommand {
         let mut cur_category = None;
 
         // Print the help
-        for cmd in commands {
+        for (idx, cmd) in commands.iter().enumerate() {
             let command = &cmd.command;
             let name = command.name().join(" ");
             if !seen.insert(name.clone()) {
@@ -317,7 +317,7 @@ impl HelpCommand {
                 category = None;
             }
 
-            if category != cur_category {
+            if idx == 0 || category != cur_category {
                 cur_category = category.clone();
                 let new_category = if let Some(category) = category {
                     let mut cat_elems = category.clone();

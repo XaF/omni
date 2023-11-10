@@ -117,7 +117,7 @@ impl OmniRelease {
             "https://raw.githubusercontent.com/XaF/homebrew-omni/main/Formula/resources/omni.json";
 
         let response = reqwest::blocking::get(json_url);
-        if let Err(err) = response {
+        if let Err(_err) = response {
             return None;
         }
         let mut response = response.unwrap();

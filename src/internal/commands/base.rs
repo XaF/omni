@@ -428,7 +428,10 @@ impl Command {
             Command::FromConfig(_) => 1,
             Command::FromMakefile(_) => 2,
             Command::Void(command) => command.type_sort_order(),
-            _ => 0,
+            _ => match self.category() {
+                Some(_) => 0,
+                None => usize::MAX,
+            },
         }
     }
 
