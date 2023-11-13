@@ -60,7 +60,7 @@ jobs:
         run: |
           STATE=$(gh pr view "${{ env.PR_BRANCH }}" \
                     --repo "${{ github.repository }}" \
-                    --json state --jq '.state' 2>/dev/null || \
+                    --json state --jq '.state' || \
                   echo "NOT FOUND")
 
           echo "PR_STATE=${STATE}" | tee -a "$GITHUB_ENV"
