@@ -101,6 +101,11 @@ const config = {
             position: 'left',
             label: 'Reference',
           },
+          //{
+          //  // To version: npm run docusaurus docs:version <version>
+          //  type: 'docsVersionDropdown',
+          //  position: 'right',
+          //},
           {
             href: 'https://github.com/XaF/omni/releases',
             className: 'header-github-release',

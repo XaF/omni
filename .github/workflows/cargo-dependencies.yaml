@@ -57,10 +57,12 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Check if pull request already exists
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           STATE=$(gh pr view "${{ env.PR_BRANCH }}" \
                     --repo "${{ github.repository }}" \
-                    --json state --jq '.state' 2>/dev/null || \
+                    --json state --jq '.state' || \
                   echo "NOT FOUND")
 
           echo "PR_STATE=${STATE}" | tee -a "$GITHUB_ENV"
@@ -181,7 +183,7 @@ jobs:
 
       - name: Create or update pull-request
         env:
-          GITHUB_TOKEN: ${{ secrets.REPOSITORY_DISPATCH_TOKEN }}
+          GH_TOKEN: ${{ secrets.REPOSITORY_DISPATCH_TOKEN }}
           PR_STATE: ${{ needs.check-pull-request.outputs.pull_request_state }}
         run: |
           if [[ "$PR_STATE" != "OPEN" ]]; then
