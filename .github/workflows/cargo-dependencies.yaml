@@ -6,12 +6,8 @@ on:
   push:
     branches:
       - main
-    paths-ignore:
-      - '.github/**'
-      - 'website/**'
-      - .gitignore
-      - .omni.yaml
-      - README.md
+    paths:
+      - Cargo.lock
 
   # Run weekly
   schedule:
