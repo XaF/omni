@@ -91,7 +91,16 @@ jobs:
       - name: npm check updates
         working-directory: website/
         run: |
-          npx npm-check-updates --upgrade
+          npx npm-check-updates --upgrade | tee npm-check-updates.out
+          if grep --quiet 'yarn install' npm-check-updates.out; then
+            echo "NEEDS_YARN_INSTALL=true" | tee -a "$GITHUB_ENV"
+          fi
+
+      - name: yarn install
+        if: ${{ env.NEEDS_YARN_INSTALL == 'true' }}
+        working-directory: website/
+        run: |
+          yarn install
 
       - name: yarn upgrade
         working-directory: website/
