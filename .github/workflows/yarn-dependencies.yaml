@@ -275,14 +275,14 @@ jobs:
           if [[ "$PR_STATE" != "OPEN" ]]; then
             gh pr create \
               --title "${{ env.PR_TITLE }}" \
-              --body-file body.md \
+              --body-file pull_request_body.md \
               --repo "${{ github.repository }}" \
               --label dependencies \
               --label javascript
           else
             gh pr edit "${{ env.PR_BRANCH }}" \
               --title "${{ env.PR_TITLE }}" \
-              --body-file body.md \
+              --body-file pull_request_body.md \
               --repo "${{ github.repository }}" \
               --add-label dependencies \
               --add-label javascript
