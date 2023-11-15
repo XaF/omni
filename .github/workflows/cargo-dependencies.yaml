@@ -191,13 +191,15 @@ jobs:
               --title "${{ env.PR_TITLE }}" \
               --body-file body.md \
               --repo "${{ github.repository }}" \
-              --label dependencies
+              --label dependencies \
+              --label rust
           else
             gh pr edit "${{ env.PR_BRANCH }}" \
               --title "${{ env.PR_TITLE }}" \
               --body-file body.md \
               --repo "${{ github.repository }}" \
-              --label dependencies
+              --add-label dependencies \
+              --add-label rust
           fi
 
 
