@@ -214,7 +214,7 @@ jobs:
               {
                 if (pkg != $3) {
                   if (pkg != "") {
-                    print "- pkg " (" prev_version_raw " -> " new_version_raw ")" >> "commit_body.txt";
+                    print "- " pkg " (" prev_version_raw " -> " new_version_raw ")" >> "commit_body.txt";
                     print "- [`" pkg "`](" pkg_url ") (" prev_version " -> " new_version ")" >> "pull_request_body.md";
                     prev_version="`null`";
                     new_version="`null`";
@@ -242,7 +242,7 @@ jobs:
               }
               END {
                 if (pkg != "") {
-                  print "- pkg " (" prev_version_raw " -> " new_version_raw ")" >> "commit_body.txt";
+                  print "- " pkg " (" prev_version_raw " -> " new_version_raw ")" >> "commit_body.txt";
                   print "- [`" pkg "`](" pkg_url ") (" prev_version " -> " new_version ")" >> "pull_request_body.md";
                 }
               }'
