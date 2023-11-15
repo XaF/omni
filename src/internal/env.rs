@@ -145,7 +145,7 @@ pub fn workdir_or_init<T: AsRef<str>>(path: T) -> Result<WorkDirEnv, String> {
 
             omni_warning!(format!(
                 "generated workdir id {}",
-                id.to_string().light_yellow()
+                id.light_yellow()
             ));
         }
         Err(err) => {

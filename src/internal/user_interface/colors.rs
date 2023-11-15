@@ -121,7 +121,7 @@ pub trait StringColor {
 }
 
 // Implement the extension trait for the existing type
-impl StringColor for String {
+impl<T: ToString> StringColor for T {
     fn colorize(&self, color: &str) -> String {
         if *COLORS_ENABLED {
             self.force_colorize(color)
@@ -131,7 +131,7 @@ impl StringColor for String {
     }
 
     fn force_colorize(&self, color: &str) -> String {
-        format!("\x1B[{}m{}\x1B[39m", color, self)
+        format!("\x1B[{}m{}\x1B[39m", color, self.to_string())
     }
 
     fn noncolormodifier(&self, modifier: &str, cancel_modifier: &str) -> String {
@@ -143,7 +143,12 @@ impl StringColor for String {
     }
 
     fn force_noncolormodifier(&self, modifier: &str, cancel_modifier: &str) -> String {
-        format!("\x1B[{}m{}\x1B[{}m", modifier, self, cancel_modifier)
+        format!(
+            "\x1B[{}m{}\x1B[{}m",
+            modifier,
+            self.to_string(),
+            cancel_modifier
+        )
     }
 
     fn black(&self) -> String {
@@ -348,13 +353,13 @@ impl StringColor for String {
 
     fn normal(&self) -> String {
         if ENV.interactive_shell {
-            format!("\x1B[{}m{}", RESET, self)
+            format!("\x1B[{}m{}", RESET, self.to_string())
         } else {
             self.to_string()
         }
     }
 
     fn force_normal(&self) -> String {
-        format!("\x1B[{}m{}", RESET, self)
+        format!("\x1B[{}m{}", RESET, self.to_string())
     }
 }

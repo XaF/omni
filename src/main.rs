@@ -56,8 +56,8 @@ fn run_omni_subcommand(argv: &[String]) {
         // If we didn't match any hooks, let's just exit on error
         eprintln!(
             "{} {} {}",
-            "omni:".to_string().light_cyan(),
-            "command not found:".to_string().red(),
+            "omni:".light_cyan(),
+            "command not found:".red(),
             argv.join(" ")
         );
         exit(1);
@@ -102,8 +102,8 @@ fn run_omni_subcommand(argv: &[String]) {
 
     eprintln!(
         "{} {} {}",
-        "omni:".to_string().light_cyan(),
-        "command not found:".to_string().red(),
+        "omni:".light_cyan(),
+        "command not found:".red(),
         argv.join(" ")
     );
 

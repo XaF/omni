@@ -288,7 +288,7 @@ impl SpinnerProgressHandler {
     ) -> Self {
         let template = format!(
             "{{prefix}}{} {} {{msg}}",
-            "{spinner}".to_string().yellow(),
+            "{spinner}".yellow(),
             desc,
         );
 
@@ -354,18 +354,18 @@ impl ProgressHandler for SpinnerProgressHandler {
     }
 
     fn success(&self) {
-        // self.replace_spinner("✔".to_string().green());
+        // self.replace_spinner("✔".green());
         // self.spinner.finish();
         self.success_with_message("done".to_string());
     }
 
     fn success_with_message(&self, message: String) {
-        self.replace_spinner("✔".to_string().green());
+        self.replace_spinner("✔".green());
         self.spinner.finish_with_message(message);
     }
 
     fn error(&self) {
-        self.replace_spinner("✖".to_string().red());
+        self.replace_spinner("✖".red());
         self.spinner
             .finish_with_message(self.spinner.message().red());
         if self.newline_on_error {
@@ -374,7 +374,7 @@ impl ProgressHandler for SpinnerProgressHandler {
     }
 
     fn error_with_message(&self, message: String) {
-        self.replace_spinner("✖".to_string().red());
+        self.replace_spinner("✖".red());
         self.spinner.finish_with_message(message.red());
         if self.newline_on_error {
             println!();
@@ -426,7 +426,7 @@ impl ProgressHandler for PrintProgressHandler {
         eprintln!(
             "{}",
             self.template
-                .replacen("{}", "-".to_string().light_black().as_str(), 1)
+                .replacen("{}", "-".light_black().as_str(), 1)
                 .replacen("{}", message.as_str(), 1)
         );
     }
@@ -439,7 +439,7 @@ impl ProgressHandler for PrintProgressHandler {
         eprintln!(
             "{}",
             self.template
-                .replacen("{}", "✔".to_string().green().as_str(), 1)
+                .replacen("{}", "✔".green().as_str(), 1)
                 .replacen("{}", message.as_str(), 1)
         );
     }
@@ -452,7 +452,7 @@ impl ProgressHandler for PrintProgressHandler {
         eprintln!(
             "{}",
             self.template
-                .replacen("{}", "✖".to_string().red().as_str(), 1)
+                .replacen("{}", "✖".red().as_str(), 1)
                 .replacen("{}", message.red().as_str(), 1)
         );
     }

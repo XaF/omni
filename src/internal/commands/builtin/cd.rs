@@ -315,7 +315,7 @@ impl CdCommand {
             exit(1);
         }
 
-        omni_error!(format!("{}: No such repository", repo.to_string().yellow()));
+        omni_error!(format!("{}: No such repository", repo.yellow()));
         exit(1);
     }
 

@@ -181,14 +181,14 @@ pub fn auto_path_update() {
             Some(ref package) => format!(
                 "{}:{}",
                 "package".to_string().underline(),
-                package.to_string().light_cyan(),
+                package.light_cyan(),
             ),
             None => path_entry.as_string().light_cyan(),
         };
 
         omni_info!(format!(
             "running {} in {}",
-            "omni up".to_string().light_yellow(),
+            "omni up".light_yellow(),
             location,
         ));
 
@@ -229,7 +229,7 @@ pub fn update_git_repo(
         "branch" => update_git_branch(repo_id, ref_match, repo_path, progress_handler),
         "tag" => update_git_tag(repo_id, ref_match, repo_path, progress_handler),
         _ => {
-            omni_error!("invalid ref type: {}", ref_type.to_string().light_red());
+            omni_error!("invalid ref type: {}", ref_type.light_red());
             false
         }
     }
@@ -327,11 +327,11 @@ fn update_git_branch(
         .to_string();
     let output_lines = output.lines().collect::<Vec<&str>>();
     if output_lines.len() == 1 && output_lines[0].contains("Already up to date.") {
-        progress_handler.success_with_message("already up to date".to_string().light_black());
+        progress_handler.success_with_message("already up to date".light_black());
         return false;
     }
 
-    progress_handler.success_with_message("updated".to_string().light_green());
+    progress_handler.success_with_message("updated".light_green());
 
     true
 }
@@ -438,7 +438,7 @@ fn update_git_tag(
     if fetched_out.trim().is_empty() && fetched_err.trim().is_empty() {
         // If no new tags, nothing more to do!
         progress_handler
-            .success_with_message("no new tags, nothing to do".to_string().light_black());
+            .success_with_message("no new tags, nothing to do".light_black());
         return false;
     }
 
@@ -490,14 +490,14 @@ fn update_git_tag(
     // If the current tag is the same as the target tag, nothing more to do!
     if current_tag == target_tag {
         progress_handler
-            .success_with_message("already on latest matching tag".to_string().light_black());
+            .success_with_message("already on latest matching tag".light_black());
         return false;
     }
 
     // Check out the target tag
     progress_handler.progress(format!(
         "checking out {}",
-        target_tag.to_string().light_green()
+        target_tag.light_green()
     ));
     let mut git_checkout_cmd = std::process::Command::new("git");
     if let Some(repo_path) = repo_path {
@@ -515,7 +515,7 @@ fn update_git_tag(
         return false;
     }
 
-    progress_handler.success_with_message("updated".to_string().light_green());
+    progress_handler.success_with_message("updated".light_green());
 
     true
 }
