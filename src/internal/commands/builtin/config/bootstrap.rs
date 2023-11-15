@@ -1,5 +1,10 @@
 use std::collections::HashMap;
 use std::collections::HashSet;
+use std::io::BufRead;
+use std::io::BufReader;
+use std::io::Read;
+use std::io::Seek;
+use std::io::Write;
 use std::path::PathBuf;
 use std::process::exit;
 
@@ -21,16 +26,20 @@ use crate::internal::config::ConfigLoader;
 use crate::internal::config::ConfigValue;
 use crate::internal::config::OrgConfig;
 use crate::internal::env::user_home;
+use crate::internal::env::Shell;
 use crate::internal::git::format_path_with_template;
 use crate::internal::git::full_git_url_parse;
 use crate::internal::git::Org;
 use crate::internal::user_interface::StringColor;
+use crate::internal::ENV;
 use crate::omni_error;
 use crate::omni_info;
 use crate::omni_warning;
 
 #[derive(Debug, Clone)]
-struct ConfigBootstrapCommandArgs {}
+struct ConfigBootstrapCommandArgs {
+    options: ConfigBootstrapOptions,
+}
 
 impl ConfigBootstrapCommandArgs {
     fn parse(argv: Vec<String>) -> Self {
@@ -40,6 +49,26 @@ impl ConfigBootstrapCommandArgs {
         let matches = clap::Command::new("")
             .disable_help_subcommand(true)
             .disable_version_flag(true)
+            .arg(
+                clap::Arg::new("worktree")
+                    .long("worktree")
+                    .action(clap::ArgAction::SetTrue),
+            )
+            .arg(
+                clap::Arg::new("repo-path-format")
+                    .long("repo-path-format")
+                    .action(clap::ArgAction::SetTrue),
+            )
+            .arg(
+                clap::Arg::new("organizations")
+                    .long("organizations")
+                    .action(clap::ArgAction::SetTrue),
+            )
+            .arg(
+                clap::Arg::new("shell")
+                    .long("shell")
+                    .action(clap::ArgAction::SetTrue),
+            )
             .try_get_matches_from(&parse_argv);
 
         if let Err(err) = matches {
@@ -72,7 +101,31 @@ impl ConfigBootstrapCommandArgs {
             exit(1);
         }
 
-        Self {}
+        let mut worktree = *matches.get_one::<bool>("worktree").unwrap_or(&false);
+        let mut repo_path_format = *matches
+            .get_one::<bool>("repo-path-format")
+            .unwrap_or(&false);
+        let mut organizations = *matches.get_one::<bool>("organizations").unwrap_or(&false);
+        let mut shell = *matches.get_one::<bool>("shell").unwrap_or(&false);
+
+        // Default to all options if none is specified
+        if !worktree && !repo_path_format && !organizations && !shell {
+            worktree = true;
+            repo_path_format = true;
+            organizations = true;
+            shell = true;
+        }
+
+        let mut binding = ConfigBootstrapOptions::new();
+        let options = binding
+            .worktree(worktree)
+            .repo_path_format(repo_path_format)
+            .organizations(organizations)
+            .shell(shell);
+
+        Self {
+            options: options.clone(),
+        }
     }
 }
 
@@ -88,7 +141,6 @@ impl ConfigBootstrapCommand {
         }
     }
 
-    #[allow(dead_code)]
     fn cli_args(&self) -> &ConfigBootstrapCommandArgs {
         self.cli_args.get_or_init(|| {
             omni_error!("command arguments not initialized");
@@ -133,13 +185,13 @@ impl ConfigBootstrapCommand {
             unreachable!();
         }
 
-        match config_bootstrap() {
+        match config_bootstrap(Some(self.cli_args().options.clone())) {
             Ok(true) => {
                 omni_info!("configuration updated");
             }
             Ok(false) => {}
             Err(err) => {
-                omni_error!("{}", err);
+                omni_error!(format!("{}", err));
                 exit(1);
             }
         }
@@ -156,65 +208,245 @@ impl ConfigBootstrapCommand {
     }
 }
 
+#[derive(Debug, Clone)]
+pub struct ConfigBootstrapOptions {
+    default: bool,
+    worktree: bool,
+    repo_path_format: bool,
+    organizations: bool,
+    shell: bool,
+}
+
+impl ConfigBootstrapOptions {
+    fn new() -> Self {
+        Self {
+            default: true,
+            worktree: true,
+            repo_path_format: true,
+            organizations: true,
+            shell: true,
+        }
+    }
+
+    fn worktree(&mut self, worktree: bool) -> &mut Self {
+        self.default = false;
+        self.worktree = worktree;
+        self
+    }
+
+    fn repo_path_format(&mut self, repo_path_format: bool) -> &mut Self {
+        self.default = false;
+        self.repo_path_format = repo_path_format;
+        self
+    }
+
+    fn organizations(&mut self, organizations: bool) -> &mut Self {
+        self.default = false;
+        self.organizations = organizations;
+        self
+    }
+
+    fn shell(&mut self, shell: bool) -> &mut Self {
+        self.default = false;
+        self.shell = shell;
+        self
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct ConfigBootstrap {
+    #[serde(skip_serializing_if = "String::is_empty")]
     worktree: String,
+    #[serde(skip_serializing_if = "String::is_empty")]
     repo_path_format: String,
     #[serde(skip_serializing_if = "Vec::is_empty")]
     org: Vec<OrgConfig>,
 }
 
-pub fn config_bootstrap() -> Result<bool, String> {
-    let (worktree, continue_bootstrap) = question_worktree();
-    if !continue_bootstrap {
-        return Ok(false);
-    }
+pub fn config_bootstrap(options: Option<ConfigBootstrapOptions>) -> Result<bool, String> {
+    let options = options.unwrap_or(ConfigBootstrapOptions::new());
 
-    let (repo_path_format, continue_bootstrap) = question_repo_path_format(worktree.clone());
-    if !continue_bootstrap {
-        return Ok(false);
-    }
-
-    let (orgs, continue_bootstrap) = question_org(&worktree);
-    if !continue_bootstrap {
-        return Ok(false);
-    }
-
-    let config = ConfigBootstrap {
-        worktree: worktree,
-        repo_path_format: repo_path_format,
-        org: orgs,
-    };
-
-    if let Ok(_) = ConfigLoader::edit_main_user_config_file(|config_value| {
-        // Dump our config object as yaml
-        let yaml = serde_yaml::to_string(&config);
-
-        // Now get a ConfigValue object from the yaml
-        let new_config_value = match yaml {
-            Ok(yaml) => ConfigValue::from_str(&yaml),
-            Err(err) => {
-                omni_error!(format!("failed to serialize configuration: {}", err));
-                return false;
+    if options.worktree || options.repo_path_format || options.organizations {
+        let worktree = if options.worktree {
+            let (worktree, continue_bootstrap) = question_worktree();
+            if !continue_bootstrap {
+                return Ok(false);
             }
+            worktree
+        } else {
+            "".to_string()
         };
 
-        // Apply it over the existing configuration
-        config_value.extend(
-            new_config_value,
-            ConfigExtendOptions::new()
-                .with_strategy(ConfigExtendStrategy::Replace)
-                .with_transform(false),
-            vec![],
-        );
+        let repo_path_format = if options.repo_path_format {
+            let (repo_path_format, continue_bootstrap) =
+                question_repo_path_format(worktree.clone());
+            if !continue_bootstrap {
+                return Ok(false);
+            }
+            repo_path_format
+        } else {
+            "".to_string()
+        };
 
-        // And return true to save the configuration
-        true
-    }) {
-        Ok(true)
-    } else {
-        Err("Failed to update user configuration".to_string())
+        let orgs = if options.organizations {
+            let (orgs, continue_bootstrap) = question_org(&worktree);
+            if !continue_bootstrap {
+                return Ok(false);
+            }
+            orgs
+        } else {
+            vec![]
+        };
+
+        let config = ConfigBootstrap {
+            worktree: worktree,
+            repo_path_format: repo_path_format,
+            org: orgs,
+        };
+
+        if let Err(err) = ConfigLoader::edit_main_user_config_file(|config_value| {
+            // Dump our config object as yaml
+            let yaml = serde_yaml::to_string(&config);
+
+            // Now get a ConfigValue object from the yaml
+            let new_config_value = match yaml {
+                Ok(yaml) => ConfigValue::from_str(&yaml),
+                Err(err) => {
+                    omni_error!(format!("failed to serialize configuration: {}", err));
+                    return false;
+                }
+            };
+
+            // Apply it over the existing configuration
+            config_value.extend(
+                new_config_value,
+                ConfigExtendOptions::new()
+                    .with_strategy(ConfigExtendStrategy::Replace)
+                    .with_transform(false),
+                vec![],
+            );
+
+            // And return true to save the configuration
+            true
+        }) {
+            return Err(format!("Failed to update user configuration: {}", err));
+        }
     }
+
+    if options.shell {
+        if let Some(_) = &ENV.omni_cmd_file {
+            if options.default {
+                // If the shell integration is already setup, no need to do anything else
+                return Ok(true);
+            } else {
+                omni_info!("shell integration detected in this shell");
+                omni_info!(format!(
+                    "still proceeding as requested through {}",
+                    "--shell".to_string().light_cyan()
+                ));
+            }
+        }
+
+        // We reach here only if we're missing the shell integration
+        let current_shell = Shell::current();
+        match current_shell {
+            Shell::Unknown(_) | Shell::Posix => {
+                omni_warning!(format!(
+                    "omni does not provide a shell integration for your shell ({})",
+                    current_shell.to_str().to_string().light_cyan(),
+                ));
+                omni_warning!("you can still use omni, but dynamic environment and easy");
+                omni_warning!("navigation will not be available");
+                return Ok(true);
+            }
+            _ => {}
+        }
+
+        let (rc_file, continue_bootstrap) = question_rc_file(&current_shell);
+        if !continue_bootstrap {
+            return Ok(false);
+        }
+
+        match std::fs::OpenOptions::new()
+            .read(true)
+            .append(true)
+            .create(true)
+            .open(rc_file.clone())
+        {
+            Ok(mut file) => {
+                let hook = current_shell.hook_init_command();
+
+                // Check if the hook is already in the file
+                let mut line_number = 0;
+                let reader = BufReader::new(&file);
+                for line in reader.lines() {
+                    match line {
+                        Ok(line) => {
+                            line_number += 1;
+                            if line.trim() == hook {
+                                omni_info!(format!(
+                                    "omni hook already present in {}",
+                                    rc_file.to_string_lossy().to_string().light_blue(),
+                                ));
+                                return Ok(true);
+                            }
+                        }
+                        Err(err) => {
+                            return Err(format!(
+                                "Failed to read from {}: {}",
+                                rc_file.to_string_lossy(),
+                                err
+                            ));
+                        }
+                    }
+                }
+
+                // Check if we need to add an extra new line
+                let ends_with_newline = if line_number > 0 {
+                    let mut buf = [0; 1];
+                    file.seek(std::io::SeekFrom::End(-1)).unwrap();
+                    file.read_exact(&mut buf).unwrap();
+                    buf[0] == b'\n'
+                } else {
+                    false
+                };
+
+                // If we get here, we have to write the hook at the end of the file
+                let mut content = String::new();
+                if line_number > 0 {
+                    content.push_str("\n");
+                    if !ends_with_newline {
+                        content.push_str("\n");
+                    }
+                }
+                content.push_str("# omni shell integration\n");
+                content.push_str(&hook);
+                content.push_str("\n");
+
+                if let Err(err) = file.write_all(content.as_bytes()) {
+                    return Err(format!(
+                        "Failed to write to {}: {}",
+                        rc_file.to_string_lossy(),
+                        err
+                    ));
+                }
+
+                omni_info!(format!(
+                    "omni hook added to {}; remember to reload your shell",
+                    rc_file.to_string_lossy().to_string().light_blue(),
+                ));
+            }
+            Err(err) => {
+                return Err(format!(
+                    "Failed to open {}: {}",
+                    rc_file.to_string_lossy(),
+                    err
+                ));
+            }
+        }
+    }
+
+    Ok(true)
 }
 
 fn question_worktree() -> (String, bool) {
@@ -240,7 +472,7 @@ fn question_worktree() -> (String, bool) {
                 return Err("You need to provide a value for the worktree".to_string());
             }
 
-            let path_obj = PathBuf::from(path.clone());
+            let path_obj = PathBuf::from(path);
             let canonicalized = abs_path(&path_obj);
             if canonicalized.exists() && !canonicalized.is_dir() {
                 return Err("The worktree must be a directory".to_string());
@@ -663,4 +895,104 @@ fn question_org(worktree: &str) -> (Vec<OrgConfig>, bool) {
         .collect();
 
     (orgs_config, true)
+}
+
+fn question_rc_file(current_shell: &Shell) -> (PathBuf, bool) {
+    let default_rc_file = current_shell.default_rc_file();
+    let default_rc_file = if let Ok(suffix) = default_rc_file.strip_prefix(user_home()) {
+        PathBuf::from("~").join(suffix)
+    } else {
+        default_rc_file
+    }
+    .to_string_lossy()
+    .to_string();
+
+    omni_info!("omni requires a shell integration to provide some of its features");
+
+    let question = requestty::Question::input("integration_rc_file")
+        .ask_if_answered(true)
+        .on_esc(requestty::OnEsc::Terminate)
+        .message(format!(
+            "Where is the RC file of your shell ({}) to load the integration?",
+            current_shell.to_str(),
+        ))
+        .auto_complete(|p, _| file_auto_complete(p))
+        .default(default_rc_file)
+        .validate(|path, _| {
+            if path.is_empty() {
+                return Err("You need to provide a value for the rc_file"
+                    .to_string()
+                    .light_red());
+            }
+
+            let path_obj = PathBuf::from(path);
+            let canonicalized = abs_path(&path_obj);
+
+            if canonicalized.exists() {
+                // Check if the path is a file
+                if !canonicalized.is_file() {
+                    return Err("The provided path must be a file".to_string().light_red());
+                }
+
+                // Check if the file is writeable
+                match canonicalized.metadata() {
+                    Ok(metadata) => {
+                        if metadata.permissions().readonly() {
+                            return Err("The file must be writeable".to_string().light_red());
+                        }
+                    }
+                    Err(err) => return Err(err.to_string().light_red()),
+                }
+
+                return Ok(());
+            }
+
+            // Make sure the directory in which the file is exists, or
+            // create it if it doesn't
+            if let Some(parent) = canonicalized.parent() {
+                if !parent.exists() {
+                    if let Err(err) = std::fs::create_dir_all(parent) {
+                        return Err(format!(
+                            "Failed to create directory {}: {}",
+                            parent.to_string_lossy(),
+                            err
+                        )
+                        .light_red());
+                    }
+                }
+            }
+
+            // Create the file if it doesn't exist
+            if !canonicalized.exists() {
+                if let Err(err) = std::fs::File::create(&canonicalized) {
+                    return Err(format!(
+                        "Failed to create file {}: {}",
+                        canonicalized.to_string_lossy(),
+                        err
+                    )
+                    .light_red());
+                }
+            }
+
+            Ok(())
+        })
+        .build();
+
+    let rc_file = match requestty::prompt_one(question) {
+        Ok(answer) => match answer {
+            requestty::Answer::String(path) => {
+                let path_obj = PathBuf::from(path.clone());
+                let canonicalized = abs_path(&path_obj);
+                // No need for extra validation, as we have done it above
+                canonicalized
+            }
+            _ => unreachable!(),
+        },
+        Err(err) => {
+            println!("{}\x1B[0K", format!("[✘] {:?}", err).red());
+            return (PathBuf::new(), false);
+        }
+    };
+
+    (rc_file, true)
 }
