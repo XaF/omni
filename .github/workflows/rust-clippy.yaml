@@ -40,7 +40,7 @@ jobs:
 
       - name: Add .cargo/bin to PATH
         run: |
-          echo "PATH=${{ env.HOME }}/.cargo/bin:${{ env.PATH }}" | tee -a "$GITHUB_ENV"
+          echo "PATH=${HOME}/.cargo/bin:${PATH}" | tee -a "$GITHUB_ENV"
 
       - name: Install required cargo
         run: cargo install clippy-sarif sarif-fmt
