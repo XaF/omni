@@ -162,14 +162,14 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Download package.json from update job
-        if: needs.run-yarn-update.output.package_updates == 'true'
+        if: needs.run-yarn-update.outputs.package_updates == 'true'
         uses: actions/download-artifact@v3
         with:
           name: package-json
           path: website/
 
       - name: Download yarn.lock from update job
-        if: needs.run-yarn-update.output.yarn_updates == 'true'
+        if: needs.run-yarn-update.outputs.yarn_updates == 'true'
         uses: actions/download-artifact@v3
         with:
           name: yarn-lock
