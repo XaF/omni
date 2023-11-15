@@ -20,4 +20,5 @@ jobs:
     - name: Run labeler
       uses: actions/labeler@v4
       with:
+        configuration-path: .github/labeler.yaml
         dot: true
