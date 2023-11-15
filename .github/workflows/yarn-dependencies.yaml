@@ -74,8 +74,8 @@ jobs:
 
     outputs:
       any_update: ${{ env.UPDATES }}
-      yarn_updates: ${{ env.YARN_UPDATES }}
       package_updates: ${{ env.PACKAGE_UPDATES }}
+      yarn_updates: ${{ env.YARN_UPDATES }}
 
     steps:
       - name: Checkout commit
@@ -88,38 +88,30 @@ jobs:
           cache: yarn
           cache-dependency-path: 'website/yarn.lock'
 
+      - name: npm check updates
+        working-directory: website/
+        run: |
+          npx npm-check-updates --upgrade
+
       - name: yarn upgrade
         working-directory: website/
         run: |
           yarn upgrade
           npx yarn-deduplicate yarn.lock
 
-      - name: npm check updates
-        working-directory: website/
-        run: |
-          npx npm-check-updates --upgrade
-
       - name: Check if there is any update
         working-directory: website/
         run : |
           UPDATES=false
-          git diff --quiet yarn.lock && \
-            YARN_UPDATES=false || \
-            { YARN_UPDATES=true; UPDATES=true; }
           git diff --quiet package.json && \
             PACKAGE_UPDATES=false || \
             { PACKAGE_UPDATES=true; UPDATES=true; }
-          echo "YARN_UPDATES=${YARN_UPDATES}" | tee -a "$GITHUB_ENV"
+          git diff --quiet yarn.lock && \
+            YARN_UPDATES=false || \
+            { YARN_UPDATES=true; UPDATES=true; }
           echo "PACKAGE_UPDATES=${PACKAGE_UPDATES}" | tee -a "$GITHUB_ENV"
+          echo "YARN_UPDATES=${YARN_UPDATES}" | tee -a "$GITHUB_ENV"
           echo "UPDATES=${UPDATES}" | tee -a "$GITHUB_ENV"
-
-      - name: upload yarn.lock artifact for use in PR
-        if: ${{ env.YARN_UPDATES == 'true' }}
-        uses: actions/upload-artifact@v3
-        with:
-          name: yarn-lock
-          path: website/yarn.lock
-          retention-days: 1
 
       - name: upload package.json artifact for use in PR
         if: ${{ env.PACKAGE_UPDATES == 'true' }}
@@ -127,6 +119,14 @@ jobs:
         with:
           name: package-json
           path: website/package.json
+          retention-days: 1
+
+      - name: upload yarn.lock artifact for use in PR
+        if: ${{ env.YARN_UPDATES == 'true' }}
+        uses: actions/upload-artifact@v3
+        with:
+          name: yarn-lock
+          path: website/yarn.lock
           retention-days: 1
 
 
@@ -152,18 +152,18 @@ jobs:
       - name: Checkout commit
         uses: actions/checkout@v4
 
-      - name: Download yarn.lock from update job
-        if: needs.run-yarn-update.output.yarn_updates == 'true'
-        uses: actions/download-artifact@v3
-        with:
-          name: yarn-lock
-          path: website/
-
       - name: Download package.json from update job
         if: needs.run-yarn-update.output.package_updates == 'true'
         uses: actions/download-artifact@v3
         with:
           name: package-json
+          path: website/
+
+      - name: Download yarn.lock from update job
+        if: needs.run-yarn-update.output.yarn_updates == 'true'
+        uses: actions/download-artifact@v3
+        with:
+          name: yarn-lock
           path: website/
 
       - name: Craft commit and pull request details
