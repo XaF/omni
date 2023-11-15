@@ -109,7 +109,7 @@ jobs:
           token: ${{ github.token }}
           fromTag: ${{ github.sha }}
           toTag: ${{ steps.previous-release-tag.outputs.ref }}
-          excludeTypes: build,docs,other,style,chore,test,tests
+          excludeTypes: build,docs,other,style,chore,test,tests,refactor
           writeToFile: false
 
       - name: Create release

@@ -359,7 +359,7 @@ impl CloneCommand {
             .on_esc(requestty::OnEsc::Terminate)
             .message(format!(
                 "{} {}",
-                "omni:".to_string().light_cyan(),
+                "omni:".light_cyan(),
                 format!("Do you want to run {} ?", "omni up".to_string().underline()),
             ))
             .default(true)

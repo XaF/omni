@@ -177,8 +177,8 @@ impl ScopeCommand {
 
         eprintln!(
             "{} {} {}",
-            "omni:".to_string().light_cyan(),
-            "command not found:".to_string().red(),
+            "omni:".light_cyan(),
+            "command not found:".red(),
             argv.join(" ")
         );
 
@@ -298,7 +298,7 @@ impl ScopeCommand {
         }
 
         if !silent_failure {
-            omni_error!(format!("{}: No such repository", repo.to_string().yellow()));
+            omni_error!(format!("{}: No such repository", repo.yellow()));
         }
         exit(1);
     }

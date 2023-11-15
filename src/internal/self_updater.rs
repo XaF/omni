@@ -159,7 +159,7 @@ impl OmniRelease {
     fn check_and_update(&self) {
         let config = config(".");
 
-        let desc = format!("{} update:", "omni".to_string().light_cyan()).light_blue();
+        let desc = format!("{} update:", "omni".light_cyan()).light_blue();
         let progress_handler: Box<dyn ProgressHandler> = if ENV.interactive_shell {
             Box::new(SpinnerProgressHandler::new(desc, None))
         } else {
@@ -169,15 +169,15 @@ impl OmniRelease {
         progress_handler.progress("Checking for updates".to_string());
 
         if !self.is_newer() {
-            progress_handler.success_with_message("already up-to-date".to_string().light_black());
+            progress_handler.success_with_message("already up-to-date".light_black());
             return;
         }
 
         if config.path_repo_updates.self_update.is_false() {
             progress_handler.success_with_message(format!(
                 "{} version {} is available",
-                "omni:".to_string().light_cyan(),
-                self.version.to_string().light_blue(),
+                "omni:".light_cyan(),
+                self.version.light_blue(),
             ));
             return;
         }
@@ -190,9 +190,9 @@ impl OmniRelease {
                 .on_esc(requestty::OnEsc::Terminate)
                 .message(format!(
                     "{} version {} is available; {}",
-                    "omni:".to_string().light_cyan(),
-                    self.version.to_string().light_blue(),
-                    "do you want to install it?".to_string().yellow(),
+                    "omni:".light_cyan(),
+                    self.version.light_blue(),
+                    "do you want to install it?".yellow(),
                 ))
                 .choices(vec![
                     ('a', "Yes, always (update without asking in the future)"),
@@ -249,7 +249,7 @@ impl OmniRelease {
 
             panic!("Failed to replace current process with the new binary");
         } else {
-            progress_handler.success_with_message("already up-to-date".to_string().light_black());
+            progress_handler.success_with_message("already up-to-date".light_black());
         }
     }
 

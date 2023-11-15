@@ -59,8 +59,8 @@ impl HookEnvCommand {
             None => {
                 eprintln!(
                     "{} {} {}",
-                    "omni:".to_string().light_cyan(),
-                    "invalid export mode:".to_string().red(),
+                    "omni:".light_cyan(),
+                    "invalid export mode:".red(),
                     shell_type.to_str(),
                 );
                 exit(1);

@@ -187,7 +187,7 @@ impl UpConfigBundler {
         } else {
             progress_handler.clone().map(|progress_handler| {
                 progress_handler
-                    .success_with_message("skipping (nothing to do)".to_string().light_black())
+                    .success_with_message("skipping (nothing to do)".light_black())
             });
         }
 

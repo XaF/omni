@@ -314,7 +314,7 @@ impl TidyCommand {
 
             omni_info!(format!(
                 "use {} to organize them",
-                "--yes".to_string().light_blue()
+                "--yes".light_blue()
             ));
             exit(0);
         } else {
@@ -328,7 +328,7 @@ impl TidyCommand {
                 .on_esc(requestty::OnEsc::Terminate)
                 .message(format!(
                     "{} Found {} repositor{} to tidy up:",
-                    "omni:".to_string().light_cyan(),
+                    "omni:".light_cyan(),
                     format!("{}", repositories.len()).underline(),
                     if repositories.len() > 1 { "ies" } else { "y" },
                 ))
@@ -400,7 +400,7 @@ impl TidyCommand {
                 for repository in repos_to_organize.iter() {
                     printstr(format!(
                         "{} Skipping {}",
-                        "[✘]".to_string().light_red(),
+                        "[✘]".light_red(),
                         format!("{}", repository.to_string())
                     ));
                     progress_bar.as_ref().map(|pb| pb.inc(1));
@@ -510,14 +510,14 @@ impl TidyCommand {
                 Some(ref package) => format!(
                     "{}:{}",
                     "package".to_string().underline(),
-                    package.to_string().light_cyan(),
+                    package.light_cyan(),
                 ),
                 None => path_entry.as_string().light_cyan(),
             };
 
             omni_info!(format!(
                 "running {} in {}",
-                "omni up".to_string().light_yellow(),
+                "omni up".light_yellow(),
                 location,
             ));
 
@@ -746,7 +746,7 @@ impl TidyGitRepo {
 
         println(format!(
             "{} Moved {}",
-            "[✔]".to_string().light_green(),
+            "[✔]".light_green(),
             self.to_string(),
         ));
 
@@ -831,27 +831,27 @@ impl TidyGitRepo {
             if let Err(err) = result {
                 println(format!(
                     "{} Failed to update {} to {} in {}: {:?}",
-                    "[-]".to_string().light_black(),
-                    self.current_path.to_str().unwrap().to_string().light_red(),
+                    "[-]".light_black(),
+                    self.current_path.to_str().unwrap().light_red(),
                     self.expected_path
                         .to_str()
                         .unwrap()
                         .to_string()
                         .light_green(),
-                    file_path.to_string().light_yellow(),
+                    file_path.light_yellow(),
                     err,
                 ));
             } else {
                 println(format!(
                     "{} Updated {} to {} in {}",
-                    "[-]".to_string().light_black(),
-                    self.current_path.to_str().unwrap().to_string().light_red(),
+                    "[-]".light_black(),
+                    self.current_path.to_str().unwrap().light_red(),
                     self.expected_path
                         .to_str()
                         .unwrap()
                         .to_string()
                         .light_green(),
-                    file_path.to_string().light_yellow(),
+                    file_path.light_yellow(),
                 ));
             }
         }

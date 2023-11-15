@@ -18,7 +18,7 @@ macro_rules! omni_header {
 #[macro_export]
 macro_rules! omni_print {
     ($message:expr) => {
-        eprintln!("{} {}", "omni:".to_string().light_cyan(), $message,)
+        eprintln!("{} {}", "omni:".light_cyan(), $message,)
     };
 }
 
@@ -33,7 +33,7 @@ macro_rules! omni_info {
         };
         eprintln!(
             "{}",
-            format!("{}{} {}", "omni:".to_string().light_cyan(), cmd, $message)
+            format!("{}{} {}", "omni:".light_cyan(), cmd, $message)
         );
     };
     ($message:expr, $cmd:expr) => {
@@ -44,7 +44,7 @@ macro_rules! omni_info {
         };
         eprintln!(
             "{}",
-            format!("{}{} {}", "omni:".to_string().light_cyan(), cmd, $message)
+            format!("{}{} {}", "omni:".light_cyan(), cmd, $message)
         );
     };
 }
@@ -62,8 +62,8 @@ macro_rules! omni_warning {
             "{}",
             format!(
                 "{}{} {}",
-                "omni:".to_string().light_cyan(),
-                format!("{} warning:", cmd).to_string().yellow(),
+                "omni:".light_cyan(),
+                format!("{} warning:", cmd).yellow(),
                 $message
             )
         );
@@ -78,8 +78,8 @@ macro_rules! omni_warning {
             "{}",
             format!(
                 "{}{} {}",
-                "omni:".to_string().light_cyan(),
-                format!("{} warning:", cmd).to_string().yellow(),
+                "omni:".light_cyan(),
+                format!("{} warning:", cmd).yellow(),
                 $message
             )
         );
@@ -99,8 +99,8 @@ macro_rules! omni_error {
             "{}",
             format!(
                 "{}{} {}",
-                "omni:".to_string().light_cyan(),
-                format!("{} command failed:", cmd).to_string().red(),
+                "omni:".light_cyan(),
+                format!("{} command failed:", cmd).red(),
                 $message
             )
         );
@@ -115,8 +115,8 @@ macro_rules! omni_error {
             "{}",
             format!(
                 "{}{} {}",
-                "omni:".to_string().light_cyan(),
-                format!("{} command failed:", cmd).to_string().red(),
+                "omni:".light_cyan(),
+                format!("{} command failed:", cmd).red(),
                 $message
             )
         );

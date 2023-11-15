@@ -307,8 +307,8 @@ impl CommandLoader {
                         .on_esc(requestty::OnEsc::Terminate)
                         .message(format!(
                             "{} {}",
-                            "omni:".to_string().light_cyan(),
-                            "Did you mean?".to_string().yellow()
+                            "omni:".light_cyan(),
+                            "Did you mean?".yellow()
                         ))
                         .choices(sub_names.iter())
                         .should_loop(false)
@@ -320,9 +320,9 @@ impl CommandLoader {
                         .on_esc(requestty::OnEsc::Terminate)
                         .message(format!(
                             "{} {} {} {}",
-                            "omni:".to_string().light_cyan(),
-                            "Did you mean?".to_string().yellow(),
-                            "·".to_string().light_black(),
+                            "omni:".light_cyan(),
+                            "Did you mean?".yellow(),
+                            "·".light_black(),
                             sub_names[0].normal(),
                         ))
                         .default(true)
@@ -412,8 +412,8 @@ impl CommandLoader {
                     .on_esc(requestty::OnEsc::Terminate)
                     .message(format!(
                         "{} {}",
-                        "omni:".to_string().light_cyan(),
-                        "Did you mean?".to_string().yellow()
+                        "omni:".light_cyan(),
+                        "Did you mean?".yellow()
                     ))
                     .choices(with_score.iter().map(|found| found.command.flat_name()))
                     .should_loop(false)
@@ -425,9 +425,9 @@ impl CommandLoader {
                     .on_esc(requestty::OnEsc::Terminate)
                     .message(format!(
                         "{} {} {} {}",
-                        "omni:".to_string().light_cyan(),
-                        "Did you mean?".to_string().yellow(),
-                        "·".to_string().light_black(),
+                        "omni:".light_cyan(),
+                        "Did you mean?".yellow(),
+                        "·".light_black(),
                         with_score[0].command.flat_name().normal(),
                     ))
                     .default(true)

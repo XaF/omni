@@ -342,7 +342,7 @@ pub fn config_bootstrap(options: Option<ConfigBootstrapOptions>) -> Result<bool,
                 omni_info!("shell integration detected in this shell");
                 omni_info!(format!(
                     "still proceeding as requested through {}",
-                    "--shell".to_string().light_cyan()
+                    "--shell".light_cyan()
                 ));
             }
         }
@@ -353,7 +353,7 @@ pub fn config_bootstrap(options: Option<ConfigBootstrapOptions>) -> Result<bool,
             Shell::Unknown(_) | Shell::Posix => {
                 omni_warning!(format!(
                     "omni does not provide a shell integration for your shell ({})",
-                    current_shell.to_str().to_string().light_cyan(),
+                    current_shell.to_str().light_cyan(),
                 ));
                 omni_warning!("you can still use omni, but dynamic environment and easy");
                 omni_warning!("navigation will not be available");
@@ -386,7 +386,7 @@ pub fn config_bootstrap(options: Option<ConfigBootstrapOptions>) -> Result<bool,
                             if line.trim() == hook {
                                 omni_info!(format!(
                                     "omni hook already present in {}",
-                                    rc_file.to_string_lossy().to_string().light_blue(),
+                                    rc_file.to_string_lossy().light_blue(),
                                 ));
                                 return Ok(true);
                             }
@@ -433,7 +433,7 @@ pub fn config_bootstrap(options: Option<ConfigBootstrapOptions>) -> Result<bool,
 
                 omni_info!(format!(
                     "omni hook added to {}; remember to reload your shell",
-                    rc_file.to_string_lossy().to_string().light_blue(),
+                    rc_file.to_string_lossy().light_blue(),
                 ));
             }
             Err(err) => {
@@ -580,7 +580,7 @@ fn question_repo_path_format(worktree: String) -> (String, bool) {
         .transform(|selected, _, backend| {
             // Let's stop at the first parenthesis we encounter
             let selected = selected.text.split('(').next().unwrap_or(&selected.text);
-            write!(backend, "{}", selected.to_string().cyan())
+            write!(backend, "{}", selected.cyan())
         })
         .build();
 
@@ -595,7 +595,7 @@ fn question_repo_path_format(worktree: String) -> (String, bool) {
                         .default("%{host}/%{org}/%{repo}")
                         .validate(|format, _| {
                             if format.is_empty() {
-                                return Err("You need to provide a format".to_string().light_red());
+                                return Err("You need to provide a format".light_red());
                             }
 
                             // Check that at least %{repo} exists
@@ -812,7 +812,7 @@ fn question_org(worktree: &str) -> (Vec<OrgConfig>, bool) {
                             org,
                             if hosts.contains(org) {
                                 // Unicode warning sign
-                                " \u{26A0}\u{FE0F}  (broad trust)".to_string().light_black()
+                                " \u{26A0}\u{FE0F}  (broad trust)".light_black()
                             } else {
                                 "".to_string()
                             }
@@ -931,17 +931,17 @@ fn question_rc_file(current_shell: &Shell) -> (PathBuf, bool) {
             if canonicalized.exists() {
                 // Check if the path is a file
                 if !canonicalized.is_file() {
-                    return Err("The provided path must be a file".to_string().light_red());
+                    return Err("The provided path must be a file".light_red());
                 }
 
                 // Check if the file is writeable
                 match canonicalized.metadata() {
                     Ok(metadata) => {
                         if metadata.permissions().readonly() {
-                            return Err("The file must be writeable".to_string().light_red());
+                            return Err("The file must be writeable".light_red());
                         }
                     }
-                    Err(err) => return Err(err.to_string().light_red()),
+                    Err(err) => return Err(err.light_red()),
                 }
 
                 return Ok(());

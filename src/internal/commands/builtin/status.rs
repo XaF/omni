@@ -204,11 +204,11 @@ impl StatusCommand {
             for path in &omnipath {
                 if let Some(package) = &path.package {
                     let mut pkg_string =
-                        format!("{} {}", "package:".to_string().light_cyan(), package);
+                        format!("{} {}", "package:".light_cyan(), package);
                     if !path.path.is_empty() {
                         pkg_string.push_str(&format!(
                             ", {} {}",
-                            "path:".to_string().light_cyan(),
+                            "path:".light_cyan(),
                             path.path
                         ));
                     }
@@ -239,7 +239,7 @@ impl StatusCommand {
             .map(|line| {
                 if let Some(captures) = regex_keys.captures(line) {
                     let key = captures.get(3).unwrap().as_str();
-                    let colored_key = key.to_string().light_cyan();
+                    let colored_key = key.light_cyan();
                     line.replace(key, &colored_key)
                 } else {
                     line.to_string()

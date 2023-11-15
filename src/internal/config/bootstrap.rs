@@ -25,7 +25,7 @@ pub fn ensure_bootstrap() {
             omni_print!("Alright, I won't write your configuration for now \u{1F44D}");
             omni_print!(format!(
                 "You can always run {} later.",
-                "omni config bootstrap".to_string().light_yellow()
+                "omni config bootstrap".light_yellow()
             ));
         }
         Err(err) => {

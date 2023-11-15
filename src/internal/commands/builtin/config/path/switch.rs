@@ -380,7 +380,7 @@ impl ConfigPathSwitchCommand {
                     omni_info!(format!(
                         "{} is already using the {} source",
                         repo_id.light_blue(),
-                        "📦 package".to_string().light_green(),
+                        "📦 package".light_green(),
                     ));
                     exit(0);
                 }
@@ -392,7 +392,7 @@ impl ConfigPathSwitchCommand {
                     omni_info!(format!(
                         "{} is already using the {} source",
                         repo_id.light_blue(),
-                        "🌳 worktree".to_string().light_green(),
+                        "🌳 worktree".light_green(),
                     ));
                     exit(0);
                 }
@@ -468,7 +468,7 @@ impl ConfigPathSwitchCommand {
 
             omni_info!(format!(
                 "Running {} to make sure the package is up to date",
-                "omni up".to_string().light_yellow().underline(),
+                "omni up".light_yellow().underline(),
             ));
 
             let up_cmd = UpCommand::new_command();

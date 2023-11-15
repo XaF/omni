@@ -171,11 +171,7 @@ impl HelpCommand {
             exit(0);
         }
 
-        omni_print!(format!(
-            "{} {}",
-            "command not found:".to_string().red(),
-            argv.join(" ")
-        ));
+        omni_print!(format!("{} {}", "command not found:".red(), argv.join(" ")));
         exit(1);
     }
 
@@ -193,9 +189,9 @@ impl HelpCommand {
             omni_header!(),
             "Usage:".to_string().italic().bold(),
             "omni".to_string().bold(),
-            "<command>".to_string().cyan().bold(),
-            "[options]".to_string().cyan().bold(),
-            "ARG...".to_string().cyan().bold(),
+            "<command>".cyan().bold(),
+            "[options]".cyan().bold(),
+            "ARG...".cyan().bold(),
         );
 
         self.print_categorized_command_help(vec![]);
@@ -247,7 +243,7 @@ impl HelpCommand {
 
         eprintln!(
             "\n{} {}",
-            "Source:".to_string().light_black(),
+            "Source:".light_black(),
             command.help_source().underline()
         );
     }
@@ -354,7 +350,7 @@ impl HelpCommand {
             };
             let num_folded = match cmd.num_folded() {
                 0 => "".to_string(),
-                _ => " ▶".to_string().light_black(),
+                _ => " ▶".light_black(),
             };
 
             let missing_just = ljust - all_names_len - num_folded_len;
