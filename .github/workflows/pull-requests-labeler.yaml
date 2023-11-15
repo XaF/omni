@@ -21,4 +21,5 @@ jobs:
       uses: actions/labeler@v4
       with:
         configuration-path: .github/labeler.yaml
+        sync-labels: true
         dot: true
