@@ -105,10 +105,10 @@ jobs:
           UPDATES=false
           git diff --quiet yarn.lock && \
             YARN_UPDATES=false || \
-            (YARN_UPDATES=true && UPDATES=true)
+            { YARN_UPDATES=true; UPDATES=true; }
           git diff --quiet package.json && \
             PACKAGE_UPDATES=false || \
-            (PACKAGE_UPDATES=true && UPDATES=true)
+            { PACKAGE_UPDATES=true; UPDATES=true; }
           echo "YARN_UPDATES=${YARN_UPDATES}" | tee -a "$GITHUB_ENV"
           echo "PACKAGE_UPDATES=${PACKAGE_UPDATES}" | tee -a "$GITHUB_ENV"
           echo "UPDATES=${UPDATES}" | tee -a "$GITHUB_ENV"
