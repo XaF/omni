@@ -168,14 +168,14 @@ jobs:
 
       - name: Craft commit and pull request details
         run: |
-          packages_diff=$(git diff package.json | \
+          packages_diff=$(git diff website/package.json | \
             gawk '
               /^[-+]\s*"[^"]*":\s*"[^"]*"/ {
                 match($0, /([-+])\s*"([^"]*)":\s*"[^0-9]*([0-9][^"]*)"/, arr);
                 print "1," arr[1] "," arr[2] "," arr[3];
               }')
 
-          yarn_lock_diff=$(git diff yarn.lock | \
+          yarn_lock_diff=$(git diff website/yarn.lock | \
             gawk '
               /^[-+ ]"?[^" ]+@[^" ]+"?:/ {
                 match($0, /^[-+ ]"?([^" ]+)@/, arr);
