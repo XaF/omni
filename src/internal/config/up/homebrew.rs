@@ -363,7 +363,7 @@ impl HomebrewTap {
         if self.is_tapped() {
             self.update_cache(progress_handler.clone());
             progress_handler.clone().map(|progress_handler| {
-                progress_handler.success_with_message("already tapped".to_string().light_black())
+                progress_handler.success_with_message("already tapped".light_black())
             });
             return Ok(());
         }
@@ -419,7 +419,7 @@ impl HomebrewTap {
         if !self.is_tapped() {
             progress_handler.clone().map(|progress_handler| {
                 progress_handler
-                    .success_with_message("not currently tapped".to_string().light_black())
+                    .success_with_message("not currently tapped".light_black())
             });
             return Ok(());
         }
@@ -688,7 +688,7 @@ impl HomebrewInstall {
         if installed && self.version.is_some() {
             self.update_cache(progress_handler.clone());
             progress_handler.clone().map(|progress_handler| {
-                progress_handler.success_with_message("already installed".to_string().light_black())
+                progress_handler.success_with_message("already installed".light_black())
             });
             return Ok(());
         }
@@ -748,7 +748,7 @@ impl HomebrewInstall {
         let installed = self.is_installed();
         if !installed {
             progress_handler.clone().map(|progress_handler| {
-                progress_handler.success_with_message("not installed".to_string().light_black())
+                progress_handler.success_with_message("not installed".light_black())
             });
             return Ok(());
         }
@@ -798,7 +798,7 @@ impl HomebrewInstall {
         }
 
         progress_handler.clone().map(|progress_handler| {
-            progress_handler.success_with_message("uninstalled".to_string().light_green());
+            progress_handler.success_with_message("uninstalled".light_green());
         });
 
         Ok(())

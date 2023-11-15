@@ -17,7 +17,7 @@ pub fn ensure_bootstrap() {
     omni_print!("This seems to be the first time you're using omni.");
     omni_print!("Let's get you started with a few questions.");
 
-    match config_bootstrap() {
+    match config_bootstrap(None) {
         Ok(true) => {
             omni_print!("All done! Your configuration file has been written \u{1F389}");
         }
@@ -25,7 +25,7 @@ pub fn ensure_bootstrap() {
             omni_print!("Alright, I won't write your configuration for now \u{1F44D}");
             omni_print!(format!(
                 "You can always run {} later.",
-                "omni config bootstrap".to_string().light_yellow()
+                "omni config bootstrap".light_yellow()
             ));
         }
         Err(err) => {

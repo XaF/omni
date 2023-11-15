@@ -91,7 +91,7 @@ impl UpConfigCustom {
         if self.met().unwrap_or(false) {
             progress_handler.clone().map(|progress_handler| {
                 progress_handler
-                    .success_with_message("skipping (already met)".to_string().light_black())
+                    .success_with_message("skipping (already met)".light_black())
             });
             return Ok(());
         }
@@ -137,13 +137,13 @@ impl UpConfigCustom {
             if !self.met().unwrap_or(true) {
                 progress_handler.clone().map(|progress_handler| {
                     progress_handler
-                        .success_with_message("skipping (not met)".to_string().light_black())
+                        .success_with_message("skipping (not met)".light_black())
                 });
                 return Ok(());
             }
 
             progress_handler.clone().map(|progress_handler| {
-                progress_handler.progress("reverting".to_string().light_black())
+                progress_handler.progress("reverting".light_black())
             });
 
             if let Err(err) = self.unmeet(progress_handler.clone()) {

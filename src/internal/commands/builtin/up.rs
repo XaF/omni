@@ -849,14 +849,14 @@ impl UpCommand {
                 Some(ref package) => format!(
                     "{}:{}",
                     "package".to_string().underline(),
-                    package.to_string().light_cyan(),
+                    package.light_cyan(),
                 ),
                 None => path_entry.as_string().light_cyan(),
             };
 
             omni_info!(format!(
                 "running {} in {}",
-                "omni up".to_string().light_yellow(),
+                "omni up".light_yellow(),
                 location,
             ));
 
@@ -993,7 +993,7 @@ impl UpCommand {
 
         let total = to_clone.len();
         for (idx, repo) in to_clone.iter_mut().enumerate() {
-            let desc = format!("cloning {}:", repo.clone_url.to_string().light_cyan()).light_blue();
+            let desc = format!("cloning {}:", repo.clone_url.light_cyan()).light_blue();
             let progress = Some((idx + 1, total));
             let progress_handler: Box<dyn ProgressHandler> = if ENV.interactive_shell {
                 Box::new(SpinnerProgressHandler::new(desc, progress))
@@ -1011,7 +1011,7 @@ impl UpCommand {
                 } else {
                     omni_error!(format!(
                         "Unable to determine package path for {}; skipping",
-                        repo.clone_url.to_string().light_green()
+                        repo.clone_url.light_green()
                     ));
                     continue;
                 }
@@ -1118,16 +1118,16 @@ impl UpCommand {
                 } else {
                     "🌳".to_string()
                 },
-                repo.clone_url.to_string().light_green(),
+                repo.clone_url.light_green(),
                 format!(
                     "{} {}{}",
-                    "(from".to_string().light_black(),
+                    "(from".light_black(),
                     repo.suggested_by
                         .iter()
-                        .map(|x| x.to_string().light_blue())
+                        .map(|x| x.light_blue())
                         .collect::<Vec<_>>()
                         .join(", "),
-                    ")".to_string().light_black(),
+                    ")".light_black(),
                 )
                 .to_string()
                 .italic(),

@@ -335,8 +335,8 @@ impl OrgLoader {
                     .on_esc(requestty::OnEsc::Terminate)
                     .message(format!(
                         "{} {}",
-                        "omni:".to_string().light_cyan(),
-                        "Did you mean?".to_string().yellow()
+                        "omni:".light_cyan(),
+                        "Did you mean?".yellow()
                     ))
                     .choices(
                         with_score
@@ -352,9 +352,9 @@ impl OrgLoader {
                     .on_esc(requestty::OnEsc::Terminate)
                     .message(format!(
                         "{} {} {} {}",
-                        "omni:".to_string().light_cyan(),
-                        "Did you mean?".to_string().yellow(),
-                        "·".to_string().light_black(),
+                        "omni:".light_cyan(),
+                        "Did you mean?".yellow(),
+                        "·".light_black(),
                         with_score[0].abspath.to_str().unwrap().to_string().normal(),
                     ))
                     .default(true)

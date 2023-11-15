@@ -7,9 +7,9 @@ use crate::internal::commands::builtin::HelpCommand;
 use crate::internal::commands::command_loader;
 use crate::internal::config::CommandSyntax;
 use crate::internal::config::SyntaxOptArg;
+use crate::internal::env::Shell;
 use crate::internal::git::ORG_LOADER;
 use crate::internal::user_interface::StringColor;
-use crate::internal::ENV;
 use crate::omni_error;
 
 #[derive(Debug, Clone)]
@@ -177,8 +177,8 @@ impl ScopeCommand {
 
         eprintln!(
             "{} {} {}",
-            "omni:".to_string().light_cyan(),
-            "command not found:".to_string().red(),
+            "omni:".light_cyan(),
+            "command not found:".red(),
             argv.join(" ")
         );
 
@@ -261,7 +261,7 @@ impl ScopeCommand {
 
         // Get all the repositories per org
         if !path_only {
-            let add_space = if ENV.shell != "fish" { " " } else { "" };
+            let add_space = if Shell::current().is_fish() { " " } else { "" };
             for match_repo in ORG_LOADER.complete(&repo) {
                 println!("{}{}", match_repo, add_space);
             }
@@ -298,7 +298,7 @@ impl ScopeCommand {
         }
 
         if !silent_failure {
-            omni_error!(format!("{}: No such repository", repo.to_string().yellow()));
+            omni_error!(format!("{}: No such repository", repo.yellow()));
         }
         exit(1);
     }

@@ -2,8 +2,7 @@ use std::process::exit;
 
 use crate::internal::config::CommandSyntax;
 use crate::internal::dynenv::update_dynamic_env;
-use crate::internal::dynenv::DynamicEnvExportMode;
-use crate::internal::env::determine_shell;
+use crate::internal::env::Shell;
 use crate::internal::StringColor;
 
 #[derive(Debug, Clone)]
@@ -47,25 +46,26 @@ impl HookEnvCommand {
 
     pub fn exec(&self, argv: Vec<String>) {
         let shell_type = if argv.len() > 2 {
-            argv[2].clone()
+            Shell::from_str(&argv[2])
         } else {
-            determine_shell()
+            Shell::from_env()
         };
-        let export_mode = match shell_type.as_ref() {
-            "posix" | "bash" | "zsh" => DynamicEnvExportMode::Posix,
-            "fish" => DynamicEnvExportMode::Fish,
-            _ => {
+
+        match shell_type.dynenv_export_mode() {
+            Some(export_mode) => {
+                update_dynamic_env(export_mode);
+                exit(0);
+            }
+            None => {
                 eprintln!(
                     "{} {} {}",
-                    "omni:".to_string().light_cyan(),
-                    "invalid export mode:".to_string().red(),
-                    argv[2]
+                    "omni:".light_cyan(),
+                    "invalid export mode:".red(),
+                    shell_type.to_str(),
                 );
                 exit(1);
             }
-        };
-        update_dynamic_env(export_mode.clone());
-        exit(0);
+        }
     }
 
     pub fn autocompletion(&self) -> bool {

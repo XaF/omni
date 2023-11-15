@@ -13,6 +13,7 @@ use once_cell::sync::OnceCell;
 use petname;
 
 use crate::internal::config::OrgConfig;
+use crate::internal::dynenv::DynamicEnvExportMode;
 use crate::internal::git::id_from_git_url;
 use crate::internal::git::safe_git_url_parse;
 use crate::internal::user_interface::StringColor;
@@ -42,6 +43,9 @@ lazy_static! {
         }
         None
     };
+
+    #[derive(Debug)]
+    static ref CURRENT_SHELL: Shell = Shell::from_env();
 }
 
 pub fn git_env<T: AsRef<str>>(path: T) -> GitRepoEnv {
@@ -141,7 +145,7 @@ pub fn workdir_or_init<T: AsRef<str>>(path: T) -> Result<WorkDirEnv, String> {
 
             omni_warning!(format!(
                 "generated workdir id {}",
-                id.to_string().light_yellow()
+                id.light_yellow()
             ));
         }
         Err(err) => {
@@ -175,7 +179,6 @@ pub struct Env {
     pub git_by_path: GitRepoEnvByPath,
 
     pub interactive_shell: bool,
-    pub shell: String,
 
     pub omnipath: Vec<String>,
     pub omni_cmd_file: Option<String>,
@@ -308,7 +311,6 @@ impl Env {
             xdg_data_home: xdg_data_home,
 
             interactive_shell: std::io::stdout().is_terminal(),
-            shell: determine_shell(),
 
             git_by_path: GitRepoEnvByPath::new(),
 
@@ -682,7 +684,82 @@ impl WorkDirEnv {
     }
 }
 
-pub fn determine_shell() -> String {
+#[derive(Debug, Clone)]
+pub enum Shell {
+    Bash,
+    Zsh,
+    Fish,
+    Posix,
+    Unknown(String),
+}
+
+impl Shell {
+    pub fn current() -> Self {
+        CURRENT_SHELL.clone()
+    }
+
+    pub fn from_env() -> Self {
+        let shell = determine_shell();
+        Self::from_str(&shell)
+    }
+
+    pub fn from_str(shell: &str) -> Self {
+        match shell.to_lowercase().as_str() {
+            "bash" => Shell::Bash,
+            "zsh" => Shell::Zsh,
+            "fish" => Shell::Fish,
+            "posix" => Shell::Posix,
+            _ => Shell::Unknown(shell.to_string()),
+        }
+    }
+
+    pub fn to_str(&self) -> &str {
+        match self {
+            Shell::Bash => "bash",
+            Shell::Zsh => "zsh",
+            Shell::Fish => "fish",
+            Shell::Posix => "posix",
+            Shell::Unknown(shell) => shell,
+        }
+    }
+
+    pub fn dynenv_export_mode(&self) -> Option<DynamicEnvExportMode> {
+        match self {
+            Shell::Bash | Shell::Zsh | Shell::Posix => Some(DynamicEnvExportMode::Posix),
+            Shell::Fish => Some(DynamicEnvExportMode::Fish),
+            Shell::Unknown(_) => None,
+        }
+    }
+
+    pub fn is_fish(&self) -> bool {
+        match self {
+            Shell::Fish => true,
+            _ => false,
+        }
+    }
+
+    pub fn default_rc_file(&self) -> PathBuf {
+        match self {
+            Shell::Bash => PathBuf::from(user_home()).join(".bashrc"),
+            Shell::Zsh => PathBuf::from(user_home()).join(".zshrc"),
+            Shell::Fish => PathBuf::from(&ENV.xdg_config_home).join("fish/omni.fish"),
+            Shell::Posix => PathBuf::from("/dev/null"),
+            Shell::Unknown(_) => PathBuf::from("/dev/null"),
+        }
+    }
+
+    pub fn hook_init_command(&self) -> String {
+        match self {
+            Shell::Bash => format!("eval \"$(omni hook init bash)\""),
+            Shell::Zsh => format!("eval \"$(omni hook init zsh)\""),
+            Shell::Fish => format!("omni hook init fish | source"),
+            Shell::Posix => format!(""),
+            Shell::Unknown(_) => format!(""),
+        }
+    }
+}
+
+fn determine_shell() -> String {
     for var in &["OMNI_SHELL", "SHELL"] {
         if let Some(shell) = std::env::var_os(var) {
             let shell = shell.to_str().unwrap();

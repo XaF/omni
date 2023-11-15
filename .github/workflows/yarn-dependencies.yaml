@@ -1,0 +1,333 @@
+name: Bump dependencies in yarn.lock and package.json
+
+
+on:
+  # Run on push to main
+  push:
+    branches:
+      - main
+    paths:
+      - website/package.json
+      - website/yarn.lock
+
+  # Run weekly
+  schedule:
+    - cron: '0 0 * * Sun'
+
+  # Needed so we can run it manually
+  workflow_dispatch:
+
+
+permissions:
+  contents: read
+
+
+defaults:
+  run:
+    shell: bash
+
+
+env:
+  # Which branch to use to make the pull request
+  PR_BRANCH: auto/yarn_update
+
+jobs:
+  check-pull-request:
+    name: Check if the pull request exists
+
+    runs-on: ubuntu-latest
+
+    if: github.repository_owner == 'XaF'
+
+    permissions:
+      contents: read
+      pull-requests: read
+
+    outputs:
+      pull_request_state: ${{ env.PR_STATE }}
+      should_run: ${{ github.event_name != 'push' || env.PR_STATE == 'OPEN' }}
+
+    steps:
+      - name: Checkout commit
+        uses: actions/checkout@v4
+
+      - name: Check if pull request already exists
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          STATE=$(gh pr view "${{ env.PR_BRANCH }}" \
+                    --repo "${{ github.repository }}" \
+                    --json state --jq '.state' || \
+                  echo "NOT FOUND")
+
+          echo "PR_STATE=${STATE}" | tee -a "$GITHUB_ENV"
+
+  run-yarn-update:
+    name: Update yarn dependencies
+
+    runs-on: ubuntu-latest
+
+    needs:
+      - check-pull-request
+
+    if: needs.check-pull-request.outputs.should_run == 'true'
+
+    outputs:
+      any_update: ${{ env.UPDATES }}
+      package_updates: ${{ env.PACKAGE_UPDATES }}
+      yarn_updates: ${{ env.YARN_UPDATES }}
+
+    steps:
+      - name: Checkout commit
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '>=16.14 <20.6.0 || >=20.6.1'
+          cache: yarn
+          cache-dependency-path: 'website/yarn.lock'
+
+      - name: npm check updates
+        working-directory: website/
+        run: |
+          npx npm-check-updates --upgrade | tee npm-check-updates.out
+          if grep --quiet 'yarn install' npm-check-updates.out; then
+            echo "NEEDS_YARN_INSTALL=true" | tee -a "$GITHUB_ENV"
+          fi
+
+      - name: yarn install
+        if: ${{ env.NEEDS_YARN_INSTALL == 'true' }}
+        working-directory: website/
+        run: |
+          yarn install
+
+      - name: yarn upgrade
+        working-directory: website/
+        run: |
+          yarn upgrade
+          npx yarn-deduplicate yarn.lock
+
+      - name: Check if there is any update
+        working-directory: website/
+        run : |
+          UPDATES=false
+          git diff --quiet package.json && \
+            PACKAGE_UPDATES=false || \
+            { PACKAGE_UPDATES=true; UPDATES=true; }
+          git diff --quiet yarn.lock && \
+            YARN_UPDATES=false || \
+            { YARN_UPDATES=true; UPDATES=true; }
+          echo "PACKAGE_UPDATES=${PACKAGE_UPDATES}" | tee -a "$GITHUB_ENV"
+          echo "YARN_UPDATES=${YARN_UPDATES}" | tee -a "$GITHUB_ENV"
+          echo "UPDATES=${UPDATES}" | tee -a "$GITHUB_ENV"
+
+      - name: upload package.json artifact for use in PR
+        if: ${{ env.PACKAGE_UPDATES == 'true' }}
+        uses: actions/upload-artifact@v3
+        with:
+          name: package-json
+          path: website/package.json
+          retention-days: 1
+
+      - name: upload yarn.lock artifact for use in PR
+        if: ${{ env.YARN_UPDATES == 'true' }}
+        uses: actions/upload-artifact@v3
+        with:
+          name: yarn-lock
+          path: website/yarn.lock
+          retention-days: 1
+
+
+  create-or-update-pr:
+    name: Create or update pull-request
+
+    runs-on: ubuntu-latest
+
+    needs:
+      - check-pull-request
+      - run-yarn-update
+
+    if: needs.check-pull-request.outputs.should_run == 'true' && needs.run-yarn-update.outputs.any_update == 'true'
+
+    env:
+      PR_TITLE: "chore(deps): 📦 yarn update"
+
+    permissions:
+      contents: write
+      pull-requests: write
+
+    steps:
+      - name: Checkout commit
+        uses: actions/checkout@v4
+
+      - name: Download package.json from update job
+        if: needs.run-yarn-update.outputs.package_updates == 'true'
+        uses: actions/download-artifact@v3
+        with:
+          name: package-json
+          path: website/
+
+      - name: Download yarn.lock from update job
+        if: needs.run-yarn-update.outputs.yarn_updates == 'true'
+        uses: actions/download-artifact@v3
+        with:
+          name: yarn-lock
+          path: website/
+
+      - name: Craft commit and pull request details
+        run: |
+          packages_diff=$(git diff website/package.json | \
+            gawk '
+              /^[-+]\s*"[^"]*":\s*"[^"]*"/ {
+                match($0, /([-+])\s*"([^"]*)":\s*"[^0-9]*([0-9][^"]*)"/, arr);
+                print "1," arr[1] "," arr[2] "," arr[3];
+              }')
+
+          yarn_lock_diff=$(git diff website/yarn.lock | \
+            gawk '
+              /^[-+ ]"?[^" ]+@[^" ]+"?:/ {
+                match($0, /^[-+ ]"?([^" ]+)@/, arr);
+                pkg=arr[1];
+              }
+              /^[-+]  version "[^"]*"$/ {
+                match($0, /^([+-])  version "([^"]*)"$/, arr);
+                operation=arr[1];
+                version=arr[2];
+                print "0," operation "," pkg "," version;
+              }')
+
+          ( echo "${packages_diff}"; echo "${yarn_lock_diff}" ) | \
+            sort -t, -k1,1rn -k3,3 -k2,2r | \
+            gawk -F, '
+              BEGIN {
+                pkg="";
+                prev_version="`null`";
+                new_version="`null`";
+                prev_version_raw="null";
+                new_version_raw="null";
+
+                cur="";
+                print "${{ env.PR_TITLE }}" > "commit_body.txt";
+                print "# Yarn updates" > "pull_request_body.md";
+              }
+              {
+                if (pkg != $3) {
+                  if (pkg != "") {
+                    print "- " pkg " (" prev_version_raw " -> " new_version_raw ")" >> "commit_body.txt";
+                    print "- [`" pkg "`](" pkg_url ") (" prev_version " -> " new_version ")" >> "pull_request_body.md";
+                    prev_version="`null`";
+                    new_version="`null`";
+                    prev_version_raw="null";
+                    new_version_raw="null";
+                  }
+
+                  pkg=$3;
+                  pkg_url="https://www.npmjs.com/package/" pkg;
+                }
+
+                if (cur != $1) {
+                  print "\n" ($1 == 1 ? "Direct" : "Indirect") " dependencies:" >> "commit_body.txt";
+                  print "\n## " ($1 == 1 ? "Direct" : "Indirect") " dependencies\n" >> "pull_request_body.md";
+                  cur=$1;
+                }
+
+                if ($2 == "+") {
+                  new_version="[`v" $4 "`](" pkg_url "/v/" $4 ")";
+                  new_version_raw="v" $4;
+                } else if ($2 == "-") {
+                  prev_version="[`v" $4 "`](" pkg_url "/v/" $4 ")";
+                  prev_version_raw="v" $4;
+                }
+              }
+              END {
+                if (pkg != "") {
+                  print "- " pkg " (" prev_version_raw " -> " new_version_raw ")" >> "commit_body.txt";
+                  print "- [`" pkg "`](" pkg_url ") (" prev_version " -> " new_version ")" >> "pull_request_body.md";
+                }
+              }'
+
+      - name: Truncate pull request body if necessary
+        run: |
+          gawk -v limit=59990 '
+            {
+              print; count += length($0) + 1
+            }
+            count > limit {
+              print "\n`[snip]`";
+              exit
+            }' pull_request_body.md > pull_request_body_trunc.md
+          mv pull_request_body_trunc.md pull_request_body.md
+
+      - name: Print commit message
+        run: |
+          cat commit_body.txt
+
+      - name: Print pull request body
+        run: |
+          cat pull_request_body.md
+
+      - name: git commit
+        run: |
+          git config user.name github-actions
+          git config user.email github-actions@github.com
+          git switch --force-create "${{ env.PR_BRANCH }}"
+          git add website/yarn.lock website/package.json
+          git commit --no-verify --file=commit_body.txt
+
+      - name: git push
+        run: |
+          git push --no-verify --force --set-upstream origin "${{ env.PR_BRANCH }}"
+
+      - name: Create or update pull-request
+        env:
+          GH_TOKEN: ${{ secrets.REPOSITORY_DISPATCH_TOKEN }}
+          PR_STATE: ${{ needs.check-pull-request.outputs.pull_request_state }}
+        run: |
+          if [[ "$PR_STATE" != "OPEN" ]]; then
+            gh pr create \
+              --title "${{ env.PR_TITLE }}" \
+              --body-file pull_request_body.md \
+              --repo "${{ github.repository }}" \
+              --label dependencies \
+              --label javascript
+          else
+            gh pr edit "${{ env.PR_BRANCH }}" \
+              --title "${{ env.PR_TITLE }}" \
+              --body-file pull_request_body.md \
+              --repo "${{ github.repository }}" \
+              --add-label dependencies \
+              --add-label javascript
+          fi
+
+
+  close-pr:
+    name: Close pull-request
+
+    runs-on: ubuntu-latest
+
+    needs:
+      - check-pull-request
+      - run-yarn-update
+
+    if: needs.check-pull-request.outputs.should_run == 'true' && needs.run-yarn-update.outputs.any_update == 'false' && needs.check-pull-request.outputs.pull_request_state == 'OPEN'
+
+    env:
+      PR_CLOSING_COMMENT: "Superseded. No more dependencies to be updated for now."
+
+    permissions:
+      contents: write
+      pull-requests: write
+
+    steps:
+      - name: Checkout commit
+        uses: actions/checkout@v4
+
+      - name: Close pull-request
+        env:
+          GITHUB_TOKEN: ${{ secrets.REPOSITORY_DISPATCH_TOKEN }}
+        run: |
+          gh pr close \
+            --title "${{ env.PR_TITLE }}" \
+            --comment "${{ env.PR_CLOSING_COMMENT }}" \
+            --delete-branch
