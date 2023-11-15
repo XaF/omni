@@ -247,18 +247,6 @@ jobs:
                 }
               }'
 
-      - name: Truncate pull request body if necessary
-        run: |
-          gawk -v limit=59990 '
-            {
-              print; count += length($0) + 1
-            }
-            count > limit {
-              print "\n`[snip]`";
-              exit
-            }' pull_request_body.md > pull_request_body_trunc.md
-          mv pull_request_body_trunc.md pull_request_body.md
-
       - name: Print commit message
         run: |
           cat commit_body.txt
