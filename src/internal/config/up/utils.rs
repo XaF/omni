@@ -286,11 +286,7 @@ impl SpinnerProgressHandler {
         progress: Option<(usize, usize)>,
         multiprogress: Option<MultiProgress>,
     ) -> Self {
-        let template = format!(
-            "{{prefix}}{} {} {{msg}}",
-            "{spinner}".yellow(),
-            desc,
-        );
+        let template = format!("{{prefix}}{} {} {{msg}}", "{spinner}".yellow(), desc,);
 
         let spinner = if let Some(multiprogress) = multiprogress {
             multiprogress.add(ProgressBar::new_spinner())

@@ -312,10 +312,7 @@ impl TidyCommand {
                 eprintln!("{}", repository.to_string());
             }
 
-            omni_info!(format!(
-                "use {} to organize them",
-                "--yes".light_blue()
-            ));
+            omni_info!(format!("use {} to organize them", "--yes".light_blue()));
             exit(0);
         } else {
             let choices = repositories

@@ -203,14 +203,9 @@ impl StatusCommand {
         } else {
             for path in &omnipath {
                 if let Some(package) = &path.package {
-                    let mut pkg_string =
-                        format!("{} {}", "package:".light_cyan(), package);
+                    let mut pkg_string = format!("{} {}", "package:".light_cyan(), package);
                     if !path.path.is_empty() {
-                        pkg_string.push_str(&format!(
-                            ", {} {}",
-                            "path:".light_cyan(),
-                            path.path
-                        ));
+                        pkg_string.push_str(&format!(", {} {}", "path:".light_cyan(), path.path));
                     }
                     println!(
                         "  - {}\n    {}",

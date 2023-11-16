@@ -437,8 +437,7 @@ fn update_git_tag(
     let fetched_err = String::from_utf8(fetched.stderr).unwrap();
     if fetched_out.trim().is_empty() && fetched_err.trim().is_empty() {
         // If no new tags, nothing more to do!
-        progress_handler
-            .success_with_message("no new tags, nothing to do".light_black());
+        progress_handler.success_with_message("no new tags, nothing to do".light_black());
         return false;
     }
 
@@ -489,16 +488,12 @@ fn update_git_tag(
 
     // If the current tag is the same as the target tag, nothing more to do!
     if current_tag == target_tag {
-        progress_handler
-            .success_with_message("already on latest matching tag".light_black());
+        progress_handler.success_with_message("already on latest matching tag".light_black());
         return false;
     }
 
     // Check out the target tag
-    progress_handler.progress(format!(
-        "checking out {}",
-        target_tag.light_green()
-    ));
+    progress_handler.progress(format!("checking out {}", target_tag.light_green()));
     let mut git_checkout_cmd = std::process::Command::new("git");
     if let Some(repo_path) = repo_path {
         git_checkout_cmd.current_dir(repo_path);

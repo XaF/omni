@@ -418,8 +418,7 @@ impl HomebrewTap {
 
         if !self.is_tapped() {
             progress_handler.clone().map(|progress_handler| {
-                progress_handler
-                    .success_with_message("not currently tapped".light_black())
+                progress_handler.success_with_message("not currently tapped".light_black())
             });
             return Ok(());
         }
