@@ -1,4 +1,4 @@
-name: Bump dependencies in yarn.lock and package.json
+name: Auto-pull-request for yarn dependencies
 
 
 on:

@@ -1,4 +1,4 @@
-name: Bump dependencies in Cargo.lock
+name: Auto-pull-request for cargo dependencies
 
 
 on:
