@@ -119,8 +119,9 @@ jobs:
       - name: Create archive of modified files
         if: ${{ env.UPDATES == 'true' }}
         run: |
-          git diff -z --name-only | \
-            xargs -0 git archive HEAD -o cargo-fix.zip --
+          git stash
+          git diff 'stash@{0}' -z --name-only | \
+            xargs -0 git archive 'stash@{0}' -o cargo-fix.zip --
 
       - name: upload cargo-fix.zip artifact for use in PR
         if: ${{ env.UPDATES == 'true' }}
