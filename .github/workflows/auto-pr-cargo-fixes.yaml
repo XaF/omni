@@ -30,8 +30,6 @@ defaults:
 env:
   # So cargo doesn't complain about unstable features
   RUSTC_BOOTSTRAP: 1
-  # So that we offer all the fixes
-  __CARGO_FIX_YOLO: 1
   # Which branch to use to make the pull request
   PR_BRANCH: auto/cargo_fix
 
@@ -95,12 +93,16 @@ jobs:
           shared-key: cargo-fixes
 
       - name: Run cargo fix
+        env:
+          __CARGO_FIX_YOLO: 1 # So that we offer all the fixes
         run: |
           cargo fix --all-features --color always --allow-dirty
 
       - name: Run clippy --fix
+        env:
+          __CARGO_FIX_YOLO: 1 # So that we offer all the fixes
         run: |
-          cargo clippy --fix --all-features --color always --allow-dirty
+          cargo clippy --fix --color always --allow-dirty
 
       - name: Run rustfmt
         run: |
@@ -108,6 +110,7 @@ jobs:
 
       - name: Check if there is any update
         run : |
+          git diff --name-only
           git diff --quiet && \
             UPDATES=true || \
             UPDATES=false
