@@ -96,11 +96,11 @@ jobs:
 
       - name: Run cargo fix
         run: |
-          cargo fix --all-features --verbose --color always --allow-dirty
+          cargo fix --all-features --color always --allow-dirty
 
       - name: Run clippy --fix
         run: |
-          cargo clippy --fix --all-features --verbose --color always --allow-dirty
+          cargo clippy --fix --all-features --color always --allow-dirty
 
       - name: Run rustfmt
         run: |
