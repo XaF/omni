@@ -6,7 +6,7 @@ macro_rules! omni_header {
     () => {
         format!(
             "{} - omnipotent tool {}",
-            "omni".to_string().bold(),
+            "omni".bold(),
             format!("(v{})", env!("CARGO_PKG_VERSION"))
                 .to_string()
                 .italic()

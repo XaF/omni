@@ -186,8 +186,8 @@ impl HelpCommand {
         eprintln!(
             "{}\n\n{} {} {} {} {}",
             omni_header!(),
-            "Usage:".to_string().italic().bold(),
-            "omni".to_string().bold(),
+            "Usage:".italic().bold(),
+            "omni".bold(),
             "<command>".cyan().bold(),
             "[options]".cyan().bold(),
             "ARG...".cyan().bold(),
@@ -209,7 +209,7 @@ impl HelpCommand {
 
         eprintln!(
             "\n{} {}",
-            "Usage:".to_string().italic().bold(),
+            "Usage:".italic().bold(),
             command.usage(Some(called_as.join(" "))).bold()
         );
 
@@ -325,7 +325,7 @@ impl HelpCommand {
                     cat_elems.reverse();
                     cat_elems.join(" < ")
                 } else {
-                    "Uncategorized".to_string().bold()
+                    "Uncategorized".bold()
                 };
                 let line = new_category.to_string();
                 eprintln!("\n{}", line);

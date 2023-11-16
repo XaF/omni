@@ -508,11 +508,7 @@ impl TidyCommand {
             }
 
             let location = match path_entry.package {
-                Some(ref package) => format!(
-                    "{}:{}",
-                    "package".to_string().underline(),
-                    package.light_cyan(),
-                ),
+                Some(ref package) => format!("{}:{}", "package".underline(), package.light_cyan()),
                 None => path_entry.as_string().light_cyan(),
             };
 
@@ -550,9 +546,9 @@ impl TidyCommand {
             }
         }
 
-        omni_info!("done!".to_string().light_green());
+        omni_info!("done!".light_green());
         if any_error {
-            omni_error!("some errors occurred!".to_string().light_red());
+            omni_error!("some errors occurred!".light_red());
             exit(1);
         }
     }
@@ -883,7 +879,7 @@ impl ToString for TidyGitRepo {
             return s.light_green();
         }
 
-        s.push_str(&self.current_path.to_str().unwrap().to_string().light_red());
+        s.push_str(&self.current_path.to_str().unwrap().light_red());
         s.push_str(" \u{2192} "); // arrow to the right in UTF-8
 
         let dest = self.expected_path.to_str().unwrap().to_string();
@@ -892,7 +888,7 @@ impl ToString for TidyGitRepo {
             s.push_str(&dest.light_green());
         } else {
             s.push_str(&dest.light_yellow());
-            s.push_str(&" \u{26A0}\u{FE0F}".to_string().light_yellow()); // small warning sign in UTF-8
+            s.push_str(&" \u{26A0}\u{FE0F}".light_yellow()); // small warning sign in UTF-8
         }
 
         s.light_yellow()

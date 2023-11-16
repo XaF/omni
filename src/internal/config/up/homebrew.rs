@@ -37,7 +37,7 @@ impl UpConfigHomebrew {
     }
 
     pub fn up(&self, progress: Option<(usize, usize)>) -> Result<(), UpError> {
-        let desc = "install homebrew dependencies:".to_string().light_blue();
+        let desc = "install homebrew dependencies:".light_blue();
         let main_progress_handler = PrintProgressHandler::new(desc, progress);
         main_progress_handler.progress("".to_string());
 
@@ -86,9 +86,7 @@ impl UpConfigHomebrew {
         let mut return_value = Ok(());
 
         if let Err(err) = HomebrewOperationCache::exclusive(|brew_cache| {
-            let desc = "uninstall (unused) homebrew dependencies:"
-                .to_string()
-                .light_blue();
+            let desc = "uninstall (unused) homebrew dependencies:".light_blue();
             let main_progress_handler = PrintProgressHandler::new(desc, progress);
             main_progress_handler.progress("".to_string());
 
@@ -342,13 +340,7 @@ impl HomebrewTap {
             "".to_string()
         };
 
-        let desc = format!(
-            "  {}{} {}:",
-            progress_str,
-            "tap".to_string().underline(),
-            self.name
-        )
-        .light_yellow();
+        let desc = format!("  {}{} {}:", progress_str, "tap".underline(), self.name).light_yellow();
 
         let progress_handler: Box<dyn ProgressHandler> = if ENV.interactive_shell {
             Box::new(SpinnerProgressHandler::new(desc, main_progress))
@@ -397,13 +389,8 @@ impl HomebrewTap {
             "".to_string()
         };
 
-        let desc = format!(
-            "  {}{} {}:",
-            progress_str,
-            "untap".to_string().underline(),
-            self.name
-        )
-        .light_yellow();
+        let desc =
+            format!("  {}{} {}:", progress_str, "untap".underline(), self.name).light_yellow();
 
         let progress_handler: Box<dyn ProgressHandler> = if ENV.interactive_shell {
             Box::new(SpinnerProgressHandler::new(desc, main_progress))
@@ -425,8 +412,7 @@ impl HomebrewTap {
             .is_ok()
         {
             if let Some(progress_handler) = progress_handler {
-                progress_handler
-                    .error_with_message("tap is still in use, skipping".to_string().light_black())
+                progress_handler.error_with_message("tap is still in use, skipping".light_black())
             }
             return Err(UpError::HomebrewTapInUse);
         }

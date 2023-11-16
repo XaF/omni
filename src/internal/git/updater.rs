@@ -120,7 +120,7 @@ pub fn auto_path_update() {
             } else {
                 "🌳"
             },
-            repo_id.to_string().italic().light_cyan()
+            repo_id.italic().light_cyan()
         )
         .light_blue();
         let progress_handler: Box<dyn ProgressHandler + Send> = if ENV.interactive_shell {
@@ -178,11 +178,7 @@ pub fn auto_path_update() {
         }
 
         let location = match path_entry.package {
-            Some(ref package) => format!(
-                "{}:{}",
-                "package".to_string().underline(),
-                package.light_cyan(),
-            ),
+            Some(ref package) => format!("{}:{}", "package".underline(), package.light_cyan(),),
             None => path_entry.as_string().light_cyan(),
         };
 
@@ -215,7 +211,7 @@ pub fn auto_path_update() {
         }
     }
 
-    omni_info!("done!".to_string().light_green());
+    omni_info!("done!".light_green());
 }
 
 pub fn update_git_repo(
@@ -241,7 +237,7 @@ fn update_git_branch(
     repo_path: Option<&str>,
     progress_handler: Option<&dyn ProgressHandler>,
 ) -> bool {
-    let desc = format!("Updating {}:", repo_id.to_string().italic().light_cyan()).light_blue();
+    let desc = format!("Updating {}:", repo_id.italic().light_cyan()).light_blue();
     let spinner;
     let printer;
 
@@ -342,7 +338,7 @@ fn update_git_tag(
     repo_path: Option<&str>,
     progress_handler: Option<&dyn ProgressHandler>,
 ) -> bool {
-    let desc = format!("Updating {}:", repo_id.to_string().italic().light_cyan()).light_blue();
+    let desc = format!("Updating {}:", repo_id.italic().light_cyan()).light_blue();
     let spinner;
     let printer;
 

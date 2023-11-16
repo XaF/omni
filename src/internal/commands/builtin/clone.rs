@@ -509,7 +509,7 @@ impl CloneCommand {
                 exit(1);
             }
 
-            eprintln!("{}", "$ omni up --bootstrap".to_string().light_black());
+            eprintln!("{}", "$ omni up --bootstrap".light_black());
 
             let up_cmd = UpCommand::new_command();
             up_cmd.exec(

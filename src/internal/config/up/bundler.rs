@@ -69,7 +69,7 @@ impl UpConfigBundler {
     }
 
     pub fn up(&self, progress: Option<(usize, usize)>) -> Result<(), UpError> {
-        let desc = "install Gemfile dependencies:".to_string().light_blue();
+        let desc = "install Gemfile dependencies:".light_blue();
         let progress_handler: Box<dyn ProgressHandler> = if ENV.interactive_shell {
             Box::new(SpinnerProgressHandler::new(desc, progress))
         } else {
@@ -125,7 +125,7 @@ impl UpConfigBundler {
     }
 
     pub fn down(&self, progress: Option<(usize, usize)>) -> Result<(), UpError> {
-        let desc = "remove Gemfile dependencies:".to_string().light_blue();
+        let desc = "remove Gemfile dependencies:".light_blue();
         let progress_handler: Box<dyn ProgressHandler> = if ENV.interactive_shell {
             Box::new(SpinnerProgressHandler::new(desc, progress))
         } else {
@@ -136,16 +136,16 @@ impl UpConfigBundler {
         // Check if path exists, and if so delete it
         if self.path.is_some() && Path::new(&self.path.clone().unwrap()).exists() {
             let path = self.path.clone().unwrap();
-            let path = abs_path(&path).to_str().unwrap().to_string();
+            let path = abs_path(path).to_str().unwrap().to_string();
 
             if let Some(progress_handler) = progress_handler {
-                progress_handler.progress(format!("removing {}", path).to_string())
+                progress_handler.progress(format!("removing {}", path));
             }
 
             if let Err(err) = std::fs::remove_dir_all(&path) {
                 if let Some(progress_handler) = progress_handler {
                     progress_handler
-                        .error_with_message(format!("failed to remove {}: {}", path, err))
+                        .error_with_message(format!("failed to remove {}: {}", path, err));
                 }
                 return Err(UpError::Exec(format!("failed to remove {}: {}", path, err)));
             }

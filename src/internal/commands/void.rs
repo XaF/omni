@@ -37,7 +37,7 @@ impl VoidCommand {
     pub fn help(&self) -> Option<String> {
         Some(format!(
             "Provides {} commands",
-            self.name.join(" ").to_string().italic(),
+            self.name.join(" ").italic(),
         ))
     }
 

@@ -507,16 +507,11 @@ impl UpConfigAsdfBase {
                 if let Ok(output) = asdf_list_all.output() {
                     if output.status.success() {
                         let stdout = String::from_utf8(output.stdout).unwrap();
-                        let mut versions = Vec::new();
-                        for line in stdout.lines() {
-                            let line = line.trim();
-
-                            if line.is_empty() {
-                                continue;
-                            }
-
-                            versions.push(line.to_string());
-                        }
+                        let versions = stdout
+                            .lines()
+                            .map(|line| line.trim().to_string())
+                            .filter(|line| !line.is_empty())
+                            .collect::<Vec<String>>();
 
                         if let Err(err) = AsdfOperationCache::exclusive(|cache| {
                             cache.set_asdf_plugin_versions(&self.tool, versions.clone());
@@ -572,11 +567,7 @@ impl UpConfigAsdfBase {
         if let Ok(output) = asdf_plugin_list.output() {
             if output.status.success() {
                 let stdout = String::from_utf8(output.stdout).unwrap();
-                for line in stdout.lines() {
-                    if line.trim() == self.tool {
-                        return true;
-                    }
-                }
+                return stdout.lines().any(|line| line.trim() == self.tool);
             }
         }
 
@@ -687,7 +678,7 @@ impl UpConfigAsdfBase {
         steps: Vec<UpConfigTool>,
         progress: Option<(usize, usize)>,
     ) -> Result<(), UpError> {
-        let desc = "resources cleanup:".to_string().light_blue();
+        let desc = "resources cleanup:".light_blue();
         let progress_handler: Box<dyn ProgressHandler> = if ENV.interactive_shell {
             Box::new(SpinnerProgressHandler::new(desc, progress))
         } else {
@@ -794,7 +785,7 @@ impl UpConfigAsdfBase {
                     .collect::<Vec<_>>();
                 handler.success_with_message(format!("uninstalled {}", uninstalled.join(", ")));
             } else {
-                handler.success_with_message("nothing to do".to_string().light_black());
+                handler.success_with_message("nothing to do".light_black());
             }
         }
 

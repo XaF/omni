@@ -53,7 +53,7 @@ pub fn is_trusted_or_ask(path: &str, ask: String) -> bool {
     ));
     omni_info!(format!(
         "{} repositories in your organizations are automatically trusted.",
-        "Tip:".to_string().bold()
+        "Tip:".bold()
     ));
 
     let question = requestty::Question::expand("trust_repo")

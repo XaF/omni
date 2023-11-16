@@ -135,25 +135,25 @@ impl StatusCommand {
     pub fn autocomplete(&self, _comp_cword: usize, _argv: Vec<String>) {}
 
     fn print_shell_integration(&self) {
-        println!("\n{}", "Shell integration".to_string().bold());
+        println!("\n{}", "Shell integration".bold());
         let status = if ENV.omni_cmd_file.is_some() {
-            "loaded".to_string().light_green()
+            "loaded".light_green()
         } else {
-            "not loaded".to_string().light_red()
+            "not loaded".light_red()
         };
         println!("  {}", status);
     }
 
     fn print_configuration(&self) {
         let config_loader = config_loader(".");
-        println!("\n{}", "Configuration".to_string().bold());
+        println!("\n{}", "Configuration".bold());
 
         let yaml_code = config_loader.raw_config.as_yaml();
         println!("{}", self.color_yaml(&yaml_code));
 
-        println!("\n{}", "Loaded configuration files".to_string().bold());
+        println!("\n{}", "Loaded configuration files".bold());
         if config_loader.loaded_config_files.is_empty() {
-            println!("  {}", "none".to_string().light_red());
+            println!("  {}", "none".light_red());
         } else {
             for config_file in &config_loader.loaded_config_files {
                 println!("  - {}", config_file);
@@ -162,17 +162,17 @@ impl StatusCommand {
     }
 
     fn print_worktree(&self) {
-        println!("\n{}", "Worktree".to_string().bold());
+        println!("\n{}", "Worktree".bold());
 
         let config = config(".");
         println!("  {}", config.worktree());
     }
 
     fn print_orgs(&self) {
-        println!("\n{}", "Git Orgs".to_string().bold());
+        println!("\n{}", "Git Orgs".bold());
 
         if ORG_LOADER.orgs.is_empty() {
-            println!("  {}", "none".to_string().light_red());
+            println!("  {}", "none".light_red());
         } else {
             for org in &ORG_LOADER.orgs {
                 let mut org_str = org.config.handle.to_string();
@@ -192,11 +192,11 @@ impl StatusCommand {
     }
 
     fn print_path(&self) {
-        println!("\n{}", "Current omnipath".to_string().bold());
+        println!("\n{}", "Current omnipath".bold());
 
         let omnipath = omnipath_entries();
         if omnipath.is_empty() {
-            println!("  {}", "none".to_string().light_red());
+            println!("  {}", "none".light_red());
         } else {
             for path in &omnipath {
                 if let Some(package) = &path.package {

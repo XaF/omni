@@ -459,7 +459,7 @@ impl UpCommand {
         {
             omni_info!(format!(
                 "No {} configuration found, nothing to do.",
-                "up".to_string().italic(),
+                "up".italic(),
             ));
             UpConfig::clear_cache();
             exit(0);
@@ -529,7 +529,7 @@ impl UpCommand {
                 ));
                 omni_info!(format!(
                     "run {} to get the latest suggestions",
-                    "omni up --bootstrap".to_string().light_yellow(),
+                    "omni up --bootstrap".light_yellow(),
                 ));
             }
         }
@@ -640,7 +640,7 @@ impl UpCommand {
             omni_info!("The current repository is suggesting configuration changes.");
             omni_info!(format!(
                 "The following is going to be changed in your {} configuration:",
-                "omni".to_string().underline()
+                "omni".underline()
             ));
             eprintln!("  {}", diff.replace('\n', "\n  "));
 
@@ -844,11 +844,7 @@ impl UpCommand {
             }
 
             let location = match path_entry.package {
-                Some(ref package) => format!(
-                    "{}:{}",
-                    "package".to_string().underline(),
-                    package.light_cyan(),
-                ),
+                Some(ref package) => format!("{}:{}", "package".underline(), package.light_cyan()),
                 None => path_entry.as_string().light_cyan(),
             };
 
@@ -887,9 +883,9 @@ impl UpCommand {
             }
         }
 
-        omni_info!("done!".to_string().light_green());
+        omni_info!("done!".light_green());
         if any_error {
-            omni_error!("some errors occurred!".to_string().light_red());
+            omni_error!("some errors occurred!".light_red());
             exit(1);
         }
     }

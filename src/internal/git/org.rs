@@ -281,7 +281,7 @@ impl OrgLoader {
                         }
 
                         if start.elapsed() > std::time::Duration::from_secs(1) {
-                            omni_print!(format!("{} Setting up your organizations will make repository lookup much faster.", "Did you know?".to_string().bold()));
+                            omni_print!(format!("{} Setting up your organizations will make repository lookup much faster.", "Did you know?".bold()));
                         }
 
                         return Some(filepath.to_path_buf());
