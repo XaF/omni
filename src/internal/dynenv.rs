@@ -149,71 +149,70 @@ impl DynamicEnv {
     }
 
     pub fn id(&self) -> u64 {
-        *self.id
-            .get_or_init(|| {
-                // Get the current path
-                let path = self.path.clone().unwrap_or(".".to_string());
+        *self.id.get_or_init(|| {
+            // Get the current path
+            let path = self.path.clone().unwrap_or(".".to_string());
 
-                // Get the workdir environment
-                let workdir = workdir(&path);
-                if !workdir.in_workdir() {
-                    return 0;
-                }
+            // Get the workdir environment
+            let workdir = workdir(&path);
+            if !workdir.in_workdir() {
+                return 0;
+            }
 
-                // Get the workdir id
-                let repo_id = workdir.id();
-                if repo_id.is_none() {
-                    return 0;
-                }
-                let repo_id = repo_id.unwrap();
+            // Get the workdir id
+            let repo_id = workdir.id();
+            if repo_id.is_none() {
+                return 0;
+            }
+            let repo_id = repo_id.unwrap();
 
-                // Get the relative directory
-                let dir = workdir.reldir(&path).unwrap_or("".to_string());
+            // Get the relative directory
+            let dir = workdir.reldir(&path).unwrap_or("".to_string());
 
-                // Check if repo is 'up' and should have its environment loaded
-                let up_env = if let Some(up_env) = self.cache.get_env(&repo_id) {
-                    up_env
-                } else {
-                    return 0;
-                };
+            // Check if repo is 'up' and should have its environment loaded
+            let up_env = if let Some(up_env) = self.cache.get_env(&repo_id) {
+                up_env
+            } else {
+                return 0;
+            };
 
-                // Prepare the hash
-                let mut hasher = Hasher::new();
+            // Prepare the hash
+            let mut hasher = Hasher::new();
 
-                // Try and get the shell PPID by using the PPID environment variables
-                let ppid = std::env::var("OMNI_SHELL_PPID").unwrap_or("".to_string());
-                hasher.update(ppid.as_bytes());
+            // Try and get the shell PPID by using the PPID environment variables
+            let ppid = std::env::var("OMNI_SHELL_PPID").unwrap_or("".to_string());
+            hasher.update(ppid.as_bytes());
+            hasher.update(DATA_SEPARATOR.as_bytes());
+
+            // Let's add the workdir location and the workdir id to the hash
+            hasher.update(workdir.root().unwrap().as_bytes());
+            hasher.update(DATA_SEPARATOR.as_bytes());
+            hasher.update(workdir.id().unwrap().as_bytes());
+            hasher.update(DATA_SEPARATOR.as_bytes());
+
+            // Add the requested environments to the hash, sorted by key
+            for (key, value) in up_env.env_vars.iter().sorted() {
+                hasher.update(key.as_bytes());
                 hasher.update(DATA_SEPARATOR.as_bytes());
-
-                // Let's add the workdir location and the workdir id to the hash
-                hasher.update(workdir.root().unwrap().as_bytes());
+                hasher.update(value.as_bytes());
                 hasher.update(DATA_SEPARATOR.as_bytes());
-                hasher.update(workdir.id().unwrap().as_bytes());
+            }
+
+            // Go over the tool versions in the up environment cache
+            for toolversion in up_env.versions_for_dir(&dir).iter() {
+                hasher.update(toolversion.tool.as_bytes());
                 hasher.update(DATA_SEPARATOR.as_bytes());
+                hasher.update(toolversion.version.as_bytes());
+                hasher.update(DATA_SEPARATOR.as_bytes());
+            }
 
-                // Add the requested environments to the hash, sorted by key
-                for (key, value) in up_env.env_vars.iter().sorted() {
-                    hasher.update(key.as_bytes());
-                    hasher.update(DATA_SEPARATOR.as_bytes());
-                    hasher.update(value.as_bytes());
-                    hasher.update(DATA_SEPARATOR.as_bytes());
-                }
+            // Convert the hash to a u64
+            let hash_bytes = hasher.finalize();
+            let hash_u64 = u64::from_le_bytes(hash_bytes.as_bytes()[..8].try_into().unwrap());
 
-                // Go over the tool versions in the up environment cache
-                for toolversion in up_env.versions_for_dir(&dir).iter() {
-                    hasher.update(toolversion.tool.as_bytes());
-                    hasher.update(DATA_SEPARATOR.as_bytes());
-                    hasher.update(toolversion.version.as_bytes());
-                    hasher.update(DATA_SEPARATOR.as_bytes());
-                }
-
-                // Convert the hash to a u64
-                let hash_bytes = hasher.finalize();
-                let hash_u64 = u64::from_le_bytes(hash_bytes.as_bytes()[..8].try_into().unwrap());
-
-                // Return the hash
-                hash_u64
-            })
+            // Return the hash
+            hash_u64
+        })
     }
 
     pub fn id_str(&self) -> String {
@@ -550,13 +549,8 @@ impl DynamicEnvData {
                 return;
             }
 
-            self.values.insert(
-                key.to_string(),
-                DynamicEnvValue {
-                    prev,
-                    curr: None,
-                },
-            );
+            self.values
+                .insert(key.to_string(), DynamicEnvValue { prev, curr: None });
         } else {
             self.values.get_mut(key).unwrap().curr = None;
         }

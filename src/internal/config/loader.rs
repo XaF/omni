@@ -13,7 +13,6 @@ use std::sync::Mutex;
 use fs4::FileExt;
 use lazy_static::lazy_static;
 
-
 use crate::internal::config::ConfigExtendOptions;
 use crate::internal::config::ConfigExtendStrategy;
 use crate::internal::config::ConfigSource;

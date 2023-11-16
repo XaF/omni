@@ -20,9 +20,7 @@ impl UpConfigNodejs {
         let mut asdf_base = UpConfigAsdfBase::from_config_value("nodejs", config_value);
         asdf_base.add_detect_version_func(detect_version_from_package_json);
 
-        Self {
-            asdf_base,
-        }
+        Self { asdf_base }
     }
 
     pub fn up(&self, progress: Option<(usize, usize)>) -> Result<(), UpError> {

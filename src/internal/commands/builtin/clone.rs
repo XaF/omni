@@ -238,13 +238,13 @@ impl CloneCommand {
         clone_as_package: bool,
         spinner: Option<ProgressBar>,
     ) -> Option<(PathBuf, GitUrl)> {
-        self.try_repo_handle(repo, &vec![], clone_as_package, spinner, None, false, true)
+        self.try_repo_handle(repo, &[], clone_as_package, spinner, None, false, true)
     }
 
     pub fn clone_repo_handle(
         &self,
         repo: &str,
-        clone_args: &Vec<String>,
+        clone_args: &[String],
         clone_as_package: bool,
         spinner: Option<ProgressBar>,
         should_run_cd: Option<bool>,
@@ -264,7 +264,7 @@ impl CloneCommand {
     fn try_repo_handle(
         &self,
         repo: &str,
-        clone_args: &Vec<String>,
+        clone_args: &[String],
         clone_as_package: bool,
         spinner: Option<ProgressBar>,
         should_run_cd: Option<bool>,

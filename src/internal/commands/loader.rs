@@ -288,7 +288,9 @@ impl CommandLoader {
                 let mut sub_names = vec![];
                 let mut sub_commands = vec![];
                 for (name, command) in subcommands.iter() {
-                    let full_name = argv.iter().cloned()
+                    let full_name = argv
+                        .iter()
+                        .cloned()
                         .chain(name.iter().cloned())
                         .collect::<Vec<_>>()
                         .join(" ");

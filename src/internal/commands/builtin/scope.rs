@@ -229,7 +229,7 @@ impl ScopeCommand {
 
         // Print all the completion related to path completion
         let (list_dir, strip_path_prefix) = if let Some(slash) = repo.rfind('/') {
-            ((&repo[..slash]).to_string(), false)
+            (repo[..slash].to_string(), false)
         } else {
             (".".to_string(), true)
         };

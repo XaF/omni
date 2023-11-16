@@ -385,15 +385,12 @@ impl GitRepoEnv {
         for mut branch_name in &["main", "master", "__current"] {
             let mut string_branch_name = branch_name.to_string();
             if string_branch_name == "__current" {
-                match repository.head() {
-                    Ok(head) => {
-                        if let Some(shorthand) = head.shorthand() {
-                            if shorthand != "HEAD" {
-                                string_branch_name = shorthand.to_string();
-                            }
+                if let Ok(head) = repository.head() {
+                    if let Some(shorthand) = head.shorthand() {
+                        if shorthand != "HEAD" {
+                            string_branch_name = shorthand.to_string();
                         }
                     }
-                    Err(_) => {}
                 }
                 if string_branch_name == "__current" {
                     continue;
@@ -403,9 +400,9 @@ impl GitRepoEnv {
             branch_name = &str_branch_name;
 
             match repository.find_branch(branch_name, git2::BranchType::Local) {
-                Ok(branch) => match branch.upstream() {
-                    Ok(upstream) => match upstream.name() {
-                        Ok(upstream_name) => {
+                Ok(branch) => {
+                    if let Ok(upstream) = branch.upstream() {
+                        if let Ok(upstream_name) = upstream.name() {
                             if let Some(upstream_name) = upstream_name {
                                 let upstream_name = upstream_name.split('/').next().unwrap();
                                 if let Ok(remote) = repository.find_remote(upstream_name) {
@@ -416,26 +413,21 @@ impl GitRepoEnv {
                                 }
                             }
                         }
-                        Err(_) => {}
-                    },
-                    Err(_) => {}
-                },
+                    }
+                }
                 Err(_) => {}
             }
         }
 
-        match repository.remotes() {
-            Ok(remotes) => {
-                for remote in remotes.iter() {
-                    if let Ok(remote) = repository.find_remote(remote.unwrap()) {
-                        if let Some(url) = remote.url() {
-                            git_repo_env.origin = Some(url.to_string());
-                            return git_repo_env;
-                        }
+        if let Ok(remotes) = repository.remotes() {
+            for remote in remotes.iter() {
+                if let Ok(remote) = repository.find_remote(remote.unwrap()) {
+                    if let Some(url) = remote.url() {
+                        git_repo_env.origin = Some(url.to_string());
+                        return git_repo_env;
                     }
                 }
             }
-            Err(_) => {}
         }
 
         git_repo_env

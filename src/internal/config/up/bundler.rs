@@ -52,7 +52,7 @@ impl UpConfigBundler {
         }
         let workdir_id = workdir_id.unwrap();
 
-        if let Some(progress_handler) = progress_handler.clone() {
+        if let Some(progress_handler) = progress_handler {
             progress_handler.progress("updating cache".to_string())
         }
 
@@ -60,10 +60,10 @@ impl UpConfigBundler {
             up_env.add_env_var(&workdir_id, "BUNDLE_GEMFILE", &self.gemfile_abs_path());
             true
         }) {
-            if let Some(progress_handler) = progress_handler.clone() {
+            if let Some(progress_handler) = progress_handler {
                 progress_handler.progress(format!("failed to update cache: {}", err))
             }
-        } else if let Some(progress_handler) = progress_handler.clone() {
+        } else if let Some(progress_handler) = progress_handler {
             progress_handler.progress("updated cache".to_string())
         }
     }
@@ -78,7 +78,7 @@ impl UpConfigBundler {
         let progress_handler: Option<&dyn ProgressHandler> = Some(progress_handler.as_ref());
 
         if let Some(path) = &self.path {
-            if let Some(progress_handler) = progress_handler.clone() {
+            if let Some(progress_handler) = progress_handler {
                 progress_handler.progress("setting bundle path".to_string())
             }
 
@@ -90,14 +90,10 @@ impl UpConfigBundler {
             bundle_config.stdout(std::process::Stdio::piped());
             bundle_config.stderr(std::process::Stdio::piped());
 
-            run_progress(
-                &mut bundle_config,
-                progress_handler.clone(),
-                RunConfig::default(),
-            )?;
+            run_progress(&mut bundle_config, progress_handler, RunConfig::default())?;
         }
 
-        if let Some(progress_handler) = progress_handler.clone() {
+        if let Some(progress_handler) = progress_handler {
             progress_handler.progress("installing bundle".to_string())
         }
 
@@ -110,22 +106,18 @@ impl UpConfigBundler {
         bundle_install.stdout(std::process::Stdio::piped());
         bundle_install.stderr(std::process::Stdio::piped());
 
-        let result = run_progress(
-            &mut bundle_install,
-            progress_handler.clone(),
-            RunConfig::default(),
-        );
+        let result = run_progress(&mut bundle_install, progress_handler, RunConfig::default());
 
         if let Err(err) = &result {
-            if let Some(progress_handler) = progress_handler.clone() {
+            if let Some(progress_handler) = progress_handler {
                 progress_handler.error_with_message(format!("bundle install failed: {}", err))
             }
             return result;
         }
 
-        self.update_cache(progress_handler.clone());
+        self.update_cache(progress_handler);
 
-        if let Some(progress_handler) = progress_handler.clone() {
+        if let Some(progress_handler) = progress_handler {
             progress_handler.success()
         }
 
@@ -146,15 +138,15 @@ impl UpConfigBundler {
             let path = self.path.clone().unwrap();
             let path = abs_path(&path).to_str().unwrap().to_string();
 
-            if let Some(progress_handler) = progress_handler.clone() {
+            if let Some(progress_handler) = progress_handler {
                 progress_handler.progress(format!("removing {}", path).to_string())
             }
 
             if let Err(err) = std::fs::remove_dir_all(&path) {
-                progress_handler.clone().map(|progress_handler| {
+                if let Some(progress_handler) = progress_handler {
                     progress_handler
                         .error_with_message(format!("failed to remove {}: {}", path, err))
-                });
+                }
                 return Err(UpError::Exec(format!("failed to remove {}: {}", path, err)));
             }
 
@@ -167,10 +159,10 @@ impl UpConfigBundler {
                 parent = path;
             }
 
-            if let Some(progress_handler) = progress_handler.clone() {
+            if let Some(progress_handler) = progress_handler {
                 progress_handler.success()
             }
-        } else if let Some(progress_handler) = progress_handler.clone() {
+        } else if let Some(progress_handler) = progress_handler {
             progress_handler.success_with_message("skipping (nothing to do)".light_black())
         }
 

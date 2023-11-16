@@ -5,7 +5,6 @@ use std::path::Path;
 use std::path::PathBuf;
 use std::process::exit;
 
-
 use indicatif::ProgressBar;
 use indicatif::ProgressStyle;
 use once_cell::sync::OnceCell;
@@ -389,7 +388,9 @@ impl TidyCommand {
             for repository in organize_this_loop.iter() {
                 if repository.organize(printstr) {
                     moved.insert(repository);
-                    if let Some(pb) = progress_bar.as_ref() { pb.inc(1) }
+                    if let Some(pb) = progress_bar.as_ref() {
+                        pb.inc(1)
+                    }
                 }
             }
 
@@ -400,7 +401,9 @@ impl TidyCommand {
                         "[✘]".light_red(),
                         format!("{}", repository.to_string())
                     ));
-                    if let Some(pb) = progress_bar.as_ref() { pb.inc(1) }
+                    if let Some(pb) = progress_bar.as_ref() {
+                        pb.inc(1)
+                    }
                 }
 
                 break;
@@ -410,7 +413,9 @@ impl TidyCommand {
         }
 
         // Clear the progress bar once we're finished
-        if let Some(pb) = progress_bar { pb.finish_and_clear() }
+        if let Some(pb) = progress_bar {
+            pb.finish_and_clear()
+        }
 
         // TODO: should we offer to up the moved repositories ?
 
@@ -578,10 +583,7 @@ impl TidyGitRepo {
             None
         };
 
-        let worktrees = worktrees
-            .into_iter()
-            .map(abs_path)
-            .collect::<HashSet<_>>();
+        let worktrees = worktrees.into_iter().map(abs_path).collect::<HashSet<_>>();
 
         // Cleanup the paths by removing each path for which
         // the parent is also in the list
@@ -616,36 +618,46 @@ impl TidyGitRepo {
                     // Take the parent
                     let filepath = filepath.parent().unwrap();
 
-                    if let Some(s) = spinner.clone() { s.set_message(format!("Searching: {}", filepath.to_str().unwrap())) }
+                    if let Some(s) = spinner.clone() {
+                        s.set_message(format!("Searching: {}", filepath.to_str().unwrap()))
+                    }
 
                     // Convert to a string
                     let filepath_str = filepath.to_str().unwrap();
 
                     repositories.insert(filepath_str.to_string());
                 }
-                if let Some(s) = spinner.clone() { s.tick() }
+                if let Some(s) = spinner.clone() {
+                    s.tick()
+                }
             }
         }
 
-        if let Some(s) = spinner
-            .clone() { s.set_message("Analyzing repositories...") }
+        if let Some(s) = spinner.clone() {
+            s.set_message("Analyzing repositories...")
+        }
 
         let mut repositories = repositories.into_iter().collect::<Vec<_>>();
         repositories.sort();
 
         let mut tidy_repos = Vec::new();
         for repository in repositories.iter() {
-            if let Some(s) = spinner
-                .clone() { s.set_message(format!("Analyzing: {}", repository)) }
+            if let Some(s) = spinner.clone() {
+                s.set_message(format!("Analyzing: {}", repository))
+            }
 
             if let Some(tidy_repo) = Self::new(repository) {
                 tidy_repos.push(tidy_repo);
             }
 
-            if let Some(s) = spinner.clone() { s.tick() }
+            if let Some(s) = spinner.clone() {
+                s.tick()
+            }
         }
 
-        if let Some(s) = spinner.clone() { s.finish_and_clear() }
+        if let Some(s) = spinner.clone() {
+            s.finish_and_clear()
+        }
 
         tidy_repos.into_iter().collect::<Vec<_>>()
     }
@@ -867,7 +879,7 @@ impl ToString for TidyGitRepo {
 
         if self.organized {
             // s.push_str(&format!("{} {}", "✓", self.current_path.to_str().unwrap()));
-            s.push_str(&self.current_path.to_str().unwrap().to_string());
+            s.push_str(self.current_path.to_str().unwrap());
             return s.light_green();
         }
 

@@ -1023,9 +1023,9 @@ impl UpCommand {
             cmd.stdout(std::process::Stdio::piped());
             cmd.stderr(std::process::Stdio::piped());
 
-            let result = run_progress(&mut cmd, progress_handler.clone(), RunConfig::default());
+            let result = run_progress(&mut cmd, progress_handler, RunConfig::default());
             if result.is_ok() {
-                if let Some(handler) = progress_handler.clone() {
+                if let Some(handler) = progress_handler {
                     handler.progress("cloned".to_string())
                 }
 
@@ -1079,11 +1079,11 @@ impl UpCommand {
                 } else {
                     "cloned".to_string()
                 };
-                if let Some(handler) = progress_handler.clone() {
+                if let Some(handler) = progress_handler {
                     handler.success_with_message(msg)
                 }
             } else if let Err(err) = result {
-                if let Some(handler) = progress_handler.clone() {
+                if let Some(handler) = progress_handler {
                     handler.error_with_message(format!("failed: {}", err))
                 }
             }

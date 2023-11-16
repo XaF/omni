@@ -78,10 +78,7 @@ impl UpConfig {
             return None;
         }
 
-        Some(UpConfig {
-            steps,
-            errors,
-        })
+        Some(UpConfig { steps, errors })
     }
 
     // pub fn steps(&self) -> Vec<UpConfigTool> {

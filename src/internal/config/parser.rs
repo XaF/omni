@@ -362,7 +362,7 @@ impl SyntaxOptArg {
     pub fn new(name: String, desc: Option<String>, required: bool) -> Self {
         Self {
             name,
-            desc: desc.map(|value| value),
+            desc,
             required,
         }
     }
@@ -508,7 +508,7 @@ impl OrgConfig {
         Self {
             handle: config_value.get_as_str("handle").unwrap().to_string(),
             trusted: config_value.get_as_bool("trusted").unwrap_or(false),
-            worktree: config_value.get_as_str("worktree").map(|value| value),
+            worktree: config_value.get_as_str("worktree"),
         }
     }
 }
@@ -526,13 +526,13 @@ impl PathConfig {
                 .get_as_array("append")
                 .unwrap()
                 .iter()
-                .map(|value| PathEntryConfig::from_config_value(value))
+                .map(PathEntryConfig::from_config_value)
                 .collect(),
             prepend: config_value
                 .get_as_array("prepend")
                 .unwrap()
                 .iter()
-                .map(|value| PathEntryConfig::from_config_value(value))
+                .map(PathEntryConfig::from_config_value)
                 .collect(),
         }
     }

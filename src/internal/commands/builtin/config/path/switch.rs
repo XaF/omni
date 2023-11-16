@@ -2,7 +2,6 @@ use std::path::PathBuf;
 use std::process::exit;
 use std::time::Duration;
 
-
 use indicatif::ProgressBar;
 use indicatif::ProgressStyle;
 use once_cell::sync::OnceCell;
@@ -198,7 +197,11 @@ impl ConfigPathSwitchCommand {
     }
 
     pub fn exec(&self, argv: Vec<String>) {
-        if self.cli_args.set(ConfigPathSwitchCommandArgs::parse(argv)).is_err() {
+        if self
+            .cli_args
+            .set(ConfigPathSwitchCommandArgs::parse(argv))
+            .is_err()
+        {
             unreachable!();
         }
 
@@ -489,7 +492,5 @@ impl ConfigPathSwitchCommand {
         false
     }
 
-    pub fn autocomplete(&self, _comp_cword: usize, _argv: Vec<String>) {
-        
-    }
+    pub fn autocomplete(&self, _comp_cword: usize, _argv: Vec<String>) {}
 }

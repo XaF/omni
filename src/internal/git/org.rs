@@ -266,9 +266,9 @@ impl OrgLoader {
                     // Take the parent
                     let filepath = filepath.parent().unwrap();
 
-                    spinner
-                        .clone()
-                        .map(|s| s.set_message(filepath.to_str().unwrap().to_string()));
+                    if let Some(s) = spinner.clone() {
+                        s.set_message(filepath.to_str().unwrap().to_string())
+                    }
 
                     // Check if it ends with the expected rel_path
                     if filepath

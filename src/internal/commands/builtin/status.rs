@@ -1,6 +1,5 @@
 use std::process::exit;
 
-
 use once_cell::sync::OnceCell;
 use regex::Regex;
 
@@ -133,9 +132,7 @@ impl StatusCommand {
         false
     }
 
-    pub fn autocomplete(&self, _comp_cword: usize, _argv: Vec<String>) {
-        
-    }
+    pub fn autocomplete(&self, _comp_cword: usize, _argv: Vec<String>) {}
 
     fn print_shell_integration(&self) {
         println!("\n{}", "Shell integration".to_string().bold());

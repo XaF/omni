@@ -84,20 +84,20 @@ impl UpConfigCustom {
         let progress_handler: Option<&dyn ProgressHandler> = Some(progress_handler.as_ref());
 
         if self.met().unwrap_or(false) {
-            if let Some(progress_handler) = progress_handler.clone() {
+            if let Some(progress_handler) = progress_handler {
                 progress_handler.success_with_message("skipping (already met)".light_black())
             }
             return Ok(());
         }
 
-        if let Err(err) = self.meet(progress_handler.clone()) {
-            if let Some(progress_handler) = progress_handler.clone() {
+        if let Err(err) = self.meet(progress_handler) {
+            if let Some(progress_handler) = progress_handler {
                 progress_handler.error_with_message(format!("{}", err).light_red())
             }
             return Err(err);
         }
 
-        if let Some(progress_handler) = progress_handler.clone() {
+        if let Some(progress_handler) = progress_handler {
             progress_handler.success()
         }
 
@@ -129,25 +129,25 @@ impl UpConfigCustom {
 
         if let Some(_unmeet) = &self.unmeet {
             if !self.met().unwrap_or(true) {
-                if let Some(progress_handler) = progress_handler.clone() {
+                if let Some(progress_handler) = progress_handler {
                     progress_handler.success_with_message("skipping (not met)".light_black())
                 }
                 return Ok(());
             }
 
-            if let Some(progress_handler) = progress_handler.clone() {
+            if let Some(progress_handler) = progress_handler {
                 progress_handler.progress("reverting".light_black())
             }
 
-            if let Err(err) = self.unmeet(progress_handler.clone()) {
-                if let Some(progress_handler) = progress_handler.clone() {
+            if let Err(err) = self.unmeet(progress_handler) {
+                if let Some(progress_handler) = progress_handler {
                     progress_handler.error_with_message(format!("{}", err).light_red())
                 }
                 return Err(err);
             }
         }
 
-        if let Some(progress_handler) = progress_handler.clone() {
+        if let Some(progress_handler) = progress_handler {
             progress_handler.success()
         }
 
@@ -172,7 +172,7 @@ impl UpConfigCustom {
     fn meet(&self, progress_handler: Option<&dyn ProgressHandler>) -> Result<(), UpError> {
         if !self.meet.is_empty() {
             // eprintln!("{}", format!("$ {}", self.meet).light_black());
-            if let Some(progress_handler) = progress_handler.clone() {
+            if let Some(progress_handler) = progress_handler {
                 progress_handler.progress("running (meet) command".to_string())
             }
 
@@ -182,7 +182,7 @@ impl UpConfigCustom {
             command.stdout(std::process::Stdio::piped());
             command.stderr(std::process::Stdio::piped());
 
-            run_progress(&mut command, progress_handler.clone(), RunConfig::default())?;
+            run_progress(&mut command, progress_handler, RunConfig::default())?;
         }
 
         Ok(())
@@ -191,7 +191,7 @@ impl UpConfigCustom {
     fn unmeet(&self, progress_handler: Option<&dyn ProgressHandler>) -> Result<(), UpError> {
         if let Some(unmeet) = &self.unmeet {
             // eprintln!("{}", format!("$ {}", unmeet).light_black());
-            if let Some(progress_handler) = progress_handler.clone() {
+            if let Some(progress_handler) = progress_handler {
                 progress_handler.progress("running (unmeet) command".to_string())
             }
 
@@ -201,7 +201,7 @@ impl UpConfigCustom {
             command.stdout(std::process::Stdio::piped());
             command.stderr(std::process::Stdio::piped());
 
-            run_progress(&mut command, progress_handler.clone(), RunConfig::default())?;
+            run_progress(&mut command, progress_handler, RunConfig::default())?;
         }
 
         Ok(())

@@ -2,7 +2,6 @@ use std::collections::BTreeMap;
 use std::collections::HashSet;
 use std::process::exit;
 
-
 use once_cell::sync::OnceCell;
 
 use crate::internal::commands::command_loader;

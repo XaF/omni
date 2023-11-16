@@ -181,7 +181,11 @@ impl ConfigBootstrapCommand {
     }
 
     pub fn exec(&self, argv: Vec<String>) {
-        if self.cli_args.set(ConfigBootstrapCommandArgs::parse(argv)).is_err() {
+        if self
+            .cli_args
+            .set(ConfigBootstrapCommandArgs::parse(argv))
+            .is_err()
+        {
             unreachable!();
         }
 
@@ -203,9 +207,7 @@ impl ConfigBootstrapCommand {
         false
     }
 
-    pub fn autocomplete(&self, _comp_cword: usize, _argv: Vec<String>) {
-        
-    }
+    pub fn autocomplete(&self, _comp_cword: usize, _argv: Vec<String>) {}
 }
 
 #[derive(Debug, Clone)]
@@ -982,9 +984,9 @@ fn question_rc_file(current_shell: &Shell) -> (PathBuf, bool) {
         Ok(answer) => match answer {
             requestty::Answer::String(path) => {
                 let path_obj = PathBuf::from(path.clone());
-                let canonicalized = abs_path(path_obj);
+
                 // No need for extra validation, as we have done it above
-                canonicalized
+                abs_path(path_obj)
             }
             _ => unreachable!(),
         },

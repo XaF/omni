@@ -5,7 +5,6 @@ use std::path::Path;
 use serde::Deserialize;
 use serde::Serialize;
 
-
 use crate::internal::config::parser::PathEntryConfig;
 use crate::internal::env::ENV;
 use crate::internal::env::HOME;
@@ -590,9 +589,7 @@ up_command:
                 }
                 Some(config_value)
             }
-            None => {
-                None
-            }
+            None => None,
         }
     }
 
@@ -688,12 +685,8 @@ up_command:
                 }
                 serde_yaml::to_value(new_sequence).unwrap()
             }
-            Some(ConfigData::Value(value)) => {
-                value.clone()
-            }
-            None => {
-                serde_yaml::Value::Null
-            }
+            Some(ConfigData::Value(value)) => value.clone(),
+            None => serde_yaml::Value::Null,
         }
     }
 
@@ -1025,8 +1018,7 @@ up_command:
 fn sort_serde_yaml(value: &serde_yaml::Value) -> serde_yaml::Value {
     match value {
         serde_yaml::Value::Sequence(seq) => {
-            let sorted_seq: Vec<serde_yaml::Value> =
-                seq.iter().map(sort_serde_yaml).collect();
+            let sorted_seq: Vec<serde_yaml::Value> = seq.iter().map(sort_serde_yaml).collect();
             serde_yaml::Value::Sequence(sorted_seq)
         }
         serde_yaml::Value::Mapping(mapping) => {
