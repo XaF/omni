@@ -399,23 +399,20 @@ impl GitRepoEnv {
             let str_branch_name = string_branch_name.as_str();
             branch_name = &str_branch_name;
 
-            match repository.find_branch(branch_name, git2::BranchType::Local) {
-                Ok(branch) => {
-                    if let Ok(upstream) = branch.upstream() {
-                        if let Ok(upstream_name) = upstream.name() {
-                            if let Some(upstream_name) = upstream_name {
-                                let upstream_name = upstream_name.split('/').next().unwrap();
-                                if let Ok(remote) = repository.find_remote(upstream_name) {
-                                    if let Some(url) = remote.url() {
-                                        git_repo_env.origin = Some(url.to_string());
-                                        return git_repo_env;
-                                    }
+            if let Ok(branch) = repository.find_branch(branch_name, git2::BranchType::Local) {
+                if let Ok(upstream) = branch.upstream() {
+                    if let Ok(upstream_name) = upstream.name() {
+                        if let Some(upstream_name) = upstream_name {
+                            let upstream_name = upstream_name.split('/').next().unwrap();
+                            if let Ok(remote) = repository.find_remote(upstream_name) {
+                                if let Some(url) = remote.url() {
+                                    git_repo_env.origin = Some(url.to_string());
+                                    return git_repo_env;
                                 }
                             }
                         }
                     }
                 }
-                Err(_) => {}
             }
         }
 

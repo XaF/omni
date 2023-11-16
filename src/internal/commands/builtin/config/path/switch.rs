@@ -426,7 +426,7 @@ impl ConfigPathSwitchCommand {
             let clone_command = CloneCommand::new();
             let cloned = clone_command.clone_repo_handle(
                 &repo_handle,
-                &vec![],
+                &[],
                 targets_package,
                 spinner.clone(),
                 None,
