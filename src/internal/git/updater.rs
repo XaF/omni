@@ -98,7 +98,7 @@ pub fn auto_path_update() {
             continue;
         }
         let repo_id = repo_id.unwrap();
-        let repo_root = format!("{}", git_env.root().unwrap());
+        let repo_root = git_env.root().unwrap().to_string();
 
         // Avoid updating the same repository multiple times
         if !seen.insert(repo_root.clone()) {
@@ -140,7 +140,7 @@ pub fn auto_path_update() {
                 ref_type,
                 ref_match,
                 Some(&repo_root.clone()),
-                Some(Box::new(progress_handler.as_ref())),
+                Some(progress_handler.as_ref()),
             );
 
             sender.send((repo_root, result)).unwrap();
@@ -172,7 +172,7 @@ pub fn auto_path_update() {
     let current_exe = current_exe.unwrap();
 
     for (repo_path, _updated) in results.iter() {
-        let path_entry = path_entry_config(&repo_path);
+        let path_entry = path_entry_config(repo_path);
         if !path_entry.is_valid() {
             continue;
         }
@@ -215,7 +215,7 @@ pub fn auto_path_update() {
         }
     }
 
-    omni_info!(format!("done!").light_green());
+    omni_info!("done!".to_string().light_green());
 }
 
 pub fn update_git_repo(
@@ -223,7 +223,7 @@ pub fn update_git_repo(
     ref_type: String,
     ref_match: Option<String>,
     repo_path: Option<&str>,
-    progress_handler: Option<Box<&dyn ProgressHandler>>,
+    progress_handler: Option<&dyn ProgressHandler>,
 ) -> bool {
     match ref_type.as_str() {
         "branch" => update_git_branch(repo_id, ref_match, repo_path, progress_handler),
@@ -239,7 +239,7 @@ fn update_git_branch(
     repo_id: &str,
     ref_match: Option<String>,
     repo_path: Option<&str>,
-    progress_handler: Option<Box<&dyn ProgressHandler>>,
+    progress_handler: Option<&dyn ProgressHandler>,
 ) -> bool {
     let desc = format!("Updating {}:", repo_id.to_string().italic().light_cyan()).light_blue();
     let spinner;
@@ -247,7 +247,7 @@ fn update_git_branch(
 
     let progress_handler: Box<&dyn ProgressHandler> =
         if let Some(progress_handler) = progress_handler {
-            progress_handler
+            Box::new(progress_handler)
         } else if ENV.interactive_shell {
             spinner = SpinnerProgressHandler::new(desc, None);
             Box::new(&spinner)
@@ -285,7 +285,7 @@ fn update_git_branch(
     }
 
     let regex = match ref_match {
-        Some(ref ref_match) => regex::Regex::new(&ref_match),
+        Some(ref ref_match) => regex::Regex::new(ref_match),
         None => regex::Regex::new(".*"),
     };
     if regex.is_err() {
@@ -340,7 +340,7 @@ fn update_git_tag(
     repo_id: &str,
     ref_match: Option<String>,
     repo_path: Option<&str>,
-    progress_handler: Option<Box<&dyn ProgressHandler>>,
+    progress_handler: Option<&dyn ProgressHandler>,
 ) -> bool {
     let desc = format!("Updating {}:", repo_id.to_string().italic().light_cyan()).light_blue();
     let spinner;
@@ -348,7 +348,7 @@ fn update_git_tag(
 
     let progress_handler: Box<&dyn ProgressHandler> =
         if let Some(progress_handler) = progress_handler {
-            progress_handler
+            Box::new(progress_handler)
         } else if ENV.interactive_shell {
             spinner = SpinnerProgressHandler::new(desc, None);
             Box::new(&spinner)
@@ -437,8 +437,7 @@ fn update_git_tag(
     let fetched_err = String::from_utf8(fetched.stderr).unwrap();
     if fetched_out.trim().is_empty() && fetched_err.trim().is_empty() {
         // If no new tags, nothing more to do!
-        progress_handler
-            .success_with_message("no new tags, nothing to do".light_black());
+        progress_handler.success_with_message("no new tags, nothing to do".light_black());
         return false;
     }
 
@@ -471,7 +470,7 @@ fn update_git_tag(
     // Find the most recent git tag in git_tags that matches
     // the passed tag parameter (if any)
     let regex = match ref_match {
-        Some(ref ref_match) => regex::Regex::new(&ref_match),
+        Some(ref ref_match) => regex::Regex::new(ref_match),
         None => regex::Regex::new(".*"),
     };
     if regex.is_err() {
@@ -489,16 +488,12 @@ fn update_git_tag(
 
     // If the current tag is the same as the target tag, nothing more to do!
     if current_tag == target_tag {
-        progress_handler
-            .success_with_message("already on latest matching tag".light_black());
+        progress_handler.success_with_message("already on latest matching tag".light_black());
         return false;
     }
 
     // Check out the target tag
-    progress_handler.progress(format!(
-        "checking out {}",
-        target_tag.light_green()
-    ));
+    progress_handler.progress(format!("checking out {}", target_tag.light_green()));
     let mut git_checkout_cmd = std::process::Command::new("git");
     if let Some(repo_path) = repo_path {
         git_checkout_cmd.current_dir(repo_path);

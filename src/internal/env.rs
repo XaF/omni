@@ -10,7 +10,6 @@ use git2::Repository;
 use is_terminal::IsTerminal;
 use lazy_static::lazy_static;
 use once_cell::sync::OnceCell;
-use petname;
 
 use crate::internal::config::OrgConfig;
 use crate::internal::dynenv::DynamicEnvExportMode;
@@ -143,10 +142,7 @@ pub fn workdir_or_init<T: AsRef<str>>(path: T) -> Result<WorkDirEnv, String> {
                 ));
             }
 
-            omni_warning!(format!(
-                "generated workdir id {}",
-                id.light_yellow()
-            ));
+            omni_warning!(format!("generated workdir id {}", id.light_yellow()));
         }
         Err(err) => {
             return Err(format!("failed to open '{}': {}", id_file.display(), err,));
@@ -195,7 +191,7 @@ impl Env {
                 xdg_config_home
             }
             _ => {
-                format!("{}/.config", *HOME)
+                format!("{}/.config", user_home())
             }
         };
 
@@ -205,8 +201,8 @@ impl Env {
                 if !config_home.is_empty()
                     && (config_home.starts_with('/') || config_home.starts_with("~/")) =>
             {
-                if config_home.starts_with("~/") {
-                    format!("{}/{}", *HOME, &config_home[2..])
+                if let Some(path_in_home) = config_home.strip_prefix("~/") {
+                    format!("{}/{}", user_home(), path_in_home)
                 } else {
                     config_home
                 }
@@ -222,7 +218,7 @@ impl Env {
                 xdg_data_home
             }
             _ => {
-                format!("{}/.local/share", *HOME)
+                format!("{}/.local/share", user_home())
             }
         };
 
@@ -232,8 +228,8 @@ impl Env {
                 if !data_home.is_empty()
                     && (data_home.starts_with('/') || data_home.starts_with("~/")) =>
             {
-                if data_home.starts_with("~/") {
-                    format!("{}/{}", *HOME, &data_home[2..])
+                if let Some(path_in_home) = data_home.strip_prefix("~/") {
+                    format!("{}/{}", user_home(), path_in_home)
                 } else {
                     data_home
                 }
@@ -249,7 +245,7 @@ impl Env {
                 xdg_cache_home
             }
             _ => {
-                format!("{}/.cache", *HOME)
+                format!("{}/.cache", user_home())
             }
         };
 
@@ -259,15 +255,15 @@ impl Env {
                 if !(cache_home.is_empty()
                     || (!cache_home.starts_with('/') && !cache_home.starts_with("~/"))) =>
             {
-                if cache_home.starts_with("~/") {
-                    format!("{}/{}", *HOME, &cache_home[2..])
+                if let Some(path_in_home) = cache_home.strip_prefix("~/") {
+                    format!("{}/{}", user_home(), path_in_home)
                 } else {
                     cache_home
                 }
             }
             _ => {
-                let xdg_cache_home =
-                    std::env::var("XDG_CACHE_HOME").unwrap_or_else(|_| format!("{}/.cache", *HOME));
+                let xdg_cache_home = std::env::var("XDG_CACHE_HOME")
+                    .unwrap_or_else(|_| format!("{}/.cache", user_home()));
                 format!("{}/omni", xdg_cache_home)
             }
         };
@@ -288,7 +284,7 @@ impl Env {
         if let Ok(omni_org_str) = std::env::var("OMNI_ORG") {
             for path in omni_org_str.split(',') {
                 if !path.is_empty() {
-                    omni_org.push(OrgConfig::from_str(&path.to_string()));
+                    omni_org.push(OrgConfig::from_str(path));
                 }
             }
         }
@@ -302,21 +298,21 @@ impl Env {
         }
 
         Env {
-            cache_home: cache_home,
-            config_home: config_home,
-            data_home: data_home,
+            cache_home,
+            config_home,
+            data_home,
 
-            xdg_cache_home: xdg_cache_home,
-            xdg_config_home: xdg_config_home,
-            xdg_data_home: xdg_data_home,
+            xdg_cache_home,
+            xdg_config_home,
+            xdg_data_home,
 
             interactive_shell: std::io::stdout().is_terminal(),
 
             git_by_path: GitRepoEnvByPath::new(),
 
-            omnipath: omnipath,
-            omni_org: omni_org,
-            omni_cmd_file: omni_cmd_file,
+            omnipath,
+            omni_org,
+            omni_cmd_file,
         }
     }
 }
@@ -371,41 +367,30 @@ impl GitRepoEnv {
         let mut git_repo_root = None;
         if let Some(workdir) = repository.workdir() {
             if let Some(root_dir) = workdir.to_str() {
-                if root_dir.ends_with('/') {
-                    git_repo_root = Some(root_dir[..root_dir.len() - 1].to_string());
-                } else {
-                    git_repo_root = Some(root_dir.to_string());
-                }
+                git_repo_root = Some(root_dir.strip_suffix('/').unwrap_or(root_dir).to_string());
             }
         }
 
         git_repo_env.in_repo = true;
         git_repo_env.root = git_repo_root;
 
-        match repository.find_remote("origin") {
-            Ok(remote) => {
-                if let Some(url) = remote.url() {
-                    git_repo_env.origin = Some(url.to_string());
-                    return git_repo_env;
-                }
+        if let Ok(remote) = repository.find_remote("origin") {
+            if let Some(url) = remote.url() {
+                git_repo_env.origin = Some(url.to_string());
+                return git_repo_env;
             }
-            Err(_) => {}
         }
 
         // loop over main, master, current
         for mut branch_name in &["main", "master", "__current"] {
             let mut string_branch_name = branch_name.to_string();
             if string_branch_name == "__current" {
-                match repository.head() {
-                    Ok(head) => match head.shorthand() {
-                        Some(shorthand) => {
-                            if shorthand != "HEAD" {
-                                string_branch_name = shorthand.to_string();
-                            }
+                if let Ok(head) = repository.head() {
+                    if let Some(shorthand) = head.shorthand() {
+                        if shorthand != "HEAD" {
+                            string_branch_name = shorthand.to_string();
                         }
-                        None => {}
-                    },
-                    Err(_) => {}
+                    }
                 }
                 if string_branch_name == "__current" {
                     continue;
@@ -414,46 +399,30 @@ impl GitRepoEnv {
             let str_branch_name = string_branch_name.as_str();
             branch_name = &str_branch_name;
 
-            match repository.find_branch(branch_name, git2::BranchType::Local) {
-                Ok(branch) => match branch.upstream() {
-                    Ok(upstream) => match upstream.name() {
-                        Ok(upstream_name) => {
-                            if let Some(upstream_name) = upstream_name {
-                                let upstream_name = upstream_name.split('/').next().unwrap();
-                                match repository.find_remote(upstream_name) {
-                                    Ok(remote) => {
-                                        if let Some(url) = remote.url() {
-                                            git_repo_env.origin = Some(url.to_string());
-                                            return git_repo_env;
-                                        }
-                                    }
-                                    Err(_) => {}
-                                }
-                            }
-                        }
-                        Err(_) => {}
-                    },
-                    Err(_) => {}
-                },
-                Err(_) => {}
-            }
-        }
-
-        match repository.remotes() {
-            Ok(remotes) => {
-                for remote in remotes.iter() {
-                    match repository.find_remote(remote.unwrap()) {
-                        Ok(remote) => {
+            if let Ok(branch) = repository.find_branch(branch_name, git2::BranchType::Local) {
+                if let Ok(upstream) = branch.upstream() {
+                    if let Ok(Some(upstream_name)) = upstream.name() {
+                        let upstream_name = upstream_name.split('/').next().unwrap();
+                        if let Ok(remote) = repository.find_remote(upstream_name) {
                             if let Some(url) = remote.url() {
                                 git_repo_env.origin = Some(url.to_string());
                                 return git_repo_env;
                             }
                         }
-                        Err(_) => {}
                     }
                 }
             }
-            Err(_) => {}
+        }
+
+        if let Ok(remotes) = repository.remotes() {
+            for remote in remotes.iter() {
+                if let Ok(remote) = repository.find_remote(remote.unwrap()) {
+                    if let Some(url) = remote.url() {
+                        git_repo_env.origin = Some(url.to_string());
+                        return git_repo_env;
+                    }
+                }
+            }
         }
 
         git_repo_env
@@ -535,7 +504,7 @@ impl WorkDirEnv {
             id: OnceCell::new(),
         };
 
-        let git = git_env(&path);
+        let git = git_env(path);
         if git.in_repo() {
             workdir_env.in_workdir = true;
             workdir_env.root = git.root().map(|s| s.to_string());
@@ -543,10 +512,10 @@ impl WorkDirEnv {
             // Start from `path` and go up until finding a `.omni/id` file
             let mut path = PathBuf::from(path);
             loop {
-                if let Some(id) = Self::read_id_file(&path.to_str().unwrap().to_string()) {
+                if let Some(id) = Self::read_id_file(path.to_str().unwrap()) {
                     workdir_env.in_workdir = true;
                     workdir_env.root = Some(path.to_str().unwrap().to_string());
-                    if let Err(_) = workdir_env.id.set(Some(id)) {
+                    if workdir_env.id.set(Some(id)).is_err() {
                         unreachable!();
                     }
                     break;
@@ -592,15 +561,13 @@ impl WorkDirEnv {
     pub fn id(&self) -> Option<String> {
         self.id
             .get_or_init(|| {
-                if self.root.is_none() {
-                    return None;
-                }
+                self.root.as_ref()?;
 
                 if let Some(id) = Self::read_id_file(self.root.as_ref().unwrap()) {
                     return Some(id);
                 }
 
-                if let Some(id) = git_env(&self.root.as_ref().unwrap()).id() {
+                if let Some(id) = git_env(self.root.as_ref().unwrap()).id() {
                     return Some(id);
                 }
 
@@ -619,7 +586,7 @@ impl WorkDirEnv {
             if let Ok(id) = std::fs::read_to_string(id_file) {
                 // if the id is valid, then we can use it, otherwise ignore it
                 let id = id.trim();
-                if Self::verify_id(&id) {
+                if Self::verify_id(id) {
                     return Some(id.to_string());
                 }
             }
@@ -732,10 +699,7 @@ impl Shell {
     }
 
     pub fn is_fish(&self) -> bool {
-        match self {
-            Shell::Fish => true,
-            _ => false,
-        }
+        matches!(self, Shell::Fish)
     }
 
     pub fn default_rc_file(&self) -> PathBuf {
@@ -750,11 +714,11 @@ impl Shell {
 
     pub fn hook_init_command(&self) -> String {
         match self {
-            Shell::Bash => format!("eval \"$(omni hook init bash)\""),
-            Shell::Zsh => format!("eval \"$(omni hook init zsh)\""),
-            Shell::Fish => format!("omni hook init fish | source"),
-            Shell::Posix => format!(""),
-            Shell::Unknown(_) => format!(""),
+            Shell::Bash => "eval \"$(omni hook init bash)\"".to_string(),
+            Shell::Zsh => "eval \"$(omni hook init zsh)\"".to_string(),
+            Shell::Fish => "omni hook init fish | source".to_string(),
+            Shell::Posix => String::new(),
+            Shell::Unknown(_) => String::new(),
         }
     }
 }

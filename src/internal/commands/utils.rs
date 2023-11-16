@@ -4,7 +4,7 @@ use std::io::Write;
 use std::path::{Path, PathBuf};
 
 use path_clean::PathClean;
-use pathdiff;
+
 use requestty::question::{completions, Completions};
 
 use crate::internal::env::user_home;
@@ -20,8 +20,7 @@ pub fn abs_or_rel_path(path: &str) -> String {
     let path = if path.is_absolute() {
         path
     } else {
-        let joined_path = current_dir.join(&path);
-        joined_path
+        current_dir.join(&path)
     };
 
     let relative_path = pathdiff::diff_paths(path.clone(), current_dir.clone());
@@ -32,11 +31,7 @@ pub fn abs_or_rel_path(path: &str) -> String {
     let relative_path = relative_path.to_str().unwrap();
 
     // Ignore "./" at the beginning of the path
-    let relative_path = if relative_path.starts_with("./") {
-        &relative_path[2..]
-    } else {
-        relative_path
-    };
+    let relative_path = relative_path.strip_prefix("./").unwrap_or(relative_path);
 
     let absolute = path.to_str().unwrap().to_string();
     let relative = relative_path.to_string();

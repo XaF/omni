@@ -169,7 +169,7 @@ impl UpEnvironment {
 
         for version in self.versions.iter() {
             // Check if that version applies to the requested dir
-            if version.dir != ""
+            if !version.dir.is_empty()
                 && dir != version.dir
                 && !dir.starts_with(format!("{}/", version.dir).as_str())
             {

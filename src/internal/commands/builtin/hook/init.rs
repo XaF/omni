@@ -85,8 +85,8 @@ impl HookInitCommandArgs {
             shell.to_string()
         } else {
             let mut shell = env::var("SHELL").unwrap_or("bash".to_string());
-            if shell.contains("/") {
-                shell = shell.split("/").last().unwrap().to_string();
+            if shell.contains('/') {
+                shell = shell.split('/').last().unwrap().to_string();
             }
             shell
         };
@@ -115,9 +115,9 @@ impl HookInitCommandArgs {
             };
 
         Self {
-            shell: shell,
-            aliases: aliases,
-            command_aliases: command_aliases,
+            shell,
+            aliases,
+            command_aliases,
         }
     }
 }
@@ -148,7 +148,7 @@ impl InitHookAlias {
         let full_command = format!("omni {}", command);
 
         Self {
-            alias: alias,
+            alias,
             command: shell_words::quote(&command).to_string(),
             command_size: command_vec.len(),
             full_command: shell_words::quote(&full_command).to_string(),
@@ -199,7 +199,7 @@ impl HookInitCommand {
             usage: None,
             parameters: vec![
                 SyntaxOptArg {
-                    name: format!("--alias <alias>"),
+                    name: "--alias <alias>".to_string(),
                     desc: Some(
                         "Create an alias for the omni command with autocompletion support."
                             .to_string(),
@@ -207,7 +207,7 @@ impl HookInitCommand {
                     required: false,
                 },
                 SyntaxOptArg {
-                    name: format!("--command-alias <alias> <subcommand>"),
+                    name: "--command-alias <alias> <subcommand>".to_string(),
                     desc: Some(
                         concat!(
                             "Create an alias for the specified omni subcommand with autocompletion ",
@@ -219,7 +219,7 @@ impl HookInitCommand {
                     required: false,
                 },
                 SyntaxOptArg {
-                    name: format!("shell"),
+                    name: "shell".to_string(),
                     desc: Some(
                         "Which shell to initialize omni for. Can be one of bash, zsh or fish."
                             .to_string(),

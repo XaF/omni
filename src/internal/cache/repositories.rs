@@ -65,7 +65,7 @@ impl RepositoriesCache {
             return false;
         }
 
-        if let None = self.fingerprints.get(repository) {
+        if self.fingerprints.get(repository).is_none() {
             if fingerprint == 0 {
                 return false;
             }

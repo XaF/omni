@@ -24,7 +24,7 @@ where
         }
         result.insert(k.clone(), string.unwrap());
     }
-    Ok(result.serialize(serializer)?)
+    result.serialize(serializer)
 }
 
 pub fn deserialize<'de, D>(deserializer: D) -> Result<HashMap<String, OffsetDateTime>, D::Error>

@@ -2,7 +2,6 @@ use std::collections::BTreeMap;
 use std::collections::HashSet;
 use std::process::exit;
 
-use clap;
 use once_cell::sync::OnceCell;
 
 use crate::internal::commands::command_loader;
@@ -81,7 +80,7 @@ impl HelpCommandArgs {
 
         Self {
             unfold: *matches.get_one::<bool>("unfold").unwrap_or(&false),
-            unparsed: unparsed,
+            unparsed,
         }
     }
 }
@@ -147,7 +146,7 @@ impl HelpCommand {
     }
 
     pub fn exec(&self, argv: Vec<String>) {
-        if let Err(_) = self.cli_args.set(HelpCommandArgs::parse(argv)) {
+        if self.cli_args.set(HelpCommandArgs::parse(argv)).is_err() {
             unreachable!();
         }
 
@@ -195,7 +194,7 @@ impl HelpCommand {
         );
 
         self.print_categorized_command_help(vec![]);
-        eprintln!("");
+        eprintln!();
     }
 
     fn help_command(&self, command: &Command, called_as: Vec<String>) {
@@ -204,7 +203,7 @@ impl HelpCommand {
         let max_width = term_width() - 4;
 
         let help = command.help();
-        if help != "" {
+        if !help.is_empty() {
             eprintln!("\n{}", wrap_blocks(&help, max_width).join("\n"));
         }
 
@@ -215,7 +214,7 @@ impl HelpCommand {
         );
 
         if let Some(syntax) = command.syntax() {
-            if syntax.parameters.len() > 0 {
+            if !syntax.parameters.is_empty() {
                 // Make a single vector with contents from both syntax.arguments and syntax.options
                 let longest = syntax
                     .parameters
@@ -230,7 +229,7 @@ impl HelpCommand {
                     let missing_just = ljust - arg.name.len();
                     let str_name = format!("  {}{}", arg.name.cyan(), " ".repeat(missing_just));
                     let help = if let Some(desc) = &arg.desc {
-                        wrap_text(&desc, max_width - ljust).join(join_str.as_str())
+                        wrap_text(desc, max_width - ljust).join(join_str.as_str())
                     } else {
                         "".to_string()
                     };
@@ -328,7 +327,7 @@ impl HelpCommand {
                 } else {
                     "Uncategorized".to_string().bold()
                 };
-                let line = format!("{}", new_category);
+                let line = new_category.to_string();
                 eprintln!("\n{}", line);
             }
 
@@ -361,7 +360,7 @@ impl HelpCommand {
             eprintln!("{}{}", str_name, help);
         }
 
-        return true;
+        true
     }
 }
 
@@ -425,7 +424,7 @@ impl HelpCommandOrganizer {
                     Command::Void(VoidCommand::new(
                         cmd_sort_key,
                         cat_sort_key.0,
-                        command.category().unwrap_or(vec![]),
+                        command.category().unwrap_or_default(),
                     ))
                 };
 
@@ -476,17 +475,14 @@ impl HelpCommandOrganizer {
                 }
             }
 
-            let command_is_a_void = match &metadata.command {
-                Command::Void(_) => true,
-                _ => false,
-            };
+            let command_is_a_void = matches!(&metadata.command, Command::Void(_));
 
             if metadata.folding || !command_is_a_void {
                 commands.push(metadata.clone());
             }
         }
 
-        return commands;
+        commands
     }
 }
 

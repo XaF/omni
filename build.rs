@@ -22,7 +22,7 @@ fn main() {
 
 fn get_git_version() -> Option<String> {
     let mut command = Command::new("git");
-    command.args(&["describe", "--tags", "--broken", "--dirty", "--match", "v*"]);
+    command.args(["describe", "--tags", "--broken", "--dirty", "--match", "v*"]);
 
     if let Ok(output) = command.output() {
         if output.status.success() {
@@ -34,7 +34,7 @@ fn get_git_version() -> Option<String> {
     }
 
     let mut command = Command::new("git");
-    command.args(&[
+    command.args([
         "describe", "--tags", "--always", "--broken", "--dirty", "--match", "v*",
     ]);
 
@@ -46,5 +46,5 @@ fn get_git_version() -> Option<String> {
         }
     }
 
-    return None;
+    None
 }

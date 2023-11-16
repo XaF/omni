@@ -74,25 +74,25 @@ fn convert_cache_to_dir() -> io::Result<()> {
     // Write each cache category to a separate file in our temporary directory
     if old_cache.asdf_operation != serde_json::Value::Null {
         let asdf_operation_file_path = tmp_dir_path.join("asdf_operation.json");
-        let mut asdf_operation_file = File::create(&asdf_operation_file_path)?;
+        let mut asdf_operation_file = File::create(asdf_operation_file_path)?;
         asdf_operation_file
             .write_all(serde_json::to_string(&old_cache.asdf_operation)?.as_bytes())?;
     }
     if old_cache.homebrew_operation != serde_json::Value::Null {
         let homebrew_operation_file_path = tmp_dir_path.join("homebrew_operation.json");
-        let mut homebrew_operation_file = File::create(&homebrew_operation_file_path)?;
+        let mut homebrew_operation_file = File::create(homebrew_operation_file_path)?;
         homebrew_operation_file
             .write_all(serde_json::to_string(&old_cache.homebrew_operation)?.as_bytes())?;
     }
     if old_cache.omni_path_updates != serde_json::Value::Null {
         let omni_path_updates_file_path = tmp_dir_path.join("omnipath.json");
-        let mut omni_path_updates_file = File::create(&omni_path_updates_file_path)?;
+        let mut omni_path_updates_file = File::create(omni_path_updates_file_path)?;
         omni_path_updates_file
             .write_all(serde_json::to_string(&old_cache.omni_path_updates)?.as_bytes())?;
     }
     if old_cache.trusted_repositories.repositories != serde_json::Value::Null {
         let repositories_file_path = tmp_dir_path.join("repositories.json");
-        let mut repositories_file = File::create(&repositories_file_path)?;
+        let mut repositories_file = File::create(repositories_file_path)?;
         // Since we're changing the format, we're rewriting this into a new struct
         let new_repositories = NewCacheRepositories {
             trusted: old_cache.trusted_repositories.repositories,
@@ -102,14 +102,14 @@ fn convert_cache_to_dir() -> io::Result<()> {
     }
     if old_cache.up_environments != serde_json::Value::Null {
         let up_environments_file_path = tmp_dir_path.join("up_environments.json");
-        let mut up_environments_file = File::create(&up_environments_file_path)?;
+        let mut up_environments_file = File::create(up_environments_file_path)?;
         up_environments_file
             .write_all(serde_json::to_string(&old_cache.up_environments)?.as_bytes())?;
     }
 
     // Rename the current cache file to a backup file, just in case
     let backup_file_path = cache_path.with_extension("json.bak");
-    std::fs::rename(&cache_path, &backup_file_path)?;
+    std::fs::rename(&cache_path, backup_file_path)?;
 
     // Move the temporary directory to the cache path
     std::fs::rename(&tmp_dir_path, &cache_path)?;
@@ -163,8 +163,8 @@ where
     let mut content = String::new();
     file.read_to_string(&mut content)?;
     let load_cache: Result<C, _> = serde_json::from_str(&content);
-    let mut cache = if let Ok(_) = load_cache {
-        load_cache.unwrap().clone()
+    let mut cache = if let Ok(load_cache) = load_cache {
+        load_cache.clone()
     } else {
         C::new_empty()
     };

@@ -5,7 +5,7 @@ use itertools::Itertools;
 use once_cell::sync::OnceCell;
 use serde::Deserialize;
 use serde::Serialize;
-use serde_json;
+
 use shell_escape::escape;
 
 use crate::internal::cache::CacheObject;
@@ -123,12 +123,12 @@ pub struct DynamicEnv {
 impl DynamicEnv {
     fn new_with_path(path: Option<String>, cache: UpEnvironmentsCache) -> Self {
         Self {
-            path: path,
+            path,
             id: OnceCell::new(),
             data_str: None,
             data: None,
             features: Vec::new(),
-            cache: cache,
+            cache,
         }
     }
 
@@ -140,81 +140,79 @@ impl DynamicEnv {
 
         Self {
             path: None,
-            id: id,
+            id,
             data_str: cur_data,
             data: None,
             features: Vec::new(),
-            cache: cache,
+            cache,
         }
     }
 
     pub fn id(&self) -> u64 {
-        self.id
-            .get_or_init(|| {
-                // Get the current path
-                let path = self.path.clone().unwrap_or(".".to_string());
+        *self.id.get_or_init(|| {
+            // Get the current path
+            let path = self.path.clone().unwrap_or(".".to_string());
 
-                // Get the workdir environment
-                let workdir = workdir(&path);
-                if !workdir.in_workdir() {
-                    return 0;
-                }
+            // Get the workdir environment
+            let workdir = workdir(&path);
+            if !workdir.in_workdir() {
+                return 0;
+            }
 
-                // Get the workdir id
-                let repo_id = workdir.id();
-                if repo_id.is_none() {
-                    return 0;
-                }
-                let repo_id = repo_id.unwrap();
+            // Get the workdir id
+            let repo_id = workdir.id();
+            if repo_id.is_none() {
+                return 0;
+            }
+            let repo_id = repo_id.unwrap();
 
-                // Get the relative directory
-                let dir = workdir.reldir(&path).unwrap_or("".to_string());
+            // Get the relative directory
+            let dir = workdir.reldir(&path).unwrap_or("".to_string());
 
-                // Check if repo is 'up' and should have its environment loaded
-                let up_env = if let Some(up_env) = self.cache.get_env(&repo_id) {
-                    up_env
-                } else {
-                    return 0;
-                };
+            // Check if repo is 'up' and should have its environment loaded
+            let up_env = if let Some(up_env) = self.cache.get_env(&repo_id) {
+                up_env
+            } else {
+                return 0;
+            };
 
-                // Prepare the hash
-                let mut hasher = Hasher::new();
+            // Prepare the hash
+            let mut hasher = Hasher::new();
 
-                // Try and get the shell PPID by using the PPID environment variables
-                let ppid = std::env::var("OMNI_SHELL_PPID").unwrap_or("".to_string());
-                hasher.update(ppid.as_bytes());
+            // Try and get the shell PPID by using the PPID environment variables
+            let ppid = std::env::var("OMNI_SHELL_PPID").unwrap_or("".to_string());
+            hasher.update(ppid.as_bytes());
+            hasher.update(DATA_SEPARATOR.as_bytes());
+
+            // Let's add the workdir location and the workdir id to the hash
+            hasher.update(workdir.root().unwrap().as_bytes());
+            hasher.update(DATA_SEPARATOR.as_bytes());
+            hasher.update(workdir.id().unwrap().as_bytes());
+            hasher.update(DATA_SEPARATOR.as_bytes());
+
+            // Add the requested environments to the hash, sorted by key
+            for (key, value) in up_env.env_vars.iter().sorted() {
+                hasher.update(key.as_bytes());
                 hasher.update(DATA_SEPARATOR.as_bytes());
-
-                // Let's add the workdir location and the workdir id to the hash
-                hasher.update(workdir.root().unwrap().as_bytes());
+                hasher.update(value.as_bytes());
                 hasher.update(DATA_SEPARATOR.as_bytes());
-                hasher.update(workdir.id().unwrap().as_bytes());
+            }
+
+            // Go over the tool versions in the up environment cache
+            for toolversion in up_env.versions_for_dir(&dir).iter() {
+                hasher.update(toolversion.tool.as_bytes());
                 hasher.update(DATA_SEPARATOR.as_bytes());
+                hasher.update(toolversion.version.as_bytes());
+                hasher.update(DATA_SEPARATOR.as_bytes());
+            }
 
-                // Add the requested environments to the hash, sorted by key
-                for (key, value) in up_env.env_vars.iter().sorted() {
-                    hasher.update(key.as_bytes());
-                    hasher.update(DATA_SEPARATOR.as_bytes());
-                    hasher.update(value.as_bytes());
-                    hasher.update(DATA_SEPARATOR.as_bytes());
-                }
+            // Convert the hash to a u64
+            let hash_bytes = hasher.finalize();
+            let hash_u64 = u64::from_le_bytes(hash_bytes.as_bytes()[..8].try_into().unwrap());
 
-                // Go over the tool versions in the up environment cache
-                for toolversion in up_env.versions_for_dir(&dir).iter() {
-                    hasher.update(toolversion.tool.as_bytes());
-                    hasher.update(DATA_SEPARATOR.as_bytes());
-                    hasher.update(toolversion.version.as_bytes());
-                    hasher.update(DATA_SEPARATOR.as_bytes());
-                }
-
-                // Convert the hash to a u64
-                let hash_bytes = hasher.finalize();
-                let hash_u64 = u64::from_le_bytes(hash_bytes.as_bytes()[..8].try_into().unwrap());
-
-                // Return the hash
-                hash_u64
-            })
-            .clone()
+            // Return the hash
+            hash_u64
+        })
     }
 
     pub fn id_str(&self) -> String {
@@ -229,7 +227,7 @@ impl DynamicEnv {
         let workdir = workdir(&path);
         if workdir.in_workdir() {
             if let Some(repo_id) = workdir.id() {
-                up_env = self.cache.get_env(&repo_id).clone();
+                up_env = self.cache.get_env(&repo_id);
             } else {
                 return;
             }
@@ -237,7 +235,7 @@ impl DynamicEnv {
 
         if let Some(up_env) = &up_env {
             // Add the requested environments to the hash, sorted by key
-            if up_env.env_vars.len() > 0 {
+            if !up_env.env_vars.is_empty() {
                 self.features.push("env".to_string());
             }
             for (key, value) in up_env.env_vars.iter() {
@@ -249,7 +247,7 @@ impl DynamicEnv {
             for toolversion in up_env.versions_for_dir(&dir).iter() {
                 let tool = toolversion.tool.clone();
                 let version = toolversion.version.clone();
-                let version_minor = version.split(".").take(2).join(".");
+                let version_minor = version.split('.').take(2).join(".");
                 let tool_prefix = format!("{}/installs/{}/{}", *ASDF_PATH, tool, version);
 
                 self.features.push(format!("{}:{}", tool, version));
@@ -332,7 +330,7 @@ impl DynamicEnv {
         // Set the OMNI_LOADED_FEATURES variable so that it can easily be used in
         // the shell to keep showing up loaded features in the prompt or anywhere
         // else users wish.
-        if self.features.len() > 0 {
+        if !self.features.is_empty() {
             envsetter.set_value("OMNI_LOADED_FEATURES", &self.features.join(" "));
         } else {
             envsetter.unset_value("OMNI_LOADED_FEATURES");
@@ -512,7 +510,7 @@ impl DynamicEnvData {
     fn env_get_var(&self, key: &str) -> Option<String> {
         if self.env.contains_key(key) {
             self.env.get(key).unwrap().clone()
-        } else if let Some(val) = std::env::var(key).ok() {
+        } else if let Ok(val) = std::env::var(key) {
             Some(val)
         } else {
             None
@@ -533,7 +531,7 @@ impl DynamicEnvData {
             self.values.insert(
                 key.to_string(),
                 DynamicEnvValue {
-                    prev: prev,
+                    prev,
                     curr: Some(value.to_string()),
                 },
             );
@@ -551,13 +549,8 @@ impl DynamicEnvData {
                 return;
             }
 
-            self.values.insert(
-                key.to_string(),
-                DynamicEnvValue {
-                    prev: prev,
-                    curr: None,
-                },
-            );
+            self.values
+                .insert(key.to_string(), DynamicEnvValue { prev, curr: None });
         } else {
             self.values.get_mut(key).unwrap().curr = None;
         }
@@ -592,14 +585,14 @@ impl DynamicEnvData {
         let cur_val = self.env_get_var(key).unwrap_or("".to_string());
 
         let index = {
-            let prev = cur_val.split(":").collect::<Vec<&str>>();
+            let prev = cur_val.split(':').collect::<Vec<&str>>();
             prev.len()
         };
 
         self.lists.get_mut(key).unwrap().push(DynamicEnvListValue {
             operation: DynamicEnvListOperation::Add,
             value: value.to_string(),
-            index: index,
+            index,
         });
 
         if cur_val.is_empty() {
@@ -615,12 +608,12 @@ impl DynamicEnvData {
         }
 
         if let Some(prev) = self.env_get_var(key) {
-            let mut prev = prev.split(":").collect::<Vec<&str>>();
+            let mut prev = prev.split(':').collect::<Vec<&str>>();
             if let Some(index) = prev.iter().position(|&r| r == value) {
                 self.lists.get_mut(key).unwrap().push(DynamicEnvListValue {
                     operation: DynamicEnvListOperation::Del,
                     value: value.to_string(),
-                    index: index,
+                    index,
                 });
 
                 prev.remove(index);
@@ -641,9 +634,9 @@ impl DynamicEnvData {
             }
 
             if let Some(prev) = &value.prev {
-                self.env_set_var(&key, &prev);
+                self.env_set_var(key, prev);
             } else {
-                self.env_unset_var(&key);
+                self.env_unset_var(key);
             }
         }
 
@@ -652,7 +645,7 @@ impl DynamicEnvData {
             // operations we've done to the closest of our ability; since it's
             // a list, we'll also split it, so we're ready to "search and update"
             let cur_val = self.env_get_var(key).unwrap_or("".to_string());
-            let mut cur_val = cur_val.split(":").collect::<Vec<&str>>();
+            let mut cur_val = cur_val.split(':').collect::<Vec<&str>>();
 
             for operation in operations.iter().rev() {
                 match operation.operation {
@@ -735,7 +728,7 @@ impl DynamicEnvData {
                 Some(value) => {
                     if key == "PATH" {
                         let path = value
-                            .split(":")
+                            .split(':')
                             .map(|s| escape(std::borrow::Cow::Borrowed(s)))
                             .join(" ");
                         println!("set -gx {} {}", key, path);

@@ -7,7 +7,7 @@ use indicatif::ProgressBar;
 use indicatif::ProgressStyle;
 use lazy_static::lazy_static;
 use once_cell::sync::OnceCell;
-use requestty;
+
 use strsim::normalized_damerau_levenshtein;
 use url::Url;
 use walkdir::WalkDir;
@@ -51,7 +51,7 @@ impl OrgLoader {
             }
         }
 
-        Self { orgs: orgs }
+        Self { orgs }
     }
 
     pub fn first(&self) -> Option<&Org> {
@@ -75,37 +75,39 @@ impl OrgLoader {
         let mut matches = HashSet::new();
         let find_match = format!("/{}", repo);
         for worktree in worktrees.iter() {
-            for entry in WalkDir::new(worktree).follow_links(true) {
-                if let Ok(entry) = entry {
-                    let filetype = entry.file_type();
-                    let filepath = entry.path();
+            for entry in WalkDir::new(worktree)
+                .follow_links(true)
+                .into_iter()
+                .flatten()
+            {
+                let filetype = entry.file_type();
+                let filepath = entry.path();
 
-                    // We only want places where there's a `.git` directory, since it generally
-                    // indicates that we are in a git repository
-                    if !filetype.is_dir()
-                        || !filepath.file_name().is_some()
-                        || filepath.file_name().unwrap() != ".git"
-                    {
-                        continue;
-                    }
+                // We only want places where there's a `.git` directory, since it generally
+                // indicates that we are in a git repository
+                if !filetype.is_dir()
+                    || filepath.file_name().is_none()
+                    || filepath.file_name().unwrap() != ".git"
+                {
+                    continue;
+                }
 
-                    // Take the parent
-                    let filepath = filepath.parent().unwrap();
+                // Take the parent
+                let filepath = filepath.parent().unwrap();
 
-                    // Remove worktree from the path
-                    let filepath = filepath.strip_prefix(worktree).unwrap();
+                // Remove worktree from the path
+                let filepath = filepath.strip_prefix(worktree).unwrap();
 
-                    // Convert to a string
-                    let filepath_str = filepath.to_str().unwrap();
+                // Convert to a string
+                let filepath_str = filepath.to_str().unwrap();
 
-                    if filepath_str.starts_with(repo) {
-                        matches.insert(filepath_str.to_string());
-                    }
+                if filepath_str.starts_with(repo) {
+                    matches.insert(filepath_str.to_string());
+                }
 
-                    if repo != "" {
-                        if let Some(index) = filepath_str.find(&find_match) {
-                            matches.insert(filepath_str[(index + 1)..].to_string());
-                        }
+                if !repo.is_empty() {
+                    if let Some(index) = filepath_str.find(&find_match) {
+                        matches.insert(filepath_str[(index + 1)..].to_string());
                     }
                 }
             }
@@ -144,7 +146,7 @@ impl OrgLoader {
 
                     (
                         Repo::parse(package),
-                        PathBuf::from(package_path_from_handle(package).unwrap()),
+                        package_path_from_handle(package).unwrap(),
                     )
                 } else {
                     let git_env = git_env(&path.full_path);
@@ -255,7 +257,7 @@ impl OrgLoader {
                     // We only want places where there's a `.git` directory, since it generally
                     // indicates that we are in a git repository
                     if !filetype.is_dir()
-                        || !filepath.file_name().is_some()
+                        || filepath.file_name().is_none()
                         || filepath.file_name().unwrap() != ".git"
                     {
                         continue;
@@ -264,9 +266,9 @@ impl OrgLoader {
                     // Take the parent
                     let filepath = filepath.parent().unwrap();
 
-                    spinner
-                        .clone()
-                        .map(|s| s.set_message(format!("{}", filepath.to_str().unwrap())));
+                    if let Some(s) = spinner.clone() {
+                        s.set_message(filepath.to_str().unwrap().to_string())
+                    }
 
                     // Check if it ends with the expected rel_path
                     if filepath
@@ -274,7 +276,9 @@ impl OrgLoader {
                         .unwrap()
                         .ends_with(slash_rel_path.as_str())
                     {
-                        spinner.clone().map(|s| s.finish_and_clear());
+                        if let Some(s) = spinner.clone() {
+                            s.finish_and_clear()
+                        }
 
                         if start.elapsed() > std::time::Duration::from_secs(1) {
                             omni_print!(format!("{} Setting up your organizations will make repository lookup much faster.", "Did you know?".to_string().bold()));
@@ -294,11 +298,15 @@ impl OrgLoader {
                             .to_string(),
                     });
                 }
-                spinner.clone().map(|s| s.tick());
+                if let Some(s) = spinner.clone() {
+                    s.tick()
+                }
             }
         }
 
-        spinner.clone().map(|s| s.finish_and_clear());
+        if let Some(s) = spinner.clone() {
+            s.finish_and_clear()
+        }
 
         let mut with_score = all_repos
             .iter_mut()
@@ -397,15 +405,15 @@ struct PathScore {
     relpath: String,
 }
 
-impl Into<String> for PathScore {
-    fn into(self) -> String {
-        self.abspath.to_str().unwrap().to_string()
+impl From<PathScore> for String {
+    fn from(val: PathScore) -> Self {
+        val.abspath.to_str().unwrap().to_string()
     }
 }
 
-impl<'a> Into<String> for &'a mut PathScore {
-    fn into(self) -> String {
-        self.abspath.to_str().unwrap().to_string()
+impl<'a> From<&'a mut PathScore> for String {
+    fn from(val: &'a mut PathScore) -> Self {
+        val.abspath.to_str().unwrap().to_string()
     }
 }
 
@@ -439,7 +447,7 @@ impl Org {
         }
 
         if let Some(host) = parsed_url.host_str() {
-            if !config.handle.starts_with(parsed_url.scheme()) && !host.contains(".") {
+            if !config.handle.starts_with(parsed_url.scheme()) && !host.contains('.') {
                 return Err(OrgError::InvalidHandle("Invalid org handle: invalid host"));
             }
         } else {
@@ -455,7 +463,7 @@ impl Org {
             if path_segments.len() > 1 {
                 repo = Some(path_segments.pop().unwrap().to_string());
             }
-            if path_segments.len() > 0 {
+            if !path_segments.is_empty() {
                 owner = Some(path_segments.pop().unwrap().to_string());
             }
         }
@@ -465,13 +473,13 @@ impl Org {
         let enforce_password = !parsed_url.password().unwrap_or("").is_empty();
 
         Ok(Self {
-            config: config,
+            config,
             url: parsed_url,
-            owner: owner,
-            repo: repo,
-            enforce_scheme: enforce_scheme,
-            enforce_user: enforce_user,
-            enforce_password: enforce_password,
+            owner,
+            repo,
+            enforce_scheme,
+            enforce_user,
+            enforce_password,
         })
     }
 
@@ -486,9 +494,7 @@ impl Org {
     pub fn get_repo_path(&self, repo: &str) -> Option<PathBuf> {
         // Get the repo git url
         let git_url = self.get_repo_git_url(repo);
-        if git_url.is_none() {
-            return None;
-        }
+        git_url.as_ref()?;
         let git_url = git_url.unwrap();
 
         Some(format_path(&self.worktree(), &git_url))
@@ -501,7 +507,7 @@ impl Org {
                 && (!self.enforce_user
                     || self.url.username() == url.user.as_deref().unwrap_or(""))
                 && (!self.enforce_password || self.url.password() == url.token.as_deref())
-                && self.url.host_str() == url.host.as_ref().map(|s| s.as_str())
+                && self.url.host_str() == url.host.as_deref()
                 && (self.owner.is_none() || self.owner == url.owner)
                 && (self.repo.is_none() || self.repo == Some(url.name));
         }
@@ -610,19 +616,19 @@ impl Org {
 
             let git_url = GitUrl {
                 host: self.url.host_str().map(|h| h.to_string()),
-                name: name,
+                name,
                 owner: Some(owner.clone()),
                 organization: None,
-                fullname: format!("{}/{}", owner.clone(), repo.name.to_string()),
-                scheme: scheme,
-                user: user,
+                fullname: format!("{}/{}", owner.clone(), repo.name),
+                scheme,
+                user,
                 token: self.url.password().map(|t| t.to_string()),
                 port: self.url.port(),
                 path: format!(
                     "{}{}/{}",
                     if self.url.scheme() == "ssh" { "" } else { "/" },
                     owner.clone(),
-                    repo.name.to_string()
+                    repo.name
                 ),
                 git_suffix: repo.git_suffix,
                 scheme_prefix: self.url.scheme() != "ssh" || self.url.port().is_some(),
@@ -670,7 +676,7 @@ impl Repo {
                     rel_path: OnceCell::new(),
                 });
             } else {
-                let mut parts = repo.split("/").collect::<Vec<&str>>();
+                let mut parts = repo.split('/').collect::<Vec<&str>>();
 
                 let mut name = parts.pop().unwrap().to_string();
                 let mut git_suffix = false;
@@ -679,20 +685,20 @@ impl Repo {
                     name = name[..name.len() - 4].to_string();
                 }
 
-                let owner = if parts.len() > 0 {
+                let owner = if !parts.is_empty() {
                     Some(parts.pop().unwrap().to_string())
                 } else {
                     None
                 };
 
                 return Ok(Self {
-                    name: name,
-                    owner: owner,
+                    name,
+                    owner,
                     host: None,
                     port: None,
                     scheme: None,
                     scheme_prefix: false,
-                    git_suffix: git_suffix,
+                    git_suffix,
                     user: None,
                     password: None,
                     rel_path: OnceCell::new(),
@@ -719,7 +725,7 @@ impl Repo {
 
                 // Split the path, and keep only the particles toward the end that DO NOT
                 // have any missing placeholder
-                let mut parts = path_format.split("/").collect::<Vec<&str>>();
+                let mut parts = path_format.split('/').collect::<Vec<&str>>();
                 parts.reverse();
 
                 let mut path_parts = Vec::new();
@@ -735,11 +741,11 @@ impl Repo {
                 let mut path = String::new();
                 for part in path_parts.iter() {
                     path.push_str(part);
-                    path.push_str("/");
+                    path.push('/');
                 }
 
                 // Remove the trailing slash
-                if path.ends_with("/") {
+                if path.ends_with('/') {
                     path = path[..path.len() - 1].to_string();
                 }
 

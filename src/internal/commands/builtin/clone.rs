@@ -2,7 +2,6 @@ use std::path::PathBuf;
 use std::process::exit;
 use std::time::Duration;
 
-use clap;
 use git_url_parse::GitUrl;
 use indicatif::ProgressBar;
 use indicatif::ProgressStyle;
@@ -89,12 +88,12 @@ impl CloneCommandArgs {
         }
 
         Self {
-            repository: repository,
+            repository,
             package: *matches.get_one::<bool>("package").unwrap_or(&false),
             options: matches
                 .get_many::<String>("options")
                 .map(|args| args.map(|arg| arg.to_string()).collect())
-                .unwrap_or(vec![]),
+                .unwrap_or_default(),
         }
     }
 }
@@ -178,7 +177,7 @@ impl CloneCommand {
     }
 
     pub fn exec(&self, argv: Vec<String>) {
-        if let Err(_) = self.cli_args.set(CloneCommandArgs::parse(argv)) {
+        if self.cli_args.set(CloneCommandArgs::parse(argv)).is_err() {
             unreachable!();
         }
 
@@ -214,10 +213,10 @@ impl CloneCommand {
 
         // If we still haven't got a match, we can error out
         if !cloned {
-            spinner.clone().map(|s| {
+            if let Some(s) = spinner.clone() {
                 s.set_message("Not found");
-                s.finish_and_clear()
-            });
+                s.finish_and_clear();
+            }
             omni_error!(format!("could not find repository {}", repo.yellow()));
             exit(1);
         }
@@ -239,13 +238,13 @@ impl CloneCommand {
         clone_as_package: bool,
         spinner: Option<ProgressBar>,
     ) -> Option<(PathBuf, GitUrl)> {
-        self.try_repo_handle(repo, &vec![], clone_as_package, spinner, None, false, true)
+        self.try_repo_handle(repo, &[], clone_as_package, spinner, None, false, true)
     }
 
     pub fn clone_repo_handle(
         &self,
         repo: &str,
-        clone_args: &Vec<String>,
+        clone_args: &[String],
         clone_as_package: bool,
         spinner: Option<ProgressBar>,
         should_run_cd: Option<bool>,
@@ -262,10 +261,11 @@ impl CloneCommand {
         )
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn try_repo_handle(
         &self,
         repo: &str,
-        clone_args: &Vec<String>,
+        clone_args: &[String],
         clone_as_package: bool,
         spinner: Option<ProgressBar>,
         should_run_cd: Option<bool>,
@@ -297,7 +297,7 @@ impl CloneCommand {
                 if self.try_clone(
                     &clone_url,
                     &clone_path,
-                    &clone_args,
+                    clone_args,
                     spinner.clone(),
                     should_run_cd.unwrap_or(!clone_as_package),
                     should_run_up,
@@ -314,7 +314,7 @@ impl CloneCommand {
         if cloned.is_none() {
             if let Ok(clone_url) = safe_git_url_parse(&repo) {
                 if clone_url.scheme.to_string() != "file"
-                    && clone_url.name != ""
+                    && !clone_url.name.is_empty()
                     && clone_url.owner.is_some()
                     && clone_url.host.is_some()
                 {
@@ -338,7 +338,7 @@ impl CloneCommand {
                     if self.try_clone(
                         &clone_url,
                         &clone_path,
-                        &clone_args,
+                        clone_args,
                         spinner.clone(),
                         should_run_cd.unwrap_or(!clone_as_package),
                         should_run_up,
@@ -358,20 +358,19 @@ impl CloneCommand {
             .ask_if_answered(true)
             .on_esc(requestty::OnEsc::Terminate)
             .message(format!(
-                "{} {}",
+                "{} Do you want to run {} ?",
                 "omni:".light_cyan(),
-                format!("Do you want to run {} ?", "omni up".to_string().underline()),
+                "omni up".underline(),
             ))
             .default(true)
             .build();
 
         match requestty::prompt_one(question) {
-            Ok(answer) => match answer {
-                requestty::Answer::Bool(confirmed) => {
+            Ok(answer) => {
+                if let requestty::Answer::Bool(confirmed) = answer {
                     return confirmed;
                 }
-                _ => {}
-            },
+            }
             Err(err) => {
                 // print!("\x1B[1A\x1B[2K"); // This clears the line, so there's no artifact left
                 println!("{}", format!("[✘] {:?}", err).red());
@@ -381,11 +380,12 @@ impl CloneCommand {
         false
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn try_clone(
         &self,
         clone_url: &GitUrl,
         clone_path: &PathBuf,
-        clone_args: &Vec<String>,
+        clone_args: &[String],
         spinner: Option<ProgressBar>,
         auto_cd: bool,
         should_run_up: bool,
@@ -393,7 +393,6 @@ impl CloneCommand {
     ) -> bool {
         let log_command = |message: String| {
             if lookup_only {
-                return;
             } else if let Some(spinner) = &spinner {
                 spinner.println(message);
             } else {
@@ -403,7 +402,6 @@ impl CloneCommand {
 
         let log_progress = |message: String| {
             if lookup_only {
-                return;
             } else if let Some(spinner) = &spinner {
                 spinner.set_message(message);
             } else {
@@ -415,7 +413,9 @@ impl CloneCommand {
 
         if clone_path.exists() {
             log_progress(format!("Found {}", clone_path.to_string_lossy()));
-            spinner.map(|s| s.finish_and_clear());
+            if let Some(s) = spinner {
+                s.finish_and_clear()
+            }
 
             if lookup_only {
                 return true;
@@ -430,7 +430,7 @@ impl CloneCommand {
                 run_up = self.suggest_run_up();
             }
         } else {
-            log_progress(format!("Checking {}", clone_url.to_string()));
+            log_progress(format!("Checking {}", clone_url));
 
             // Check using git ls-remote if the repository exists
             let mut cmd = TokioCommand::new("git");
@@ -448,10 +448,7 @@ impl CloneCommand {
             );
 
             if result.is_err() {
-                log_progress(format!(
-                    "Repository {} does not exist",
-                    clone_url.to_string()
-                ));
+                log_progress(format!("Repository {} does not exist", clone_url));
                 return false;
             }
 
@@ -459,13 +456,15 @@ impl CloneCommand {
                 return true;
             }
 
-            log_progress(format!("Cloning {}", clone_url.to_string()));
-            spinner.clone().map(|s| s.finish_and_clear());
+            log_progress(format!("Cloning {}", clone_url));
+            if let Some(s) = spinner.clone() {
+                s.finish_and_clear()
+            }
 
             let mut cmd_args = vec!["git".to_string(), "clone".to_string()];
             cmd_args.push(clone_url.to_string());
             cmd_args.push(clone_path.to_string_lossy().to_string());
-            cmd_args.extend(clone_args.clone());
+            cmd_args.extend(clone_args.to_owned());
 
             let mut cmd = std::process::Command::new(&cmd_args[0]);
             cmd.args(&cmd_args[1..]);
@@ -478,7 +477,7 @@ impl CloneCommand {
             if result.is_err() {
                 let msg = format!(
                     "failed to clone repository {}",
-                    format!("({})", clone_url.to_string()).light_black()
+                    format!("({})", clone_url).light_black()
                 );
 
                 omni_error!(msg);
@@ -501,7 +500,7 @@ impl CloneCommand {
         }
 
         if run_up {
-            if let Err(err) = std::env::set_current_dir(&clone_path) {
+            if let Err(err) = std::env::set_current_dir(clone_path) {
                 omni_error!(format!(
                     "failed to change directory {}: {}",
                     format!("({})", clone_path.to_string_lossy()).light_black(),
@@ -510,7 +509,7 @@ impl CloneCommand {
                 exit(1);
             }
 
-            eprintln!("{}", format!("$ omni up --bootstrap").light_black());
+            eprintln!("{}", "$ omni up --bootstrap".to_string().light_black());
 
             let up_cmd = UpCommand::new_command();
             up_cmd.exec(

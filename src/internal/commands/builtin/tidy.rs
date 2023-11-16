@@ -5,7 +5,6 @@ use std::path::Path;
 use std::path::PathBuf;
 use std::process::exit;
 
-use clap;
 use indicatif::ProgressBar;
 use indicatif::ProgressStyle;
 use once_cell::sync::OnceCell;
@@ -119,9 +118,9 @@ impl TidyCommandArgs {
 
         Self {
             yes: *matches.get_one::<bool>("yes").unwrap_or(&false),
-            search_paths: search_paths,
+            search_paths,
             up_all: *matches.get_one::<bool>("up-all").unwrap_or(&false),
-            up_args: up_args,
+            up_args,
         }
     }
 }
@@ -213,7 +212,7 @@ impl TidyCommand {
     }
 
     pub fn exec(&self, argv: Vec<String>) {
-        if let Err(_) = self.cli_args.set(TidyCommandArgs::parse(argv)) {
+        if self.cli_args.set(TidyCommandArgs::parse(argv)).is_err() {
             unreachable!();
         }
 
@@ -221,7 +220,7 @@ impl TidyCommand {
         let omnipath_entries = global_omnipath_entries();
         let missing_packages = omnipath_entries
             .iter()
-            .filter(|pe| pe.is_package() && !pe.package_path().unwrap_or(PathBuf::new()).exists())
+            .filter(|pe| pe.is_package() && !pe.package_path().unwrap_or_default().exists())
             .collect::<Vec<_>>();
 
         // Find all the repositories
@@ -312,10 +311,7 @@ impl TidyCommand {
                 eprintln!("{}", repository.to_string());
             }
 
-            omni_info!(format!(
-                "use {} to organize them",
-                "--yes".light_blue()
-            ));
+            omni_info!(format!("use {} to organize them", "--yes".light_blue()));
             exit(0);
         } else {
             let choices = repositories
@@ -390,9 +386,11 @@ impl TidyCommand {
             let organize_this_loop = repos_to_organize.clone();
             let mut moved = HashSet::new();
             for repository in organize_this_loop.iter() {
-                if repository.organize(&printstr) {
+                if repository.organize(printstr) {
                     moved.insert(repository);
-                    progress_bar.as_ref().map(|pb| pb.inc(1));
+                    if let Some(pb) = progress_bar.as_ref() {
+                        pb.inc(1)
+                    }
                 }
             }
 
@@ -401,9 +399,11 @@ impl TidyCommand {
                     printstr(format!(
                         "{} Skipping {}",
                         "[✘]".light_red(),
-                        format!("{}", repository.to_string())
+                        repository.to_string(),
                     ));
-                    progress_bar.as_ref().map(|pb| pb.inc(1));
+                    if let Some(pb) = progress_bar.as_ref() {
+                        pb.inc(1)
+                    }
                 }
 
                 break;
@@ -413,7 +413,9 @@ impl TidyCommand {
         }
 
         // Clear the progress bar once we're finished
-        progress_bar.map(|pb| pb.finish_and_clear());
+        if let Some(pb) = progress_bar {
+            pb.finish_and_clear()
+        }
 
         // TODO: should we offer to up the moved repositories ?
 
@@ -468,7 +470,7 @@ impl TidyCommand {
         TidyGitRepo::list_repositories(worktrees)
     }
 
-    fn up_repositories(&self, repositories: &Vec<TidyGitRepo>) {
+    fn up_repositories(&self, repositories: &[TidyGitRepo]) {
         let current_exe = std::env::current_exe();
         if current_exe.is_err() {
             omni_error!("failed to get current executable path");
@@ -481,8 +483,7 @@ impl TidyCommand {
         // and then convert back to a vector to sort the paths
         let mut all_paths = repositories
             .iter()
-            .map(|repo| vec![repo.current_path.clone(), repo.expected_path.clone()])
-            .flatten()
+            .flat_map(|repo| vec![repo.current_path.clone(), repo.expected_path.clone()])
             .collect::<HashSet<_>>()
             .into_iter()
             .collect::<Vec<_>>();
@@ -494,7 +495,7 @@ impl TidyCommand {
                 continue;
             }
 
-            let config_exists = vec![".omni.yaml", ".omni/config.yaml"]
+            let config_exists = [".omni.yaml", ".omni/config.yaml"]
                 .iter()
                 .any(|file| repo_path.join(file).exists());
             if !config_exists {
@@ -549,9 +550,9 @@ impl TidyCommand {
             }
         }
 
-        omni_info!(format!("done!").light_green());
+        omni_info!("done!".to_string().light_green());
         if any_error {
-            omni_error!(format!("some errors occurred!").light_red());
+            omni_error!("some errors occurred!".to_string().light_red());
             exit(1);
         }
     }
@@ -582,15 +583,12 @@ impl TidyGitRepo {
             None
         };
 
-        let worktrees = worktrees
-            .into_iter()
-            .map(|path| abs_path(path))
-            .collect::<HashSet<_>>();
+        let worktrees = worktrees.into_iter().map(abs_path).collect::<HashSet<_>>();
 
         // Cleanup the paths by removing each path for which
         // the parent is also in the list
         let mut worktrees = worktrees.into_iter().collect::<Vec<_>>();
-        worktrees.sort_by(|a, b| a.cmp(b));
+        worktrees.sort();
         let worktrees = worktrees
             .clone()
             .into_iter()
@@ -611,7 +609,7 @@ impl TidyGitRepo {
                     // We only want places where there's a `.git` directory, since it generally
                     // indicates that we are in a git repository
                     if !filetype.is_dir()
-                        || !filepath.file_name().is_some()
+                        || filepath.file_name().is_none()
                         || filepath.file_name().unwrap() != ".git"
                     {
                         continue;
@@ -620,40 +618,46 @@ impl TidyGitRepo {
                     // Take the parent
                     let filepath = filepath.parent().unwrap();
 
-                    spinner.clone().map(|s| {
+                    if let Some(s) = spinner.clone() {
                         s.set_message(format!("Searching: {}", filepath.to_str().unwrap()))
-                    });
+                    }
 
                     // Convert to a string
                     let filepath_str = filepath.to_str().unwrap();
 
                     repositories.insert(filepath_str.to_string());
                 }
-                spinner.clone().map(|s| s.tick());
+                if let Some(s) = spinner.clone() {
+                    s.tick()
+                }
             }
         }
 
-        spinner
-            .clone()
-            .map(|s| s.set_message("Analyzing repositories..."));
+        if let Some(s) = spinner.clone() {
+            s.set_message("Analyzing repositories...")
+        }
 
         let mut repositories = repositories.into_iter().collect::<Vec<_>>();
         repositories.sort();
 
         let mut tidy_repos = Vec::new();
         for repository in repositories.iter() {
-            spinner
-                .clone()
-                .map(|s| s.set_message(format!("Analyzing: {}", repository)));
+            if let Some(s) = spinner.clone() {
+                s.set_message(format!("Analyzing: {}", repository))
+            }
 
             if let Some(tidy_repo) = Self::new(repository) {
                 tidy_repos.push(tidy_repo);
             }
 
-            spinner.clone().map(|s| s.tick());
+            if let Some(s) = spinner.clone() {
+                s.tick()
+            }
         }
 
-        spinner.clone().map(|s| s.finish_and_clear());
+        if let Some(s) = spinner.clone() {
+            s.finish_and_clear()
+        }
 
         tidy_repos.into_iter().collect::<Vec<_>>()
     }
@@ -683,12 +687,12 @@ impl TidyGitRepo {
         // If the path is in the package tree, we need to compare to the
         // expected package path
         if path.starts_with(package_root_path()) {
-            expected_path = package_path_from_handle(&origin_url);
+            expected_path = package_path_from_handle(origin_url);
         } else {
             // We check first among the orgs
             for org in ORG_LOADER.orgs.iter() {
-                if let Some(repo_path) = org.get_repo_path(&origin_url) {
-                    expected_path = Some(PathBuf::from(repo_path));
+                if let Some(repo_path) = org.get_repo_path(origin_url) {
+                    expected_path = Some(repo_path);
                     break;
                 }
             }
@@ -696,24 +700,22 @@ impl TidyGitRepo {
             // If no match, check if the link is a full git url, in which case
             // we can clone to the default worktree
             if expected_path.is_none() {
-                if let Ok(repo_url) = safe_git_url_parse(&origin_url) {
+                if let Ok(repo_url) = safe_git_url_parse(origin_url) {
                     if repo_url.scheme.to_string() != "file"
-                        && repo_url.name != ""
+                        && !repo_url.name.is_empty()
                         && repo_url.owner.is_some()
                         && repo_url.host.is_some()
                     {
                         let config = config(".");
                         let worktree = config.worktree();
                         let repo_path = format_path(&worktree, &repo_url);
-                        expected_path = Some(PathBuf::from(repo_path));
+                        expected_path = Some(repo_path);
                     }
                 }
             }
         }
 
-        if expected_path.is_none() {
-            return None;
-        }
+        expected_path.as_ref()?;
         let expected_path = expected_path.unwrap();
 
         Some(Self {
@@ -780,11 +782,8 @@ impl TidyGitRepo {
                         for value in path_list {
                             let path_entry = PathEntryConfig::from_config_value(&value);
                             if path_entry.starts_with(&current_path) {
-                                match value.get_source() {
-                                    ConfigSource::File(path) => {
-                                        files_to_edit.insert(path.clone());
-                                    }
-                                    _ => {}
+                                if let ConfigSource::File(path) = value.get_source() {
+                                    files_to_edit.insert(path.clone());
                                 }
                             }
                         }
@@ -814,7 +813,7 @@ impl TidyGitRepo {
                 for (_key, path_list) in config_path.iter_mut() {
                     if let Some(path_list) = path_list.as_array_mut() {
                         for value in path_list.iter_mut() {
-                            let mut path_entry = PathEntryConfig::from_config_value(&value);
+                            let mut path_entry = PathEntryConfig::from_config_value(value);
                             if path_entry.replace(&current_path, &expected_path) {
                                 *value = path_entry.as_config_value().clone();
                                 edited = true;
@@ -880,20 +879,20 @@ impl ToString for TidyGitRepo {
 
         if self.organized {
             // s.push_str(&format!("{} {}", "✓", self.current_path.to_str().unwrap()));
-            s.push_str(&format!("{}", self.current_path.to_str().unwrap()));
+            s.push_str(self.current_path.to_str().unwrap());
             return s.light_green();
         }
 
-        s.push_str(&format!("{}", self.current_path.to_str().unwrap()).light_red());
+        s.push_str(&self.current_path.to_str().unwrap().to_string().light_red());
         s.push_str(" \u{2192} "); // arrow to the right in UTF-8
 
-        let dest = format!("{}", self.expected_path.to_str().unwrap());
+        let dest = self.expected_path.to_str().unwrap().to_string();
 
         if self.organizable {
             s.push_str(&dest.light_green());
         } else {
             s.push_str(&dest.light_yellow());
-            s.push_str(&format!(" \u{26A0}\u{FE0F}").light_yellow()); // small warning sign in UTF-8
+            s.push_str(&" \u{26A0}\u{FE0F}".to_string().light_yellow()); // small warning sign in UTF-8
         }
 
         s.light_yellow()

@@ -20,9 +20,7 @@ pub struct UpConfig {
 
 impl UpConfig {
     pub fn from_config_value(config_value: Option<ConfigValue>) -> Option<Self> {
-        if config_value.is_none() {
-            return None;
-        }
+        config_value.as_ref()?;
 
         let config_value = config_value.unwrap();
         if !config_value.is_array() {
@@ -76,14 +74,11 @@ impl UpConfig {
             }
         }
 
-        if steps.len() == 0 && errors.len() == 0 {
+        if steps.is_empty() && errors.is_empty() {
             return None;
         }
 
-        Some(UpConfig {
-            steps: steps,
-            errors: errors,
-        })
+        Some(UpConfig { steps, errors })
     }
 
     // pub fn steps(&self) -> Vec<UpConfigTool> {
@@ -140,9 +135,7 @@ impl UpConfig {
             // the command can consider it right away
             update_dynamic_env_for_command(".");
 
-            if let Err(error) = step.up(Some((idx + 1, num_steps))) {
-                return Err(error);
-            }
+            step.up(Some((idx + 1, num_steps)))?
         }
 
         // This is a special case, as we could have multiple versions of a single
@@ -169,9 +162,7 @@ impl UpConfig {
             // the command can consider it right away
             update_dynamic_env_for_command(".");
 
-            if let Err(error) = step.down(Some((idx + 1, num_steps))) {
-                return Err(error);
-            }
+            step.down(Some((idx + 1, num_steps)))?
         }
 
         UpConfigAsdfBase::cleanup_unused(Vec::new(), Some((num_steps, num_steps)))?;

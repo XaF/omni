@@ -47,25 +47,21 @@ impl UpConfigCustom {
             }
         }
 
-        if meet == None {
+        if meet.is_none() {
             meet = Some("".to_string());
         }
 
         UpConfigCustom {
             meet: meet.unwrap(),
-            met: met,
-            unmeet: unmeet,
-            name: name,
-            dir: dir,
+            met,
+            unmeet,
+            name,
+            dir,
         }
     }
 
     pub fn dir(&self) -> Option<String> {
-        if let Some(dir) = &self.dir {
-            Some(dir.to_string())
-        } else {
-            None
-        }
+        self.dir.as_ref().map(|dir| dir.to_string())
     }
 
     pub fn up(&self, progress: Option<(usize, usize)>) -> Result<(), UpError> {
@@ -85,27 +81,25 @@ impl UpConfigCustom {
         } else {
             Box::new(PrintProgressHandler::new(desc, progress))
         };
-        let progress_handler: Option<Box<&dyn ProgressHandler>> =
-            Some(Box::new(progress_handler.as_ref()));
+        let progress_handler: Option<&dyn ProgressHandler> = Some(progress_handler.as_ref());
 
         if self.met().unwrap_or(false) {
-            progress_handler.clone().map(|progress_handler| {
-                progress_handler
-                    .success_with_message("skipping (already met)".light_black())
-            });
+            if let Some(progress_handler) = progress_handler {
+                progress_handler.success_with_message("skipping (already met)".light_black())
+            }
             return Ok(());
         }
 
-        if let Err(err) = self.meet(progress_handler.clone()) {
-            progress_handler.clone().map(|progress_handler| {
+        if let Err(err) = self.meet(progress_handler) {
+            if let Some(progress_handler) = progress_handler {
                 progress_handler.error_with_message(format!("{}", err).light_red())
-            });
+            }
             return Err(err);
         }
 
-        progress_handler
-            .clone()
-            .map(|progress_handler| progress_handler.success());
+        if let Some(progress_handler) = progress_handler {
+            progress_handler.success()
+        }
 
         Ok(())
     }
@@ -124,39 +118,38 @@ impl UpConfigCustom {
         };
 
         let spinner_progress_handler;
-        let mut progress_handler: Option<Box<&dyn ProgressHandler>> = None;
+        let mut progress_handler: Option<&dyn ProgressHandler> = None;
         if ENV.interactive_shell {
-            spinner_progress_handler = Some(SpinnerProgressHandler::new(
+            spinner_progress_handler = Box::new(SpinnerProgressHandler::new(
                 format!("{}:", name).light_blue(),
                 progress,
             ));
-            progress_handler = Some(Box::new(spinner_progress_handler.as_ref().unwrap()));
+            progress_handler = Some(spinner_progress_handler.as_ref());
         }
 
         if let Some(_unmeet) = &self.unmeet {
             if !self.met().unwrap_or(true) {
-                progress_handler.clone().map(|progress_handler| {
-                    progress_handler
-                        .success_with_message("skipping (not met)".light_black())
-                });
+                if let Some(progress_handler) = progress_handler {
+                    progress_handler.success_with_message("skipping (not met)".light_black())
+                }
                 return Ok(());
             }
 
-            progress_handler.clone().map(|progress_handler| {
+            if let Some(progress_handler) = progress_handler {
                 progress_handler.progress("reverting".light_black())
-            });
+            }
 
-            if let Err(err) = self.unmeet(progress_handler.clone()) {
-                progress_handler.clone().map(|progress_handler| {
+            if let Err(err) = self.unmeet(progress_handler) {
+                if let Some(progress_handler) = progress_handler {
                     progress_handler.error_with_message(format!("{}", err).light_red())
-                });
+                }
                 return Err(err);
             }
         }
 
-        progress_handler
-            .clone()
-            .map(|progress_handler| progress_handler.success());
+        if let Some(progress_handler) = progress_handler {
+            progress_handler.success()
+        }
 
         Ok(())
     }
@@ -176,12 +169,12 @@ impl UpConfigCustom {
         }
     }
 
-    fn meet(&self, progress_handler: Option<Box<&dyn ProgressHandler>>) -> Result<(), UpError> {
-        if self.meet != "" {
+    fn meet(&self, progress_handler: Option<&dyn ProgressHandler>) -> Result<(), UpError> {
+        if !self.meet.is_empty() {
             // eprintln!("{}", format!("$ {}", self.meet).light_black());
-            progress_handler.clone().map(|progress_handler| {
+            if let Some(progress_handler) = progress_handler {
                 progress_handler.progress("running (meet) command".to_string())
-            });
+            }
 
             let mut command = TokioCommand::new("bash");
             command.arg("-c");
@@ -189,18 +182,18 @@ impl UpConfigCustom {
             command.stdout(std::process::Stdio::piped());
             command.stderr(std::process::Stdio::piped());
 
-            run_progress(&mut command, progress_handler.clone(), RunConfig::default())?;
+            run_progress(&mut command, progress_handler, RunConfig::default())?;
         }
 
         Ok(())
     }
 
-    fn unmeet(&self, progress_handler: Option<Box<&dyn ProgressHandler>>) -> Result<(), UpError> {
+    fn unmeet(&self, progress_handler: Option<&dyn ProgressHandler>) -> Result<(), UpError> {
         if let Some(unmeet) = &self.unmeet {
             // eprintln!("{}", format!("$ {}", unmeet).light_black());
-            progress_handler.clone().map(|progress_handler| {
+            if let Some(progress_handler) = progress_handler {
                 progress_handler.progress("running (unmeet) command".to_string())
-            });
+            }
 
             let mut command = TokioCommand::new("bash");
             command.arg("-c");
@@ -208,7 +201,7 @@ impl UpConfigCustom {
             command.stdout(std::process::Stdio::piped());
             command.stderr(std::process::Stdio::piped());
 
-            run_progress(&mut command, progress_handler.clone(), RunConfig::default())?;
+            run_progress(&mut command, progress_handler, RunConfig::default())?;
         }
 
         Ok(())

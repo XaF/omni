@@ -76,10 +76,7 @@ impl ConfigCommand {
             name = name.into_iter().flat_map(|n| split_name(&n, "/")).collect();
         }
 
-        ConfigCommand {
-            name: name,
-            details: details,
-        }
+        ConfigCommand { name, details }
     }
 
     pub fn name(&self) -> Vec<String> {

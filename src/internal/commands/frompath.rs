@@ -30,17 +30,15 @@ impl PathCommand {
         for path in &omnipath() {
             // Aggregate all the files first, since WalkDir does not sort the list
             let mut files_to_process = Vec::new();
-            for entry in WalkDir::new(path).follow_links(true) {
-                if let Ok(entry) = entry {
-                    let filetype = entry.file_type();
-                    let filepath = entry.path();
+            for entry in WalkDir::new(path).follow_links(true).into_iter().flatten() {
+                let filetype = entry.file_type();
+                let filepath = entry.path();
 
-                    if !filetype.is_file() || !Self::is_executable(filepath) {
-                        continue;
-                    }
-
-                    files_to_process.push(filepath.to_path_buf());
+                if !filetype.is_file() || !Self::is_executable(filepath) {
+                    continue;
                 }
+
+                files_to_process.push(filepath.to_path_buf());
             }
 
             // Sort the files by path
@@ -53,7 +51,7 @@ impl PathCommand {
                     .unwrap()
                     .to_str()
                     .unwrap()
-                    .split("/")
+                    .split('/')
                     .collect::<Vec<&str>>();
 
                 let num_partitions = partitions.len();
@@ -102,8 +100,8 @@ impl PathCommand {
 
     pub fn new(name: Vec<String>, source: String) -> Self {
         Self {
-            name: name,
-            source: source,
+            name,
+            source,
             aliases: Vec::new(),
             file_details: OnceCell::new(),
         }
@@ -228,7 +226,7 @@ impl PathCommandFileDetails {
             let line = line.unwrap();
 
             // Early exit condition to stop reading when we don't need to anymore
-            if !line.starts_with("#") || (reading_help && !line.starts_with("# help:")) {
+            if !line.starts_with('#') || (reading_help && !line.starts_with("# help:")) {
                 break;
             }
 
@@ -236,7 +234,7 @@ impl PathCommandFileDetails {
                 let cat: Vec<String> = line
                     .strip_prefix("# category:")
                     .unwrap()
-                    .split(",")
+                    .split(',')
                     .map(|s| s.trim().to_string())
                     .collect();
                 category = Some(cat);
@@ -258,7 +256,7 @@ impl PathCommandFileDetails {
                     .strip_prefix("# arg:")
                     .or_else(|| line.strip_prefix("# opt:"))
                     .unwrap()
-                    .splitn(2, ":")
+                    .splitn(2, ':')
                     .map(|s| s.trim().to_string())
                     .collect::<Vec<String>>();
                 if param.len() != 2 {
@@ -292,7 +290,7 @@ impl PathCommandFileDetails {
             _ => Some(CommandSyntax::new()),
         };
 
-        if parameters.len() > 0 {
+        if !parameters.is_empty() {
             for parameter in &mut parameters {
                 if let Some(desc) = &parameter.desc {
                     parameter.desc = Some(handle_color_codes(desc.clone()));
@@ -303,10 +301,10 @@ impl PathCommandFileDetails {
 
         // // Return the file details
         Some(PathCommandFileDetails {
-            category: category,
+            category,
             help: Some(help_lines),
-            autocompletion: autocompletion,
-            syntax: syntax,
+            autocompletion,
+            syntax,
         })
     }
 }
