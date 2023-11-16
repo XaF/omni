@@ -112,8 +112,8 @@ jobs:
         run : |
           git diff --name-only
           git diff --quiet && \
-            UPDATES=true || \
-            UPDATES=false
+            UPDATES=false || \
+            UPDATES=true
           echo "UPDATES=${UPDATES}" | tee -a "$GITHUB_ENV"
 
       - name: Create archive of modified files
