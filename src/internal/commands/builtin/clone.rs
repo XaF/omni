@@ -261,6 +261,7 @@ impl CloneCommand {
         )
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn try_repo_handle(
         &self,
         repo: &str,
@@ -357,9 +358,9 @@ impl CloneCommand {
             .ask_if_answered(true)
             .on_esc(requestty::OnEsc::Terminate)
             .message(format!(
-                "{} {}",
+                "{} Do you want to run {} ?",
                 "omni:".light_cyan(),
-                format!("Do you want to run {} ?", "omni up".to_string().underline()),
+                "omni up".underline(),
             ))
             .default(true)
             .build();
@@ -379,6 +380,7 @@ impl CloneCommand {
         false
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn try_clone(
         &self,
         clone_url: &GitUrl,

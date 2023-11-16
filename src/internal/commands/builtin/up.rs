@@ -513,8 +513,8 @@ impl UpCommand {
             }
         }
 
-        if let Some(..) = suggest_config {
-            self.suggest_config(suggest_config.unwrap());
+        if let Some(suggested) = suggest_config {
+            self.suggest_config(suggested);
         }
 
         if suggest_clone {

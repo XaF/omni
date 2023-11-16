@@ -191,30 +191,34 @@ impl ScopeCommand {
     }
 
     pub fn autocomplete(&self, comp_cword: usize, argv: Vec<String>) {
-        if comp_cword == 0 {
-            let repo = if !argv.is_empty() {
-                argv[0].clone()
-            } else {
-                "".to_string()
-            };
-            self.autocomplete_repo(repo);
-        } else if comp_cword > 0 {
-            if argv.is_empty() {
-                // Unsure why we would get here, but if we try to complete
-                // a command but a repository is not provided, we can't, so
-                // let's simply skip it
-                exit(0);
+        match comp_cword.cmp(&0) {
+            std::cmp::Ordering::Equal => {
+                let repo = if !argv.is_empty() {
+                    argv[0].clone()
+                } else {
+                    "".to_string()
+                };
+                self.autocomplete_repo(repo);
             }
+            std::cmp::Ordering::Greater => {
+                if argv.is_empty() {
+                    // Unsure why we would get here, but if we try to complete
+                    // a command but a repository is not provided, we can't, so
+                    // let's simply skip it
+                    exit(0);
+                }
 
-            // We want to switch context to the repository, so we can offer
-            // completion of the commands for that specific repository
-            let mut argv = argv.clone();
-            let repo = argv.remove(0);
-            self.switch_scope(&repo, true);
+                // We want to switch context to the repository, so we can offer
+                // completion of the commands for that specific repository
+                let mut argv = argv.clone();
+                let repo = argv.remove(0);
+                self.switch_scope(&repo, true);
 
-            // Finally, we can try completing the command
-            let command_loader = command_loader(".");
-            command_loader.complete(comp_cword - 1, argv.to_vec(), true);
+                // Finally, we can try completing the command
+                let command_loader = command_loader(".");
+                command_loader.complete(comp_cword - 1, argv.to_vec(), true);
+            }
+            std::cmp::Ordering::Less => {}
         }
         exit(0);
     }

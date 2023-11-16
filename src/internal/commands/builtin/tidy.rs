@@ -399,7 +399,7 @@ impl TidyCommand {
                     printstr(format!(
                         "{} Skipping {}",
                         "[✘]".light_red(),
-                        format!("{}", repository.to_string())
+                        repository.to_string(),
                     ));
                     if let Some(pb) = progress_bar.as_ref() {
                         pb.inc(1)

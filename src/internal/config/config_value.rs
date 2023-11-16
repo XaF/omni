@@ -237,9 +237,8 @@ up_command:
                 ConfigData::Mapping(mapping) => {
                     let mut new_mapping = HashMap::new();
                     for (key, value) in mapping {
-                        let new_value = value.reject_label(label);
-                        if new_value.is_some() {
-                            new_mapping.insert(key.to_owned(), new_value.unwrap());
+                        if let Some(new_value) = value.reject_label(label) {
+                            new_mapping.insert(key.to_owned(), new_value);
                         }
                     }
                     if !new_mapping.is_empty() {
@@ -253,9 +252,8 @@ up_command:
                 ConfigData::Sequence(sequence) => {
                     let mut new_sequence = Vec::new();
                     for value in sequence {
-                        let new_value = value.reject_label(label);
-                        if new_value.is_some() {
-                            new_sequence.push(new_value.unwrap());
+                        if let Some(new_value) = value.reject_label(label) {
+                            new_sequence.push(new_value);
                         }
                     }
                     if !new_sequence.is_empty() {
@@ -282,9 +280,8 @@ up_command:
                 ConfigData::Mapping(mapping) => {
                     let mut new_mapping = HashMap::new();
                     for (key, value) in mapping {
-                        let new_value = value.select_label(label);
-                        if new_value.is_some() {
-                            new_mapping.insert(key.to_owned(), new_value.unwrap());
+                        if let Some(new_value) = value.select_label(label) {
+                            new_mapping.insert(key.to_owned(), new_value);
                         }
                     }
                     if !new_mapping.is_empty() {
@@ -298,9 +295,8 @@ up_command:
                 ConfigData::Sequence(sequence) => {
                     let mut new_sequence = Vec::new();
                     for value in sequence {
-                        let new_value = value.select_label(label);
-                        if new_value.is_some() {
-                            new_sequence.push(new_value.unwrap());
+                        if let Some(new_value) = value.select_label(label) {
+                            new_sequence.push(new_value);
                         }
                     }
                     if !new_sequence.is_empty() {
@@ -398,28 +394,24 @@ up_command:
     }
 
     pub fn as_str(&self) -> Option<String> {
-        if let Some(data) = self.value.as_ref().map(|data| data.as_ref()) {
-            if let ConfigData::Value(value) = data {
-                if let Some(value) = value.as_str() {
-                    return Some(value.to_string());
-                }
+        if let Some(ConfigData::Value(value)) = self.value.as_ref().map(|data| data.as_ref()) {
+            if let Some(value) = value.as_str() {
+                return Some(value.to_string());
             }
         }
         None
     }
 
     pub fn as_str_forced(&self) -> Option<String> {
-        if let Some(data) = self.value.as_ref().map(|data| data.as_ref()) {
-            if let ConfigData::Value(value) = data {
-                match value {
-                    serde_yaml::Value::Null => return None,
-                    serde_yaml::Value::Bool(value) => return Some(value.to_string()),
-                    serde_yaml::Value::String(value) => return Some(value.to_string()),
-                    serde_yaml::Value::Number(value) => return Some(value.to_string()),
-                    serde_yaml::Value::Sequence(_) => return None,
-                    serde_yaml::Value::Mapping(_) => return None,
-                    serde_yaml::Value::Tagged(_) => return None,
-                }
+        if let Some(ConfigData::Value(value)) = self.value.as_ref().map(|data| data.as_ref()) {
+            match value {
+                serde_yaml::Value::Null => return None,
+                serde_yaml::Value::Bool(value) => return Some(value.to_string()),
+                serde_yaml::Value::String(value) => return Some(value.to_string()),
+                serde_yaml::Value::Number(value) => return Some(value.to_string()),
+                serde_yaml::Value::Sequence(_) => return None,
+                serde_yaml::Value::Mapping(_) => return None,
+                serde_yaml::Value::Tagged(_) => return None,
             }
         }
         None
@@ -427,12 +419,10 @@ up_command:
 
     #[allow(dead_code)]
     pub fn as_str_mut(&mut self) -> Option<&mut String> {
-        if let Some(data) = self.value.as_mut().map(|data| data.as_mut()) {
-            if let ConfigData::Value(value) = data {
-                if let serde_yaml::Value::String(value) = value {
-                    return Some(value);
-                }
-            }
+        if let Some(ConfigData::Value(serde_yaml::Value::String(value))) =
+            self.value.as_mut().map(|data| data.as_mut())
+        {
+            return Some(value);
         }
         None
     }
@@ -443,11 +433,9 @@ up_command:
     }
 
     pub fn as_bool(&self) -> Option<bool> {
-        if let Some(data) = self.value.as_ref().map(|data| data.as_ref()) {
-            if let ConfigData::Value(value) = data {
-                if let Some(value) = value.as_bool() {
-                    return Some(value);
-                }
+        if let Some(ConfigData::Value(value)) = self.value.as_ref().map(|data| data.as_ref()) {
+            if let Some(value) = value.as_bool() {
+                return Some(value);
             }
         }
         None
@@ -459,11 +447,9 @@ up_command:
     }
 
     pub fn as_float(&self) -> Option<f64> {
-        if let Some(data) = self.value.as_ref().map(|data| data.as_ref()) {
-            if let ConfigData::Value(value) = data {
-                if let Some(value) = value.as_f64() {
-                    return Some(value);
-                }
+        if let Some(ConfigData::Value(value)) = self.value.as_ref().map(|data| data.as_ref()) {
+            if let Some(value) = value.as_f64() {
+                return Some(value);
             }
         }
         None
@@ -475,104 +461,88 @@ up_command:
     }
 
     pub fn as_integer(&self) -> Option<i64> {
-        if let Some(data) = self.value.as_ref().map(|data| data.as_ref()) {
-            if let ConfigData::Value(value) = data {
-                if let Some(value) = value.as_i64() {
-                    return Some(value);
-                }
+        if let Some(ConfigData::Value(value)) = self.value.as_ref().map(|data| data.as_ref()) {
+            if let Some(value) = value.as_i64() {
+                return Some(value);
             }
         }
         None
     }
 
     pub fn as_unsigned_integer(&self) -> Option<u64> {
-        if let Some(data) = self.value.as_ref().map(|data| data.as_ref()) {
-            if let ConfigData::Value(value) = data {
-                if let Some(value) = value.as_u64() {
-                    return Some(value);
-                }
+        if let Some(ConfigData::Value(value)) = self.value.as_ref().map(|data| data.as_ref()) {
+            if let Some(value) = value.as_u64() {
+                return Some(value);
             }
         }
         None
     }
 
     pub fn is_array(&self) -> bool {
-        if let Some(data) = self.value.as_ref().map(|data| data.as_ref()) {
-            if let ConfigData::Sequence(_) = data {
-                return true;
-            }
+        if let Some(ConfigData::Sequence(_)) = self.value.as_ref().map(|data| data.as_ref()) {
+            return true;
         }
         false
     }
 
     pub fn as_array(&self) -> Option<Vec<ConfigValue>> {
-        if let Some(data) = self.value.as_ref().map(|data| data.as_ref()) {
-            if let ConfigData::Sequence(sequence) = data {
-                let mut new_sequence = Vec::new();
-                for value in sequence {
-                    new_sequence.push(value.clone());
-                }
-                return Some(new_sequence);
+        if let Some(ConfigData::Sequence(sequence)) = self.value.as_ref().map(|data| data.as_ref())
+        {
+            let mut new_sequence = Vec::new();
+            for value in sequence {
+                new_sequence.push(value.clone());
             }
+            return Some(new_sequence);
         }
         None
     }
 
     pub fn as_array_mut(&mut self) -> Option<&mut Vec<ConfigValue>> {
-        if let Some(data) = self.value.as_mut().map(|data| data.as_mut()) {
-            if let ConfigData::Sequence(sequence) = data {
-                return Some(sequence);
-            }
+        if let Some(ConfigData::Sequence(sequence)) = self.value.as_mut().map(|data| data.as_mut())
+        {
+            return Some(sequence);
         }
         None
     }
 
     pub fn is_table(&self) -> bool {
-        if let Some(data) = self.value.as_ref().map(|data| data.as_ref()) {
-            if let ConfigData::Mapping(_) = data {
-                return true;
-            }
+        if let Some(ConfigData::Mapping(_)) = self.value.as_ref().map(|data| data.as_ref()) {
+            return true;
         }
         false
     }
 
     pub fn as_table(&self) -> Option<HashMap<String, ConfigValue>> {
-        if let Some(data) = self.value.as_ref().map(|data| data.as_ref()) {
-            if let ConfigData::Mapping(mapping) = data {
-                let mut new_mapping = HashMap::new();
-                for (key, value) in mapping {
-                    new_mapping.insert(key.to_string(), value.clone());
-                }
-                return Some(new_mapping);
+        if let Some(ConfigData::Mapping(mapping)) = self.value.as_ref().map(|data| data.as_ref()) {
+            let mut new_mapping = HashMap::new();
+            for (key, value) in mapping {
+                new_mapping.insert(key.to_string(), value.clone());
             }
+            return Some(new_mapping);
         }
         None
     }
 
     pub fn as_table_mut(&mut self) -> Option<&mut HashMap<String, ConfigValue>> {
-        if let Some(data) = self.value.as_mut().map(|data| data.as_mut()) {
-            if let ConfigData::Mapping(mapping) = data {
-                return Some(mapping);
-            }
+        if let Some(ConfigData::Mapping(mapping)) = self.value.as_mut().map(|data| data.as_mut()) {
+            return Some(mapping);
         }
         None
     }
 
     pub fn select_keys(&self, keys: Vec<String>) -> Option<ConfigValue> {
-        if let Some(data) = self.value.as_ref().map(|data| data.as_ref()) {
-            if let ConfigData::Mapping(mapping) = data {
-                let mut new_mapping = HashMap::new();
-                for key in keys {
-                    if let Some(value) = mapping.get(&key) {
-                        new_mapping.insert(key, value.clone());
-                    }
+        if let Some(ConfigData::Mapping(mapping)) = self.value.as_ref().map(|data| data.as_ref()) {
+            let mut new_mapping = HashMap::new();
+            for key in keys {
+                if let Some(value) = mapping.get(&key) {
+                    new_mapping.insert(key, value.clone());
                 }
-                return Some(ConfigValue {
-                    value: Some(Box::new(ConfigData::Mapping(new_mapping))),
-                    labels: self.labels.clone(),
-                    source: self.source.clone(),
-                });
             }
+            return Some(ConfigValue {
+                value: Some(Box::new(ConfigData::Mapping(new_mapping))),
+                labels: self.labels.clone(),
+                source: self.source.clone(),
+            });
         }
         None
     }
@@ -580,11 +550,11 @@ up_command:
     pub fn get(&self, key: &str) -> Option<ConfigValue> {
         match self.dig(vec![key]) {
             Some(config_value) => {
-                if let Some(data) = config_value.value.as_ref().map(|data| data.as_ref()) {
-                    if let ConfigData::Value(value) = data {
-                        if value.is_null() {
-                            return None;
-                        }
+                if let Some(ConfigData::Value(value)) =
+                    config_value.value.as_ref().map(|data| data.as_ref())
+                {
+                    if value.is_null() {
+                        return None;
                     }
                 }
                 Some(config_value)

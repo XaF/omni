@@ -163,8 +163,8 @@ where
     let mut content = String::new();
     file.read_to_string(&mut content)?;
     let load_cache: Result<C, _> = serde_json::from_str(&content);
-    let mut cache = if load_cache.is_ok() {
-        load_cache.unwrap().clone()
+    let mut cache = if let Ok(load_cache) = load_cache {
+        load_cache.clone()
     } else {
         C::new_empty()
     };
