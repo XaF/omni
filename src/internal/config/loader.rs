@@ -12,7 +12,7 @@ use std::sync::Mutex;
 
 use fs4::FileExt;
 use lazy_static::lazy_static;
-use serde_yaml;
+
 
 use crate::internal::config::ConfigExtendOptions;
 use crate::internal::config::ConfigExtendStrategy;
@@ -287,7 +287,7 @@ impl ConfigLoader {
         strategy: ConfigExtendStrategy,
     ) {
         let file = File::open(config_file);
-        if !file.is_ok() {
+        if file.is_err() {
             return;
         }
 

@@ -98,8 +98,8 @@ impl MakefileCommand {
             }
             let line = line.unwrap();
 
-            if line.starts_with("##@") {
-                category = Some(line[3..].trim().to_string());
+            if let Some(cat) = line.strip_prefix("##@") {
+                category = Some(cat.trim().to_string());
                 continue;
             }
 
@@ -140,12 +140,12 @@ impl MakefileCommand {
         }
 
         MakefileCommand {
-            name: name,
-            category: category,
-            desc: desc,
-            target: target,
-            source: source,
-            lineno: lineno,
+            name,
+            category,
+            desc,
+            target,
+            source,
+            lineno,
         }
     }
 

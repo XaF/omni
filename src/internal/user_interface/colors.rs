@@ -48,10 +48,10 @@ lazy_static! {
 
 // http://bixense.com/clicolors/
 fn enable_colors() -> bool {
-    if let Some(_) = std::env::var_os("NO_COLOR") {
+    if std::env::var_os("NO_COLOR").is_some() {
         return false;
     }
-    if let Some(_) = std::env::var_os("CLICOLOR_FORCE") {
+    if std::env::var_os("CLICOLOR_FORCE").is_some() {
         return true;
     }
     std::io::stdout().is_terminal() || std::io::stderr().is_terminal()

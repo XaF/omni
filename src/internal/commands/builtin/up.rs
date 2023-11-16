@@ -6,7 +6,7 @@ use std::process::exit;
 use std::str::FromStr;
 
 use blake3::Hasher as Blake3Hasher;
-use clap;
+
 use git_url_parse::GitUrl;
 use imara_diff::intern::InternedInput;
 use imara_diff::{diff, Algorithm, UnifiedDiffBuilder};
@@ -169,12 +169,12 @@ impl UpCommandArgs {
             };
 
         Self {
-            clone_suggested: clone_suggested,
-            trust: trust,
+            clone_suggested,
+            trust,
             update_repository: *matches
                 .get_one::<bool>("update-repository")
                 .unwrap_or(&false),
-            update_user_config: update_user_config,
+            update_user_config,
         }
     }
 }
@@ -353,7 +353,7 @@ impl UpCommand {
     }
 
     pub fn exec(&self, argv: Vec<String>) {
-        if let Err(_) = self.cli_args.set(UpCommandArgs::parse(argv)) {
+        if self.cli_args.set(UpCommandArgs::parse(argv)).is_err() {
             unreachable!();
         }
 
@@ -362,7 +362,7 @@ impl UpCommand {
             // Switch directory to the work directory root so it can
             // be assumed that all up commands will be ran from there
             // (e.g. custom commands, bundler commands, etc.)
-            if let Err(err) = std::env::set_current_dir(&wd_root) {
+            if let Err(err) = std::env::set_current_dir(wd_root) {
                 omni_error!(format!(
                     "failed to change directory {}: {}",
                     format!("({})", wd_root).light_black(),
@@ -450,7 +450,7 @@ impl UpCommand {
             exit(0);
         }
 
-        let has_up_config = !(up_config.is_none() || !up_config.clone().unwrap().has_steps());
+        let has_up_config = up_config.is_some() && up_config.clone().unwrap().has_steps();
         let has_clone_suggested = !config.suggest_clone.repositories.is_empty();
         if !has_up_config
             && suggest_config.is_none()
@@ -508,14 +508,12 @@ impl UpCommand {
                 if let Err(err) = up_config.up() {
                     omni_error!(format!("issue while setting repo up: {}", err));
                 }
-            } else {
-                if let Err(err) = up_config.down() {
-                    omni_error!(format!("issue while tearing repo down: {}", err));
-                }
+            } else if let Err(err) = up_config.down() {
+                omni_error!(format!("issue while tearing repo down: {}", err));
             }
         }
 
-        if suggest_config.is_some() {
+        if let Some(..) = suggest_config {
             self.suggest_config(suggest_config.unwrap());
         }
 
@@ -531,7 +529,7 @@ impl UpCommand {
                 ));
                 omni_info!(format!(
                     "run {} to get the latest suggestions",
-                    format!("omni up --bootstrap").light_yellow(),
+                    "omni up --bootstrap".to_string().light_yellow(),
                 ));
             }
         }
@@ -644,7 +642,7 @@ impl UpCommand {
                 "The following is going to be changed in your {} configuration:",
                 "omni".to_string().underline()
             ));
-            eprintln!("  {}", diff.replace("\n", "\n  "));
+            eprintln!("  {}", diff.replace('\n', "\n  "));
 
             if self.cli_args().update_user_config == UpCommandArgsUpdateUserConfigOptions::Yes {
                 *config_value = after;
@@ -889,9 +887,9 @@ impl UpCommand {
             }
         }
 
-        omni_info!(format!("done!").light_green());
+        omni_info!("done!".to_string().light_green());
         if any_error {
-            omni_error!(format!("some errors occurred!").light_red());
+            omni_error!("some errors occurred!".to_string().light_red());
             exit(1);
         }
     }
@@ -919,7 +917,7 @@ impl UpCommand {
                     repo = Some(RepositoryToClone {
                         suggested_by: vec![repo_id.clone()],
                         clone_url: clone_url.clone(),
-                        clone_path: clone_path,
+                        clone_path,
                         package_path: package_path_from_git_url(&clone_url),
                         clone_args: repo_config.args.clone(),
                         clone_as_package: repo_config.clone_as_package(),
@@ -931,7 +929,7 @@ impl UpCommand {
             if repo.is_none() {
                 if let Ok(clone_url) = safe_git_url_parse(&repo_config.handle) {
                     if clone_url.scheme.to_string() != "file"
-                        && clone_url.name != ""
+                        && !clone_url.name.is_empty()
                         && clone_url.owner.is_some()
                         && clone_url.host.is_some()
                     {
@@ -1000,8 +998,7 @@ impl UpCommand {
             } else {
                 Box::new(PrintProgressHandler::new(desc, progress))
             };
-            let progress_handler: Option<Box<&dyn ProgressHandler>> =
-                Some(Box::new(progress_handler.as_ref()));
+            let progress_handler: Option<&dyn ProgressHandler> = Some(progress_handler.as_ref());
 
             let mut cmd_args = vec!["git".to_string(), "clone".to_string()];
             cmd_args.push(repo.clone_url.to_string());
@@ -1028,9 +1025,9 @@ impl UpCommand {
 
             let result = run_progress(&mut cmd, progress_handler.clone(), RunConfig::default());
             if result.is_ok() {
-                progress_handler
-                    .clone()
-                    .map(|handler| handler.progress("cloned".to_string()));
+                if let Some(handler) = progress_handler.clone() {
+                    handler.progress("cloned".to_string())
+                }
 
                 cloned.insert(repo.clone());
 
@@ -1061,7 +1058,7 @@ impl UpCommand {
                         };
 
                         new_suggest_clone.insert(RepositoryToClone {
-                            suggested_by: suggested_by,
+                            suggested_by,
                             clone_url: existing_repo.clone_url.clone(),
                             clone_path: existing_repo.clone_path.clone(),
                             package_path: package_path_from_git_url(&existing_repo.clone_url),
@@ -1080,15 +1077,15 @@ impl UpCommand {
                         format!("({} suggested)", num_suggested).light_black()
                     )
                 } else {
-                    format!("cloned")
+                    "cloned".to_string()
                 };
-                progress_handler
-                    .clone()
-                    .map(|handler| handler.success_with_message(msg));
+                if let Some(handler) = progress_handler.clone() {
+                    handler.success_with_message(msg)
+                }
             } else if let Err(err) = result {
-                progress_handler
-                    .clone()
-                    .map(|handler| handler.error_with_message(format!("failed: {}", err)));
+                if let Some(handler) = progress_handler.clone() {
+                    handler.error_with_message(format!("failed: {}", err))
+                }
             }
         }
 
@@ -1364,9 +1361,9 @@ fn color_diff(diff: &str) -> String {
     diff.lines()
         .map(|line| {
             let line = line.to_string();
-            if line.starts_with("+") {
+            if line.starts_with('+') {
                 line.green()
-            } else if line.starts_with("-") {
+            } else if line.starts_with('-') {
                 line.red()
             } else if line.starts_with("@@") {
                 line.light_black()

@@ -43,8 +43,8 @@ impl UpConfigGolang {
 
         Self {
             asdf_base: OnceCell::new(),
-            version: version,
-            version_file: version_file,
+            version,
+            version_file,
         }
     }
 

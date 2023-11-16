@@ -33,7 +33,7 @@ impl HomebrewOperationCache {
         } else {
             let tap = HomebrewTapped {
                 name: tap_name.to_string(),
-                tapped: tapped,
+                tapped,
                 required_by: [workdir_id.to_string()].iter().cloned().collect(),
             };
             self.tapped.push(tap);
@@ -66,7 +66,7 @@ impl HomebrewOperationCache {
                     name: install_name.to_string(),
                     version: install_version,
                     cask: is_cask,
-                    installed: installed,
+                    installed,
                     required_by: [workdir_id.to_string()].iter().cloned().collect(),
                 };
                 self.installed.push(install);

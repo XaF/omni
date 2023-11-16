@@ -12,7 +12,7 @@ pub fn is_trusted(path: &str) -> bool {
     let git = git_env(path);
     if git.in_repo() && git.has_origin() {
         for org in ORG_LOADER.orgs() {
-            if org.config.trusted && org.hosts_repo(&git.origin().unwrap()) {
+            if org.config.trusted && org.hosts_repo(git.origin().unwrap()) {
                 return true;
             }
         }
@@ -64,7 +64,7 @@ pub fn is_trusted_or_ask(path: &str, ask: String) -> bool {
         .default('y')
         .build();
 
-    return match requestty::prompt_one(question) {
+    match requestty::prompt_one(question) {
         Ok(answer) => match answer {
             requestty::Answer::ExpandItem(expanditem) => match expanditem.key {
                 'y' => true,
@@ -78,7 +78,7 @@ pub fn is_trusted_or_ask(path: &str, ask: String) -> bool {
             println!("{}", format!("[✘] {:?}", err).red());
             false
         }
-    };
+    }
 }
 
 pub fn add_trust(path: &str) -> bool {
@@ -93,5 +93,5 @@ pub fn add_trust(path: &str) -> bool {
         omni_error!("Unable to get repository id");
         return false;
     }
-    return true;
+    true
 }

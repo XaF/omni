@@ -4,7 +4,7 @@ use std::collections::HashSet;
 use std::sync::Mutex;
 
 use lazy_static::lazy_static;
-use requestty;
+
 use strsim::normalized_damerau_levenshtein;
 
 use crate::internal::commands::base::Command;
@@ -126,11 +126,11 @@ impl CommandLoader {
             add_fn(Command::FromPath(command));
         }
 
-        for command in MakefileCommand::all_from_path(&path) {
+        for command in MakefileCommand::all_from_path(path) {
             add_fn(Command::FromMakefile(command));
         }
 
-        Self { commands: commands }
+        Self { commands }
     }
 
     pub fn to_serve(&self, argv: &[String]) -> Option<(&Command, Vec<String>, Vec<String>)> {
@@ -204,7 +204,7 @@ impl CommandLoader {
                     matched_commands.push(MatchedCommand {
                         command: command.clone(),
                         match_name: command_name.clone(),
-                        match_level: match_level,
+                        match_level,
                     });
                 }
             }
@@ -216,10 +216,7 @@ impl CommandLoader {
             .fold(0.0, |acc: f32, x| acc.max(x.match_level));
 
         // Filter only the highest matching scores
-        matched_commands = matched_commands
-            .into_iter()
-            .filter(|x| x.match_level == max_match_level)
-            .collect();
+        matched_commands.retain(|x| x.match_level == max_match_level);
 
         // If the score ends with .5, it means that we have a partial match, so we can
         // return the matching commands right away
@@ -291,9 +288,7 @@ impl CommandLoader {
                 let mut sub_names = vec![];
                 let mut sub_commands = vec![];
                 for (name, command) in subcommands.iter() {
-                    let full_name = argv
-                        .to_vec()
-                        .into_iter()
+                    let full_name = argv.iter().cloned()
                         .chain(name.iter().cloned())
                         .collect::<Vec<_>>()
                         .join(" ");
@@ -383,7 +378,7 @@ impl CommandLoader {
                 CommandScore {
                     score: max_score,
                     command: command.clone(),
-                    match_level: match_level,
+                    match_level,
                 }
             })
             .filter(|command| command.score > config(".").command_match_min_score)
@@ -474,18 +469,18 @@ impl CommandScore {
         let cmd = self.command.clone();
         let called_as = argv[..self.match_level].to_vec();
         let argv = argv[self.match_level..].to_vec();
-        return Some((cmd, called_as, argv));
+        Some((cmd, called_as, argv))
     }
 }
 
-impl Into<String> for CommandScore {
-    fn into(self) -> String {
-        self.command.flat_name()
+impl From<CommandScore> for String {
+    fn from(val: CommandScore) -> Self {
+        val.command.flat_name()
     }
 }
 
-impl<'a> Into<String> for &'a mut CommandScore {
-    fn into(self) -> String {
-        self.command.flat_name()
+impl<'a> From<&'a mut CommandScore> for String {
+    fn from(val: &'a mut CommandScore) -> Self {
+        val.command.flat_name()
     }
 }

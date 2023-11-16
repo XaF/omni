@@ -135,42 +135,33 @@ pub struct OmniConfig {
 impl OmniConfig {
     pub fn from_config_value(config_value: &ConfigValue) -> Self {
         let mut commands_config = HashMap::new();
-        match config_value.get("commands") {
-            Some(value) => {
-                for (key, value) in value.as_table().unwrap() {
-                    commands_config.insert(
-                        key.to_string(),
-                        CommandDefinition::from_config_value(&value),
-                    );
-                }
+        if let Some(value) = config_value.get("commands") {
+            for (key, value) in value.as_table().unwrap() {
+                commands_config.insert(
+                    key.to_string(),
+                    CommandDefinition::from_config_value(&value),
+                );
             }
-            None => {}
         }
 
         let mut org_config = Vec::new();
-        match config_value.get("org") {
-            Some(value) => {
-                for value in value.as_array().unwrap() {
-                    org_config.push(OrgConfig::from_config_value(&value));
-                }
+        if let Some(value) = config_value.get("org") {
+            for value in value.as_array().unwrap() {
+                org_config.push(OrgConfig::from_config_value(&value));
             }
-            None => {}
         }
 
         let mut env_config = HashMap::new();
-        match config_value.get("env") {
-            Some(value) => {
-                for (key, value) in value.as_table().unwrap() {
-                    env_config.insert(key.to_string(), value.as_str().unwrap().to_string());
-                }
+        if let Some(value) = config_value.get("env") {
+            for (key, value) in value.as_table().unwrap() {
+                env_config.insert(key.to_string(), value.as_str().unwrap().to_string());
             }
-            None => {}
         }
 
         Self {
             worktree: config_value
                 .get_as_str("worktree")
-                .unwrap_or_else(|| format!("{}", *DEFAULT_WORKTREE)),
+                .unwrap_or_else(|| (*DEFAULT_WORKTREE).to_string()),
             cache: CacheConfig::from_config_value(&config_value.get("cache").unwrap()),
             commands: commands_config,
             command_match_min_score: config_value
@@ -222,7 +213,7 @@ impl CacheConfig {
         Self {
             path: match config_value.get("path") {
                 Some(value) => value.as_str().unwrap().to_string(),
-                None => format!("{}", ENV.cache_home.clone()),
+                None => ENV.cache_home.clone().to_string(),
             },
         }
     }
@@ -284,18 +275,17 @@ impl CommandDefinition {
         };
 
         Self {
-            desc: match config_value.get("desc") {
-                Some(value) => Some(value.as_str().unwrap().to_string()),
-                None => None,
-            },
+            desc: config_value
+                .get("desc")
+                .map(|value| value.as_str().unwrap().to_string()),
             run: config_value
                 .get_as_str("run")
                 .unwrap_or("true".to_string())
                 .to_string(),
-            aliases: aliases,
-            syntax: syntax,
-            category: category,
-            subcommands: subcommands,
+            aliases,
+            syntax,
+            category,
+            subcommands,
             source: config_value.get_source().clone(),
         }
     }
@@ -325,7 +315,7 @@ impl CommandSyntax {
                     if let Some(value) = value.as_array() {
                         let arguments = value
                             .iter()
-                            .map(|value| SyntaxOptArg::from_config_value(&value, true))
+                            .map(|value| SyntaxOptArg::from_config_value(value, true))
                             .collect::<Vec<SyntaxOptArg>>();
                         parameters.extend(arguments);
                     } else {
@@ -340,7 +330,7 @@ impl CommandSyntax {
                     if let Some(value) = value.as_array() {
                         let options = value
                             .iter()
-                            .map(|value| SyntaxOptArg::from_config_value(&value, false))
+                            .map(|value| SyntaxOptArg::from_config_value(value, false))
                             .collect::<Vec<SyntaxOptArg>>();
                         parameters.extend(options);
                     } else {
@@ -353,14 +343,11 @@ impl CommandSyntax {
             usage = Some(config_value.as_str().unwrap().to_string());
         }
 
-        if parameters.len() == 0 && usage.is_none() {
+        if parameters.is_empty() && usage.is_none() {
             return None;
         }
 
-        Some(Self {
-            usage: usage,
-            parameters: parameters,
-        })
+        Some(Self { usage, parameters })
     }
 }
 
@@ -374,12 +361,9 @@ pub struct SyntaxOptArg {
 impl SyntaxOptArg {
     pub fn new(name: String, desc: Option<String>, required: bool) -> Self {
         Self {
-            name: name,
-            desc: match desc {
-                Some(value) => Some(value),
-                None => None,
-            },
-            required: required,
+            name,
+            desc: desc.map(|value| value),
+            required,
         }
     }
 
@@ -387,19 +371,18 @@ impl SyntaxOptArg {
         let mut name = "".to_string();
         let mut desc = None;
         if config_value.is_table() {
-            for (key, value) in config_value.as_table().unwrap() {
+            if let Some((key, value)) = config_value.as_table().unwrap().into_iter().next() {
                 name = key;
                 desc = Some(value.as_str().unwrap().to_string());
-                break;
             }
         } else {
             name = config_value.as_str().unwrap();
         }
 
         Self {
-            name: name,
-            desc: desc,
-            required: required,
+            name,
+            desc,
+            required,
         }
     }
 }
@@ -504,16 +487,13 @@ pub struct OrgConfig {
 
 impl OrgConfig {
     pub fn from_str(value_str: &str) -> Self {
-        let mut split = value_str.split("=");
+        let mut split = value_str.split('=');
         let handle = split.next().unwrap().to_string();
-        let worktree = match split.next() {
-            Some(value) => Some(value.to_string()),
-            None => None,
-        };
+        let worktree = split.next().map(|value| value.to_string());
         Self {
-            handle: handle,
+            handle,
             trusted: true,
-            worktree: worktree,
+            worktree,
         }
     }
 
@@ -527,14 +507,8 @@ impl OrgConfig {
 
         Self {
             handle: config_value.get_as_str("handle").unwrap().to_string(),
-            trusted: match config_value.get_as_bool("trusted") {
-                Some(value) => value,
-                None => false,
-            },
-            worktree: match config_value.get_as_str("worktree") {
-                Some(value) => Some(value),
-                None => None,
-            },
+            trusted: config_value.get_as_bool("trusted").unwrap_or(false),
+            worktree: config_value.get_as_str("worktree").map(|value| value),
         }
     }
 }
@@ -552,13 +526,13 @@ impl PathConfig {
                 .get_as_array("append")
                 .unwrap()
                 .iter()
-                .map(|value| PathEntryConfig::from_config_value(&value))
+                .map(|value| PathEntryConfig::from_config_value(value))
                 .collect(),
             prepend: config_value
                 .get_as_array("prepend")
                 .unwrap()
                 .iter()
-                .map(|value| PathEntryConfig::from_config_value(&value))
+                .map(|value| PathEntryConfig::from_config_value(value))
                 .collect(),
         }
     }
@@ -576,7 +550,7 @@ impl PathEntryConfig {
         Self {
             path: path.to_string(),
             package: None,
-            full_path: if path.starts_with("/") {
+            full_path: if path.starts_with('/') {
                 path.to_string()
             } else {
                 "".to_string()
@@ -591,11 +565,11 @@ impl PathEntryConfig {
                 .unwrap_or("".to_string())
                 .to_string();
 
-            if !path.starts_with("/") {
+            if !path.starts_with('/') {
                 if let Some(package) = config_value.get("package") {
                     let package = package.as_str().unwrap();
                     if let Some(package_path) = package_path_from_handle(&package) {
-                        let mut full_path = PathBuf::from(package_path);
+                        let mut full_path = package_path;
                         if !path.is_empty() {
                             full_path = full_path.join(path.clone());
                         }
@@ -628,7 +602,7 @@ impl PathEntryConfig {
         if let Some(package) = &self.package {
             let mut map = HashMap::new();
             map.insert("path".to_string(), ConfigValue::from_str(&self.path));
-            map.insert("package".to_string(), ConfigValue::from_str(&package));
+            map.insert("package".to_string(), ConfigValue::from_str(package));
             ConfigValue::new(
                 ConfigSource::Null,
                 vec![],
@@ -645,14 +619,14 @@ impl PathEntryConfig {
 
     pub fn package_path(&self) -> Option<PathBuf> {
         if let Some(package) = &self.package {
-            return package_path_from_handle(&package);
+            return package_path_from_handle(package);
         }
 
         None
     }
 
     pub fn is_valid(&self) -> bool {
-        !self.full_path.is_empty() && self.full_path.starts_with("/")
+        !self.full_path.is_empty() && self.full_path.starts_with('/')
     }
 
     pub fn as_string(&self) -> String {
@@ -714,16 +688,13 @@ pub struct PathRepoUpdatesConfig {
 impl PathRepoUpdatesConfig {
     fn from_config_value(config_value: &ConfigValue) -> Self {
         let mut per_repo_config = HashMap::new();
-        match config_value.get("per_repo_config") {
-            Some(value) => {
-                for (key, value) in value.as_table().unwrap() {
-                    per_repo_config.insert(
-                        key.to_string(),
-                        PathRepoUpdatesPerRepoConfig::from_config_value(&value),
-                    );
-                }
+        if let Some(value) = config_value.get("per_repo_config") {
+            for (key, value) in value.as_table().unwrap() {
+                per_repo_config.insert(
+                    key.to_string(),
+                    PathRepoUpdatesPerRepoConfig::from_config_value(&value),
+                );
             }
-            None => {}
         };
 
         Self {
@@ -748,18 +719,17 @@ impl PathRepoUpdatesConfig {
                 (None, None) => PathRepoUpdatesSelfUpdateEnum::Ask,
             },
             interval: match config_value.get("interval") {
-                Some(value) => value.as_integer().unwrap() as i64,
+                Some(value) => value.as_integer().unwrap(),
                 None => 12 * 60 * 60,
             },
             ref_type: match config_value.get("ref_type") {
                 Some(value) => value.as_str().unwrap().to_string(),
                 None => "branch".to_string(),
             },
-            ref_match: match config_value.get("ref_match") {
-                Some(value) => Some(value.as_str().unwrap().to_string()),
-                None => None,
-            },
-            per_repo_config: per_repo_config,
+            ref_match: config_value
+                .get("ref_match")
+                .map(|value| value.as_str().unwrap().to_string()),
+            per_repo_config,
         }
     }
 
@@ -803,10 +773,7 @@ impl PathRepoUpdatesSelfUpdateEnum {
     // }
 
     pub fn do_not_check(&self) -> bool {
-        match self {
-            PathRepoUpdatesSelfUpdateEnum::NoCheck => true,
-            _ => false,
-        }
+        matches!(self, PathRepoUpdatesSelfUpdateEnum::NoCheck)
     }
 
     pub fn is_false(&self) -> bool {
@@ -843,10 +810,9 @@ impl PathRepoUpdatesPerRepoConfig {
                 Some(value) => value.as_str().unwrap().to_string(),
                 None => "branch".to_string(),
             },
-            ref_match: match config_value.get("ref_match") {
-                Some(value) => Some(value.as_str().unwrap().to_string()),
-                None => None,
-            },
+            ref_match: config_value
+                .get("ref_match")
+                .map(|value| value.as_str().unwrap().to_string()),
         }
     }
 }
@@ -945,9 +911,7 @@ impl SuggestCloneConfig {
             }
         }
 
-        Self {
-            repositories: repositories,
-        }
+        Self { repositories }
     }
 }
 
@@ -992,9 +956,7 @@ impl SuggestCloneRepositoryConfig {
                 }
             }
 
-            if handle.is_none() {
-                return None;
-            }
+            handle.as_ref()?;
 
             let mut args = Vec::new();
             if let Some(value) = table.get("args") {
@@ -1016,8 +978,8 @@ impl SuggestCloneRepositoryConfig {
 
             return Some(Self {
                 handle: handle.unwrap(),
-                args: args,
-                clone_type: clone_type,
+                args,
+                clone_type,
             });
         }
 

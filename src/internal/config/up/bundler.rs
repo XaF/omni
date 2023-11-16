@@ -41,13 +41,10 @@ impl UpConfigBundler {
             }
         }
 
-        UpConfigBundler {
-            gemfile: gemfile,
-            path: path,
-        }
+        UpConfigBundler { gemfile, path }
     }
 
-    fn update_cache(&self, progress_handler: Option<Box<&dyn ProgressHandler>>) {
+    fn update_cache(&self, progress_handler: Option<&dyn ProgressHandler>) {
         let workdir = workdir(".");
         let workdir_id = workdir.id();
         if workdir_id.is_none() {
@@ -55,38 +52,35 @@ impl UpConfigBundler {
         }
         let workdir_id = workdir_id.unwrap();
 
-        progress_handler
-            .clone()
-            .map(|progress_handler| progress_handler.progress("updating cache".to_string()));
+        if let Some(progress_handler) = progress_handler.clone() {
+            progress_handler.progress("updating cache".to_string())
+        }
 
         if let Err(err) = UpEnvironmentsCache::exclusive(|up_env| {
             up_env.add_env_var(&workdir_id, "BUNDLE_GEMFILE", &self.gemfile_abs_path());
             true
         }) {
-            progress_handler.clone().map(|progress_handler| {
+            if let Some(progress_handler) = progress_handler.clone() {
                 progress_handler.progress(format!("failed to update cache: {}", err))
-            });
-        } else {
-            progress_handler
-                .clone()
-                .map(|progress_handler| progress_handler.progress("updated cache".to_string()));
+            }
+        } else if let Some(progress_handler) = progress_handler.clone() {
+            progress_handler.progress("updated cache".to_string())
         }
     }
 
     pub fn up(&self, progress: Option<(usize, usize)>) -> Result<(), UpError> {
-        let desc = format!("install Gemfile dependencies:").light_blue();
+        let desc = "install Gemfile dependencies:".to_string().light_blue();
         let progress_handler: Box<dyn ProgressHandler> = if ENV.interactive_shell {
             Box::new(SpinnerProgressHandler::new(desc, progress))
         } else {
             Box::new(PrintProgressHandler::new(desc, progress))
         };
-        let progress_handler: Option<Box<&dyn ProgressHandler>> =
-            Some(Box::new(progress_handler.as_ref()));
+        let progress_handler: Option<&dyn ProgressHandler> = Some(progress_handler.as_ref());
 
         if let Some(path) = &self.path {
-            progress_handler.clone().map(|progress_handler| {
+            if let Some(progress_handler) = progress_handler.clone() {
                 progress_handler.progress("setting bundle path".to_string())
-            });
+            }
 
             let mut bundle_config = TokioCommand::new("bundle");
             bundle_config.arg("config");
@@ -103,9 +97,9 @@ impl UpConfigBundler {
             )?;
         }
 
-        progress_handler
-            .clone()
-            .map(|progress_handler| progress_handler.progress("installing bundle".to_string()));
+        if let Some(progress_handler) = progress_handler.clone() {
+            progress_handler.progress("installing bundle".to_string())
+        }
 
         let mut bundle_install = TokioCommand::new("bundle");
         bundle_install.arg("install");
@@ -123,53 +117,45 @@ impl UpConfigBundler {
         );
 
         if let Err(err) = &result {
-            progress_handler.clone().map(|progress_handler| {
+            if let Some(progress_handler) = progress_handler.clone() {
                 progress_handler.error_with_message(format!("bundle install failed: {}", err))
-            });
+            }
             return result;
         }
 
         self.update_cache(progress_handler.clone());
 
-        progress_handler
-            .clone()
-            .map(|progress_handler| progress_handler.success());
+        if let Some(progress_handler) = progress_handler.clone() {
+            progress_handler.success()
+        }
 
         Ok(())
     }
 
     pub fn down(&self, progress: Option<(usize, usize)>) -> Result<(), UpError> {
-        let desc = format!("remove Gemfile dependencies:").light_blue();
+        let desc = "remove Gemfile dependencies:".to_string().light_blue();
         let progress_handler: Box<dyn ProgressHandler> = if ENV.interactive_shell {
             Box::new(SpinnerProgressHandler::new(desc, progress))
         } else {
             Box::new(PrintProgressHandler::new(desc, progress))
         };
-        let progress_handler: Option<Box<&dyn ProgressHandler>> =
-            Some(Box::new(progress_handler.as_ref()));
+        let progress_handler: Option<&dyn ProgressHandler> = Some(progress_handler.as_ref());
 
         // Check if path exists, and if so delete it
         if self.path.is_some() && Path::new(&self.path.clone().unwrap()).exists() {
             let path = self.path.clone().unwrap();
             let path = abs_path(&path).to_str().unwrap().to_string();
 
-            progress_handler.clone().map(|progress_handler| {
+            if let Some(progress_handler) = progress_handler.clone() {
                 progress_handler.progress(format!("removing {}", path).to_string())
-            });
+            }
 
             if let Err(err) = std::fs::remove_dir_all(&path) {
                 progress_handler.clone().map(|progress_handler| {
-                    progress_handler.error_with_message(format!(
-                        "failed to remove {}: {}",
-                        path,
-                        err.to_string()
-                    ))
+                    progress_handler
+                        .error_with_message(format!("failed to remove {}: {}", path, err))
                 });
-                return Err(UpError::Exec(format!(
-                    "failed to remove {}: {}",
-                    path,
-                    err.to_string()
-                )));
+                return Err(UpError::Exec(format!("failed to remove {}: {}", path, err)));
             }
 
             // Cleanup the parents as long as they are empty directories
@@ -181,13 +167,11 @@ impl UpConfigBundler {
                 parent = path;
             }
 
-            progress_handler
-                .clone()
-                .map(|progress_handler| progress_handler.success());
-        } else {
-            progress_handler.clone().map(|progress_handler| {
-                progress_handler.success_with_message("skipping (nothing to do)".light_black())
-            });
+            if let Some(progress_handler) = progress_handler.clone() {
+                progress_handler.success()
+            }
+        } else if let Some(progress_handler) = progress_handler.clone() {
+            progress_handler.success_with_message("skipping (nothing to do)".light_black())
         }
 
         Ok(())

@@ -2,7 +2,7 @@ use std::path::PathBuf;
 use std::process::exit;
 use std::time::Duration;
 
-use clap;
+
 use indicatif::ProgressBar;
 use indicatif::ProgressStyle;
 use once_cell::sync::OnceCell;
@@ -108,7 +108,7 @@ impl ConfigPathSwitchCommandArgs {
 
         Self {
             repository: matches.get_one::<String>("repo").map(|arg| arg.to_string()),
-            source: source,
+            source,
         }
     }
 }
@@ -198,7 +198,7 @@ impl ConfigPathSwitchCommand {
     }
 
     pub fn exec(&self, argv: Vec<String>) {
-        if let Err(_) = self.cli_args.set(ConfigPathSwitchCommandArgs::parse(argv)) {
+        if self.cli_args.set(ConfigPathSwitchCommandArgs::parse(argv)).is_err() {
             unreachable!();
         }
 
@@ -210,7 +210,7 @@ impl ConfigPathSwitchCommand {
         if let Some(repo) = self.cli_args().repository.clone() {
             let repo_path = ORG_LOADER.find_repo(&repo, true, false);
             if let Some(repo_path) = repo_path {
-                let git = git_env(&repo_path.to_string_lossy());
+                let git = git_env(repo_path.to_string_lossy());
                 if git.in_repo() && git.has_origin() {
                     repo_handle = Some(git.origin().unwrap().to_string());
                     package_path = package_path_from_handle(&repo_handle.clone().unwrap());
@@ -347,8 +347,8 @@ impl ConfigPathSwitchCommand {
             exit(1);
         }
 
-        let worktree_entry = path_entry_config(&worktree_path.to_string_lossy());
-        let package_entry = path_entry_config(&package_path.to_string_lossy());
+        let worktree_entry = path_entry_config(worktree_path.to_string_lossy());
+        let package_entry = path_entry_config(package_path.to_string_lossy());
 
         let worktree_in_omnipath = global_omnipath_entries()
             .iter()
@@ -490,6 +490,6 @@ impl ConfigPathSwitchCommand {
     }
 
     pub fn autocomplete(&self, _comp_cword: usize, _argv: Vec<String>) {
-        ()
+        
     }
 }

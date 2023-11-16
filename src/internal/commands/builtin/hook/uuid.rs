@@ -42,7 +42,7 @@ impl HookUuidCommand {
 
     pub fn exec(&self, _argv: Vec<String>) {
         let uuid = Uuid::new_v4();
-        println!("{}", uuid.to_string());
+        println!("{}", uuid);
         exit(0);
     }
 

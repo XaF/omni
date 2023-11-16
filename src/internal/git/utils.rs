@@ -109,7 +109,7 @@ pub fn format_path_with_template(worktree: &str, git_url: &GitUrl, path_format: 
     let path_format = path_format.replace("%{repo}", &git_url.name);
 
     // Split the path format into parts
-    let path_format_parts = path_format.split("/");
+    let path_format_parts = path_format.split('/');
 
     // Append each part to the path
     for part in path_format_parts {
@@ -121,7 +121,7 @@ pub fn format_path_with_template(worktree: &str, git_url: &GitUrl, path_format: 
 }
 
 pub fn package_path_from_handle(handle: &str) -> Option<PathBuf> {
-    if let Ok(git_url) = full_git_url_parse(&handle) {
+    if let Ok(git_url) = full_git_url_parse(handle) {
         package_path_from_git_url(&git_url)
     } else {
         None
@@ -139,11 +139,11 @@ pub fn package_path_from_git_url(git_url: &GitUrl) -> Option<PathBuf> {
 
     let package_path = format_path_with_template(
         package_root_path().as_str(),
-        &git_url,
+        git_url,
         PACKAGE_PATH_FORMAT.to_string(),
     );
 
-    Some(PathBuf::from(package_path))
+    Some(package_path)
 }
 
 pub fn path_entry_config<T: AsRef<str>>(path: T) -> PathEntryConfig {

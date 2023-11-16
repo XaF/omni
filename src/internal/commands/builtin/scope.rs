@@ -1,6 +1,5 @@
 use std::process::exit;
 
-use clap;
 use once_cell::sync::OnceCell;
 
 use crate::internal::commands::builtin::HelpCommand;
@@ -66,19 +65,16 @@ impl ScopeCommandArgs {
             exit(1);
         };
 
-        let command = matches
+        let command: Vec<_> = matches
             .get_many::<String>("command")
             .map(|args| args.map(|arg| arg.to_string()).collect())
-            .unwrap_or(vec![]);
-        if command.len() < 1 {
+            .unwrap_or_default();
+        if command.is_empty() {
             omni_error!("no command specified");
             exit(1);
         };
 
-        Self {
-            scope: scope,
-            command: command,
-        }
+        Self { scope, command }
     }
 }
 
@@ -162,7 +158,7 @@ impl ScopeCommand {
     }
 
     pub fn exec(&self, argv: Vec<String>) {
-        if let Err(_) = self.cli_args.set(ScopeCommandArgs::parse(argv)) {
+        if self.cli_args.set(ScopeCommandArgs::parse(argv)).is_err() {
             unreachable!();
         }
 
@@ -196,14 +192,14 @@ impl ScopeCommand {
 
     pub fn autocomplete(&self, comp_cword: usize, argv: Vec<String>) {
         if comp_cword == 0 {
-            let repo = if argv.len() > 0 {
+            let repo = if !argv.is_empty() {
                 argv[0].clone()
             } else {
                 "".to_string()
             };
             self.autocomplete_repo(repo);
         } else if comp_cword > 0 {
-            if argv.len() < 1 {
+            if argv.is_empty() {
                 // Unsure why we would get here, but if we try to complete
                 // a command but a repository is not provided, we can't, so
                 // let's simply skip it
@@ -225,36 +221,34 @@ impl ScopeCommand {
 
     fn autocomplete_repo(&self, repo: String) {
         // Figure out if this is a path, so we can avoid the expensive repository search
-        let path_only = repo.starts_with("/")
-            || repo.starts_with(".")
+        let path_only = repo.starts_with('/')
+            || repo.starts_with('.')
             || repo.starts_with("~/")
             || repo == "~"
             || repo == "-";
 
         // Print all the completion related to path completion
-        let (list_dir, strip_path_prefix) = if let Some(slash) = repo.rfind("/") {
-            (format!("{}", &repo[..slash]), false)
+        let (list_dir, strip_path_prefix) = if let Some(slash) = repo.rfind('/') {
+            ((&repo[..slash]).to_string(), false)
         } else {
             (".".to_string(), true)
         };
         if let Ok(files) = std::fs::read_dir(&list_dir) {
-            for path in files {
-                if let Ok(path) = path {
-                    if path.path().is_dir() {
-                        let path_obj = path.path();
-                        let path = if strip_path_prefix {
-                            path_obj.strip_prefix(&list_dir).unwrap()
-                        } else {
-                            path_obj.as_path()
-                        };
-                        let path_str = path.to_str().unwrap();
+            for path in files.flatten() {
+                if path.path().is_dir() {
+                    let path_obj = path.path();
+                    let path = if strip_path_prefix {
+                        path_obj.strip_prefix(&list_dir).unwrap()
+                    } else {
+                        path_obj.as_path()
+                    };
+                    let path_str = path.to_str().unwrap();
 
-                        if !path_str.starts_with(repo.as_str()) {
-                            continue;
-                        }
-
-                        println!("{}/", path.display());
+                    if !path_str.starts_with(repo.as_str()) {
+                        continue;
                     }
+
+                    println!("{}/", path.display());
                 }
             }
         }

@@ -33,20 +33,17 @@ impl UpConfigHomebrew {
         let install = HomebrewInstall::from_config_value(config_value);
         let tap = HomebrewTap::from_config_value(config_value);
 
-        UpConfigHomebrew {
-            install: install,
-            tap: tap,
-        }
+        UpConfigHomebrew { install, tap }
     }
 
     pub fn up(&self, progress: Option<(usize, usize)>) -> Result<(), UpError> {
-        let desc = format!("install homebrew dependencies:").light_blue();
+        let desc = "install homebrew dependencies:".to_string().light_blue();
         let main_progress_handler = PrintProgressHandler::new(desc, progress);
         main_progress_handler.progress("".to_string());
 
         let num_taps = self.tap.len();
         for (idx, tap) in self.tap.iter().enumerate() {
-            if let Err(err) = tap.up(progress.clone(), Some((idx + 1, num_taps))) {
+            if let Err(err) = tap.up(progress, Some((idx + 1, num_taps))) {
                 main_progress_handler.error();
                 return Err(err);
             }
@@ -54,7 +51,7 @@ impl UpConfigHomebrew {
 
         let num_installs = self.install.len();
         for (idx, install) in self.install.iter().enumerate() {
-            if let Err(err) = install.up(progress.clone(), Some((idx + 1, num_installs))) {
+            if let Err(err) = install.up(progress, Some((idx + 1, num_installs))) {
                 main_progress_handler.error();
                 return Err(err);
             }
@@ -89,7 +86,9 @@ impl UpConfigHomebrew {
         let mut return_value = Ok(());
 
         if let Err(err) = HomebrewOperationCache::exclusive(|brew_cache| {
-            let desc = format!("uninstall (unused) homebrew dependencies:").light_blue();
+            let desc = "uninstall (unused) homebrew dependencies:"
+                .to_string()
+                .light_blue();
             let main_progress_handler = PrintProgressHandler::new(desc, progress);
             main_progress_handler.progress("".to_string());
 
@@ -108,7 +107,7 @@ impl UpConfigHomebrew {
 
             let num_uninstalls = to_uninstall.len();
             for (idx, (rmidx, install)) in to_uninstall.iter().enumerate() {
-                if let Err(err) = install.down(progress.clone(), Some((idx + 1, num_uninstalls))) {
+                if let Err(err) = install.down(progress, Some((idx + 1, num_uninstalls))) {
                     main_progress_handler.error();
                     return_value = Err(err);
                     return updated;
@@ -138,7 +137,7 @@ impl UpConfigHomebrew {
 
             let num_untaps = to_untap.len();
             for (idx, (rmidx, tap)) in to_untap.iter().enumerate() {
-                if let Err(err) = tap.down(progress.clone(), Some((idx + 1, num_untaps))) {
+                if let Err(err) = tap.down(progress, Some((idx + 1, num_untaps))) {
                     if err != UpError::HomebrewTapInUse {
                         main_progress_handler.error();
                         return_value = Err(err);
@@ -179,7 +178,7 @@ impl UpConfigHomebrew {
                 true
             } else {
                 main_progress_handler
-                    .success_with_message(format!("no homebrew dependencies to uninstall",));
+                    .success_with_message("no homebrew dependencies to uninstall".to_string());
 
                 false
             }
@@ -191,10 +190,11 @@ impl UpConfigHomebrew {
     }
 
     pub fn is_available(&self) -> bool {
-        if let Ok(_) = cmd!("command", "-v", "brew")
+        if cmd!("command", "-v", "brew")
             .stdout_null()
             .stderr_null()
             .run()
+            .is_ok()
         {
             return true;
         }
@@ -239,7 +239,7 @@ impl HomebrewTap {
             for (tap_name, config_value) in taps_hash {
                 parsed_taps.push(Self::parse_config(tap_name.to_string(), &config_value));
             }
-        } else if let Some(_) = taps.as_str() {
+        } else if taps.as_str().is_some() {
             if let Some(tap) = Self::parse_tap(None, taps) {
                 parsed_taps.push(tap);
             }
@@ -288,8 +288,8 @@ impl HomebrewTap {
         }
 
         Self {
-            name: name,
-            url: url,
+            name,
+            url,
             was_handled: OnceCell::new(),
         }
     }
@@ -302,7 +302,7 @@ impl HomebrewTap {
         }
     }
 
-    fn update_cache(&self, progress_handler: Option<Box<&dyn ProgressHandler>>) {
+    fn update_cache(&self, progress_handler: Option<&dyn ProgressHandler>) {
         let workdir = workdir(".");
         let workdir_id = workdir.id();
         if workdir_id.is_none() {
@@ -310,20 +310,18 @@ impl HomebrewTap {
         }
         let workdir_id = workdir_id.unwrap();
 
-        progress_handler
-            .clone()
-            .map(|progress_handler| progress_handler.progress("updating cache".to_string()));
+        if let Some(progress_handler) = progress_handler.clone() {
+            progress_handler.progress("updating cache".to_string())
+        }
 
         if let Err(err) = HomebrewOperationCache::exclusive(|brew_cache| {
             brew_cache.add_tap(&workdir_id, &self.name, self.was_handled())
         }) {
-            progress_handler.clone().map(|progress_handler| {
+            if let Some(progress_handler) = progress_handler.clone() {
                 progress_handler.progress(format!("failed to update cache: {}", err))
-            });
-        } else {
-            progress_handler
-                .clone()
-                .map(|progress_handler| progress_handler.progress("updated cache".to_string()));
+            }
+        } else if let Some(progress_handler) = progress_handler.clone() {
+            progress_handler.progress("updated cache".to_string())
         }
     }
 
@@ -357,28 +355,27 @@ impl HomebrewTap {
         } else {
             Box::new(PrintProgressHandler::new(desc, main_progress))
         };
-        let progress_handler: Option<Box<&dyn ProgressHandler>> =
-            Some(Box::new(progress_handler.as_ref()));
+        let progress_handler: Option<&dyn ProgressHandler> = Some(progress_handler.as_ref());
 
         if self.is_tapped() {
             self.update_cache(progress_handler.clone());
-            progress_handler.clone().map(|progress_handler| {
+            if let Some(progress_handler) = progress_handler.clone() {
                 progress_handler.success_with_message("already tapped".light_black())
-            });
+            }
             return Ok(());
         }
 
         if let Err(err) = self.tap(progress_handler.clone(), true) {
-            progress_handler.clone().map(|progress_handler| {
+            if let Some(progress_handler) = progress_handler.clone() {
                 progress_handler.error();
-            });
+            }
             return Err(err);
         }
 
         self.update_cache(progress_handler.clone());
-        progress_handler
-            .clone()
-            .map(|progress_handler| progress_handler.success());
+        if let Some(progress_handler) = progress_handler.clone() {
+            progress_handler.success()
+        }
 
         Ok(())
     }
@@ -413,13 +410,12 @@ impl HomebrewTap {
         } else {
             Box::new(PrintProgressHandler::new(desc, main_progress))
         };
-        let progress_handler: Option<Box<&dyn ProgressHandler>> =
-            Some(Box::new(progress_handler.as_ref()));
+        let progress_handler: Option<&dyn ProgressHandler> = Some(progress_handler.as_ref());
 
         if !self.is_tapped() {
-            progress_handler.clone().map(|progress_handler| {
+            if let Some(progress_handler) = progress_handler.clone() {
                 progress_handler.success_with_message("not currently tapped".light_black())
-            });
+            }
             return Ok(());
         }
 
@@ -430,21 +426,21 @@ impl HomebrewTap {
         {
             progress_handler.clone().map(|progress_handler| {
                 progress_handler
-                    .error_with_message(format!("tap is still in use, skipping").light_black())
+                    .error_with_message("tap is still in use, skipping".to_string().light_black())
             });
             return Err(UpError::HomebrewTapInUse);
         }
 
         if let Err(err) = self.tap(progress_handler.clone(), false) {
-            progress_handler.clone().map(|progress_handler| {
+            if let Some(progress_handler) = progress_handler.clone() {
                 progress_handler.error();
-            });
+            }
             return Err(err);
         }
 
-        progress_handler
-            .clone()
-            .map(|progress_handler| progress_handler.success());
+        if let Some(progress_handler) = progress_handler.clone() {
+            progress_handler.success()
+        }
 
         Ok(())
     }
@@ -468,7 +464,7 @@ impl HomebrewTap {
 
     fn tap(
         &self,
-        progress_handler: Option<Box<&dyn ProgressHandler>>,
+        progress_handler: Option<&dyn ProgressHandler>,
         tap: bool,
     ) -> Result<(), UpError> {
         let mut brew_tap = TokioCommand::new("brew");
@@ -491,10 +487,8 @@ impl HomebrewTap {
             progress_handler.clone(),
             RunConfig::default(),
         );
-        if result.is_ok() {
-            if let Err(_) = self.was_handled.set(true) {
-                unreachable!();
-            }
+        if result.is_ok() && self.was_handled.set(true).is_err() {
+            unreachable!();
         }
         result
     }
@@ -583,9 +577,9 @@ impl HomebrewInstall {
 
                 if let Some(name) = name {
                     installs.push(Self {
-                        install_type: install_type,
-                        name: name,
-                        version: version,
+                        install_type,
+                        name,
+                        version,
                         was_handled: OnceCell::new(),
                     });
                 }
@@ -610,14 +604,14 @@ impl HomebrewInstall {
         };
 
         Self {
-            install_type: install_type,
+            install_type,
             name: cached.name.clone(),
             version: cached.version.clone(),
             was_handled: OnceCell::new(),
         }
     }
 
-    fn update_cache(&self, progress_handler: Option<Box<&dyn ProgressHandler>>) {
+    fn update_cache(&self, progress_handler: Option<&dyn ProgressHandler>) {
         let workdir = workdir(".");
         let workdir_id = workdir.id();
         if workdir_id.is_none() {
@@ -625,9 +619,9 @@ impl HomebrewInstall {
         }
         let workdir_id = workdir_id.unwrap();
 
-        progress_handler
-            .clone()
-            .map(|progress_handler| progress_handler.progress("updating cache".to_string()));
+        if let Some(progress_handler) = progress_handler.clone() {
+            progress_handler.progress("updating cache".to_string())
+        }
 
         let result = HomebrewOperationCache::exclusive(|brew_cache| {
             brew_cache.add_install(
@@ -640,13 +634,11 @@ impl HomebrewInstall {
         });
 
         if let Err(err) = result {
-            progress_handler.clone().map(|progress_handler| {
+            if let Some(progress_handler) = progress_handler.clone() {
                 progress_handler.progress(format!("failed to update cache: {}", err))
-            });
-        } else {
-            progress_handler
-                .clone()
-                .map(|progress_handler| progress_handler.progress("updated cache".to_string()));
+            }
+        } else if let Some(progress_handler) = progress_handler.clone() {
+            progress_handler.progress("updated cache".to_string())
         }
     }
 
@@ -680,33 +672,32 @@ impl HomebrewInstall {
         } else {
             Box::new(PrintProgressHandler::new(desc, main_progress))
         };
-        let progress_handler: Option<Box<&dyn ProgressHandler>> =
-            Some(Box::new(progress_handler.as_ref()));
+        let progress_handler: Option<&dyn ProgressHandler> = Some(progress_handler.as_ref());
 
         let installed = self.is_installed();
         if installed && self.version.is_some() {
             self.update_cache(progress_handler.clone());
-            progress_handler.clone().map(|progress_handler| {
+            if let Some(progress_handler) = progress_handler.clone() {
                 progress_handler.success_with_message("already installed".light_black())
-            });
+            }
             return Ok(());
         }
 
         if let Err(err) = self.install(progress_handler.clone(), installed) {
-            progress_handler.clone().map(|progress_handler| {
+            if let Some(progress_handler) = progress_handler.clone() {
                 progress_handler.error_with_message(err.to_string());
-            });
+            }
             return Err(err);
         }
 
         self.update_cache(progress_handler.clone());
-        progress_handler.clone().map(|progress_handler| {
+        if let Some(progress_handler) = progress_handler.clone() {
             progress_handler.success_with_message(
                 if installed { "up to date" } else { "installed" }
                     .to_string()
                     .light_green(),
             );
-        });
+        }
 
         Ok(())
     }
@@ -741,42 +732,41 @@ impl HomebrewInstall {
         } else {
             Box::new(PrintProgressHandler::new(desc, main_progress))
         };
-        let progress_handler: Option<Box<&dyn ProgressHandler>> =
-            Some(Box::new(progress_handler.as_ref()));
+        let progress_handler: Option<&dyn ProgressHandler> = Some(progress_handler.as_ref());
 
         let installed = self.is_installed();
         if !installed {
-            progress_handler.clone().map(|progress_handler| {
+            if let Some(progress_handler) = progress_handler.clone() {
                 progress_handler.success_with_message("not installed".light_black())
-            });
+            }
             return Ok(());
         }
 
         if let Err(err) = self.uninstall(progress_handler.clone()) {
-            progress_handler.clone().map(|progress_handler| {
+            if let Some(progress_handler) = progress_handler.clone() {
                 progress_handler.error_with_message(err.to_string());
-            });
+            }
             return Err(err);
         }
 
         if self.is_in_local_tap() {
             let tapped_file = self.tapped_file().unwrap();
             if let Err(err) = std::fs::remove_file(tapped_file) {
-                progress_handler.clone().map(|progress_handler| {
+                if let Some(progress_handler) = progress_handler.clone() {
                     progress_handler.error_with_message(format!(
                         "failed to remove formula from local tap: {}",
                         err
                     ));
-                });
+                }
                 return Err(UpError::Exec(
                     "failed to remove formula from local tap".to_string(),
                 ));
             }
 
-            if !cmd!("brew", "list", "--full-name")
+            if cmd!("brew", "list", "--full-name")
                 .pipe(cmd!("grep", "-q", format!("^{}/", LOCAL_TAP)))
                 .run()
-                .is_ok()
+                .is_err()
             {
                 let mut brew_untap = TokioCommand::new("brew");
                 brew_untap.arg("untap");
@@ -784,9 +774,9 @@ impl HomebrewInstall {
                 brew_untap.stdout(std::process::Stdio::piped());
                 brew_untap.stderr(std::process::Stdio::piped());
 
-                progress_handler.clone().map(|progress_handler| {
+                if let Some(progress_handler) = progress_handler.clone() {
                     progress_handler.progress("removing local tap".to_string());
-                });
+                }
 
                 run_progress(
                     &mut brew_untap,
@@ -796,9 +786,9 @@ impl HomebrewInstall {
             }
         }
 
-        progress_handler.clone().map(|progress_handler| {
+        if let Some(progress_handler) = progress_handler.clone() {
             progress_handler.success_with_message("uninstalled".light_green());
-        });
+        }
 
         Ok(())
     }
@@ -839,7 +829,7 @@ impl HomebrewInstall {
         }
 
         if let Some(tapped_file) = self.tapped_file() {
-            let tap_path = LOCAL_TAP.replace("/", "/homebrew-");
+            let tap_path = LOCAL_TAP.replace('/', "/homebrew-");
             let pkg_type = if self.is_cask() { "Cask" } else { "Formula" };
             let expected_end = format!("{}/{}/{}.rb", tap_path, pkg_type, self.package_id());
             return tapped_file.ends_with(&expected_end);
@@ -869,7 +859,7 @@ impl HomebrewInstall {
 
     fn install(
         &self,
-        progress_handler: Option<Box<&dyn ProgressHandler>>,
+        progress_handler: Option<&dyn ProgressHandler>,
         installed: bool,
     ) -> Result<(), UpError> {
         if !installed {
@@ -890,31 +880,26 @@ impl HomebrewInstall {
         brew_tap.stdout(std::process::Stdio::piped());
         brew_tap.stderr(std::process::Stdio::piped());
 
-        progress_handler.clone().map(|progress_handler| {
+        if let Some(progress_handler) = progress_handler.clone() {
             progress_handler.progress(if installed {
                 "checking for upgrades".to_string()
             } else {
                 "installing".to_string()
             })
-        });
+        }
 
         let result = run_progress(
             &mut brew_tap,
             progress_handler.clone(),
             RunConfig::default(),
         );
-        if result.is_ok() {
-            if let Err(_) = self.was_handled.set(true) {
-                unreachable!();
-            }
+        if result.is_ok() && self.was_handled.set(true).is_err() {
+            unreachable!();
         }
         result
     }
 
-    fn uninstall(
-        &self,
-        progress_handler: Option<Box<&dyn ProgressHandler>>,
-    ) -> Result<(), UpError> {
+    fn uninstall(&self, progress_handler: Option<&dyn ProgressHandler>) -> Result<(), UpError> {
         let mut brew_tap = TokioCommand::new("brew");
         brew_tap.arg("uninstall");
         if self.install_type == HomebrewInstallType::Cask {
@@ -925,34 +910,32 @@ impl HomebrewInstall {
         brew_tap.stdout(std::process::Stdio::piped());
         brew_tap.stderr(std::process::Stdio::piped());
 
-        progress_handler
-            .clone()
-            .map(|progress_handler| progress_handler.progress("uninstalling".to_string()));
+        if let Some(progress_handler) = progress_handler.clone() {
+            progress_handler.progress("uninstalling".to_string())
+        }
 
         let result = run_progress(
             &mut brew_tap,
             progress_handler.clone(),
             RunConfig::default(),
         );
-        if result.is_ok() {
-            if let Err(_) = self.was_handled.set(true) {
-                unreachable!();
-            }
+        if result.is_ok() && self.was_handled.set(true).is_err() {
+            unreachable!();
         }
         result
     }
 
     fn extract_package(
         &self,
-        progress_handler: Option<Box<&dyn ProgressHandler>>,
+        progress_handler: Option<&dyn ProgressHandler>,
     ) -> Result<(), UpError> {
         if self.version.is_none() {
             return Ok(());
         }
 
-        progress_handler
-            .clone()
-            .map(|progress_handler| progress_handler.progress("checking for formula".to_string()));
+        if let Some(progress_handler) = progress_handler.clone() {
+            progress_handler.progress("checking for formula".to_string())
+        }
 
         let mut brew_info = std::process::Command::new("brew");
         brew_info.arg("info");
@@ -962,21 +945,21 @@ impl HomebrewInstall {
 
         if let Ok(output) = brew_info.output() {
             if output.status.success() {
-                progress_handler.clone().map(|progress_handler| {
+                if let Some(progress_handler) = progress_handler.clone() {
                     progress_handler.progress("formula available".to_string())
-                });
+                }
                 return Ok(());
             }
         }
 
-        progress_handler.clone().map(|progress_handler| {
+        if let Some(progress_handler) = progress_handler.clone() {
             progress_handler.progress("checking for local tap".to_string())
-        });
+        }
 
         let local_tap_exists = cmd!("brew", "tap")
             .pipe(cmd!("grep", "-q", LOCAL_TAP))
             .run();
-        if !local_tap_exists.is_ok() {
+        if local_tap_exists.is_err() {
             let mut brew_tap_new = TokioCommand::new("brew");
             brew_tap_new.arg("tap-new");
             brew_tap_new.arg("--no-git");
@@ -984,9 +967,9 @@ impl HomebrewInstall {
             brew_tap_new.stdout(std::process::Stdio::piped());
             brew_tap_new.stderr(std::process::Stdio::piped());
 
-            progress_handler.clone().map(|progress_handler| {
+            if let Some(progress_handler) = progress_handler.clone() {
                 progress_handler.progress("creating local tap".to_string())
-            });
+            }
 
             run_progress(
                 &mut brew_tap_new,
@@ -1017,9 +1000,9 @@ impl HomebrewInstall {
         // }
 
         let brew_updated = BREW_UPDATED.get_or_init(|| {
-            progress_handler
-                .clone()
-                .map(|progress_handler| progress_handler.progress("updating homebrew".to_string()));
+            if let Some(progress_handler) = progress_handler.clone() {
+                progress_handler.progress("updating homebrew".to_string())
+            }
 
             let mut brew_update = TokioCommand::new("brew");
             brew_update.arg("update");
@@ -1032,7 +1015,7 @@ impl HomebrewInstall {
                 progress_handler.clone(),
                 RunConfig::default(),
             );
-            if !result.is_ok() {
+            if result.is_err() {
                 return false;
             }
 
@@ -1051,9 +1034,9 @@ impl HomebrewInstall {
         brew_extract.stdout(std::process::Stdio::piped());
         brew_extract.stderr(std::process::Stdio::piped());
 
-        progress_handler
-            .clone()
-            .map(|progress_handler| progress_handler.progress("extracting package".to_string()));
+        if let Some(progress_handler) = progress_handler.clone() {
+            progress_handler.progress("extracting package".to_string())
+        }
 
         run_progress(
             &mut brew_extract,

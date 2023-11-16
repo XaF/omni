@@ -220,7 +220,7 @@ impl AsdfOperationUpdateCachePluginVersions {
     pub fn new(versions: Vec<String>) -> Self {
         Self {
             updated_at: OffsetDateTime::now_utc(),
-            versions: versions,
+            versions,
         }
     }
 }

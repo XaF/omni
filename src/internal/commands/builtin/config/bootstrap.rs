@@ -181,7 +181,7 @@ impl ConfigBootstrapCommand {
     }
 
     pub fn exec(&self, argv: Vec<String>) {
-        if let Err(_) = self.cli_args.set(ConfigBootstrapCommandArgs::parse(argv)) {
+        if self.cli_args.set(ConfigBootstrapCommandArgs::parse(argv)).is_err() {
             unreachable!();
         }
 
@@ -204,7 +204,7 @@ impl ConfigBootstrapCommand {
     }
 
     pub fn autocomplete(&self, _comp_cword: usize, _argv: Vec<String>) {
-        ()
+        
     }
 }
 
@@ -299,8 +299,8 @@ pub fn config_bootstrap(options: Option<ConfigBootstrapOptions>) -> Result<bool,
         };
 
         let config = ConfigBootstrap {
-            worktree: worktree,
-            repo_path_format: repo_path_format,
+            worktree,
+            repo_path_format,
             org: orgs,
         };
 
@@ -334,7 +334,7 @@ pub fn config_bootstrap(options: Option<ConfigBootstrapOptions>) -> Result<bool,
     }
 
     if options.shell {
-        if let Some(_) = &ENV.omni_cmd_file {
+        if ENV.omni_cmd_file.is_some() {
             if options.default {
                 // If the shell integration is already setup, no need to do anything else
                 return Ok(true);
@@ -414,14 +414,14 @@ pub fn config_bootstrap(options: Option<ConfigBootstrapOptions>) -> Result<bool,
                 // If we get here, we have to write the hook at the end of the file
                 let mut content = String::new();
                 if line_number > 0 {
-                    content.push_str("\n");
+                    content.push('\n');
                     if !ends_with_newline {
-                        content.push_str("\n");
+                        content.push('\n');
                     }
                 }
                 content.push_str("# omni shell integration\n");
                 content.push_str(&hook);
-                content.push_str("\n");
+                content.push('\n');
 
                 if let Err(err) = file.write_all(content.as_bytes()) {
                     return Err(format!(
@@ -473,7 +473,7 @@ fn question_worktree() -> (String, bool) {
             }
 
             let path_obj = PathBuf::from(path);
-            let canonicalized = abs_path(&path_obj);
+            let canonicalized = abs_path(path_obj);
             if canonicalized.exists() && !canonicalized.is_dir() {
                 return Err("The worktree must be a directory".to_string());
             }
@@ -485,7 +485,7 @@ fn question_worktree() -> (String, bool) {
         Ok(answer) => match answer {
             requestty::Answer::String(path) => {
                 let path_obj = PathBuf::from(path.clone());
-                let canonicalized = abs_path(&path_obj);
+                let canonicalized = abs_path(path_obj);
                 if !canonicalized.is_dir() {
                     omni_warning!(
                         format!(
@@ -723,7 +723,7 @@ fn question_org(worktree: &str) -> (Vec<OrgConfig>, bool) {
     let mut selected_orgs = HashSet::new();
     for org in current_orgs.iter().rev() {
         if let Ok(org) = Org::new(org.clone()) {
-            let count = orgs_map.get(&org.config.handle).unwrap_or(&0).clone();
+            let count = *orgs_map.get(&org.config.handle).unwrap_or(&0);
             orgs.retain(|x| x.1 != org.config.handle);
             orgs.insert(0, (count, org.config.handle.clone()));
             selected_orgs.insert(org.config.handle.clone());
@@ -735,7 +735,7 @@ fn question_org(worktree: &str) -> (Vec<OrgConfig>, bool) {
     }
 
     // If there are no organizations, we can just return early
-    if orgs.len() == 0 {
+    if orgs.is_empty() {
         return (vec![], true);
     }
 
@@ -793,7 +793,7 @@ fn question_org(worktree: &str) -> (Vec<OrgConfig>, bool) {
     };
 
     // If there are no selected organizations, we can just return early
-    if selected_orgs.len() == 0 {
+    if selected_orgs.is_empty() {
         return (vec![], true);
     }
 
@@ -820,7 +820,7 @@ fn question_org(worktree: &str) -> (Vec<OrgConfig>, bool) {
                         global_config
                             .org
                             .iter()
-                            .any(|x| x.handle == *org && x.trusted == true),
+                            .any(|x| x.handle == *org && x.trusted),
                     )
                 })
                 .collect::<Vec<_>>(),
@@ -888,7 +888,7 @@ fn question_org(worktree: &str) -> (Vec<OrgConfig>, bool) {
             let worktree = current_orgs_worktrees.get(org);
             OrgConfig {
                 handle: org.clone(),
-                trusted: trusted,
+                trusted,
                 worktree: worktree.cloned(),
             }
         })
@@ -926,7 +926,7 @@ fn question_rc_file(current_shell: &Shell) -> (PathBuf, bool) {
             }
 
             let path_obj = PathBuf::from(path);
-            let canonicalized = abs_path(&path_obj);
+            let canonicalized = abs_path(path_obj);
 
             if canonicalized.exists() {
                 // Check if the path is a file
@@ -982,7 +982,7 @@ fn question_rc_file(current_shell: &Shell) -> (PathBuf, bool) {
         Ok(answer) => match answer {
             requestty::Answer::String(path) => {
                 let path_obj = PathBuf::from(path.clone());
-                let canonicalized = abs_path(&path_obj);
+                let canonicalized = abs_path(path_obj);
                 // No need for extra validation, as we have done it above
                 canonicalized
             }

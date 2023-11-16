@@ -1,6 +1,5 @@
 use std::process::exit;
 
-use clap;
 use once_cell::sync::OnceCell;
 use shell_escape::escape;
 
@@ -91,8 +90,8 @@ impl CdCommandArgs {
         };
 
         Self {
-            locate: locate,
-            include_packages: include_packages,
+            locate,
+            include_packages,
             repository: matches.get_one::<String>("repo").map(|arg| arg.to_string()),
         }
     }
@@ -189,7 +188,7 @@ impl CdCommand {
     }
 
     pub fn exec(&self, argv: Vec<String>) {
-        if let Err(_) = self.cli_args.set(CdCommandArgs::parse(argv)) {
+        if self.cli_args.set(CdCommandArgs::parse(argv)).is_err() {
             unreachable!();
         }
 
@@ -199,7 +198,7 @@ impl CdCommand {
         }
 
         if let Some(repository) = &self.cli_args().repository {
-            self.cd_repo(&repository);
+            self.cd_repo(repository);
         } else {
             self.cd_main_org();
         }
@@ -215,43 +214,41 @@ impl CdCommand {
             exit(0);
         }
 
-        let repo = if argv.len() > 0 {
+        let repo = if !argv.is_empty() {
             argv[0].clone()
         } else {
             "".to_string()
         };
 
         // Figure out if this is a path, so we can avoid the expensive repository search
-        let path_only = repo.starts_with("/")
-            || repo.starts_with(".")
+        let path_only = repo.starts_with('/')
+            || repo.starts_with('.')
             || repo.starts_with("~/")
             || repo == "~"
             || repo == "-";
 
         // Print all the completion related to path completion
-        let (list_dir, strip_path_prefix) = if let Some(slash) = repo.rfind("/") {
-            (format!("{}", &repo[..slash]), false)
+        let (list_dir, strip_path_prefix) = if let Some(slash) = repo.rfind('/') {
+            ((&repo[..slash]).to_string(), false)
         } else {
             (".".to_string(), true)
         };
         if let Ok(files) = std::fs::read_dir(&list_dir) {
-            for path in files {
-                if let Ok(path) = path {
-                    if path.path().is_dir() {
-                        let path_obj = path.path();
-                        let path = if strip_path_prefix {
-                            path_obj.strip_prefix(&list_dir).unwrap()
-                        } else {
-                            path_obj.as_path()
-                        };
-                        let path_str = path.to_str().unwrap();
+            for path in files.flatten() {
+                if path.path().is_dir() {
+                    let path_obj = path.path();
+                    let path = if strip_path_prefix {
+                        path_obj.strip_prefix(&list_dir).unwrap()
+                    } else {
+                        path_obj.as_path()
+                    };
+                    let path_str = path.to_str().unwrap();
 
-                        if !path_str.starts_with(repo.as_str()) {
-                            continue;
-                        }
-
-                        println!("{}/", path.display());
+                    if !path_str.starts_with(repo.as_str()) {
+                        continue;
                     }
+
+                    println!("{}/", path.display());
                 }
             }
         }
@@ -275,7 +272,7 @@ impl CdCommand {
             config.worktree()
         };
 
-        let path_str = format!("{}", path);
+        let path_str = path.to_string();
 
         if self.cli_args().locate {
             println!("{}", path_str);
@@ -321,13 +318,13 @@ impl CdCommand {
 
     fn cd_repo_find(&self, repo: &str) -> Option<String> {
         // Delegate to the shell if this is a path
-        if repo.starts_with("/")
-            || repo.starts_with(".")
+        if repo.starts_with('/')
+            || repo.starts_with('.')
             || repo.starts_with("~/")
             || repo == "~"
             || repo == "-"
         {
-            return Some(format!("{}", repo));
+            return Some(repo.to_string());
         }
 
         // Check if the requested repo is actually a path that exists from the current directory

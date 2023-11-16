@@ -1,6 +1,6 @@
 use std::process::exit;
 
-use clap;
+
 use once_cell::sync::OnceCell;
 use regex::Regex;
 
@@ -114,7 +114,7 @@ impl StatusCommand {
     }
 
     pub fn exec(&self, argv: Vec<String>) {
-        if let Err(_) = self.cli_args.set(StatusCommandArgs::parse(argv)) {
+        if self.cli_args.set(StatusCommandArgs::parse(argv)).is_err() {
             unreachable!();
         }
 
@@ -134,29 +134,29 @@ impl StatusCommand {
     }
 
     pub fn autocomplete(&self, _comp_cword: usize, _argv: Vec<String>) {
-        ()
+        
     }
 
     fn print_shell_integration(&self) {
-        println!("\n{}", format!("Shell integration").bold());
-        let status = if let Some(_) = &ENV.omni_cmd_file {
-            format!("loaded").light_green()
+        println!("\n{}", "Shell integration".to_string().bold());
+        let status = if ENV.omni_cmd_file.is_some() {
+            "loaded".to_string().light_green()
         } else {
-            format!("not loaded").light_red()
+            "not loaded".to_string().light_red()
         };
         println!("  {}", status);
     }
 
     fn print_configuration(&self) {
         let config_loader = config_loader(".");
-        println!("\n{}", format!("Configuration").bold());
+        println!("\n{}", "Configuration".to_string().bold());
 
         let yaml_code = config_loader.raw_config.as_yaml();
         println!("{}", self.color_yaml(&yaml_code));
 
-        println!("\n{}", format!("Loaded configuration files").bold());
+        println!("\n{}", "Loaded configuration files".to_string().bold());
         if config_loader.loaded_config_files.is_empty() {
-            println!("  {}", format!("none").light_red());
+            println!("  {}", "none".to_string().light_red());
         } else {
             for config_file in &config_loader.loaded_config_files {
                 println!("  - {}", config_file);
@@ -165,20 +165,20 @@ impl StatusCommand {
     }
 
     fn print_worktree(&self) {
-        println!("\n{}", format!("Worktree").bold());
+        println!("\n{}", "Worktree".to_string().bold());
 
         let config = config(".");
         println!("  {}", config.worktree());
     }
 
     fn print_orgs(&self) {
-        println!("\n{}", format!("Git Orgs").bold());
+        println!("\n{}", "Git Orgs".to_string().bold());
 
         if ORG_LOADER.orgs.is_empty() {
-            println!("  {}", format!("none").light_red());
+            println!("  {}", "none".to_string().light_red());
         } else {
             for org in &ORG_LOADER.orgs {
-                let mut org_str = format!("{}", org.config.handle);
+                let mut org_str = org.config.handle.to_string();
                 if let Some(worktree) = &org.config.worktree {
                     org_str.push_str(&format!(" ({})", worktree).light_black());
                 }
@@ -195,11 +195,11 @@ impl StatusCommand {
     }
 
     fn print_path(&self) {
-        println!("\n{}", format!("Current omnipath").bold());
+        println!("\n{}", "Current omnipath".to_string().bold());
 
         let omnipath = omnipath_entries();
         if omnipath.is_empty() {
-            println!("  {}", format!("none").light_red());
+            println!("  {}", "none".to_string().light_red());
         } else {
             for path in &omnipath {
                 if let Some(package) = &path.package {

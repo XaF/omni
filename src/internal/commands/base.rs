@@ -154,7 +154,7 @@ impl Command {
 
     pub fn help_source(&self) -> String {
         let source = self.source();
-        if !source.starts_with("/") {
+        if !source.starts_with('/') {
             return source;
         }
 
@@ -252,17 +252,15 @@ impl Command {
         if let Some(syntax) = self.syntax() {
             if let Some(syntax_usage) = syntax.usage {
                 usage += &format!(" {}", syntax_usage);
-            } else {
-                if !syntax.parameters.is_empty() {
-                    for param in syntax.parameters {
-                        let param_usage = if param.required {
-                            format!(" <{}>", param.name)
-                        } else {
-                            format!(" [{}]", param.name)
-                        }
-                        .cyan();
-                        usage += &param_usage;
+            } else if !syntax.parameters.is_empty() {
+                for param in syntax.parameters {
+                    let param_usage = if param.required {
+                        format!(" <{}>", param.name)
+                    } else {
+                        format!(" [{}]", param.name)
                     }
+                    .cyan();
+                    usage += &param_usage;
                 }
             }
         }
@@ -290,7 +288,7 @@ impl Command {
                 argv.remove(0);
             }
 
-            max_match = alias.len() as usize
+            max_match = alias.len()
         }
 
         max_match
@@ -438,7 +436,7 @@ impl Command {
     pub fn category_sort_key(&self) -> (usize, Vec<String>) {
         (
             self.command_type_sort_order(),
-            self.category().clone().unwrap_or(vec![]),
+            self.category().clone().unwrap_or_default(),
         )
     }
 

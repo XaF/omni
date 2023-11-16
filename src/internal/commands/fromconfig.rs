@@ -77,8 +77,8 @@ impl ConfigCommand {
         }
 
         ConfigCommand {
-            name: name,
-            details: details,
+            name,
+            details,
         }
     }
 

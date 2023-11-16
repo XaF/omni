@@ -12,7 +12,7 @@ use semver::{Prerelease, Version};
 use serde::Deserialize;
 use sha2::Digest;
 use sha2::Sha256;
-use tempfile;
+
 use tokio::process::Command as TokioCommand;
 
 use crate::internal::config::config;
@@ -148,12 +148,9 @@ impl OmniRelease {
     }
 
     fn compatible_binary(&self) -> Option<&OmniReleaseBinary> {
-        for binary in self.binaries.iter() {
-            if binary.os == *RELEASE_OS && binary.arch == *RELEASE_ARCH {
-                return Some(binary);
-            }
-        }
-        None
+        self.binaries
+            .iter()
+            .find(|&binary| binary.os == *RELEASE_OS && binary.arch == *RELEASE_ARCH)
     }
 
     fn check_and_update(&self) {
@@ -226,9 +223,9 @@ impl OmniRelease {
         }
 
         let updated = if *INSTALLED_WITH_BREW {
-            self.brew_upgrade(Box::new(progress_handler.as_ref()))
+            self.brew_upgrade(progress_handler.as_ref())
         } else {
-            self.download(Box::new(progress_handler.as_ref()))
+            self.download(progress_handler.as_ref())
         };
 
         if updated.is_err() {
@@ -281,7 +278,7 @@ impl OmniRelease {
         self_update
     }
 
-    fn brew_upgrade(&self, progress_handler: Box<&dyn ProgressHandler>) -> io::Result<bool> {
+    fn brew_upgrade(&self, progress_handler: &dyn ProgressHandler) -> io::Result<bool> {
         progress_handler.progress("updating with homebrew".to_string());
 
         let mut brew_upgrade = TokioCommand::new("brew");
@@ -292,7 +289,7 @@ impl OmniRelease {
 
         let run = run_progress(
             &mut brew_upgrade,
-            Some(progress_handler.clone()),
+            Some(progress_handler),
             RunConfig::default(),
         );
         if let Err(err) = run {
@@ -302,7 +299,7 @@ impl OmniRelease {
         Ok(true)
     }
 
-    fn download(&self, progress_handler: Box<&dyn ProgressHandler>) -> io::Result<bool> {
+    fn download(&self, progress_handler: &dyn ProgressHandler) -> io::Result<bool> {
         let binary = self.compatible_binary();
         if binary.is_none() {
             return Err(io::Error::new(
@@ -369,12 +366,12 @@ impl OmniRelease {
         tarball_file.seek(SeekFrom::Start(0))?;
         let tar = flate2::read::GzDecoder::new(tarball_file);
         let mut archive = tar::Archive::new(tar);
-        archive.unpack(&tmp_dir.path())?;
+        archive.unpack(tmp_dir.path())?;
 
         // Replace current binary with new binary
         progress_handler.progress("updating in-place".to_string());
         let new_binary = tmp_dir.path().join("omni");
-        self_replace::self_replace(&new_binary)?;
+        self_replace::self_replace(new_binary)?;
 
         progress_handler.progress("done".to_string());
         Ok(true)

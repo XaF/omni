@@ -21,7 +21,7 @@ impl UpConfigNodejs {
         asdf_base.add_detect_version_func(detect_version_from_package_json);
 
         Self {
-            asdf_base: asdf_base,
+            asdf_base,
         }
     }
 
@@ -57,9 +57,7 @@ fn detect_version_from_package_json(_tool_name: String, path: PathBuf) -> Option
     }
     let pkgfile = pkgfile.unwrap();
 
-    if pkgfile.engines.is_none() {
-        return None;
-    }
+    pkgfile.engines.as_ref()?;
     let engines = pkgfile.engines.clone().unwrap();
 
     if let Some(node_version) = engines.get("node") {

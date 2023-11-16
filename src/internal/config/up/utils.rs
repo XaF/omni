@@ -41,7 +41,7 @@ impl RunConfig {
 
 pub fn run_progress(
     process_command: &mut TokioCommand,
-    progress_handler: Option<Box<&dyn ProgressHandler>>,
+    progress_handler: Option<&dyn ProgressHandler>,
     run_config: RunConfig,
 ) -> Result<(), UpError> {
     let rt = Runtime::new().unwrap();
@@ -66,7 +66,7 @@ pub fn run_command_with_handler<F>(
     run_config: RunConfig,
 ) -> Result<(), UpError>
 where
-    F: Fn(Option<String>, Option<String>) -> (),
+    F: Fn(Option<String>, Option<String>),
 {
     let rt = Runtime::new().unwrap();
     rt.block_on(async_run_progress_readlines(
@@ -94,7 +94,7 @@ async fn async_run_progress_readblocks<F>(
     run_config: RunConfig,
 ) -> Result<(), UpError>
 where
-    F: Fn(Option<String>, Option<String>) -> (),
+    F: Fn(Option<String>, Option<String>),
 {
     if let Ok(mut command) = process_command.spawn() {
         if let (Some(mut stdout), Some(mut stderr)) = (command.stdout.take(), command.stderr.take())
@@ -151,7 +151,7 @@ where
                     _ = tokio::time::sleep(Duration::from_secs(1)) => {
                         if let Some(timeout) = run_config.timeout() {
                             if last_read.elapsed() > timeout {
-                                if let Err(_) = command.kill().await {
+                                if (command.kill().await).is_err() {
                                     // Nothing special to do, we're returning an error anyway
                                 }
                                 return Err(UpError::Timeout(format!("{:?}", process_command.as_std())));
@@ -163,7 +163,7 @@ where
         }
 
         let exit_status = command.wait().await;
-        if !exit_status.is_ok() || !exit_status.unwrap().success() {
+        if exit_status.is_err() || !exit_status.unwrap().success() {
             return Err(UpError::Exec(format!("{:?}", process_command.as_std())));
         }
     } else {
@@ -179,7 +179,7 @@ async fn async_run_progress_readlines<F>(
     run_config: RunConfig,
 ) -> Result<(), UpError>
 where
-    F: Fn(Option<String>, Option<String>) -> (),
+    F: Fn(Option<String>, Option<String>),
 {
     if let Ok(mut command) = process_command.spawn() {
         if let (Some(stdout), Some(stderr)) = (command.stdout.take(), command.stderr.take()) {
@@ -217,7 +217,7 @@ where
                     _ = tokio::time::sleep(Duration::from_secs(1)) => {
                         if let Some(timeout) = run_config.timeout() {
                             if last_read.elapsed() > timeout {
-                                if let Err(_) = command.kill().await {
+                                if (command.kill().await).is_err() {
                                     // Nothing special to do, we're returning an error anyway
                                 }
                                 return Err(UpError::Timeout(format!("{:?}", process_command.as_std())));
@@ -229,7 +229,7 @@ where
         }
 
         let exit_status = command.wait().await;
-        if !exit_status.is_ok() || !exit_status.unwrap().success() {
+        if exit_status.is_err() || !exit_status.unwrap().success() {
             return Err(UpError::Exec(format!("{:?}", process_command.as_std())));
         }
     } else {
@@ -316,8 +316,8 @@ impl SpinnerProgressHandler {
         }
 
         SpinnerProgressHandler {
-            spinner: spinner,
-            template: template,
+            spinner,
+            template,
             newline_on_error: true,
         }
     }
@@ -409,7 +409,7 @@ impl PrintProgressHandler {
 
         let template = format!("{}{{}} {} {{}}", prefix, desc);
 
-        PrintProgressHandler { template: template }
+        PrintProgressHandler { template }
     }
 }
 
