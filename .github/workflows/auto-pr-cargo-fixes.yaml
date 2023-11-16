@@ -102,7 +102,7 @@ jobs:
         env:
           __CARGO_FIX_YOLO: 1 # So that we offer all the fixes
         run: |
-          cargo clippy --fix --color always --allow-dirty
+          cargo clippy --fix --all-features --color always --allow-dirty
 
       - name: Run rustfmt
         run: |
