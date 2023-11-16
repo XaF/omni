@@ -124,6 +124,51 @@ jobs:
       release_version: ${{ needs.prepare-release-version.outputs.release_version }}
 
 
+  rust-clippy-analysis:
+    name: Run rust-clippy analysis
+
+    runs-on: ubuntu-latest
+
+    needs:
+      - prepare-release-version
+
+    permissions:
+      contents: read
+      security-events: write
+      actions: read
+
+    steps:
+      - name: Checkout commit
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+
+      - name: Set up cargo cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: clippy
+
+      - name: Install required cargo
+        run: cargo install clippy-sarif sarif-fmt
+
+      - name: Run clippy
+        run: |
+          cargo clippy --all-features --message-format=json | \
+            clippy-sarif | \
+            tee rust-clippy-results.sarif | \
+            sarif-fmt
+        continue-on-error: true
+
+      - name: Upload analysis results to GitHub
+        uses: github/codeql-action/upload-sarif@v2
+        with:
+          sarif_file: rust-clippy-results.sarif
+          wait-for-processing: true
+
+
   deploy-website:
     name: Deploy static content
 
@@ -180,12 +225,17 @@ jobs:
     needs:
       - deploy-website
       - build-and-test-binaries
+      - rust-clippy-analysis
 
     if: '!cancelled()'
 
     steps:
       - name: Fail if tests failed
         if: needs.build-and-test-binaries.result == 'failure'
+        run: exit 1
+
+      - name: Fail if CodeQL failed
+        if: needs.rust-clippy-analysis.result == 'failure'
         run: exit 1
 
       - name: Fail if website building/deployment failed
