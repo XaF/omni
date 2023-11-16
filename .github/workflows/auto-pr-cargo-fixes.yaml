@@ -160,7 +160,7 @@ jobs:
 
       - name: Unzip cargo-fix.zip
         run: |
-          unzip cargo-fix.zip -d .
+          unzip -o cargo-fix.zip -d .
           rm cargo-fix.zip
 
       - name: Craft commit message
