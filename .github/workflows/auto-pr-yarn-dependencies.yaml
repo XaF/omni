@@ -31,6 +31,7 @@ env:
   # Which branch to use to make the pull request
   PR_BRANCH: auto/yarn_update
 
+
 jobs:
   check-pull-request:
     name: Check if the pull request exists
@@ -153,13 +154,18 @@ jobs:
     env:
       PR_TITLE: "chore(deps): 📦 yarn update"
 
-    permissions:
-      contents: write
-      pull-requests: write
-
     steps:
+      - name: Create application token
+        uses: actions/create-github-app-token@v1
+        id: app-token
+        with:
+          app-id: ${{ secrets.OMNICLI_APP_ID }}
+          private-key: ${{ secrets.OMNICLI_PRIVATE_KEY }}
+
       - name: Checkout commit
         uses: actions/checkout@v4
+        with:
+          token: ${{ steps.app-token.outputs.token }}
 
       - name: Download package.json from update job
         if: needs.run-yarn-update.outputs.package_updates == 'true'
@@ -281,7 +287,7 @@ jobs:
 
       - name: Create or update pull-request
         env:
-          GH_TOKEN: ${{ secrets.REPOSITORY_DISPATCH_TOKEN }}
+          GITHUB_TOKEN: ${{ steps.app-token.outputs.token }}
           PR_STATE: ${{ needs.check-pull-request.outputs.pull_request_state }}
         run: |
           if [[ "$PR_STATE" != "OPEN" ]]; then
@@ -315,17 +321,17 @@ jobs:
     env:
       PR_CLOSING_COMMENT: "Superseded. No more dependencies to be updated for now."
 
-    permissions:
-      contents: write
-      pull-requests: write
-
     steps:
-      - name: Checkout commit
-        uses: actions/checkout@v4
+      - name: Create application token
+        uses: actions/create-github-app-token@v1
+        id: app-token
+        with:
+          app-id: ${{ secrets.OMNICLI_APP_ID }}
+          private-key: ${{ secrets.OMNICLI_PRIVATE_KEY }}
 
       - name: Close pull-request
         env:
-          GITHUB_TOKEN: ${{ secrets.REPOSITORY_DISPATCH_TOKEN }}
+          GITHUB_TOKEN: ${{ steps.app-token.outputs.token }}
         run: |
           gh pr close \
             --title "${{ env.PR_TITLE }}" \
