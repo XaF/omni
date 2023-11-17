@@ -6,17 +6,20 @@ on:
   push:
     branches:
       - main
-    paths-ignore:
-      - .github/workflows/release.yaml
-      - '.github/workflows/auto-pr-*'
+    paths:
+      - '.github/workflows/build.yaml'
+      - '.github/workflows/tests.yaml'
+      - 'Cargo.lock'
+      - 'Cargo.toml'
+      - 'build.rs'
+      - 'shell_integration/**'
+      - 'src/**'
+      - 'website/**'
 
   # Runs on a pull request
   pull_request:
     branches:
       - main
-    paths-ignore:
-      - .github/workflows/release.yaml
-      - '.github/workflows/auto-pr-*'
 
   # Allows to run this workflow manually from the Actions tab
   workflow_dispatch:
@@ -62,14 +65,16 @@ jobs:
         with:
           files_yaml: |
             website:
-              - .github/workflows/tests.yaml
-              - website/
-              - website/**
+              - '.github/workflows/tests.yaml'
+              - 'website/**'
             core:
-              - '**'
-              - '!.github/workflows/release.yaml'
-              - '!README.md'
-              - '!website/**'
+              - '.github/workflows/build.yaml'
+              - '.github/workflows/tests.yaml'
+              - 'Cargo.lock'
+              - 'Cargo.toml'
+              - 'build.rs'
+              - 'shell_integration/**'
+              - 'src/**'
 
       - name: List all changed files
         run: |
