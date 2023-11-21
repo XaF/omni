@@ -16,13 +16,11 @@ This command requires the target to be a repository, and for the repository to a
 
 ## Parameters
 
-### Options
-
-| Option          | Value type | Description                                         |
-|-----------------|------------|-----------------------------------------------------|
-| `--package` | bool | Switches the omnipath to the package version of the repository. Cannot be used alongside `--worktree`. If not specified and `--worktree` is not specified either, will default to toggle the current state. |
-| `--worktree` | bool | Switches the omnipath to the development version of the repository in a worktree. Cannot be used alongside `--package`. If not specified and `--package` is not specified either, will default to toggle the current state. |
-| `repo` | string | The name of the repository to switch the source from; this can be in the format `<org>/<repo>`, or just `<repo>`. If the repository is not provided, the current repository will be used, or the command will fail if not in a repository. If the repo is not found in the omnipath, the command will fail. |
+| Parameter       | Required | Value type | Description                                         |
+|-----------------|----------|------------|-----------------------------------------------------|
+| `--package` | no | `null` | Switches the omnipath to the package version of the repository. Cannot be used alongside `--worktree`. If not specified and `--worktree` is not specified either, will default to toggle the current state. |
+| `--worktree` | no | `null` | Switches the omnipath to the development version of the repository in a worktree. Cannot be used alongside `--package`. If not specified and `--package` is not specified either, will default to toggle the current state. |
+| `repo` | no | string | The name of the repository to switch the source from; this can be in the format `<org>/<repo>`, or just `<repo>`. If the repository is not provided, the current repository will be used, or the command will fail if not in a repository. If the repo is not found in the omnipath, the command will fail. |
 
 ## Examples
 

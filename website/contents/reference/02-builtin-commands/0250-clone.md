@@ -14,18 +14,11 @@ Upon successful cloning, `omni clone` will run `omni up --update-user-config` in
 
 ## Parameters
 
-### Arguments
-
-| Argument        | Value type | Description                                         |
-|-----------------|------------|-----------------------------------------------------|
-| `repo` | string | The repository to clone; this can be in format `<org>/<repo>`, just `<repo>`, or the full URL. If the case where a full URL is not specified, the configured organizations will be used to search for the repository to clone. |
-
-### Options
-
-| Option          | Value type | Description                                         |
-|-----------------|------------|-----------------------------------------------------|
-| `--package`  | bool | Clone the repository as a package, instead of the worktree |
-| `options...` | any | Any additional options to pass to git clone. |
+| Parameter       | Required | Value type | Description                                         |
+|-----------------|----------|------------|-----------------------------------------------------|
+| `--package`  | no | `null` | Clone the repository as a package, instead of the worktree |
+| `repo` | yes | string | The repository to clone; this can be in format `<org>/<repo>`, just `<repo>`, or the full URL. If the case where a full URL is not specified, the configured organizations will be used to search for the repository to clone. |
+| `options...` | no | any | Any additional options to pass to git clone. |
 
 ## Examples
 
