@@ -25,10 +25,10 @@ Omni configuration files accept the following parameters:
 | `path` | [path](parameters/path) | Configuration of the omni path |
 | `repo_path_format` | [repo_path_format](parameters/repo_path_format) (string) | How to format repositories when cloning them with `omni clone` or searching them with `omni cd` *(default: `%{host}/%{org}/%{repo}`)* |
 | `shell_aliases` | [shell_aliases](parameters/shell_aliases) | Configuration of the shell aliases to be injected by the init hook. |
-| `suggest_config` | [suggest_config](parameters/suggest_config) | Configuration that a git repository suggests should be added to the user configuration. *Should only be used in git repositories configuration.* |
 | `suggest_clone` | [suggest_clone](parameters/suggest_clone) | Repositories that a git repository suggests should be clone. *Should only be used in git repositories configuration.* |
-| `up` | [up](parameters/up) (list) | List of operations needed to set up or tear down a repository |
+| `suggest_config` | [suggest_config](parameters/suggest_config) | Configuration that a git repository suggests should be added to the user configuration. *Should only be used in git repositories configuration.* |
 | `up_command` | [up_command](parameters/up_command) | Configuration related to the `omni up` command |
+| `up` | [up](parameters/up) (list) | List of operations needed to set up or tear down a repository |
 | `worktree` | [worktree](parameters/worktree) (string) | Default location of the worktree, where the git repositories are expected to be located |
 
 ## Examples
