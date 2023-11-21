@@ -34,6 +34,7 @@ use crate::internal::config::ConfigExtendOptions;
 use crate::internal::config::ConfigLoader;
 use crate::internal::config::ConfigValue;
 use crate::internal::config::SyntaxOptArg;
+use crate::internal::env::shell_is_interactive;
 use crate::internal::git::format_path;
 use crate::internal::git::package_path_from_git_url;
 use crate::internal::git::path_entry_config;
@@ -45,7 +46,6 @@ use crate::internal::workdir;
 use crate::internal::workdir::add_trust;
 use crate::internal::workdir::is_trusted_or_ask;
 use crate::internal::workdir_or_init;
-use crate::internal::ENV;
 use crate::omni_error;
 use crate::omni_info;
 use crate::omni_warning;
@@ -587,7 +587,7 @@ impl UpCommand {
     fn should_suggest_config(&self) -> bool {
         match self.cli_args().update_user_config {
             UpCommandArgsUpdateUserConfigOptions::Yes => true,
-            UpCommandArgsUpdateUserConfigOptions::Ask => ENV.interactive_shell,
+            UpCommandArgsUpdateUserConfigOptions::Ask => shell_is_interactive(),
             UpCommandArgsUpdateUserConfigOptions::No => false,
         }
     }
@@ -595,7 +595,7 @@ impl UpCommand {
     fn should_suggest_clone(&self) -> bool {
         match self.cli_args().clone_suggested {
             UpCommandArgsCloneSuggestedOptions::Yes => true,
-            UpCommandArgsCloneSuggestedOptions::Ask => ENV.interactive_shell,
+            UpCommandArgsCloneSuggestedOptions::Ask => shell_is_interactive(),
             UpCommandArgsCloneSuggestedOptions::No => false,
         }
     }
@@ -989,7 +989,7 @@ impl UpCommand {
         for (idx, repo) in to_clone.iter_mut().enumerate() {
             let desc = format!("cloning {}:", repo.clone_url.light_cyan()).light_blue();
             let progress = Some((idx + 1, total));
-            let progress_handler: Box<dyn ProgressHandler> = if ENV.interactive_shell {
+            let progress_handler: Box<dyn ProgressHandler> = if shell_is_interactive() {
                 Box::new(SpinnerProgressHandler::new(desc, progress))
             } else {
                 Box::new(PrintProgressHandler::new(desc, progress))

@@ -13,7 +13,6 @@ pub(crate) use env::git_env;
 pub(crate) use env::workdir;
 pub(crate) use env::workdir_flush_cache;
 pub(crate) use env::workdir_or_init;
-pub(crate) use env::ENV;
 
 pub(crate) mod git;
 pub(crate) use git::ORG_LOADER;

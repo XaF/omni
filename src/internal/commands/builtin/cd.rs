@@ -8,10 +8,10 @@ use crate::internal::commands::utils::omni_cmd;
 use crate::internal::config::config;
 use crate::internal::config::CommandSyntax;
 use crate::internal::config::SyntaxOptArg;
+use crate::internal::env::omni_cmd_file;
 use crate::internal::env::Shell;
 use crate::internal::git::ORG_LOADER;
 use crate::internal::user_interface::StringColor;
-use crate::internal::ENV;
 use crate::omni_error;
 
 #[derive(Debug, Clone)]
@@ -192,7 +192,7 @@ impl CdCommand {
             unreachable!();
         }
 
-        if ENV.omni_cmd_file.is_none() && !self.cli_args().locate {
+        if omni_cmd_file().is_none() && !self.cli_args().locate {
             omni_error!("not available without the shell integration");
             exit(1);
         }

@@ -6,7 +6,7 @@ use crate::internal::config::config;
 use crate::internal::config::global_config;
 use crate::internal::config::parser::PathEntryConfig;
 use crate::internal::config::OmniConfig;
-use crate::internal::env::ENV;
+use crate::internal::env::omnipath_env;
 
 lazy_static! {
     #[derive(Debug)]
@@ -43,7 +43,7 @@ fn omnipath_from_config(config: &OmniConfig) -> Vec<String> {
         }
     }
 
-    for path in &ENV.omnipath {
+    for path in omnipath_env() {
         if !path.is_empty() && omnipath_seen.insert(path.clone()) {
             omnipath.push(path.clone());
         }
@@ -68,9 +68,9 @@ fn omnipath_entries_from_config(config: &OmniConfig) -> Vec<PathEntryConfig> {
         }
     }
 
-    for path in &ENV.omnipath {
+    for path in omnipath_env() {
         if !path.is_empty() && omnipath_seen.insert(path.clone()) {
-            let entry = PathEntryConfig::from_path(path);
+            let entry = PathEntryConfig::from_path(&path);
             if entry.is_valid() {
                 omnipath.push(entry);
             }

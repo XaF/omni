@@ -12,16 +12,11 @@ use url::Url;
 
 use crate::internal::config;
 use crate::internal::config::parser::PathEntryConfig;
+use crate::internal::env::data_home;
 use crate::internal::git_env;
-use crate::internal::ENV;
 
 lazy_static! {
-    pub static ref PACKAGE_PATH: String = {
-        let omni_data_home = ENV.data_home.clone();
-        let package_path = format!("{}/packages", omni_data_home);
-
-        package_path
-    };
+    pub static ref PACKAGE_PATH: String = format!("{}/packages", data_home());
 }
 
 const PACKAGE_PATH_FORMAT: &str = "%{host}/%{org}/%{repo}";

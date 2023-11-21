@@ -13,6 +13,7 @@ use crate::internal::commands::builtin::UpCommand;
 use crate::internal::commands::path::global_omnipath_entries;
 use crate::internal::config::CommandSyntax;
 use crate::internal::config::SyntaxOptArg;
+use crate::internal::env::shell_is_interactive;
 use crate::internal::git::full_git_url_parse;
 use crate::internal::git::id_from_git_url;
 use crate::internal::git::package_path_from_handle;
@@ -21,7 +22,6 @@ use crate::internal::git::ORG_LOADER;
 use crate::internal::git_env;
 use crate::internal::user_interface::StringColor;
 use crate::internal::workdir_flush_cache;
-use crate::internal::ENV;
 use crate::omni_error;
 use crate::omni_info;
 
@@ -231,7 +231,7 @@ impl ConfigPathSwitchCommand {
                 let remote_repo = clone_command.lookup_repo_handle(
                     &lookup_repo,
                     false,
-                    if ENV.interactive_shell {
+                    if shell_is_interactive() {
                         let spinner = ProgressBar::new_spinner();
                         spinner.set_style(
                             ProgressStyle::default_spinner()
@@ -286,7 +286,7 @@ impl ConfigPathSwitchCommand {
                 let remote_repo = clone_command.lookup_repo_handle(
                     &lookup_repo,
                     false,
-                    if ENV.interactive_shell {
+                    if shell_is_interactive() {
                         let spinner = ProgressBar::new_spinner();
                         spinner.set_style(
                             ProgressStyle::default_spinner()
@@ -409,7 +409,7 @@ impl ConfigPathSwitchCommand {
         let requires_cloning = !switch_to_path.exists();
         if requires_cloning {
             // Create a spinner to show that we're cloning the repository
-            let spinner = if ENV.interactive_shell {
+            let spinner = if shell_is_interactive() {
                 let spinner = ProgressBar::new_spinner();
                 spinner.set_style(
                     ProgressStyle::default_spinner()

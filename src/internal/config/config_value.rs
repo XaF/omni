@@ -6,8 +6,8 @@ use serde::Deserialize;
 use serde::Serialize;
 
 use crate::internal::config::parser::PathEntryConfig;
-use crate::internal::env::ENV;
-use crate::internal::env::HOME;
+use crate::internal::env::cache_home;
+use crate::internal::env::user_home;
 use crate::internal::user_interface::colors::StringColor;
 use crate::omni_error;
 
@@ -114,7 +114,7 @@ impl ConfigValue {
 
     pub fn default() -> Self {
         // Check if ~/git exists and is a directory
-        let default_cache_path = ENV.cache_home.to_string();
+        let default_cache_path = cache_home();
         let default_cache_config = format!("cache:\n  path: \"{}\"\n", default_cache_path);
 
         // Parse a default yaml file using serde
@@ -869,7 +869,7 @@ up_command:
                         let value_string = string_value.to_owned();
                         let mut abs_path = value_string.clone();
                         if abs_path.starts_with("~/") {
-                            abs_path = Path::new(&*HOME)
+                            abs_path = Path::new(&user_home())
                                 .join(abs_path.trim_start_matches("~/"))
                                 .to_str()
                                 .unwrap()

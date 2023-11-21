@@ -15,7 +15,8 @@ use walkdir::WalkDir;
 use crate::internal::commands::path::omnipath_entries;
 use crate::internal::config::config;
 use crate::internal::config::OrgConfig;
-use crate::internal::env::ENV;
+use crate::internal::env::omni_org_env;
+use crate::internal::env::shell_is_interactive;
 use crate::internal::git::format_path;
 use crate::internal::git::package_path_from_handle;
 use crate::internal::git::package_root_path;
@@ -39,7 +40,7 @@ impl OrgLoader {
     pub fn new() -> Self {
         let mut orgs = vec![];
 
-        for org in ENV.omni_org.iter() {
+        for org in omni_org_env() {
             if let Ok(org) = Org::new(org.clone()) {
                 orgs.push(org);
             }
@@ -200,7 +201,7 @@ impl OrgLoader {
         include_packages: bool,
         allow_interactive: bool,
     ) -> Option<PathBuf> {
-        let interactive = allow_interactive && ENV.interactive_shell;
+        let interactive = allow_interactive && shell_is_interactive();
 
         let repo_url = Repo::parse(repo);
         if repo_url.is_err() {

@@ -9,8 +9,8 @@ use crate::internal::config::up::utils::RunConfig;
 use crate::internal::config::up::utils::SpinnerProgressHandler;
 use crate::internal::config::up::UpError;
 use crate::internal::config::ConfigValue;
+use crate::internal::env::shell_is_interactive;
 use crate::internal::user_interface::StringColor;
-use crate::internal::ENV;
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct UpConfigCustom {
@@ -76,7 +76,7 @@ impl UpConfigCustom {
         };
         let desc = format!("{}:", name).light_blue();
 
-        let progress_handler: Box<dyn ProgressHandler> = if ENV.interactive_shell {
+        let progress_handler: Box<dyn ProgressHandler> = if shell_is_interactive() {
             Box::new(SpinnerProgressHandler::new(desc, progress))
         } else {
             Box::new(PrintProgressHandler::new(desc, progress))
@@ -119,7 +119,7 @@ impl UpConfigCustom {
 
         let spinner_progress_handler;
         let mut progress_handler: Option<&dyn ProgressHandler> = None;
-        if ENV.interactive_shell {
+        if shell_is_interactive() {
             spinner_progress_handler = Box::new(SpinnerProgressHandler::new(
                 format!("{}:", name).light_blue(),
                 progress,

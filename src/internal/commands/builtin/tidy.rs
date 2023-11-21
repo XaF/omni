@@ -19,6 +19,7 @@ use crate::internal::config::parser::PathEntryConfig;
 use crate::internal::config::CommandSyntax;
 use crate::internal::config::ConfigSource;
 use crate::internal::config::SyntaxOptArg;
+use crate::internal::env::shell_is_interactive;
 use crate::internal::git::format_path;
 use crate::internal::git::package_path_from_handle;
 use crate::internal::git::package_root_path;
@@ -27,7 +28,6 @@ use crate::internal::git::safe_git_url_parse;
 use crate::internal::git_env;
 use crate::internal::user_interface::StringColor;
 use crate::internal::ConfigLoader;
-use crate::internal::ENV;
 use crate::internal::ORG_LOADER;
 use crate::omni_error;
 use crate::omni_info;
@@ -300,7 +300,7 @@ impl TidyCommand {
 
         let selected_repositories = if self.cli_args().yes {
             repositories
-        } else if !ENV.interactive_shell {
+        } else if !shell_is_interactive() {
             omni_info!(format!(
                 "Found {} repositor{} to tidy up:",
                 format!("{}", repositories.len()).underline(),
@@ -363,7 +363,7 @@ impl TidyCommand {
         }
 
         // Let's create a progress bar if the shell is interactive
-        let progress_bar = if ENV.interactive_shell {
+        let progress_bar = if shell_is_interactive() {
             let progress_bar = ProgressBar::new(selected_repositories.len() as u64);
             progress_bar.tick();
             Some(progress_bar)
@@ -566,7 +566,7 @@ pub struct TidyGitRepo {
 impl TidyGitRepo {
     pub fn list_repositories(worktrees: HashSet<PathBuf>) -> Vec<Self> {
         // Prepare a spinner for the research
-        let spinner = if ENV.interactive_shell {
+        let spinner = if shell_is_interactive() {
             let spinner = ProgressBar::new_spinner();
             spinner.set_style(
                 ProgressStyle::default_spinner()

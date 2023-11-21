@@ -8,9 +8,9 @@ use crate::internal::commands::path::omnipath_entries;
 use crate::internal::config::config;
 use crate::internal::config::config_loader;
 use crate::internal::config::CommandSyntax;
+use crate::internal::env::shell_integration_is_loaded;
 use crate::internal::git::ORG_LOADER;
 use crate::internal::user_interface::StringColor;
-use crate::internal::ENV;
 use crate::omni_error;
 use crate::omni_header;
 
@@ -136,7 +136,7 @@ impl StatusCommand {
 
     fn print_shell_integration(&self) {
         println!("\n{}", "Shell integration".bold());
-        let status = if ENV.omni_cmd_file.is_some() {
+        let status = if shell_integration_is_loaded() {
             "loaded".light_green()
         } else {
             "not loaded".light_red()

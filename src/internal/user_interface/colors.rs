@@ -1,7 +1,7 @@
 use is_terminal::IsTerminal;
 use lazy_static::lazy_static;
 
-use crate::internal::env::ENV;
+use crate::internal::env::shell_is_interactive;
 
 pub const BLACK: &str = "30";
 pub const RED: &str = "31";
@@ -352,7 +352,7 @@ impl<T: ToString> StringColor for T {
     }
 
     fn normal(&self) -> String {
-        if ENV.interactive_shell {
+        if shell_is_interactive() {
             format!("\x1B[{}m{}", RESET, self.to_string())
         } else {
             self.to_string()

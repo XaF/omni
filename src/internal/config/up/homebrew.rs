@@ -14,7 +14,7 @@ use crate::internal::config::up::utils::RunConfig;
 use crate::internal::config::up::utils::SpinnerProgressHandler;
 use crate::internal::config::up::UpError;
 use crate::internal::config::ConfigValue;
-use crate::internal::env::ENV;
+use crate::internal::env::shell_is_interactive;
 use crate::internal::user_interface::StringColor;
 use crate::internal::workdir;
 use crate::omni_warning;
@@ -342,7 +342,7 @@ impl HomebrewTap {
 
         let desc = format!("  {}{} {}:", progress_str, "tap".underline(), self.name).light_yellow();
 
-        let progress_handler: Box<dyn ProgressHandler> = if ENV.interactive_shell {
+        let progress_handler: Box<dyn ProgressHandler> = if shell_is_interactive() {
             Box::new(SpinnerProgressHandler::new(desc, main_progress))
         } else {
             Box::new(PrintProgressHandler::new(desc, main_progress))
@@ -392,7 +392,7 @@ impl HomebrewTap {
         let desc =
             format!("  {}{} {}:", progress_str, "untap".underline(), self.name).light_yellow();
 
-        let progress_handler: Box<dyn ProgressHandler> = if ENV.interactive_shell {
+        let progress_handler: Box<dyn ProgressHandler> = if shell_is_interactive() {
             Box::new(SpinnerProgressHandler::new(desc, main_progress))
         } else {
             Box::new(PrintProgressHandler::new(desc, main_progress))
@@ -649,7 +649,7 @@ impl HomebrewInstall {
         let desc =
             format!("  {}install {}{}:", progress_str, self.name, version_hint).light_yellow();
 
-        let progress_handler: Box<dyn ProgressHandler> = if ENV.interactive_shell {
+        let progress_handler: Box<dyn ProgressHandler> = if shell_is_interactive() {
             Box::new(SpinnerProgressHandler::new(desc, main_progress))
         } else {
             Box::new(PrintProgressHandler::new(desc, main_progress))
@@ -709,7 +709,7 @@ impl HomebrewInstall {
         let desc =
             format!("  {}uninstall {}{}:", progress_str, self.name, version_hint).light_yellow();
 
-        let progress_handler: Box<dyn ProgressHandler> = if ENV.interactive_shell {
+        let progress_handler: Box<dyn ProgressHandler> = if shell_is_interactive() {
             Box::new(SpinnerProgressHandler::new(desc, main_progress))
         } else {
             Box::new(PrintProgressHandler::new(desc, main_progress))

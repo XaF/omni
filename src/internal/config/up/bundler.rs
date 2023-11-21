@@ -14,9 +14,9 @@ use crate::internal::config::up::utils::RunConfig;
 use crate::internal::config::up::utils::SpinnerProgressHandler;
 use crate::internal::config::up::UpError;
 use crate::internal::config::ConfigValue;
+use crate::internal::env::shell_is_interactive;
 use crate::internal::user_interface::StringColor;
 use crate::internal::workdir;
-use crate::internal::ENV;
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct UpConfigBundler {
@@ -70,7 +70,7 @@ impl UpConfigBundler {
 
     pub fn up(&self, progress: Option<(usize, usize)>) -> Result<(), UpError> {
         let desc = "install Gemfile dependencies:".light_blue();
-        let progress_handler: Box<dyn ProgressHandler> = if ENV.interactive_shell {
+        let progress_handler: Box<dyn ProgressHandler> = if shell_is_interactive() {
             Box::new(SpinnerProgressHandler::new(desc, progress))
         } else {
             Box::new(PrintProgressHandler::new(desc, progress))
@@ -126,7 +126,7 @@ impl UpConfigBundler {
 
     pub fn down(&self, progress: Option<(usize, usize)>) -> Result<(), UpError> {
         let desc = "remove Gemfile dependencies:".light_blue();
-        let progress_handler: Box<dyn ProgressHandler> = if ENV.interactive_shell {
+        let progress_handler: Box<dyn ProgressHandler> = if shell_is_interactive() {
             Box::new(SpinnerProgressHandler::new(desc, progress))
         } else {
             Box::new(PrintProgressHandler::new(desc, progress))
