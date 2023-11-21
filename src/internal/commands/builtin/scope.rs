@@ -13,6 +13,7 @@ use crate::omni_error;
 
 #[derive(Debug, Clone)]
 struct ScopeCommandArgs {
+    include_packages: bool,
     scope: String,
     command: Vec<String>,
 }
@@ -25,6 +26,17 @@ impl ScopeCommandArgs {
         let matches = clap::Command::new("")
             .disable_help_subcommand(true)
             .disable_version_flag(true)
+            .arg(
+                clap::Arg::new("include-packages")
+                    .short('p')
+                    .long("include-packages")
+                    .action(clap::ArgAction::SetTrue),
+            )
+            .arg(
+                clap::Arg::new("no-include-packages")
+                    .long("no-include-packages")
+                    .action(clap::ArgAction::SetTrue),
+            )
             .arg(clap::Arg::new("scope").action(clap::ArgAction::Set))
             .arg(
                 clap::Arg::new("command")
@@ -58,6 +70,17 @@ impl ScopeCommandArgs {
 
         let matches = matches.unwrap();
 
+        let include_packages = if *matches
+            .get_one::<bool>("no-include-packages")
+            .unwrap_or(&false)
+        {
+            false
+        } else {
+            // We don't need to check if `include-packages` is passed
+            // because it's the default
+            true
+        };
+
         let scope = if let Some(scope) = matches.get_one::<String>("scope") {
             scope.to_string()
         } else {
@@ -74,7 +97,11 @@ impl ScopeCommandArgs {
             exit(1);
         };
 
-        Self { scope, command }
+        Self {
+            include_packages,
+            scope,
+            command,
+        }
     }
 }
 
@@ -162,7 +189,11 @@ impl ScopeCommand {
             unreachable!();
         }
 
-        self.switch_scope(&self.cli_args().scope, false);
+        self.switch_scope(
+            &self.cli_args().scope,
+            self.cli_args().include_packages,
+            false,
+        );
 
         let argv = self.cli_args().command.clone();
         let command_loader = command_loader(".");
@@ -212,7 +243,8 @@ impl ScopeCommand {
                 // completion of the commands for that specific repository
                 let mut argv = argv.clone();
                 let repo = argv.remove(0);
-                self.switch_scope(&repo, true);
+                // TODO: use the previous arguments to know if we should include packages or not
+                self.switch_scope(&repo, true, true);
 
                 // Finally, we can try completing the command
                 let command_loader = command_loader(".");
@@ -266,7 +298,7 @@ impl ScopeCommand {
         }
     }
 
-    fn switch_scope(&self, repo: &str, silent_failure: bool) {
+    fn switch_scope(&self, repo: &str, include_packages: bool, silent_failure: bool) {
         if let Ok(repo_path) = std::fs::canonicalize(repo) {
             if let Err(err) = std::env::set_current_dir(&repo_path) {
                 if !silent_failure {
@@ -281,7 +313,7 @@ impl ScopeCommand {
             return;
         }
 
-        if let Some(repo_path) = ORG_LOADER.find_repo(repo, false, true) {
+        if let Some(repo_path) = ORG_LOADER.find_repo(repo, include_packages, true) {
             if let Err(err) = std::env::set_current_dir(&repo_path) {
                 if !silent_failure {
                     omni_error!(format!(
