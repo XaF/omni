@@ -637,7 +637,7 @@ impl WorkDirEnv {
         // If we can't get the hostname, we fallback to an empty string
         let machine_id = match machine_uid::get() {
             Ok(machine_id) => machine_id,
-            Err(_) => match catch_unwind(|| gethostname()) {
+            Err(_) => match catch_unwind(gethostname) {
                 Ok(hostname) => hostname.to_string_lossy().to_string(),
                 Err(_) => "".to_string(),
             },
