@@ -2,10 +2,12 @@ use std::collections::HashMap;
 use std::collections::HashSet;
 use std::fs::OpenOptions;
 use std::io::Write;
+use std::panic::catch_unwind;
 use std::path::PathBuf;
 use std::sync::Mutex;
 
 use blake3::Hasher;
+use gethostname::gethostname;
 use git2::Repository;
 use is_terminal::IsTerminal;
 use lazy_static::lazy_static;
@@ -631,13 +633,14 @@ impl WorkDirEnv {
     }
 
     fn machine_id_hash(uuid: &str) -> u64 {
+        // We try to get a machine id, if we can't, we fallback to the hostname
+        // If we can't get the hostname, we fallback to an empty string
         let machine_id = match machine_uid::get() {
             Ok(machine_id) => machine_id,
-            // TODO: If unable to fetch the machine id, we use an empty string, which makes things
-            //      less secure; using the hostname would be better but the gethostname crate is
-            //      panicking if not working, not allowing us to fallback to an empty string; we
-            //      might
-            Err(_) => "".to_string(),
+            Err(_) => match catch_unwind(|| gethostname()) {
+                Ok(hostname) => hostname.to_string_lossy().to_string(),
+                Err(_) => "".to_string(),
+            },
         };
 
         let mut hasher = Hasher::new();
