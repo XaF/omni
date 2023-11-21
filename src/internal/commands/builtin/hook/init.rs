@@ -9,6 +9,7 @@ use tera::Context;
 use tera::Tera;
 
 use crate::internal::commands::HelpCommand;
+use crate::internal::config::global_config;
 use crate::internal::config::CommandSyntax;
 use crate::internal::config::SyntaxOptArg;
 use crate::internal::user_interface::StringColor;
@@ -91,7 +92,21 @@ impl HookInitCommandArgs {
             shell
         };
 
-        let aliases: Vec<String> =
+        // Load aliases from the configuration first
+        let config = global_config();
+        let mut aliases: Vec<String> = vec![];
+        let mut command_aliases: Vec<InitHookAlias> = vec![];
+        for alias in config.shell_aliases.aliases.iter() {
+            match alias.target.as_ref() {
+                Some(target) => {
+                    command_aliases.push(InitHookAlias::new(alias.alias.clone(), target.clone()));
+                }
+                None => aliases.push(alias.alias.clone()),
+            }
+        }
+
+        // Then add the ones from the command line
+        aliases.extend(
             if let Some(aliases) = matches.get_many::<String>("aliases").clone() {
                 aliases
                     .into_iter()
@@ -99,9 +114,10 @@ impl HookInitCommandArgs {
                     .collect::<Vec<_>>()
             } else {
                 Vec::new()
-            };
+            },
+        );
 
-        let command_aliases: Vec<InitHookAlias> =
+        command_aliases.extend(
             if let Some(command_aliases) = matches.get_many::<String>("command_aliases").clone() {
                 command_aliases
                     .into_iter()
@@ -112,7 +128,8 @@ impl HookInitCommandArgs {
                     .collect::<Vec<_>>()
             } else {
                 Vec::new()
-            };
+            },
+        );
 
         Self {
             shell,

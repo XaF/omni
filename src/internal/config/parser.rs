@@ -130,6 +130,7 @@ pub struct OmniConfig {
     pub up: Option<UpConfig>,
     pub suggest_clone: SuggestCloneConfig,
     pub up_command: UpCommandConfig,
+    pub shell_aliases: ShellAliasesConfig,
 }
 
 impl OmniConfig {
@@ -191,6 +192,7 @@ impl OmniConfig {
             up: UpConfig::from_config_value(config_value.get("up")),
             suggest_clone: SuggestCloneConfig::from_config_value(config_value.get("suggest_clone")),
             up_command: UpCommandConfig::from_config_value(config_value.get("up_command")),
+            shell_aliases: ShellAliasesConfig::from_config_value(config_value.get("shell_aliases")),
         }
     }
 
@@ -1013,5 +1015,69 @@ impl UpCommandConfig {
         Self {
             auto_bootstrap: true,
         }
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct ShellAliasesConfig {
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub aliases: Vec<ShellAliasConfig>,
+}
+
+impl ShellAliasesConfig {
+    fn from_config_value(config_value: Option<ConfigValue>) -> Self {
+        let mut aliases = vec![];
+        if let Some(config_value) = config_value {
+            if let Some(array) = config_value.as_array() {
+                for value in array {
+                    if let Some(alias) = ShellAliasConfig::from_config_value(&value) {
+                        aliases.push(alias);
+                    }
+                }
+            }
+        }
+        Self { aliases }
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct ShellAliasConfig {
+    #[serde(skip_serializing_if = "String::is_empty")]
+    pub alias: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub target: Option<String>,
+}
+
+impl ShellAliasConfig {
+    fn from_config_value(config_value: &ConfigValue) -> Option<Self> {
+        if let Some(value) = config_value.as_str() {
+            return Some(Self {
+                alias: value.to_string(),
+                target: None,
+            });
+        } else if let Some(table) = config_value.as_table() {
+            let mut alias = None;
+            if let Some(value) = table.get("alias") {
+                if let Some(value) = value.as_str() {
+                    alias = Some(value.to_string());
+                }
+            }
+
+            alias.as_ref()?;
+
+            let mut target = None;
+            if let Some(value) = table.get("target") {
+                if let Some(value) = value.as_str() {
+                    target = Some(value.to_string());
+                }
+            }
+
+            return Some(Self {
+                alias: alias.unwrap(),
+                target,
+            });
+        }
+
+        None
     }
 }

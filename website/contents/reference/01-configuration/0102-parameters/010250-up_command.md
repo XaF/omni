@@ -4,9 +4,9 @@ description: Configuration of the `up_command` parameter
 
 # `up_command`
 
-## Parameters
-
 Configuration related to the `omni up` command.
+
+## Parameters
 
 | Parameter       | Type      | Description                                         |
 |-----------------|-----------|-----------------------------------------------------|
