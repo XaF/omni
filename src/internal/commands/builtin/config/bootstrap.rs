@@ -26,13 +26,13 @@ use crate::internal::config::ConfigLoader;
 use crate::internal::config::ConfigValue;
 use crate::internal::config::OrgConfig;
 use crate::internal::config::SyntaxOptArg;
+use crate::internal::env::shell_integration_is_loaded;
 use crate::internal::env::user_home;
 use crate::internal::env::Shell;
 use crate::internal::git::format_path_with_template;
 use crate::internal::git::full_git_url_parse;
 use crate::internal::git::Org;
 use crate::internal::user_interface::StringColor;
-use crate::internal::ENV;
 use crate::omni_error;
 use crate::omni_info;
 use crate::omni_warning;
@@ -358,7 +358,7 @@ pub fn config_bootstrap(options: Option<ConfigBootstrapOptions>) -> Result<bool,
     }
 
     if options.shell {
-        if ENV.omni_cmd_file.is_some() {
+        if shell_integration_is_loaded() {
             if options.default {
                 // If the shell integration is already setup, no need to do anything else
                 return Ok(true);

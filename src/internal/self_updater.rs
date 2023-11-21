@@ -21,10 +21,10 @@ use crate::internal::config::up::utils::PrintProgressHandler;
 use crate::internal::config::up::utils::ProgressHandler;
 use crate::internal::config::up::utils::RunConfig;
 use crate::internal::config::up::utils::SpinnerProgressHandler;
+use crate::internal::env::shell_is_interactive;
 use crate::internal::user_interface::colors::StringColor;
 use crate::internal::ConfigLoader;
 use crate::internal::ConfigValue;
-use crate::internal::ENV;
 use crate::omni_error;
 
 lazy_static! {
@@ -157,7 +157,7 @@ impl OmniRelease {
         let config = config(".");
 
         let desc = format!("{} update:", "omni".light_cyan()).light_blue();
-        let progress_handler: Box<dyn ProgressHandler> = if ENV.interactive_shell {
+        let progress_handler: Box<dyn ProgressHandler> = if shell_is_interactive() {
             Box::new(SpinnerProgressHandler::new(desc, None))
         } else {
             Box::new(PrintProgressHandler::new(desc, None))

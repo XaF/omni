@@ -25,18 +25,14 @@ use crate::internal::config::up::utils::RunConfig;
 use crate::internal::config::up::utils::SpinnerProgressHandler;
 use crate::internal::config::up::UpError;
 use crate::internal::config::ConfigValue;
+use crate::internal::env::data_home;
+use crate::internal::env::shell_is_interactive;
 use crate::internal::user_interface::StringColor;
 use crate::internal::workdir;
-use crate::internal::ENV;
 use crate::omni_error;
 
 lazy_static! {
-    pub static ref ASDF_PATH: String = {
-        let omni_data_home = ENV.data_home.clone();
-        let asdf_path = format!("{}/asdf", omni_data_home);
-
-        asdf_path
-    };
+    pub static ref ASDF_PATH: String = format!("{}/asdf", data_home());
     pub static ref ASDF_BIN: String = format!("{}/bin/asdf", *ASDF_PATH);
 }
 
@@ -271,7 +267,7 @@ impl UpConfigAsdfBase {
 
     pub fn up(&self, progress: Option<(usize, usize)>) -> Result<(), UpError> {
         let desc = format!("{} ({}):", self.tool, self.version).light_blue();
-        let progress_handler: Box<dyn ProgressHandler> = if ENV.interactive_shell {
+        let progress_handler: Box<dyn ProgressHandler> = if shell_is_interactive() {
             Box::new(SpinnerProgressHandler::new(desc, progress))
         } else {
             Box::new(PrintProgressHandler::new(desc, progress))
@@ -679,7 +675,7 @@ impl UpConfigAsdfBase {
         progress: Option<(usize, usize)>,
     ) -> Result<(), UpError> {
         let desc = "resources cleanup:".light_blue();
-        let progress_handler: Box<dyn ProgressHandler> = if ENV.interactive_shell {
+        let progress_handler: Box<dyn ProgressHandler> = if shell_is_interactive() {
             Box::new(SpinnerProgressHandler::new(desc, progress))
         } else {
             Box::new(PrintProgressHandler::new(desc, progress))

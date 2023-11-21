@@ -18,12 +18,13 @@ use crate::internal::config::up::utils::run_command_with_handler;
 use crate::internal::config::up::utils::RunConfig;
 use crate::internal::config::CommandSyntax;
 use crate::internal::config::SyntaxOptArg;
+use crate::internal::env::omni_cmd_file;
+use crate::internal::env::shell_is_interactive;
 use crate::internal::git::format_path;
 use crate::internal::git::package_path_from_git_url;
 use crate::internal::git::safe_git_url_parse;
 use crate::internal::git::ORG_LOADER;
 use crate::internal::user_interface::StringColor;
-use crate::internal::ENV;
 use crate::omni_error;
 
 #[derive(Debug, Clone)]
@@ -186,7 +187,7 @@ impl CloneCommand {
         let clone_as_package = self.cli_args().package;
 
         // Create a spinner
-        let spinner = if ENV.interactive_shell {
+        let spinner = if shell_is_interactive() {
             let spinner = ProgressBar::new_spinner();
             spinner.set_style(
                 ProgressStyle::default_spinner()
@@ -487,7 +488,7 @@ impl CloneCommand {
 
         // If we reach here, the repo either exists or just got cloned, so we can
         // directly cd into it
-        if auto_cd && ENV.omni_cmd_file.is_some() {
+        if auto_cd && omni_cmd_file().is_some() {
             let path_str = clone_path.to_string_lossy();
             let path_escaped = escape(path_str);
             match omni_cmd(format!("cd {}", path_escaped).as_str()) {

@@ -25,8 +25,8 @@ use crate::internal::commands::fromconfig::ConfigCommand;
 use crate::internal::commands::frommakefile::MakefileCommand;
 use crate::internal::commands::frompath::PathCommand;
 use crate::internal::config;
+use crate::internal::env::shell_is_interactive;
 use crate::internal::user_interface::colors::StringColor;
-use crate::internal::ENV;
 use crate::omni_info;
 
 lazy_static! {
@@ -268,7 +268,7 @@ impl CommandLoader {
 
         // This preempt the score search if we are in interactive mode and the arguments
         // are prefix of an existing subcommand
-        if ENV.interactive_shell && !argv.is_empty() && self.has_subcommand_of(argv) {
+        if shell_is_interactive() && !argv.is_empty() && self.has_subcommand_of(argv) {
             let mut subcommands = BTreeMap::new();
             for command in self.commands.iter() {
                 command
@@ -402,7 +402,7 @@ impl CommandLoader {
             return with_score[0].to_return(argv);
         }
 
-        if ENV.interactive_shell {
+        if shell_is_interactive() {
             let question = if with_score.len() > 1 {
                 requestty::Question::select("did_you_mean_command")
                     .ask_if_answered(true)

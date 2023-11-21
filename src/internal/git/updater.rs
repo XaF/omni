@@ -14,11 +14,11 @@ use crate::internal::config::config;
 use crate::internal::config::up::utils::PrintProgressHandler;
 use crate::internal::config::up::utils::ProgressHandler;
 use crate::internal::config::up::utils::SpinnerProgressHandler;
+use crate::internal::env::shell_is_interactive;
 use crate::internal::git::path_entry_config;
 use crate::internal::git_env;
 use crate::internal::self_update;
 use crate::internal::user_interface::StringColor;
-use crate::internal::ENV;
 use crate::omni_error;
 use crate::omni_info;
 
@@ -37,7 +37,7 @@ fn should_update() -> bool {
     }
 
     // Check if interactive shell, or skip update
-    if !ENV.interactive_shell {
+    if !shell_is_interactive() {
         return false;
     }
 
@@ -123,7 +123,7 @@ pub fn auto_path_update() {
             repo_id.italic().light_cyan()
         )
         .light_blue();
-        let progress_handler: Box<dyn ProgressHandler + Send> = if ENV.interactive_shell {
+        let progress_handler: Box<dyn ProgressHandler + Send> = if shell_is_interactive() {
             let mut spinner =
                 SpinnerProgressHandler::new_with_multi(desc, None, multiprogress.clone());
             spinner.no_newline_on_error();
@@ -244,7 +244,7 @@ fn update_git_branch(
     let progress_handler: Box<&dyn ProgressHandler> =
         if let Some(progress_handler) = progress_handler {
             Box::new(progress_handler)
-        } else if ENV.interactive_shell {
+        } else if shell_is_interactive() {
             spinner = SpinnerProgressHandler::new(desc, None);
             Box::new(&spinner)
         } else {
@@ -345,7 +345,7 @@ fn update_git_tag(
     let progress_handler: Box<&dyn ProgressHandler> =
         if let Some(progress_handler) = progress_handler {
             Box::new(progress_handler)
-        } else if ENV.interactive_shell {
+        } else if shell_is_interactive() {
             spinner = SpinnerProgressHandler::new(desc, None);
             Box::new(&spinner)
         } else {

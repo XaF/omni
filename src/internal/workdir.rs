@@ -1,10 +1,10 @@
 use crate::internal::cache::CacheObject;
 use crate::internal::cache::RepositoriesCache;
+use crate::internal::env::shell_is_interactive;
 use crate::internal::git::ORG_LOADER;
 use crate::internal::git_env;
 use crate::internal::user_interface::StringColor;
 use crate::internal::workdir;
-use crate::internal::ENV;
 use crate::omni_error;
 use crate::omni_info;
 
@@ -32,7 +32,7 @@ pub fn is_trusted_or_ask(path: &str, ask: String) -> bool {
         return true;
     }
 
-    if !ENV.interactive_shell {
+    if !shell_is_interactive() {
         return false;
     }
 

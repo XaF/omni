@@ -14,9 +14,10 @@ use crate::internal::config::global_config_loader;
 use crate::internal::config::up::UpConfig;
 use crate::internal::config::ConfigSource;
 use crate::internal::config::ConfigValue;
-use crate::internal::env::ENV;
-use crate::internal::env::HOME;
-use crate::internal::env::OMNI_GIT;
+use crate::internal::env::cache_home;
+use crate::internal::env::omni_git_env;
+use crate::internal::env::shell_is_interactive;
+use crate::internal::env::user_home;
 use crate::internal::git::package_path_from_handle;
 use crate::internal::git::package_root_path;
 use crate::internal::git::update_git_repo;
@@ -34,7 +35,7 @@ lazy_static! {
 
     #[derive(Debug, Serialize, Deserialize, Clone)]
     pub static ref DEFAULT_WORKTREE: String = {
-        let home = HOME.clone();
+        let home = user_home();
         let mut default_worktree_path = format!("{}/git", home);
         if !std::path::Path::new(&default_worktree_path).is_dir() {
             // Check if GOPATH is set and GOPATH/src exists and is a directory
@@ -197,7 +198,7 @@ impl OmniConfig {
     }
 
     pub fn worktree(&self) -> String {
-        if let Some(omni_git) = OMNI_GIT.clone() {
+        if let Some(omni_git) = omni_git_env() {
             return omni_git;
         }
 
@@ -215,7 +216,7 @@ impl CacheConfig {
         Self {
             path: match config_value.get("path") {
                 Some(value) => value.as_str().unwrap().to_string(),
-                None => ENV.cache_home.clone().to_string(),
+                None => cache_home(),
             },
         }
     }
@@ -782,14 +783,14 @@ impl PathRepoUpdatesSelfUpdateEnum {
     pub fn is_false(&self) -> bool {
         match self {
             PathRepoUpdatesSelfUpdateEnum::False => true,
-            PathRepoUpdatesSelfUpdateEnum::Ask => !ENV.interactive_shell,
+            PathRepoUpdatesSelfUpdateEnum::Ask => !shell_is_interactive(),
             _ => false,
         }
     }
 
     pub fn is_ask(&self) -> bool {
         match self {
-            PathRepoUpdatesSelfUpdateEnum::Ask => ENV.interactive_shell,
+            PathRepoUpdatesSelfUpdateEnum::Ask => shell_is_interactive(),
             _ => false,
         }
     }

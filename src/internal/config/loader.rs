@@ -17,8 +17,9 @@ use crate::internal::config::ConfigExtendOptions;
 use crate::internal::config::ConfigExtendStrategy;
 use crate::internal::config::ConfigSource;
 use crate::internal::config::ConfigValue;
-use crate::internal::env::ENV;
-use crate::internal::env::HOME;
+use crate::internal::env::config_home;
+use crate::internal::env::user_home;
+use crate::internal::env::xdg_config_home;
 use crate::internal::git::path_entry_config;
 use crate::internal::user_interface::StringColor;
 use crate::internal::workdir;
@@ -91,11 +92,11 @@ impl ConfigLoader {
 
     fn user_config_files() -> Vec<String> {
         vec![
-            format!("{}/.omni.yaml", *HOME),
-            format!("{}/omni.yaml", ENV.xdg_config_home),
-            format!("{}/config.yaml", ENV.config_home),
+            format!("{}/.omni.yaml", user_home()),
+            format!("{}/omni.yaml", xdg_config_home()),
+            format!("{}/config.yaml", config_home()),
             if cfg!(debug_assertions) {
-                format!("{}/config-dev.yaml", ENV.config_home)
+                format!("{}/config-dev.yaml", config_home())
             } else {
                 "".to_owned()
             },

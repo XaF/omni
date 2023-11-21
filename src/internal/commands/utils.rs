@@ -7,8 +7,8 @@ use path_clean::PathClean;
 
 use requestty::question::{completions, Completions};
 
+use crate::internal::env::omni_cmd_file;
 use crate::internal::env::user_home;
-use crate::internal::ENV;
 
 pub fn split_name(string: &str, split_on: &str) -> Vec<String> {
     string.split(split_on).map(|s| s.to_string()).collect()
@@ -61,10 +61,7 @@ pub fn abs_path(path: impl AsRef<Path>) -> PathBuf {
 }
 
 pub fn omni_cmd(cmd: &str) -> Result<(), io::Error> {
-    let cmd_file = ENV
-        .omni_cmd_file
-        .clone()
-        .expect("shell integration not loaded");
+    let cmd_file = omni_cmd_file().expect("shell integration not loaded");
 
     let mut file = OpenOptions::new()
         .create(true)
