@@ -1,8 +1,12 @@
+use std::io::Write;
+
 use indicatif::MultiProgress;
 use indicatif::ProgressBar;
 use indicatif::ProgressDrawTarget;
 use indicatif::ProgressStyle;
 use regex::Regex;
+use tempfile::NamedTempFile;
+use time::format_description::well_known::Rfc3339;
 use tokio;
 use tokio::io::AsyncBufReadExt;
 use tokio::io::AsyncReadExt;
@@ -97,6 +101,24 @@ where
     F: Fn(Option<String>, Option<String>),
 {
     if let Ok(mut command) = process_command.spawn() {
+        // Create a temporary file to store the output
+        let log_file_prefix = format!(
+            "omni-exec.{}.",
+            time::OffsetDateTime::now_utc()
+                .replace_nanosecond(0)
+                .unwrap()
+                .format(&Rfc3339)
+                .expect("failed to format date")
+                .replace("-", "") // Remove the dashes in the date
+                .replace(":", ""), // Remove the colons in the time
+        );
+        let mut log_file = match NamedTempFile::with_prefix(log_file_prefix.as_str()) {
+            Ok(file) => file,
+            Err(err) => {
+                return Err(UpError::Exec(err.to_string()));
+            }
+        };
+
         if let (Some(mut stdout), Some(mut stderr)) = (command.stdout.take(), command.stderr.take())
         {
             let mut stdout_buffer = [0; 1024];
@@ -111,6 +133,7 @@ where
                             Ok(n) => {
                                 last_read = std::time::Instant::now();
                                 let stdout_output = &stdout_buffer[..n];
+                                log_file.write_all(stdout_output).unwrap();
                                 if let Ok(stdout_str) = std::str::from_utf8(stdout_output) {
                                     let stdout_str = stdout_str.trim_end();
                                     let stdout_str = if let Some(index) = stdout_str.rfind('\n') {
@@ -133,6 +156,7 @@ where
                             Ok(n) => {
                                 last_read = std::time::Instant::now();
                                 let stderr_output = &stderr_buffer[..n];
+                                log_file.write_all(stderr_output).unwrap();
                                 if let Ok(stderr_str) = std::str::from_utf8(stderr_output) {
                                     let stderr_str = stderr_str.trim_end();
                                     let stderr_str = if let Some(index) = stderr_str.rfind('\n') {
@@ -162,15 +186,28 @@ where
             }
         }
 
-        let exit_status = command.wait().await;
-        if exit_status.is_err() || !exit_status.unwrap().success() {
-            return Err(UpError::Exec(format!("{:?}", process_command.as_std())));
+        match command.wait().await {
+            Err(err) => Err(UpError::Exec(err.to_string())),
+            Ok(exit_status) if !exit_status.success() => {
+                let exit_code = exit_status.code().unwrap_or(-42);
+                match log_file.keep() {
+                    Ok((_file, path)) => Err(UpError::Exec(format!(
+                        "process exited with status {}; log is available at {}",
+                        exit_code,
+                        path.to_string_lossy().underline(),
+                    ))),
+                    Err(err) => Err(UpError::Exec(format!(
+                        "process exited with status {}; failed to keep log file: {}",
+                        exit_status.code().unwrap_or(-42),
+                        err.to_string(),
+                    ))),
+                }
+            }
+            Ok(_exit_status) => Ok(()),
         }
     } else {
-        return Err(UpError::Exec(format!("{:?}", process_command.as_std())));
+        Err(UpError::Exec(format!("{:?}", process_command.as_std())))
     }
-
-    Ok(())
 }
 
 async fn async_run_progress_readlines<F>(

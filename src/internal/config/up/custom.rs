@@ -94,7 +94,7 @@ impl UpConfigCustom {
             if let Some(progress_handler) = progress_handler {
                 progress_handler.error_with_message(format!("{}", err).light_red())
             }
-            return Err(err);
+            return Err(UpError::StepFailed(name, progress));
         }
 
         if let Some(progress_handler) = progress_handler {

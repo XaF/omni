@@ -12,6 +12,7 @@ pub enum UpError {
     Timeout(String),
     Cache(String),
     HomebrewTapInUse,
+    StepFailed(String, Option<(usize, usize)>),
 }
 
 impl UpError {
@@ -33,6 +34,13 @@ impl Display for UpError {
             UpError::Timeout(message) => write!(f, "timeout: {}", message),
             UpError::Cache(message) => write!(f, "cache error: {}", message),
             UpError::HomebrewTapInUse => write!(f, "tap in use"),
+            UpError::StepFailed(name, progress) => {
+                if let Some((step, total)) = progress {
+                    write!(f, "step {}/{} '{}' failed", step, total, name)
+                } else {
+                    write!(f, "step '{}' failed", name)
+                }
+            }
         }
     }
 }
