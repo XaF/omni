@@ -24,6 +24,8 @@ pub struct OmniPathCache {
     pub updated_at: OffsetDateTime,
     #[serde(default = "utils::origin_of_time", with = "time::serde::rfc3339")]
     pub expires_at: OffsetDateTime,
+    #[serde(default = "String::new", skip_serializing_if = "String::is_empty")]
+    pub update_error_log: String,
 }
 
 impl OmniPathCache {
@@ -36,6 +38,22 @@ impl OmniPathCache {
         self.updated_at = OffsetDateTime::now_utc();
         self.expires_at =
             self.updated_at + Duration::seconds(config(".").path_repo_updates.interval);
+    }
+
+    pub fn update_errored(&self) -> bool {
+        !self.update_error_log.is_empty()
+    }
+
+    pub fn update_error(&mut self, update_error_log: String) {
+        self.update_error_log = update_error_log;
+    }
+
+    pub fn clear_update_error(&mut self) {
+        self.update_error_log = "".to_string();
+    }
+
+    pub fn update_error_log(&self) -> String {
+        self.update_error_log.clone()
     }
 }
 
@@ -51,6 +69,7 @@ impl CacheObject for OmniPathCache {
             updated: false,
             updated_at: utils::origin_of_time(),
             expires_at: utils::origin_of_time(),
+            update_error_log: "".to_string(),
         }
     }
 

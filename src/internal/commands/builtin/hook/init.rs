@@ -1,8 +1,6 @@
 use std::env;
-use std::path::PathBuf;
 use std::process::exit;
 
-use lazy_static::lazy_static;
 use serde::Serialize;
 use shell_escape::escape;
 use tera::Context;
@@ -12,19 +10,9 @@ use crate::internal::commands::HelpCommand;
 use crate::internal::config::global_config;
 use crate::internal::config::CommandSyntax;
 use crate::internal::config::SyntaxOptArg;
+use crate::internal::env::current_exe;
 use crate::internal::user_interface::StringColor;
 use crate::omni_error;
-
-lazy_static! {
-    static ref CURRENT_EXE: PathBuf = {
-        let current_exe = std::env::current_exe();
-        if current_exe.is_err() {
-            omni_error!("failed to get current executable path", "hook init");
-            exit(1);
-        }
-        current_exe.unwrap()
-    };
-}
 
 #[derive(Debug, Clone)]
 struct HookInitCommandArgs {
@@ -296,7 +284,9 @@ fn dump_integration(args: HookInitCommandArgs, integration: &[u8]) {
     let mut context = Context::new();
     context.insert(
         "OMNI_BIN",
-        &escape(std::borrow::Cow::Borrowed(CURRENT_EXE.to_str().unwrap())),
+        &escape(std::borrow::Cow::Borrowed(
+            current_exe().to_string_lossy().as_ref(),
+        )),
     );
     context.insert("OMNI_ALIASES", &args.aliases);
     context.insert("OMNI_COMMAND_ALIASES", &args.command_aliases);

@@ -110,6 +110,15 @@ impl Command {
             .collect()
     }
 
+    pub fn has_source(&self) -> bool {
+        match self {
+            Command::FromPath(_) => true,
+            Command::FromConfig(_) => true,
+            Command::FromMakefile(_) => true,
+            _ => false,
+        }
+    }
+
     pub fn source(&self) -> String {
         match self {
             Command::BuiltinCd(_) => "builtin".to_string(),

@@ -3,6 +3,7 @@ use std::process::exit;
 use crate::internal::config::CommandSyntax;
 use crate::internal::dynenv::update_dynamic_env;
 use crate::internal::env::Shell;
+use crate::internal::git::report_update_error;
 use crate::internal::StringColor;
 
 #[derive(Debug, Clone)]
@@ -54,6 +55,7 @@ impl HookEnvCommand {
         match shell_type.dynenv_export_mode() {
             Some(export_mode) => {
                 update_dynamic_env(export_mode);
+                report_update_error();
                 exit(0);
             }
             None => {

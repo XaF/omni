@@ -1,6 +1,8 @@
 use regex::Regex;
 use term_size;
 
+use crate::internal::env::shell_is_interactive;
+
 #[macro_export]
 macro_rules! omni_header {
     () => {
@@ -34,7 +36,7 @@ macro_rules! omni_info {
         eprintln!(
             "{}",
             format!("{}{} {}", "omni:".light_cyan(), cmd, $message)
-        );
+        )
     };
     ($message:expr, $cmd:expr) => {
         let cmd = if $cmd != "" {
@@ -182,4 +184,14 @@ pub fn wrap_text(text: &str, width: usize) -> Vec<String> {
     lines.push(line);
 
     lines
+}
+
+pub fn ensure_newline() {
+    if shell_is_interactive() {
+        if let Ok((x, _y)) = term_cursor::get_pos() {
+            if x > 0 {
+                eprintln!();
+            }
+        }
+    }
 }

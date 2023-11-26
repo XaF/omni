@@ -241,6 +241,11 @@ impl OmniRelease {
             // Replace current process with the new binary
             ProcessCommand::new(std::env::current_exe().unwrap())
                 .args(std::env::args().skip(1))
+                // We want to force the update, since by replacing the current
+                // process, we're going to skip the rest of the updates otherwise
+                .env("OMNI_FORCE_UPDATE", "1")
+                // We want to skip the self-update, since we're already doing it
+                // here, and we don't want to do it again when the new binary starts
                 .env("OMNI_SKIP_SELF_UPDATE", "1")
                 .exec();
 

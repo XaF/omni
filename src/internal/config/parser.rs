@@ -644,6 +644,14 @@ impl PathEntryConfig {
         PathBuf::from(&self.full_path).starts_with(&path_entry.full_path)
     }
 
+    pub fn includes_path(&self, path: PathBuf) -> bool {
+        if !self.is_valid() {
+            return false;
+        }
+
+        PathBuf::from(&path).starts_with(&self.full_path)
+    }
+
     pub fn replace(&mut self, path_from: &PathEntryConfig, path_to: &PathEntryConfig) -> bool {
         if self.starts_with(path_from) {
             let new_full_path = format!(
@@ -682,6 +690,7 @@ impl PathEntryConfig {
 pub struct PathRepoUpdatesConfig {
     pub enabled: bool,
     pub self_update: PathRepoUpdatesSelfUpdateEnum,
+    pub background_updates: bool,
     pub interval: i64,
     pub ref_type: String,
     pub ref_match: Option<String>,
@@ -722,6 +731,10 @@ impl PathRepoUpdatesConfig {
                 },
                 (None, None) => PathRepoUpdatesSelfUpdateEnum::Ask,
             },
+            background_updates: match config_value.get("background_updates") {
+                Some(value) => value.as_bool().unwrap(),
+                None => true,
+            },
             interval: match config_value.get("interval") {
                 Some(value) => value.as_integer().unwrap(),
                 None => 12 * 60 * 60,
@@ -755,7 +768,10 @@ impl PathRepoUpdatesConfig {
             return false;
         }
 
-        update_git_repo(repo_id, ref_type, ref_match, None, None)
+        match update_git_repo(repo_id, ref_type, ref_match, None, None) {
+            Ok(updated) => updated,
+            Err(_) => false,
+        }
     }
 }
 
