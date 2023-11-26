@@ -310,26 +310,36 @@ fn update_git_branch(
     git_pull_cmd.arg("pull");
     git_pull_cmd.arg("--ff-only");
     git_pull_cmd.stdout(std::process::Stdio::piped());
-    git_pull_cmd.stderr(std::process::Stdio::null());
+    git_pull_cmd.stderr(std::process::Stdio::piped());
 
-    let output = git_pull_cmd.output();
-    if output.is_err() || !output.as_ref().unwrap().status.success() {
-        progress_handler.error_with_message("git pull failed".to_string());
-        return false;
+    match git_pull_cmd.output() {
+        Err(err) => {
+            progress_handler.error_with_message(format!("git pull failed: {}", err));
+            false
+        }
+        Ok(output) if !output.status.success() => {
+            progress_handler.error_with_message(format!(
+                "git pull failed: {}",
+                String::from_utf8(output.stderr)
+                    .unwrap()
+                    .replace('\n', " ")
+                    .trim(),
+            ));
+            false
+        }
+        Ok(output) => {
+            let output = String::from_utf8(output.stdout).unwrap().trim().to_string();
+            let output_lines = output.lines().collect::<Vec<&str>>();
+
+            if output_lines.len() == 1 && output_lines[0].contains("Already up to date.") {
+                progress_handler.success_with_message("already up to date".light_black());
+                false
+            } else {
+                progress_handler.success_with_message("updated".light_green());
+                true
+            }
+        }
     }
-    let output = String::from_utf8(output.unwrap().stdout)
-        .unwrap()
-        .trim()
-        .to_string();
-    let output_lines = output.lines().collect::<Vec<&str>>();
-    if output_lines.len() == 1 && output_lines[0].contains("Already up to date.") {
-        progress_handler.success_with_message("already up to date".light_black());
-        return false;
-    }
-
-    progress_handler.success_with_message("updated".light_green());
-
-    true
 }
 
 fn update_git_tag(
