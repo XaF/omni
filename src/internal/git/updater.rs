@@ -322,7 +322,7 @@ fn update_git_branch(
                 "git pull failed: {}",
                 String::from_utf8(output.stderr)
                     .unwrap()
-                    .replace("\n", " ")
+                    .replace('\n', " ")
                     .trim(),
             ));
             false

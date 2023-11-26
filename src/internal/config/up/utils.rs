@@ -109,8 +109,8 @@ where
                 .unwrap()
                 .format(&Rfc3339)
                 .expect("failed to format date")
-                .replace("-", "") // Remove the dashes in the date
-                .replace(":", ""), // Remove the colons in the time
+                .replace('-', "") // Remove the dashes in the date
+                .replace(':', ""), // Remove the colons in the time
         );
         let mut log_file = match NamedTempFile::with_prefix(log_file_prefix.as_str()) {
             Ok(file) => file,
@@ -199,7 +199,7 @@ where
                     Err(err) => Err(UpError::Exec(format!(
                         "process exited with status {}; failed to keep log file: {}",
                         exit_status.code().unwrap_or(-42),
-                        err.to_string(),
+                        err,
                     ))),
                 }
             }
