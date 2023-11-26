@@ -197,8 +197,7 @@ where
                     ))),
                     Err(err) => Err(UpError::Exec(format!(
                         "process exited with status {}; failed to keep log file: {}",
-                        exit_status.code().unwrap_or(-42),
-                        err,
+                        exit_code, err,
                     ))),
                 }
             }
