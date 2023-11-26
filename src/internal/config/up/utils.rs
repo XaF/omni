@@ -109,8 +109,7 @@ where
                 .unwrap()
                 .format(&Rfc3339)
                 .expect("failed to format date")
-                .replace('-', "") // Remove the dashes in the date
-                .replace(':', ""), // Remove the colons in the time
+                .replace(['-', ':'], ""), // Remove the dashes in the date and the colons in the time
         );
         let mut log_file = match NamedTempFile::with_prefix(log_file_prefix.as_str()) {
             Ok(file) => file,
