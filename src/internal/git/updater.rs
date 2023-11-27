@@ -374,14 +374,29 @@ pub fn update(
                     Ok(mut child) => {
                         let status = child.wait();
                         match status {
-                            Ok(_status) => {}
+                            Ok(status) => {
+                                if !status.success() {
+                                    updates_per_path.insert(
+                                        repo_path.clone(),
+                                        Err("omni up failed".to_string()),
+                                    );
+                                }
+                            }
                             Err(err) => {
-                                omni_error!(format!("failed to wait on process: {}", err));
+                                let msg = format!("failed to wait on process: {}", err);
+                                omni_error!(msg.clone());
+                                updates_per_path.insert(
+                                    repo_path.clone(),
+                                    Err(format!("omni up failed: {}", msg)),
+                                );
                             }
                         }
                     }
                     Err(err) => {
-                        omni_error!(format!("failed to spawn process: {}", err));
+                        let msg = format!("failed to spawn process: {}", err);
+                        omni_error!(msg.clone());
+                        updates_per_path
+                            .insert(repo_path.clone(), Err(format!("omni up failed: {}", msg)));
                     }
                 }
             }
