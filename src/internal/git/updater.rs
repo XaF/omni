@@ -452,23 +452,28 @@ pub fn update_git_repo(
     repo_path: Option<&str>,
     progress_handler: Option<&dyn ProgressHandler>,
 ) -> Result<bool, String> {
-    // let progress_handler: Box<&dyn ProgressHandler> =
-    // if let Some(progress_handler) = progress_handler {
-    // Box::new(progress_handler)
-    // } else if shell_is_interactive() {
-    // spinner = SpinnerProgressHandler::new(desc, None);
-    // Box::new(&spinner)
-    // } else {
-    // printer = PrintProgressHandler::new(desc, None);
-    // Box::new(&printer)
-    // };
+    let desc = format!("Updating {}:", repo_id.italic().light_cyan()).light_blue();
+    let spinner;
+    let printer;
+
+    let progress_handler: Box<&dyn ProgressHandler> =
+        if let Some(progress_handler) = progress_handler {
+            Box::new(progress_handler)
+        } else if shell_is_interactive() {
+            spinner = SpinnerProgressHandler::new(desc, None);
+            Box::new(&spinner)
+        } else {
+            printer = PrintProgressHandler::new(desc, None);
+            Box::new(&printer)
+        };
 
     match ref_type.as_str() {
-        "branch" => update_git_branch(repo_id, ref_match, repo_path, progress_handler),
-        "tag" => update_git_tag(repo_id, ref_match, repo_path, progress_handler),
+        "branch" => update_git_branch(repo_id, ref_match, repo_path, Some(*progress_handler)),
+        "tag" => update_git_tag(repo_id, ref_match, repo_path, Some(*progress_handler)),
         _ => {
-            omni_error!("invalid ref type: {}", ref_type.light_red());
-            Err(format!("invalid ref type: {}", ref_type))
+            let msg = format!("invalid ref type: {}", ref_type);
+            progress_handler.error_with_message(msg.clone());
+            Err(msg)
         }
     }
 }
