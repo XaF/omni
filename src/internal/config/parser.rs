@@ -768,10 +768,7 @@ impl PathRepoUpdatesConfig {
             return false;
         }
 
-        match update_git_repo(repo_id, ref_type, ref_match, None, None) {
-            Ok(updated) => updated,
-            Err(_) => false,
-        }
+        update_git_repo(repo_id, ref_type, ref_match, None, None).unwrap_or(false)
     }
 }
 

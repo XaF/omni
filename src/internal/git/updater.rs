@@ -402,7 +402,7 @@ pub fn update(
     let errored_paths = updates_per_path
         .iter()
         .filter_map(|(path, updated)| {
-            if let Err(_) = updated {
+            if updated.is_err() {
                 Some(PathBuf::from(path))
             } else {
                 None

@@ -111,12 +111,10 @@ impl Command {
     }
 
     pub fn has_source(&self) -> bool {
-        match self {
-            Command::FromPath(_) => true,
-            Command::FromConfig(_) => true,
-            Command::FromMakefile(_) => true,
-            _ => false,
-        }
+        matches!(
+            self,
+            Command::FromPath(_) | Command::FromConfig(_) | Command::FromMakefile(_)
+        )
     }
 
     pub fn source(&self) -> String {
