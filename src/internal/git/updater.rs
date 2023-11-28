@@ -174,7 +174,17 @@ pub fn exec_update_and_log_on_error() {
 }
 
 pub fn report_update_error() {
-    if shell_is_interactive() && OmniPathCache::get().update_errored() {
+    // The omni hook sets the SHELL_PPID environment variable to the parent process id
+    // when being called from the shell prompt hook. If that variable is set, we know
+    // that we are being called from the shell prompt hook and we can check if the
+    // previous update errored and report it to the user.
+    let is_user_shell = if let Some(shell_ppid) = std::env::var_os("OMNI_SHELL_PPID") {
+        !shell_ppid.is_empty()
+    } else {
+        false
+    };
+
+    if is_user_shell && OmniPathCache::get().update_errored() {
         if let Err(err) = OmniPathCache::exclusive(|omnipath| {
             if omnipath.update_errored() {
                 omni_print!(format!(
