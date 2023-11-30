@@ -11,7 +11,6 @@ use internal::git::auto_update_async;
 use internal::git::auto_update_sync;
 use internal::git::exec_update;
 use internal::git::exec_update_and_log_on_error;
-use internal::git::trigger_background_update;
 use internal::StringColor;
 
 #[derive(Debug, Clone)]
