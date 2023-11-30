@@ -151,6 +151,7 @@ path_repo_updates:
   enabled: true
   self_update: ask
   background_updates: true
+  background_updates_timeout: 3600 # 1 hour
   interval: 43200 # 12 hours
   ref_type: "branch" # branch or tag
   ref_match: null # regex or null

@@ -115,12 +115,6 @@ impl MainArgs {
             args.push("help".to_string());
         }
 
-        // TODO: remove this, wip
-        if args[0] == "--test" {
-            trigger_background_update();
-            exit(0);
-        }
-
         Self {
             only_check_exists: *matches.get_one::<bool>("exists").unwrap_or(&false),
             args,

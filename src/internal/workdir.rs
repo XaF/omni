@@ -41,20 +41,19 @@ pub fn is_trusted_or_ask(path: &str, ask: String) -> bool {
 
     let mut choices = vec![('y', "Yes, this time (and ask me everytime)"), ('n', "No")];
 
-    let repo_mention = if repo_id.is_some() {
+    if repo_id.is_some() {
         choices.insert(0, ('a', "Yes, always (add to trusted directories)"));
-        format!("The directory {}", repo_id.clone().unwrap().light_blue())
+        omni_info!(format!(
+            "The directory {} is not in your trusted directories.",
+            repo_id.clone().unwrap().light_blue()
+        ));
+        omni_info!(format!(
+            "{} all repositories in a trusted organization are automatically trusted.",
+            "Tip:".bold()
+        ));
     } else {
-        "This directory".to_string()
+        omni_info!(format!("The path {} is not trusted.", path.light_blue()));
     };
-    omni_info!(format!(
-        "{} is not in your trusted directories.",
-        repo_mention
-    ));
-    omni_info!(format!(
-        "{} repositories in your organizations are automatically trusted.",
-        "Tip:".bold()
-    ));
 
     let question = requestty::Question::expand("trust_repo")
         .ask_if_answered(true)

@@ -44,6 +44,10 @@ fn should_update() -> bool {
     // Check if OMNI_FORCE_UPDATE is set
     if let Some(force_update) = std::env::var_os("OMNI_FORCE_UPDATE") {
         if !force_update.to_str().unwrap().is_empty() {
+            // Unset that environment variable so that we don't
+            // propagate it to any child process
+            std::env::remove_var("OMNI_FORCE_UPDATE");
+
             return true;
         }
     }
@@ -131,11 +135,11 @@ pub fn exec_update_and_log_on_error() {
         }
     };
 
+    let config = global_config();
     let result = run_command_with_handler(
         &mut cmd,
         handler_fn,
-        // TODO: make this configurable
-        RunConfig::new().with_timeout(3600), // Timeout after 1 hour
+        RunConfig::new().with_timeout(config.path_repo_updates.background_updates_timeout),
     );
 
     match result {
@@ -203,12 +207,28 @@ pub fn report_update_error() {
     }
 }
 
-pub fn trigger_background_update() -> bool {
+pub fn trigger_background_update(skip_paths: Vec<PathBuf>) -> bool {
     let mut command = Command::new(current_exe());
     command.arg("--update-and-log-on-error");
     command.stdin(std::process::Stdio::null());
     command.stdout(std::process::Stdio::null());
     command.stderr(std::process::Stdio::null());
+
+    // Skip self-updates in the background
+    command.env("OMNI_SKIP_SELF_UPDATE", "1");
+
+    // Skip updates for the paths that were passed as arguments
+    if skip_paths.is_empty() {
+        command.env_remove("OMNI_SKIP_UPDATE_PATH");
+    } else {
+        let skip_path_env_var = skip_paths
+            .iter()
+            .map(|path| path.to_string_lossy().to_string())
+            .collect::<Vec<_>>()
+            .join(":");
+
+        command.env("OMNI_SKIP_UPDATE_PATH", skip_path_env_var);
+    }
 
     match command.spawn() {
         Ok(_child) => true,
@@ -226,6 +246,20 @@ pub fn update(
 
     // Get the omnipath
     let omnipath_entries = global_omnipath_entries();
+
+    // Check if OMNI_SKIP_UPDATE_PATH is set, in which case we
+    // can parse it into a list of paths to skip
+    let skip_update_path: Vec<PathBuf> =
+        if let Some(skip_update_path) = std::env::var_os("OMNI_SKIP_UPDATE_PATH") {
+            skip_update_path
+                .to_str()
+                .unwrap()
+                .split(':')
+                .map(|path| PathBuf::from(path))
+                .collect()
+        } else {
+            vec![]
+        };
 
     // Nothing to do if nothing is in the omnipath and we don't
     // check for omni updates
@@ -270,6 +304,17 @@ pub fn update(
             if repo_id.is_none() {
                 continue;
             }
+            let repo_id = repo_id.unwrap();
+            let repo_root = git_env.root().unwrap().to_string();
+
+            // Skip if the path is in the list of paths to skip
+            let repo_root_path = PathBuf::from(repo_root.clone());
+            if skip_update_path
+                .iter()
+                .any(|skip_update_path| skip_update_path == &repo_root_path)
+            {
+                continue;
+            }
 
             // Check if we want to update this repository synchronously
             // or if we can delegate it to the background update
@@ -281,9 +326,6 @@ pub fn update(
                 count_left_to_update += 1;
                 continue;
             }
-
-            let repo_id = repo_id.unwrap();
-            let repo_root = git_env.root().unwrap().to_string();
 
             // Avoid updating the same repository multiple times
             if !seen.insert(repo_root.clone()) {
@@ -438,7 +480,18 @@ pub fn update(
     // If we need to update in the background, let's do that now
     ensure_newline();
     if allow_background_update && count_left_to_update > 0 {
-        trigger_background_update();
+        trigger_background_update(
+            skip_update_path
+                .iter()
+                .map(|path| path.clone())
+                .chain(
+                    updates_per_path
+                        .keys()
+                        .map(|path| PathBuf::from(path))
+                        .collect::<Vec<_>>(),
+                )
+                .collect(),
+        );
         omni_info!(format!(
             "{}{}",
             if !errored_paths.is_empty() {

@@ -691,7 +691,8 @@ pub struct PathRepoUpdatesConfig {
     pub enabled: bool,
     pub self_update: PathRepoUpdatesSelfUpdateEnum,
     pub background_updates: bool,
-    pub interval: i64,
+    pub background_updates_timeout: u64,
+    pub interval: u64,
     pub ref_type: String,
     pub ref_match: Option<String>,
     pub per_repo_config: HashMap<String, PathRepoUpdatesPerRepoConfig>,
@@ -710,9 +711,12 @@ impl PathRepoUpdatesConfig {
         };
 
         Self {
-            enabled: match config_value.get("enabled") {
-                Some(value) => value.as_bool().unwrap(),
-                None => true,
+            enabled: {
+                let mut val = None;
+                if let Some(value) = config_value.get_as_bool("enabled") {
+                    val = Some(value);
+                }
+                val.unwrap_or(true)
             },
             self_update: match (
                 config_value.get_as_str("self_update"),
@@ -731,21 +735,47 @@ impl PathRepoUpdatesConfig {
                 },
                 (None, None) => PathRepoUpdatesSelfUpdateEnum::Ask,
             },
-            background_updates: match config_value.get("background_updates") {
-                Some(value) => value.as_bool().unwrap(),
-                None => true,
+            background_updates: {
+                let mut val = None;
+                if let Some(value) = config_value.get_as_bool("background_updates") {
+                    val = Some(value);
+                }
+                val.unwrap_or(true)
             },
-            interval: match config_value.get("interval") {
-                Some(value) => value.as_integer().unwrap(),
-                None => 12 * 60 * 60,
+            background_updates_timeout: {
+                let mut val = None;
+                if let Some(value) =
+                    config_value.get_as_unsigned_integer("background_updates_timeout")
+                {
+                    if let Ok(value) = value.try_into() {
+                        val = Some(value);
+                    }
+                }
+                val.unwrap_or(3600)
             },
-            ref_type: match config_value.get("ref_type") {
-                Some(value) => value.as_str().unwrap().to_string(),
-                None => "branch".to_string(),
+            interval: {
+                let mut val = None;
+                if let Some(value) = config_value.get_as_unsigned_integer("interval") {
+                    if let Ok(value) = value.try_into() {
+                        val = Some(value);
+                    }
+                }
+                val.unwrap_or(12 * 60 * 60)
             },
-            ref_match: config_value
-                .get("ref_match")
-                .map(|value| value.as_str().unwrap().to_string()),
+            ref_type: {
+                let mut val = None;
+                if let Some(value) = config_value.get_as_str("ref_type") {
+                    val = Some(value);
+                }
+                val.unwrap_or("branch".to_string())
+            },
+            ref_match: {
+                let mut val = None;
+                if let Some(value) = config_value.get_as_str("ref_match") {
+                    val = Some(value);
+                }
+                val
+            },
             per_repo_config,
         }
     }

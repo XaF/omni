@@ -36,8 +36,14 @@ impl OmniPathCache {
     pub fn update(&mut self) {
         self.updated = true;
         self.updated_at = OffsetDateTime::now_utc();
-        self.expires_at =
-            self.updated_at + Duration::seconds(config(".").path_repo_updates.interval);
+        self.expires_at = self.updated_at
+            + Duration::seconds(
+                config(".")
+                    .path_repo_updates
+                    .interval
+                    .try_into()
+                    .unwrap_or(43200),
+            );
     }
 
     pub fn update_errored(&self) -> bool {
