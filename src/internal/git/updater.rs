@@ -255,7 +255,7 @@ pub fn update(
                 .to_str()
                 .unwrap()
                 .split(':')
-                .map(|path| PathBuf::from(path))
+                .map(PathBuf::from)
                 .collect()
         } else {
             vec![]
@@ -483,11 +483,11 @@ pub fn update(
         trigger_background_update(
             skip_update_path
                 .iter()
-                .map(|path| path.clone())
+                .cloned()
                 .chain(
                     updates_per_path
                         .keys()
-                        .map(|path| PathBuf::from(path))
+                        .map(PathBuf::from)
                         .collect::<Vec<_>>(),
                 )
                 .collect(),
