@@ -18,12 +18,20 @@ use tokio::time::Duration;
 use crate::internal::config::up::UpError;
 use crate::internal::user_interface::StringColor;
 
+#[derive(Debug, Clone)]
 pub struct RunConfig {
     pub timeout: Option<Duration>,
     pub strip_ctrl_chars: bool,
 }
 
 impl RunConfig {
+    pub fn new() -> Self {
+        RunConfig {
+            timeout: None,
+            strip_ctrl_chars: false,
+        }
+    }
+
     pub fn default() -> Self {
         RunConfig {
             timeout: None,
@@ -31,11 +39,19 @@ impl RunConfig {
         }
     }
 
-    pub fn with_timeout(timeout: u64) -> Self {
-        RunConfig {
-            timeout: Some(Duration::from_secs(timeout)),
-            strip_ctrl_chars: true,
-        }
+    pub fn with_timeout(&mut self, timeout: u64) -> Self {
+        self.timeout = Some(Duration::from_secs(timeout));
+        self.clone()
+    }
+
+    // pub fn with_ctrl_chars(&mut self) -> Self {
+    // self.strip_ctrl_chars = false;
+    // self.clone()
+    // }
+
+    pub fn without_ctrl_chars(&mut self) -> Self {
+        self.strip_ctrl_chars = true;
+        self.clone()
     }
 
     pub fn timeout(&self) -> Option<Duration> {
@@ -70,7 +86,7 @@ pub fn run_command_with_handler<F>(
     run_config: RunConfig,
 ) -> Result<(), UpError>
 where
-    F: Fn(Option<String>, Option<String>),
+    F: FnMut(Option<String>, Option<String>),
 {
     let rt = Runtime::new().unwrap();
     rt.block_on(async_run_progress_readlines(
@@ -210,11 +226,11 @@ where
 
 async fn async_run_progress_readlines<F>(
     process_command: &mut TokioCommand,
-    handler_fn: F,
+    mut handler_fn: F,
     run_config: RunConfig,
 ) -> Result<(), UpError>
 where
-    F: Fn(Option<String>, Option<String>),
+    F: FnMut(Option<String>, Option<String>),
 {
     if let Ok(mut command) = process_command.spawn() {
         if let (Some(stdout), Some(stderr)) = (command.stdout.take(), command.stderr.take()) {

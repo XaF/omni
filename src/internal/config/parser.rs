@@ -644,6 +644,14 @@ impl PathEntryConfig {
         PathBuf::from(&self.full_path).starts_with(&path_entry.full_path)
     }
 
+    pub fn includes_path(&self, path: PathBuf) -> bool {
+        if !self.is_valid() {
+            return false;
+        }
+
+        PathBuf::from(&path).starts_with(&self.full_path)
+    }
+
     pub fn replace(&mut self, path_from: &PathEntryConfig, path_to: &PathEntryConfig) -> bool {
         if self.starts_with(path_from) {
             let new_full_path = format!(
@@ -682,7 +690,9 @@ impl PathEntryConfig {
 pub struct PathRepoUpdatesConfig {
     pub enabled: bool,
     pub self_update: PathRepoUpdatesSelfUpdateEnum,
-    pub interval: i64,
+    pub background_updates: bool,
+    pub background_updates_timeout: u64,
+    pub interval: u64,
     pub ref_type: String,
     pub ref_match: Option<String>,
     pub per_repo_config: HashMap<String, PathRepoUpdatesPerRepoConfig>,
@@ -701,10 +711,7 @@ impl PathRepoUpdatesConfig {
         };
 
         Self {
-            enabled: match config_value.get("enabled") {
-                Some(value) => value.as_bool().unwrap(),
-                None => true,
-            },
+            enabled: config_value.get_as_bool("enabled").unwrap_or(true),
             self_update: match (
                 config_value.get_as_str("self_update"),
                 config_value.get_as_bool("self_update"),
@@ -722,17 +729,19 @@ impl PathRepoUpdatesConfig {
                 },
                 (None, None) => PathRepoUpdatesSelfUpdateEnum::Ask,
             },
-            interval: match config_value.get("interval") {
-                Some(value) => value.as_integer().unwrap(),
-                None => 12 * 60 * 60,
-            },
-            ref_type: match config_value.get("ref_type") {
-                Some(value) => value.as_str().unwrap().to_string(),
-                None => "branch".to_string(),
-            },
-            ref_match: config_value
-                .get("ref_match")
-                .map(|value| value.as_str().unwrap().to_string()),
+            background_updates: config_value
+                .get_as_bool("background_updates")
+                .unwrap_or(true),
+            background_updates_timeout: config_value
+                .get_as_unsigned_integer("background_updates_timeout")
+                .unwrap_or(3600),
+            interval: config_value
+                .get_as_unsigned_integer("interval")
+                .unwrap_or(12 * 60 * 60),
+            ref_type: config_value
+                .get_as_str("ref_type")
+                .unwrap_or("branch".to_string()),
+            ref_match: config_value.get_as_str("ref_match"),
             per_repo_config,
         }
     }
@@ -755,7 +764,7 @@ impl PathRepoUpdatesConfig {
             return false;
         }
 
-        update_git_repo(repo_id, ref_type, ref_match, None, None)
+        update_git_repo(repo_id, ref_type, ref_match, None, None).unwrap_or(false)
     }
 }
 

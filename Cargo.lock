@@ -1471,6 +1471,7 @@ dependencies = [
  "tar",
  "tempfile",
  "tera",
+ "term_cursor",
  "term_size",
  "time",
  "tokio",
@@ -2359,6 +2360,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "term_cursor"
+version = "0.2.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e225e1afb8bf56aa077366fced39df360db6ec09af1d9fb0b0591843e8482629"
+dependencies = [
+ "termios",
+ "winapi",
+]
+
+[[package]]
 name = "term_size"
 version = "0.3.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2375,6 +2386,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ff1bc3d3f05aff0403e8ac0d92ced918ec05b666a43f83297ccef5bea8a3d449"
 dependencies = [
  "winapi-util",
+]
+
+[[package]]
+name = "termios"
+version = "0.3.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "411c5bf740737c7918b8b1fe232dca4dc9f8e754b8ad5e20966814001ed0ac6b"
+dependencies = [
+ "libc",
 ]
 
 [[package]]

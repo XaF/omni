@@ -4,6 +4,7 @@ use std::fs::OpenOptions;
 use std::io::Write;
 use std::panic::catch_unwind;
 use std::path::PathBuf;
+use std::process::exit;
 use std::sync::Mutex;
 
 use blake3::Hasher;
@@ -18,6 +19,7 @@ use crate::internal::dynenv::DynamicEnvExportMode;
 use crate::internal::git::id_from_git_url;
 use crate::internal::git::safe_git_url_parse;
 use crate::internal::user_interface::StringColor;
+use crate::omni_error;
 use crate::omni_warning;
 
 extern crate machine_uid;
@@ -168,6 +170,16 @@ lazy_static! {
 
     #[derive(Debug)]
     static ref CURRENT_SHELL: Shell = Shell::from_env();
+
+    #[derive(Debug)]
+    static ref CURRENT_EXE: PathBuf = {
+        let current_exe = std::env::current_exe();
+        if current_exe.is_err() {
+            omni_error!("failed to get current executable path", "hook init");
+            exit(1);
+        }
+        current_exe.unwrap()
+    };
 }
 
 pub fn git_env<T: AsRef<str>>(path: T) -> GitRepoEnv {
@@ -331,6 +343,10 @@ pub fn shell_integration_is_loaded() -> bool {
 
 pub fn shell_is_interactive() -> bool {
     *INTERACTIVE_SHELL
+}
+
+pub fn current_exe() -> PathBuf {
+    (*CURRENT_EXE).clone()
 }
 
 #[derive(Debug, Clone)]
