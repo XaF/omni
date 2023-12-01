@@ -24,6 +24,7 @@ use crate::internal::config::up::utils::RunConfig;
 use crate::internal::config::up::utils::SpinnerProgressHandler;
 use crate::internal::env::current_exe;
 use crate::internal::env::shell_is_interactive;
+use crate::internal::git::full_git_url_parse;
 use crate::internal::git::path_entry_config;
 use crate::internal::git_env;
 use crate::internal::self_update;
@@ -207,7 +208,7 @@ pub fn report_update_error() {
     }
 }
 
-pub fn trigger_background_update(skip_paths: Vec<PathBuf>) -> bool {
+pub fn trigger_background_update(skip_paths: HashSet<PathBuf>) -> bool {
     let mut command = Command::new(current_exe());
     command.arg("--update-and-log-on-error");
     command.stdin(std::process::Stdio::null());
@@ -240,7 +241,7 @@ pub fn update(
     force_update: bool,
     allow_background_update: bool,
     force_sync: Vec<PathBuf>,
-) -> (Vec<PathBuf>, Vec<PathBuf>) {
+) -> (HashSet<PathBuf>, HashSet<PathBuf>) {
     // Get the configuration
     let config = global_config();
 
@@ -249,7 +250,7 @@ pub fn update(
 
     // Check if OMNI_SKIP_UPDATE_PATH is set, in which case we
     // can parse it into a list of paths to skip
-    let skip_update_path: Vec<PathBuf> =
+    let skip_update_path: HashSet<PathBuf> =
         if let Some(skip_update_path) = std::env::var_os("OMNI_SKIP_UPDATE_PATH") {
             skip_update_path
                 .to_str()
@@ -258,24 +259,85 @@ pub fn update(
                 .map(PathBuf::from)
                 .collect()
         } else {
-            vec![]
+            HashSet::new()
         };
 
     // Nothing to do if nothing is in the omnipath and we don't
     // check for omni updates
     if omnipath_entries.is_empty() && config.path_repo_updates.self_update.do_not_check() {
-        return (vec![], vec![]);
+        return (HashSet::new(), HashSet::new());
     }
 
+    // Nothing to do if we don't need to update
     if !force_update && !should_update() {
-        return (vec![], vec![]);
+        return (HashSet::new(), HashSet::new());
     }
 
     self_update();
 
+    // Nothing more to do if nothing is in the omnipath
     if omnipath_entries.is_empty() {
-        return (vec![], vec![]);
+        return (HashSet::new(), HashSet::new());
     }
+
+    // Make sure we run git fetch --dry-run at least once per host
+    // to trigger ssh agent authentication if needed
+    // TODO: disable that if no agent is setup for the given host
+    let mut failed_early_auth = HashSet::new();
+    if !config.path_repo_updates.pre_auth {
+        let mut auth_hosts = HashMap::new();
+        for path_entry in &omnipath_entries {
+            let git_env = git_env(&path_entry.as_string());
+            let repo_id = git_env.id();
+            if repo_id.is_none() {
+                continue;
+            }
+            let repo_id = repo_id.unwrap();
+            let repo_root = git_env.root().unwrap().to_string();
+
+            if let Ok(git_url) = full_git_url_parse(&repo_id) {
+                if let Some(host) = git_url.host {
+                    let key = (host.clone(), git_url.scheme.to_string());
+
+                    if let Some(succeeded) = auth_hosts.get(&key) {
+                        if !succeeded {
+                            failed_early_auth.insert(repo_root.clone());
+                        }
+                        continue;
+                    }
+
+                    // Check using git ls-remote
+                    let mut cmd = TokioCommand::new("git");
+                    cmd.arg("ls-remote");
+                    cmd.current_dir(&repo_root);
+                    cmd.stdout(std::process::Stdio::piped());
+                    cmd.stderr(std::process::Stdio::piped());
+
+                    let result = run_command_with_handler(
+                        &mut cmd,
+                        |_stdout, _stderr| {
+                            // Do nothing
+                        },
+                        RunConfig::new().with_timeout(config.path_repo_updates.pre_auth_timeout),
+                    );
+
+                    auth_hosts.insert(key, result.is_ok());
+                    if result.is_err() {
+                        omni_error!(format!("failed to authenticate to {}", host.light_cyan()));
+                        failed_early_auth.insert(repo_root);
+                    }
+                }
+            }
+        }
+    }
+
+    // Add the paths that failed early authentication
+    // to the list of paths to skip
+    let skip_update_path = skip_update_path
+        .iter()
+        .cloned()
+        .chain(failed_early_auth.iter().map(PathBuf::from))
+        .collect::<Vec<_>>();
 
     // Override allow_background_update if the configuration does not allow it
     let allow_background_update = if !config.path_repo_updates.background_updates {
@@ -386,8 +448,6 @@ pub fn update(
             }
         }
 
-        // multiprogress.clear().unwrap();
-
         if !results.is_empty() {
             let current_exe = std::env::current_exe();
             if current_exe.is_err() {
@@ -452,6 +512,8 @@ pub fn update(
                     }
                 }
             }
+
+            ensure_newline();
         }
     }
 
@@ -464,7 +526,7 @@ pub fn update(
                 None
             }
         })
-        .collect::<Vec<_>>();
+        .collect::<HashSet<_>>();
 
     let errored_paths = updates_per_path
         .iter()
@@ -475,10 +537,10 @@ pub fn update(
                 None
             }
         })
-        .collect::<Vec<_>>();
+        .chain(failed_early_auth.iter().map(PathBuf::from))
+        .collect::<HashSet<_>>();
 
     // If we need to update in the background, let's do that now
-    ensure_newline();
     if allow_background_update && count_left_to_update > 0 {
         trigger_background_update(
             skip_update_path
