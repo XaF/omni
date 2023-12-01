@@ -537,7 +537,7 @@ pub fn update(
                 None
             }
         })
-        .chain(failed_early_auth.iter().map(|path| PathBuf::from(path)))
+        .chain(failed_early_auth.iter().map(PathBuf::from))
         .collect::<HashSet<_>>();
 
     // If we need to update in the background, let's do that now
