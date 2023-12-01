@@ -690,6 +690,8 @@ impl PathEntryConfig {
 pub struct PathRepoUpdatesConfig {
     pub enabled: bool,
     pub self_update: PathRepoUpdatesSelfUpdateEnum,
+    pub pre_auth: bool,
+    pub pre_auth_timeout: u64,
     pub background_updates: bool,
     pub background_updates_timeout: u64,
     pub interval: u64,
@@ -729,6 +731,10 @@ impl PathRepoUpdatesConfig {
                 },
                 (None, None) => PathRepoUpdatesSelfUpdateEnum::Ask,
             },
+            pre_auth: config_value.get_as_bool("pre_auth").unwrap_or(true),
+            pre_auth_timeout: config_value
+                .get_as_unsigned_integer("pre_auth_timeout")
+                .unwrap_or(120),
             background_updates: config_value
                 .get_as_bool("background_updates")
                 .unwrap_or(true),

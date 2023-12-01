@@ -150,6 +150,8 @@ path:
 path_repo_updates:
   enabled: true
   self_update: ask
+  pre_auth: true
+  pre_auth_timeout: 120
   background_updates: true
   background_updates_timeout: 3600 # 1 hour
   interval: 43200 # 12 hours
