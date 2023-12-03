@@ -1,3 +1,4 @@
+use std::collections::BTreeMap;
 use std::collections::HashMap;
 use std::fs;
 use std::fs::File;
@@ -18,7 +19,7 @@ use crate::internal::config::SyntaxOptArg;
 pub struct PathCommand {
     name: Vec<String>,
     source: String,
-    aliases: Vec<Vec<String>>,
+    aliases: BTreeMap<Vec<String>, String>,
     file_details: OnceCell<Option<PathCommandFileDetails>>,
 }
 
@@ -80,7 +81,7 @@ impl PathCommand {
                 if let Some(idx) = known_sources.get_mut(&new_command.real_source()) {
                     // Add this command's name to the command's aliases
                     let cmd: &mut _ = &mut all_commands[*idx];
-                    cmd.add_alias(new_command.name());
+                    cmd.add_alias(new_command.name(), Some(new_command.source()));
                 } else {
                     // Add the new command
                     all_commands.push(new_command.clone());
@@ -102,7 +103,7 @@ impl PathCommand {
         Self {
             name,
             source,
-            aliases: Vec::new(),
+            aliases: BTreeMap::new(),
             file_details: OnceCell::new(),
         }
     }
@@ -112,19 +113,20 @@ impl PathCommand {
     }
 
     pub fn aliases(&self) -> Vec<Vec<String>> {
-        self.aliases.clone()
+        self.aliases.keys().cloned().collect()
     }
 
-    fn add_alias(&mut self, alias: Vec<String>) {
+    fn add_alias(&mut self, alias: Vec<String>, source: Option<String>) {
         if alias == self.name {
             return;
         }
 
-        if self.aliases.iter().any(|a| a == &alias) {
+        if self.aliases.keys().any(|a| a == &alias) {
             return;
         }
 
-        self.aliases.push(alias);
+        self.aliases
+            .insert(alias, source.unwrap_or(self.source.clone()));
     }
 
     pub fn source(&self) -> String {
@@ -155,9 +157,17 @@ impl PathCommand {
             .and_then(|details| details.category.clone())
     }
 
-    pub fn exec(&self, argv: Vec<String>) {
+    pub fn exec(&self, argv: Vec<String>, called_as: Option<Vec<String>>) {
+        // Get the source of the command as called
+        let source = called_as.map_or(self.source.clone(), |called_as| {
+            self.aliases
+                .get(&called_as)
+                .map(|source| source.clone())
+                .unwrap_or(self.source.clone())
+        });
+
         // Execute the command
-        let mut command = ProcessCommand::new(self.source.clone());
+        let mut command = ProcessCommand::new(source);
         command.args(argv);
         command.exec();
 

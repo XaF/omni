@@ -320,8 +320,8 @@ impl Command {
         update_dynamic_env_for_command(&self.source_dir());
 
         // Set the general execution environment
-        let name = if let Some(called_as) = called_as {
-            called_as
+        let name = if let Some(ref called_as) = called_as {
+            called_as.clone()
         } else {
             self.name().clone()
         };
@@ -361,7 +361,7 @@ impl Command {
             Command::BuiltinStatus(command) => command.exec(argv),
             Command::BuiltinTidy(command) => command.exec(argv),
             Command::BuiltinUp(command) => command.exec(argv),
-            Command::FromPath(command) => command.exec(argv),
+            Command::FromPath(command) => command.exec(argv, called_as),
             Command::FromConfig(command) => command.exec(argv),
             Command::FromMakefile(command) => command.exec(argv),
             Command::Void(_) => {}
