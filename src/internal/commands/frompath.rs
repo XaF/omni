@@ -162,7 +162,7 @@ impl PathCommand {
         let source = called_as.map_or(self.source.clone(), |called_as| {
             self.aliases
                 .get(&called_as)
-                .map(|source| source.clone())
+                .cloned()
                 .unwrap_or(self.source.clone())
         });
 
