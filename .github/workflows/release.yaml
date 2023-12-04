@@ -171,6 +171,10 @@ jobs:
     needs:
       - create-release
 
+    env:
+      HOMEBREW_REPOSITORY_OWNER: xaf
+      HOMEBREW_REPOSITORY_NAME: homebrew-omni
+
     steps:
       - name: Create application token
         uses: actions/create-github-app-token@v1
@@ -178,10 +182,12 @@ jobs:
         with:
           app-id: ${{ secrets.OMNICLI_APP_ID }}
           private-key: ${{ secrets.OMNICLI_PRIVATE_KEY }}
+          owner: ${{ env.HOMEBREW_REPOSITORY_OWNER }}
+          repositories: ${{ env.HOMEBREW_REPOSITORY_NAME }}
 
       - name: Send repository dispatch with update-formulae event
         uses: peter-evans/repository-dispatch@v2
         with:
           token: ${{ steps.app-token.outputs.token }}
-          repository: XaF/homebrew-omni
+          repository: ${{ env.HOMEBREW_REPOSITORY_OWNER }}/${{ env.HOMEBREW_REPOSITORY_NAME }}
           event-type: update-formulae
