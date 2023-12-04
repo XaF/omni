@@ -329,7 +329,7 @@ impl CommandSyntax {
             parameters.extend(
                 array
                     .iter()
-                    .filter_map(|value| SyntaxOptArg::from_config_value(&value, None)),
+                    .filter_map(|value| SyntaxOptArg::from_config_value(value, None)),
             );
         } else if let Some(table) = config_value.as_table() {
             let keys = [
@@ -349,7 +349,7 @@ impl CommandSyntax {
                             .filter_map(|value| SyntaxOptArg::from_config_value(value, required))
                             .collect::<Vec<SyntaxOptArg>>();
                         parameters.extend(arguments);
-                    } else if let Some(arg) = SyntaxOptArg::from_config_value(&value, required) {
+                    } else if let Some(arg) = SyntaxOptArg::from_config_value(value, required) {
                         parameters.push(arg);
                     }
                 }
