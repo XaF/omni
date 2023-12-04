@@ -6,9 +6,12 @@ use std::io::BufRead;
 use std::io::BufReader;
 use std::os::unix::fs::PermissionsExt;
 use std::os::unix::process::CommandExt;
+use std::path::Path;
 use std::process::Command as ProcessCommand;
 
 use once_cell::sync::OnceCell;
+use serde::Deserialize;
+use serde::Serialize;
 use walkdir::WalkDir;
 
 use crate::internal::commands::path::omnipath;
@@ -142,9 +145,7 @@ impl PathCommand {
     }
 
     pub fn help(&self) -> Option<String> {
-        self.file_details()
-            .and_then(|details| details.help.clone())
-            .map(|lines| lines.join("\n"))
+        self.file_details().and_then(|details| details.help.clone())
     }
 
     pub fn syntax(&self) -> Option<CommandSyntax> {
@@ -197,27 +198,120 @@ impl PathCommand {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PathCommandFileDetails {
+    #[serde(default, deserialize_with = "deserialize_category")]
     category: Option<Vec<String>>,
-    help: Option<Vec<String>>,
+    #[serde(default, deserialize_with = "deserialize_help")]
+    help: Option<String>,
+    #[serde(default, deserialize_with = "deserialize_autocompletion")]
     autocompletion: bool,
+    #[serde(default, deserialize_with = "deserialize_syntax")]
     syntax: Option<CommandSyntax>,
+}
+
+fn deserialize_category<'de, D>(deserializer: D) -> Result<Option<Vec<String>>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let value = serde_yaml::Value::deserialize(deserializer)?;
+    match value {
+        serde_yaml::Value::String(s) => Ok(Some(
+            s.split(',')
+                .map(|s| s.trim().to_string())
+                .collect::<Vec<String>>(),
+        )),
+        serde_yaml::Value::Sequence(s) => Ok(Some(
+            s.iter()
+                .map(|s| s.as_str().unwrap().trim().to_string())
+                .collect::<Vec<String>>(),
+        )),
+        _ => Ok(None),
+    }
+}
+
+fn deserialize_help<'de, D>(deserializer: D) -> Result<Option<String>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let value = serde_yaml::Value::deserialize(deserializer)?;
+    match value {
+        serde_yaml::Value::String(s) => Ok(Some(s)),
+        _ => Ok(None),
+    }
+}
+
+fn deserialize_autocompletion<'de, D>(deserializer: D) -> Result<bool, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let value = serde_yaml::Value::deserialize(deserializer)?;
+    match value {
+        serde_yaml::Value::Bool(b) => Ok(b),
+        _ => Ok(false),
+    }
+}
+
+fn deserialize_syntax<'de, D>(deserializer: D) -> Result<Option<CommandSyntax>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    if let Ok(value) = CommandSyntax::deserialize(deserializer) {
+        return Ok(Some(value));
+    }
+    Ok(None)
 }
 
 impl PathCommandFileDetails {
     pub fn from_file(path: &str) -> Option<Self> {
+        if let Some(details) = Self::from_metadata_file(path) {
+            return Some(details);
+        }
+
+        if let Some(details) = Self::from_source_file(path) {
+            return Some(details);
+        }
+
+        None
+    }
+
+    pub fn from_metadata_file(path: &str) -> Option<Self> {
+        // The metadata file for `file.ext` can be either
+        // `file.ext.metadata.yaml` or `file.metadata.yaml`
+        let mut metadata_files = vec![format!("{}.metadata.yaml", path)];
+        if let Some(dotpos) = path.rfind('.') {
+            metadata_files.push(format!("{}.metadata.yaml", &path[0..dotpos]));
+        }
+
+        for metadata_file in metadata_files {
+            let path = Path::new(&metadata_file);
+
+            // Check if the metadata file exists
+            if !path.exists() {
+                continue;
+            }
+
+            if let Ok(file) = File::open(path) {
+                if let Ok(mut md) = serde_yaml::from_reader::<_, Self>(file) {
+                    // If the help is not empty, split it into lines
+                    if let Some(help) = &mut md.help {
+                        *help = handle_color_codes(help.clone());
+                    }
+
+                    return Some(md);
+                }
+            }
+        }
+
+        None
+    }
+
+    pub fn from_source_file(path: &str) -> Option<Self> {
         let mut autocompletion = false;
         let mut category = None;
         let mut help_lines = Vec::new();
 
         let mut parameters: Vec<SyntaxOptArg> = vec![];
-
-        // let mut arguments_order = Vec::new();
-        // let mut arguments = HashMap::new();
-
-        // let mut options_order = Vec::new();
-        // let mut options = HashMap::new();
 
         let mut reading_help = false;
 
@@ -312,7 +406,7 @@ impl PathCommandFileDetails {
         // // Return the file details
         Some(PathCommandFileDetails {
             category,
-            help: Some(help_lines),
+            help: Some(help_lines.join("\n")),
             autocompletion,
             syntax,
         })

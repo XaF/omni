@@ -20,12 +20,13 @@ Any command defined in a global configuration file will be available throughout 
 
 ### Syntax
 
-The syntax parameter takes the following sub-parameters
+The syntax parameter takes a list of `parameter` objects. Each `parameter` object can take the following parameters:
 
 | Parameter        | Type      | Description                                           |
 |------------------|-----------|-------------------------------------------------------|
-| `arguments` | list of strings or maps with single key (`name: description`) | To define any mandatory parameters that should be passed to the command |
-| `options` | list of strings or maps with single key (`name: description`) | To define any optional parameters that should be passed to the command |
+| `name` | string | the name of the parameter |
+| `desc` | string | the description/help for the parameter |
+| `required` | bool | whether or not this parameter is required |
 
 ## Example
 
@@ -38,12 +39,11 @@ commands:
 
   # Example of command to run tests, both parameters
   # are optional as the command can be run without any
-  # arguments, so they are declared as options.
+  # arguments.
   run-tests:
     syntax:
-      options:
-        - file: The specific test file to execute
-        - args...: Any other options to pass to the test
+      - file: The specific test file to execute
+      - args...: Any other options to pass to the test
     desc: "Run the tests for this project"
     run: |
       if [[ $# -eq 0 ]]; then
@@ -54,12 +54,15 @@ commands:
 
   # Example of command to generate a random number, both
   # parameters are mandatory as we error out if they are
-  # missing, so we declare them as arguments.
+  # missing, so we set required to `true`.
   random-number:
     syntax:
-      arguments:
-        - min: Minimum value
-        - max: Maximum value
+      - name: min
+        desc: Minimum value
+        required: true
+      - name: max
+        desc: Maximum value
+        required: true
     desc: "Generates a random number and prints it"
     run: |
       min=${1:?Missing minimum value}

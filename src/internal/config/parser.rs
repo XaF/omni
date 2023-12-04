@@ -308,42 +308,60 @@ impl CommandSyntax {
         }
     }
 
+    pub fn deserialize<'de, D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let value = serde_yaml::Value::deserialize(deserializer)?;
+        let config_value = ConfigValue::from_value(ConfigSource::Null, vec![], value);
+        if let Some(command_syntax) = CommandSyntax::from_config_value(&config_value) {
+            Ok(command_syntax)
+        } else {
+            Err(serde::de::Error::custom("invalid command syntax"))
+        }
+    }
+
     fn from_config_value(config_value: &ConfigValue) -> Option<Self> {
         let mut usage = None;
         let mut parameters = vec![];
 
-        if config_value.is_table() {
-            for key in ["arguments", "argument"] {
-                if let Some(value) = config_value.get(key) {
+        if let Some(array) = config_value.as_array() {
+            parameters.extend(
+                array
+                    .iter()
+                    .filter_map(|value| SyntaxOptArg::from_config_value(value, None)),
+            );
+        } else if let Some(table) = config_value.as_table() {
+            let keys = [
+                ("parameters", None),
+                ("arguments", Some(true)),
+                ("argument", Some(true)),
+                ("options", Some(false)),
+                ("option", Some(false)),
+                ("optional", Some(false)),
+            ];
+
+            for (key, required) in keys {
+                if let Some(value) = table.get(key) {
                     if let Some(value) = value.as_array() {
                         let arguments = value
                             .iter()
-                            .map(|value| SyntaxOptArg::from_config_value(value, true))
+                            .filter_map(|value| SyntaxOptArg::from_config_value(value, required))
                             .collect::<Vec<SyntaxOptArg>>();
                         parameters.extend(arguments);
-                    } else {
-                        parameters.push(SyntaxOptArg::from_config_value(&value, true));
+                    } else if let Some(arg) = SyntaxOptArg::from_config_value(value, required) {
+                        parameters.push(arg);
                     }
-                    break;
                 }
             }
 
-            for key in ["options", "option", "optional"] {
-                if let Some(value) = config_value.get(key) {
-                    if let Some(value) = value.as_array() {
-                        let options = value
-                            .iter()
-                            .map(|value| SyntaxOptArg::from_config_value(value, false))
-                            .collect::<Vec<SyntaxOptArg>>();
-                        parameters.extend(options);
-                    } else {
-                        parameters.push(SyntaxOptArg::from_config_value(&value, false));
-                    }
-                    break;
+            if let Some(value) = table.get("usage") {
+                if let Some(value) = value.as_str() {
+                    usage = Some(value.to_string());
                 }
             }
-        } else {
-            usage = Some(config_value.as_str().unwrap().to_string());
+        } else if let Some(value) = config_value.as_str() {
+            usage = Some(value.to_string());
         }
 
         if parameters.is_empty() && usage.is_none() {
@@ -370,23 +388,51 @@ impl SyntaxOptArg {
         }
     }
 
-    fn from_config_value(config_value: &ConfigValue, required: bool) -> Self {
-        let mut name = "".to_string();
+    fn from_config_value(config_value: &ConfigValue, required: Option<bool>) -> Option<Self> {
+        let name;
         let mut desc = None;
-        if config_value.is_table() {
-            if let Some((key, value)) = config_value.as_table().unwrap().into_iter().next() {
-                name = key;
-                desc = Some(value.as_str().unwrap().to_string());
+        let mut required = required;
+
+        if let Some(table) = config_value.as_table() {
+            let value_for_details;
+
+            if let Some(name_value) = table.get("name") {
+                if let Some(name_value) = name_value.as_str() {
+                    name = name_value.to_string();
+                    value_for_details = Some(config_value.clone());
+                } else {
+                    return None;
+                }
+            } else if table.len() == 1 {
+                if let Some((key, value)) = table.into_iter().next() {
+                    name = key;
+                    value_for_details = Some(value);
+                } else {
+                    return None;
+                }
+            } else {
+                return None;
+            }
+
+            if let Some(value_for_details) = value_for_details {
+                if let Some(value_str) = value_for_details.as_str() {
+                    desc = Some(value_str.to_string());
+                } else if let Some(value_table) = value_for_details.as_table() {
+                    desc = value_table.get("desc")?.as_str();
+                    if required.is_none() {
+                        required = value_table.get("required")?.as_bool();
+                    }
+                }
             }
         } else {
             name = config_value.as_str().unwrap();
         }
 
-        Self {
+        Some(Self {
             name,
             desc,
-            required,
-        }
+            required: required.unwrap_or(false),
+        })
     }
 }
 
