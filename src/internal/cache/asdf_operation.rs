@@ -27,7 +27,11 @@ pub struct AsdfOperationCache {
         skip_serializing_if = "AsdfOperationUpdateCache::is_empty"
     )]
     pub update_cache: AsdfOperationUpdateCache,
-    #[serde(default = "utils::origin_of_time", with = "time::serde::rfc3339")]
+    #[serde(
+        default = "utils::origin_of_time",
+        with = "time::serde::rfc3339",
+        skip_serializing_if = "utils::is_origin_of_time"
+    )]
     pub updated_at: OffsetDateTime,
 }
 
@@ -52,15 +56,18 @@ impl AsdfOperationCache {
     }
 
     pub fn should_update_asdf(&self) -> bool {
+        // TODO: add configuration option for the duration?
         self.update_cache.should_update_asdf(Duration::days(1))
     }
 
     pub fn should_update_asdf_plugin(&self, plugin: &str) -> bool {
+        // TODO: add configuration option for the duration?
         self.update_cache
             .should_update_asdf_plugin(plugin, Duration::days(1))
     }
 
     pub fn get_asdf_plugin_versions(&self, plugin: &str) -> Option<Vec<String>> {
+        // TODO: add configuration option for the duration?
         self.update_cache
             .get_asdf_plugin_versions(plugin, Duration::hours(1))
     }
@@ -135,7 +142,11 @@ pub struct AsdfInstalled {
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct AsdfOperationUpdateCache {
-    #[serde(default = "utils::origin_of_time", with = "time::serde::rfc3339")]
+    #[serde(
+        default = "utils::origin_of_time",
+        with = "time::serde::rfc3339",
+        skip_serializing_if = "utils::is_origin_of_time"
+    )]
     pub asdf_updated_at: OffsetDateTime,
     #[serde(
         default = "HashMap::new",
@@ -210,7 +221,11 @@ impl Empty for AsdfOperationUpdateCache {
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct AsdfOperationUpdateCachePluginVersions {
-    #[serde(default = "utils::origin_of_time", with = "time::serde::rfc3339")]
+    #[serde(
+        default = "utils::origin_of_time",
+        with = "time::serde::rfc3339",
+        skip_serializing_if = "utils::is_origin_of_time"
+    )]
     pub updated_at: OffsetDateTime,
     #[serde(default = "Vec::new", skip_serializing_if = "Vec::is_empty")]
     pub versions: Vec<String>,

@@ -44,6 +44,10 @@ pub fn origin_of_time() -> OffsetDateTime {
     OffsetDateTime::UNIX_EPOCH
 }
 
+pub fn is_origin_of_time(value: &OffsetDateTime) -> bool {
+    *value == origin_of_time()
+}
+
 // pub fn entry_expired_option<T: Expires>(entry: &Option<T>) -> bool {
 // if let Some(entry) = entry {
 // entry.expired()
