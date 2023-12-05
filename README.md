@@ -17,5 +17,12 @@ P@@@~ 7B@@@P~       !@@@5
 
 ![build](https://github.com/XaF/omni/actions/workflows/tests.yaml/badge.svg)
 [![latest release](https://img.shields.io/github/v/release/XaF/omni?logo=github&sort=semver)](https://github.com/XaF/omni/releases)
+[![downloads of the latest release](https://img.shields.io/github/downloads-pre/xaf/omni/latest/total?logo=github)](https://tooomm.github.io/github-release-stats/?username=xaf&repository=omni)
+
+## Get started
+
+```sh
+sh -c "$(curl -fsLS get.omnicli.dev)" -- help
+```
 
 Documentation available on [omnicli.dev](https://omnicli.dev).
