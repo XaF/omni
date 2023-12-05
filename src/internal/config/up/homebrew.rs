@@ -788,6 +788,14 @@ impl HomebrewInstall {
     }
 
     fn is_installed(&self) -> bool {
+        if !HomebrewOperationCache::get().should_check_install(
+            &self.name,
+            self.version.clone(),
+            self.is_cask(),
+        ) {
+            return true;
+        }
+
         let mut brew_list = std::process::Command::new("brew");
         brew_list.arg("list");
         brew_list.arg(self.package_id());
@@ -795,7 +803,17 @@ impl HomebrewInstall {
         brew_list.stderr(std::process::Stdio::null());
 
         if let Ok(output) = brew_list.output() {
-            return output.status.success();
+            if output.status.success() {
+                // Update the cache
+                if let Err(err) = HomebrewOperationCache::exclusive(|cache| {
+                    cache.checked_install(&self.name, self.version.clone(), self.is_cask());
+                    true
+                }) {
+                    omni_warning!(format!("failed to update cache: {}", err));
+                }
+
+                return true;
+            }
         }
 
         false
@@ -842,6 +860,16 @@ impl HomebrewInstall {
     ) -> Result<(), UpError> {
         if !installed {
             self.extract_package(progress_handler)?;
+        } else if !HomebrewOperationCache::get().should_update_install(
+            &self.name,
+            self.version.clone(),
+            self.is_cask(),
+        ) {
+            if let Some(progress_handler) = progress_handler {
+                progress_handler.progress("already up to date".light_black())
+            }
+
+            return Ok(());
         }
 
         let mut brew_tap = TokioCommand::new("brew");
@@ -870,6 +898,15 @@ impl HomebrewInstall {
         if result.is_ok() && self.was_handled.set(true).is_err() {
             unreachable!();
         }
+
+        // Update the cache
+        if let Err(err) = HomebrewOperationCache::exclusive(|cache| {
+            cache.updated_install(&self.name, self.version.clone(), self.is_cask());
+            true
+        }) {
+            return Err(UpError::Cache(err.to_string()));
+        }
+
         result
     }
 
@@ -965,26 +1002,41 @@ impl HomebrewInstall {
         // }
         // }
 
-        let brew_updated = BREW_UPDATED.get_or_init(|| {
-            if let Some(progress_handler) = progress_handler {
-                progress_handler.progress("updating homebrew".to_string())
+        if HomebrewOperationCache::get().should_update_homebrew() {
+            let mut update_brew_cache = false;
+            let brew_updated = BREW_UPDATED.get_or_init(|| {
+                if let Some(progress_handler) = progress_handler {
+                    progress_handler.progress("updating homebrew".to_string())
+                }
+
+                let mut brew_update = TokioCommand::new("brew");
+                brew_update.arg("update");
+                brew_update.env("HOMEBREW_NO_INSTALL_FROM_API", "1");
+                brew_update.stdout(std::process::Stdio::piped());
+                brew_update.stderr(std::process::Stdio::piped());
+
+                let result = run_progress(&mut brew_update, progress_handler, RunConfig::default());
+                if result.is_err() {
+                    return false;
+                }
+
+                update_brew_cache = true;
+
+                true
+            });
+            if !brew_updated {
+                return Err(UpError::Exec("failed to update homebrew".to_string()));
             }
 
-            let mut brew_update = TokioCommand::new("brew");
-            brew_update.arg("update");
-            brew_update.env("HOMEBREW_NO_INSTALL_FROM_API", "1");
-            brew_update.stdout(std::process::Stdio::piped());
-            brew_update.stderr(std::process::Stdio::piped());
-
-            let result = run_progress(&mut brew_update, progress_handler, RunConfig::default());
-            if result.is_err() {
-                return false;
+            if update_brew_cache {
+                // Update the cache
+                if let Err(err) = HomebrewOperationCache::exclusive(|cache| {
+                    cache.updated_homebrew();
+                    true
+                }) {
+                    return Err(UpError::Cache(err.to_string()));
+                }
             }
-
-            true
-        });
-        if !brew_updated {
-            return Err(UpError::Exec("failed to update homebrew".to_string()));
         }
 
         let mut brew_extract = TokioCommand::new("brew");
