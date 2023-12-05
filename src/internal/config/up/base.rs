@@ -6,6 +6,7 @@ use crate::internal::cache::UpEnvironmentsCache;
 use crate::internal::config::up::UpConfigAsdfBase;
 use crate::internal::config::up::UpConfigTool;
 use crate::internal::config::up::UpError;
+use crate::internal::config::up::UpOptions;
 use crate::internal::config::ConfigValue;
 use crate::internal::dynenv::update_dynamic_env_for_command;
 use crate::internal::user_interface::colors::StringColor;
@@ -106,7 +107,7 @@ impl UpConfig {
         }
     }
 
-    pub fn up(&self) -> Result<(), UpError> {
+    pub fn up(&self, options: &UpOptions) -> Result<(), UpError> {
         // Get current directory
         let current_dir = std::env::current_dir().expect("Failed to get current directory");
 
@@ -135,7 +136,7 @@ impl UpConfig {
             // the command can consider it right away
             update_dynamic_env_for_command(".");
 
-            step.up(Some((idx + 1, num_steps)))?
+            step.up(&options, Some((idx + 1, num_steps)))?
         }
 
         // This is a special case, as we could have multiple versions of a single
@@ -146,7 +147,7 @@ impl UpConfig {
         Ok(())
     }
 
-    pub fn down(&self) -> Result<(), UpError> {
+    pub fn down(&self, options: &UpOptions) -> Result<(), UpError> {
         // Filter the steps to only the available ones
         let steps = self
             .steps
@@ -162,7 +163,7 @@ impl UpConfig {
             // the command can consider it right away
             update_dynamic_env_for_command(".");
 
-            step.down(Some((idx + 1, num_steps)))?
+            step.down(&options, Some((idx + 1, num_steps)))?
         }
 
         UpConfigAsdfBase::cleanup_unused(Vec::new(), Some((num_steps, num_steps)))?;

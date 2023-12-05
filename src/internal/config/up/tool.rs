@@ -8,6 +8,7 @@ use crate::internal::config::up::UpConfigGolang;
 use crate::internal::config::up::UpConfigHomebrew;
 use crate::internal::config::up::UpConfigNodejs;
 use crate::internal::config::up::UpError;
+use crate::internal::config::up::UpOptions;
 use crate::internal::config::ConfigValue;
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -73,33 +74,37 @@ impl UpConfigTool {
         }
     }
 
-    pub fn up(&self, progress: Option<(usize, usize)>) -> Result<(), UpError> {
+    pub fn up(&self, options: &UpOptions, progress: Option<(usize, usize)>) -> Result<(), UpError> {
         match self {
-            UpConfigTool::Bash(config) => config.up(progress),
+            UpConfigTool::Bash(config) => config.up(&options, progress),
             UpConfigTool::Bundler(config) => config.up(progress),
             UpConfigTool::Custom(config) => config.up(progress),
-            UpConfigTool::Go(config) => config.up(progress),
-            UpConfigTool::Homebrew(config) => config.up(progress),
-            UpConfigTool::Nodejs(config) => config.up(progress),
-            UpConfigTool::Python(config) => config.up(progress),
-            UpConfigTool::Ruby(config) => config.up(progress),
-            UpConfigTool::Rust(config) => config.up(progress),
-            UpConfigTool::Terraform(config) => config.up(progress),
+            UpConfigTool::Go(config) => config.up(&options, progress),
+            UpConfigTool::Homebrew(config) => config.up(&options, progress),
+            UpConfigTool::Nodejs(config) => config.up(&options, progress),
+            UpConfigTool::Python(config) => config.up(&options, progress),
+            UpConfigTool::Ruby(config) => config.up(&options, progress),
+            UpConfigTool::Rust(config) => config.up(&options, progress),
+            UpConfigTool::Terraform(config) => config.up(&options, progress),
         }
     }
 
-    pub fn down(&self, progress: Option<(usize, usize)>) -> Result<(), UpError> {
+    pub fn down(
+        &self,
+        options: &UpOptions,
+        progress: Option<(usize, usize)>,
+    ) -> Result<(), UpError> {
         match self {
-            UpConfigTool::Bash(config) => config.down(progress),
+            UpConfigTool::Bash(config) => config.down(&options, progress),
             UpConfigTool::Bundler(config) => config.down(progress),
             UpConfigTool::Custom(config) => config.down(progress),
-            UpConfigTool::Go(config) => config.down(progress),
-            UpConfigTool::Homebrew(config) => config.down(progress),
-            UpConfigTool::Nodejs(config) => config.down(progress),
-            UpConfigTool::Python(config) => config.down(progress),
-            UpConfigTool::Ruby(config) => config.down(progress),
-            UpConfigTool::Rust(config) => config.down(progress),
-            UpConfigTool::Terraform(config) => config.down(progress),
+            UpConfigTool::Go(config) => config.down(&options, progress),
+            UpConfigTool::Homebrew(config) => config.down(&options, progress),
+            UpConfigTool::Nodejs(config) => config.down(&options, progress),
+            UpConfigTool::Python(config) => config.down(&options, progress),
+            UpConfigTool::Ruby(config) => config.down(&options, progress),
+            UpConfigTool::Rust(config) => config.down(&options, progress),
+            UpConfigTool::Terraform(config) => config.down(&options, progress),
         }
     }
 

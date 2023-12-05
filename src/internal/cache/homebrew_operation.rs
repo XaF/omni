@@ -11,7 +11,6 @@ use crate::internal::cache::handler::exclusive;
 use crate::internal::cache::handler::shared;
 use crate::internal::cache::loaders::get_homebrew_operation_cache;
 use crate::internal::cache::loaders::set_homebrew_operation_cache;
-use crate::internal::cache::offsetdatetime_hashmap;
 use crate::internal::cache::utils;
 use crate::internal::cache::utils::Empty;
 use crate::internal::cache::CacheObject;
@@ -96,6 +95,16 @@ impl HomebrewOperationCache {
         inserted
     }
 
+    pub fn homebrew_bin_path(&self) -> Option<String> {
+        self.update_cache.homebrew_bin_path()
+    }
+
+    pub fn set_homebrew_bin_path(&mut self, bin_path: String) {
+        self.update_cache
+            .set_homebrew_bin_path(bin_path.to_string());
+        self.updated();
+    }
+
     pub fn updated_homebrew(&mut self) {
         self.update_cache.updated_homebrew();
         self.updated();
@@ -104,6 +113,32 @@ impl HomebrewOperationCache {
     pub fn should_update_homebrew(&self) -> bool {
         // TODO: add configuration option for the duration?
         self.update_cache.should_update_homebrew(Duration::days(1))
+    }
+
+    pub fn homebrew_install_bin_path(
+        &self,
+        install_name: &str,
+        install_version: Option<String>,
+        is_cask: bool,
+    ) -> Option<String> {
+        self.update_cache
+            .homebrew_install_bin_path(install_name, install_version, is_cask)
+    }
+
+    pub fn set_homebrew_install_bin_path(
+        &mut self,
+        install_name: &str,
+        install_version: Option<String>,
+        is_cask: bool,
+        bin_path: String,
+    ) {
+        self.update_cache.set_homebrew_install_bin_path(
+            install_name,
+            install_version,
+            is_cask,
+            bin_path.to_string(),
+        );
+        self.updated();
     }
 
     pub fn updated_install(
@@ -154,7 +189,7 @@ impl HomebrewOperationCache {
             install_version,
             is_cask,
             // TODO: add configuration option for the duration?
-            Duration::minutes(5),
+            Duration::hours(12),
         )
     }
 }
@@ -220,31 +255,19 @@ pub struct HomebrewTapped {
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct HomebrewOperationUpdateCache {
     #[serde(
-        default = "utils::origin_of_time",
-        with = "time::serde::rfc3339",
-        skip_serializing_if = "utils::is_origin_of_time"
+        default = "HomebrewOperationUpdateCacheHomebrew::new",
+        skip_serializing_if = "HomebrewOperationUpdateCacheHomebrew::is_empty"
     )]
-    pub homebrew_updated_at: OffsetDateTime,
-    #[serde(
-        default = "HashMap::new",
-        skip_serializing_if = "HashMap::is_empty",
-        with = "offsetdatetime_hashmap"
-    )]
-    pub install_updated_at: HashMap<String, OffsetDateTime>,
-    #[serde(
-        default = "HashMap::new",
-        skip_serializing_if = "HashMap::is_empty",
-        with = "offsetdatetime_hashmap"
-    )]
-    pub install_checked_at: HashMap<String, OffsetDateTime>,
+    pub homebrew: HomebrewOperationUpdateCacheHomebrew,
+    #[serde(default = "HashMap::new", skip_serializing_if = "HashMap::is_empty")]
+    pub install: HashMap<String, HomebrewOperationUpdateCacheInstall>,
 }
 
 impl HomebrewOperationUpdateCache {
     pub fn new() -> Self {
         Self {
-            homebrew_updated_at: utils::origin_of_time(),
-            install_updated_at: HashMap::new(),
-            install_checked_at: HashMap::new(),
+            homebrew: HomebrewOperationUpdateCacheHomebrew::new(),
+            install: HashMap::new(),
         }
     }
 
@@ -267,11 +290,50 @@ impl HomebrewOperationUpdateCache {
     }
 
     pub fn updated_homebrew(&mut self) {
-        self.homebrew_updated_at = OffsetDateTime::now_utc();
+        self.homebrew.updated_at = OffsetDateTime::now_utc();
     }
 
     pub fn should_update_homebrew(&self, expire_after: Duration) -> bool {
-        (self.homebrew_updated_at + expire_after) < OffsetDateTime::now_utc()
+        (self.homebrew.updated_at + expire_after) < OffsetDateTime::now_utc()
+    }
+
+    pub fn homebrew_bin_path(&self) -> Option<String> {
+        self.homebrew.bin_path.clone()
+    }
+
+    pub fn set_homebrew_bin_path(&mut self, bin_path: String) {
+        self.homebrew.bin_path = Some(bin_path);
+    }
+
+    pub fn homebrew_install_bin_path(
+        &self,
+        install_name: &str,
+        install_version: Option<String>,
+        is_cask: bool,
+    ) -> Option<String> {
+        let key = self.install_key(install_name, install_version, is_cask);
+        if let Some(install) = self.install.get(&key) {
+            install.bin_path.clone()
+        } else {
+            None
+        }
+    }
+
+    pub fn set_homebrew_install_bin_path(
+        &mut self,
+        install_name: &str,
+        install_version: Option<String>,
+        is_cask: bool,
+        bin_path: String,
+    ) {
+        let key = self.install_key(install_name, install_version, is_cask);
+        if let Some(install) = self.install.get_mut(&key) {
+            install.bin_path = Some(bin_path);
+        } else {
+            let mut install = HomebrewOperationUpdateCacheInstall::new();
+            install.bin_path = Some(bin_path);
+            self.install.insert(key, install);
+        }
     }
 
     pub fn updated_homebrew_install(
@@ -281,8 +343,13 @@ impl HomebrewOperationUpdateCache {
         is_cask: bool,
     ) {
         let key = self.install_key(install_name, install_version, is_cask);
-        self.install_updated_at
-            .insert(key, OffsetDateTime::now_utc());
+        if let Some(install) = self.install.get_mut(&key) {
+            install.updated_at = OffsetDateTime::now_utc();
+        } else {
+            let mut install = HomebrewOperationUpdateCacheInstall::new();
+            install.updated_at = OffsetDateTime::now_utc();
+            self.install.insert(key, install);
+        }
     }
 
     pub fn should_update_homebrew_install(
@@ -293,8 +360,8 @@ impl HomebrewOperationUpdateCache {
         expire_after: Duration,
     ) -> bool {
         let key = self.install_key(install_name, install_version, is_cask);
-        if let Some(install_updated_at) = self.install_updated_at.get(&key) {
-            (*install_updated_at + expire_after) < OffsetDateTime::now_utc()
+        if let Some(install) = self.install.get(&key) {
+            (install.updated_at + expire_after) < OffsetDateTime::now_utc()
         } else {
             true
         }
@@ -307,8 +374,13 @@ impl HomebrewOperationUpdateCache {
         is_cask: bool,
     ) {
         let key = self.install_key(install_name, install_version, is_cask);
-        self.install_checked_at
-            .insert(key, OffsetDateTime::now_utc());
+        if let Some(install) = self.install.get_mut(&key) {
+            install.checked_at = OffsetDateTime::now_utc();
+        } else {
+            let mut install = HomebrewOperationUpdateCacheInstall::new();
+            install.checked_at = OffsetDateTime::now_utc();
+            self.install.insert(key, install);
+        }
     }
 
     pub fn should_check_homebrew_install(
@@ -319,8 +391,8 @@ impl HomebrewOperationUpdateCache {
         expire_after: Duration,
     ) -> bool {
         let key = self.install_key(install_name, install_version, is_cask);
-        if let Some(install_checked_at) = self.install_checked_at.get(&key) {
-            (*install_checked_at + expire_after) < OffsetDateTime::now_utc()
+        if let Some(install) = self.install.get(&key) {
+            (install.checked_at + expire_after) < OffsetDateTime::now_utc()
         } else {
             true
         }
@@ -329,8 +401,69 @@ impl HomebrewOperationUpdateCache {
 
 impl Empty for HomebrewOperationUpdateCache {
     fn is_empty(&self) -> bool {
-        self.install_updated_at.is_empty()
-            && self.install_checked_at.is_empty()
-            && self.homebrew_updated_at == utils::origin_of_time()
+        self.install.is_empty() && self.homebrew.is_empty()
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct HomebrewOperationUpdateCacheHomebrew {
+    #[serde(
+        default = "utils::origin_of_time",
+        with = "time::serde::rfc3339",
+        skip_serializing_if = "utils::is_origin_of_time"
+    )]
+    pub updated_at: OffsetDateTime,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub bin_path: Option<String>,
+}
+
+impl HomebrewOperationUpdateCacheHomebrew {
+    pub fn new() -> Self {
+        Self {
+            updated_at: utils::origin_of_time(),
+            bin_path: None,
+        }
+    }
+}
+
+impl Empty for HomebrewOperationUpdateCacheHomebrew {
+    fn is_empty(&self) -> bool {
+        self.updated_at == utils::origin_of_time()
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct HomebrewOperationUpdateCacheInstall {
+    #[serde(
+        default = "utils::origin_of_time",
+        with = "time::serde::rfc3339",
+        skip_serializing_if = "utils::is_origin_of_time"
+    )]
+    pub updated_at: OffsetDateTime,
+    #[serde(
+        default = "utils::origin_of_time",
+        with = "time::serde::rfc3339",
+        skip_serializing_if = "utils::is_origin_of_time"
+    )]
+    pub checked_at: OffsetDateTime,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub bin_path: Option<String>,
+}
+
+impl HomebrewOperationUpdateCacheInstall {
+    pub fn new() -> Self {
+        Self {
+            updated_at: utils::origin_of_time(),
+            checked_at: utils::origin_of_time(),
+            bin_path: None,
+        }
+    }
+}
+
+impl Empty for HomebrewOperationUpdateCacheInstall {
+    fn is_empty(&self) -> bool {
+        self.updated_at == utils::origin_of_time()
+            && self.checked_at == utils::origin_of_time()
+            && self.bin_path.is_none()
     }
 }
