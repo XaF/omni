@@ -832,6 +832,11 @@ impl HomebrewInstall {
 
         let mut brew_list = std::process::Command::new("brew");
         brew_list.arg("list");
+        if self.is_cask() {
+            brew_list.arg("--cask");
+        } else {
+            brew_list.arg("--formula");
+        }
         brew_list.arg(self.package_id());
         brew_list.stdout(std::process::Stdio::null());
         brew_list.stderr(std::process::Stdio::null());
@@ -999,6 +1004,8 @@ impl HomebrewInstall {
         }
         if self.install_type == HomebrewInstallType::Cask {
             brew_install.arg("--cask");
+        } else {
+            brew_install.arg("--formula");
         }
         brew_install.arg(self.package_id());
 
