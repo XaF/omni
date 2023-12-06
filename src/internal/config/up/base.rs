@@ -136,7 +136,7 @@ impl UpConfig {
             // the command can consider it right away
             update_dynamic_env_for_command(".");
 
-            step.up(&options, Some((idx + 1, num_steps)))?
+            step.up(options, Some((idx + 1, num_steps)))?
         }
 
         // This is a special case, as we could have multiple versions of a single
@@ -163,7 +163,7 @@ impl UpConfig {
             // the command can consider it right away
             update_dynamic_env_for_command(".");
 
-            step.down(&options, Some((idx + 1, num_steps)))?
+            step.down(options, Some((idx + 1, num_steps)))?
         }
 
         UpConfigAsdfBase::cleanup_unused(Vec::new(), Some((num_steps, num_steps)))?;

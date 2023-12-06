@@ -76,16 +76,16 @@ impl UpConfigTool {
 
     pub fn up(&self, options: &UpOptions, progress: Option<(usize, usize)>) -> Result<(), UpError> {
         match self {
-            UpConfigTool::Bash(config) => config.up(&options, progress),
+            UpConfigTool::Bash(config) => config.up(options, progress),
             UpConfigTool::Bundler(config) => config.up(progress),
             UpConfigTool::Custom(config) => config.up(progress),
-            UpConfigTool::Go(config) => config.up(&options, progress),
-            UpConfigTool::Homebrew(config) => config.up(&options, progress),
-            UpConfigTool::Nodejs(config) => config.up(&options, progress),
-            UpConfigTool::Python(config) => config.up(&options, progress),
-            UpConfigTool::Ruby(config) => config.up(&options, progress),
-            UpConfigTool::Rust(config) => config.up(&options, progress),
-            UpConfigTool::Terraform(config) => config.up(&options, progress),
+            UpConfigTool::Go(config) => config.up(options, progress),
+            UpConfigTool::Homebrew(config) => config.up(options, progress),
+            UpConfigTool::Nodejs(config) => config.up(options, progress),
+            UpConfigTool::Python(config) => config.up(options, progress),
+            UpConfigTool::Ruby(config) => config.up(options, progress),
+            UpConfigTool::Rust(config) => config.up(options, progress),
+            UpConfigTool::Terraform(config) => config.up(options, progress),
         }
     }
 
@@ -95,16 +95,16 @@ impl UpConfigTool {
         progress: Option<(usize, usize)>,
     ) -> Result<(), UpError> {
         match self {
-            UpConfigTool::Bash(config) => config.down(&options, progress),
+            UpConfigTool::Bash(config) => config.down(options, progress),
             UpConfigTool::Bundler(config) => config.down(progress),
             UpConfigTool::Custom(config) => config.down(progress),
-            UpConfigTool::Go(config) => config.down(&options, progress),
-            UpConfigTool::Homebrew(config) => config.down(&options, progress),
-            UpConfigTool::Nodejs(config) => config.down(&options, progress),
-            UpConfigTool::Python(config) => config.down(&options, progress),
-            UpConfigTool::Ruby(config) => config.down(&options, progress),
-            UpConfigTool::Rust(config) => config.down(&options, progress),
-            UpConfigTool::Terraform(config) => config.down(&options, progress),
+            UpConfigTool::Go(config) => config.down(options, progress),
+            UpConfigTool::Homebrew(config) => config.down(options, progress),
+            UpConfigTool::Nodejs(config) => config.down(options, progress),
+            UpConfigTool::Python(config) => config.down(options, progress),
+            UpConfigTool::Ruby(config) => config.down(options, progress),
+            UpConfigTool::Rust(config) => config.down(options, progress),
+            UpConfigTool::Terraform(config) => config.down(options, progress),
         }
     }
 

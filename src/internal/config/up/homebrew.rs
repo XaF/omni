@@ -55,7 +55,7 @@ impl UpConfigHomebrew {
 
         let num_installs = self.install.len();
         for (idx, install) in self.install.iter().enumerate() {
-            if let Err(err) = install.up(&options, progress, Some((idx + 1, num_installs))) {
+            if let Err(err) = install.up(options, progress, Some((idx + 1, num_installs))) {
                 main_progress_handler.error();
                 return Err(err);
             }
@@ -113,8 +113,7 @@ impl UpConfigHomebrew {
 
             let num_uninstalls = to_uninstall.len();
             for (idx, (rmidx, install)) in to_uninstall.iter().enumerate() {
-                if let Err(err) = install.down(&options, progress, Some((idx + 1, num_uninstalls)))
-                {
+                if let Err(err) = install.down(options, progress, Some((idx + 1, num_uninstalls))) {
                     main_progress_handler.error();
                     return_value = Err(err);
                     return updated;
@@ -629,8 +628,8 @@ impl HomebrewInstall {
             return;
         }
 
-        let bin_path = self.bin_path(&options);
-        let brew_bin_path = self.brew_bin_path(&options);
+        let bin_path = self.bin_path(options);
+        let brew_bin_path = self.brew_bin_path(options);
         if bin_path.is_some() || brew_bin_path.is_some() {
             if let Err(err) = UpEnvironmentsCache::exclusive(|up_env| {
                 if let Some(bin_path) = bin_path {
@@ -686,18 +685,18 @@ impl HomebrewInstall {
         };
         let progress_handler: Option<&dyn ProgressHandler> = Some(progress_handler.as_ref());
 
-        let installed = self.is_installed(&options);
+        let installed = self.is_installed(options);
         if installed && self.version.is_some() {
-            self.update_cache(&options, progress_handler);
+            self.update_cache(options, progress_handler);
             if let Some(progress_handler) = progress_handler {
                 progress_handler.success_with_message("already installed".light_black())
             }
             return Ok(());
         }
 
-        match self.install(&options, progress_handler, installed) {
+        match self.install(options, progress_handler, installed) {
             Ok(did_something) => {
-                self.update_cache(&options, progress_handler);
+                self.update_cache(options, progress_handler);
                 if let Some(progress_handler) = progress_handler {
                     progress_handler.success_with_message(match (installed, did_something) {
                         (true, true) => "updated".light_green(),
@@ -749,7 +748,7 @@ impl HomebrewInstall {
         };
         let progress_handler: Option<&dyn ProgressHandler> = Some(progress_handler.as_ref());
 
-        let installed = self.is_installed(&options);
+        let installed = self.is_installed(options);
         if !installed {
             if let Some(progress_handler) = progress_handler {
                 progress_handler.success_with_message("not installed".light_black())
@@ -977,7 +976,7 @@ impl HomebrewInstall {
         installed: bool,
     ) -> Result<bool, UpError> {
         if !installed {
-            self.extract_package(&options, progress_handler)?;
+            self.extract_package(options, progress_handler)?;
         } else if options.cache_enabled
             && !HomebrewOperationCache::get().should_update_install(
                 &self.name,
