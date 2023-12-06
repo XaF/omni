@@ -24,6 +24,7 @@ use crate::internal::config::up::utils::ProgressHandler;
 use crate::internal::config::up::utils::RunConfig;
 use crate::internal::config::up::utils::SpinnerProgressHandler;
 use crate::internal::config::up::UpError;
+use crate::internal::config::up::UpOptions;
 use crate::internal::config::ConfigValue;
 use crate::internal::env::data_home;
 use crate::internal::env::shell_is_interactive;
@@ -265,7 +266,11 @@ impl UpConfigAsdfBase {
         }
     }
 
-    pub fn up(&self, progress: Option<(usize, usize)>) -> Result<(), UpError> {
+    pub fn up(
+        &self,
+        _options: &UpOptions,
+        progress: Option<(usize, usize)>,
+    ) -> Result<(), UpError> {
         let desc = format!("{} ({}):", self.tool, self.version).light_blue();
         let progress_handler: Box<dyn ProgressHandler> = if shell_is_interactive() {
             Box::new(SpinnerProgressHandler::new(desc, progress))
@@ -461,7 +466,11 @@ impl UpConfigAsdfBase {
         Ok(())
     }
 
-    pub fn down(&self, _progress: Option<(usize, usize)>) -> Result<(), UpError> {
+    pub fn down(
+        &self,
+        _options: &UpOptions,
+        _progress: Option<(usize, usize)>,
+    ) -> Result<(), UpError> {
         Ok(())
     }
 

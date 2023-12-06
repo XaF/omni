@@ -2,6 +2,7 @@ use std::collections::BTreeMap;
 use std::collections::BTreeSet;
 use std::collections::HashMap;
 use std::io;
+use std::path::PathBuf;
 
 use serde::Deserialize;
 use serde::Serialize;
@@ -26,6 +27,10 @@ pub struct UpEnvironmentsCache {
 }
 
 impl UpEnvironmentsCache {
+    fn updated(&mut self) {
+        self.updated_at = OffsetDateTime::now_utc();
+    }
+
     pub fn set_env_vars(&mut self, workdir_id: &str, env_vars: HashMap<String, String>) -> bool {
         if let Some(env) = self.env.get_mut(workdir_id) {
             env.env_vars = env_vars;
@@ -34,7 +39,7 @@ impl UpEnvironmentsCache {
             env.env_vars = env_vars;
             self.env.insert(workdir_id.to_string(), env);
         }
-        self.updated_at = OffsetDateTime::now_utc();
+        self.updated();
         true
     }
 
@@ -46,7 +51,20 @@ impl UpEnvironmentsCache {
             env.env_vars.insert(key.to_string(), value.to_string());
             self.env.insert(workdir_id.to_string(), env);
         }
-        self.updated_at = OffsetDateTime::now_utc();
+        self.updated();
+        true
+    }
+
+    pub fn add_path(&mut self, workdir_id: &str, path: PathBuf) -> bool {
+        if let Some(env) = self.env.get_mut(workdir_id) {
+            env.paths.retain(|p| p != &path);
+            env.paths.push(path);
+        } else {
+            let mut env = UpEnvironment::new();
+            env.paths.push(path);
+            self.env.insert(workdir_id.to_string(), env);
+        }
+        self.updated();
         true
     }
 
@@ -91,8 +109,7 @@ impl UpEnvironmentsCache {
             });
         }
 
-        self.updated_at = OffsetDateTime::now_utc();
-
+        self.updated();
         true
     }
 
@@ -110,7 +127,8 @@ impl UpEnvironmentsCache {
         }
 
         self.env.remove(workdir_id);
-        self.updated_at = OffsetDateTime::now_utc();
+
+        self.updated();
         true
     }
 }
@@ -152,6 +170,8 @@ impl CacheObject for UpEnvironmentsCache {
 pub struct UpEnvironment {
     #[serde(default = "Vec::new", skip_serializing_if = "Vec::is_empty")]
     pub versions: Vec<UpVersion>,
+    #[serde(default = "Vec::new", skip_serializing_if = "Vec::is_empty")]
+    pub paths: Vec<PathBuf>,
     #[serde(default = "HashMap::new", skip_serializing_if = "HashMap::is_empty")]
     pub env_vars: HashMap<String, String>,
 }
@@ -160,6 +180,7 @@ impl UpEnvironment {
     pub fn new() -> Self {
         Self {
             versions: Vec::new(),
+            paths: Vec::new(),
             env_vars: HashMap::new(),
         }
     }

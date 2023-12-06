@@ -1,3 +1,5 @@
+use std::path::PathBuf;
+
 use duct::cmd;
 use once_cell::sync::OnceCell;
 use serde::Deserialize;
@@ -7,12 +9,14 @@ use tokio::process::Command as TokioCommand;
 use crate::internal::cache::CacheObject;
 use crate::internal::cache::HomebrewInstalled;
 use crate::internal::cache::HomebrewOperationCache;
+use crate::internal::cache::UpEnvironmentsCache;
 use crate::internal::config::up::utils::run_progress;
 use crate::internal::config::up::utils::PrintProgressHandler;
 use crate::internal::config::up::utils::ProgressHandler;
 use crate::internal::config::up::utils::RunConfig;
 use crate::internal::config::up::utils::SpinnerProgressHandler;
 use crate::internal::config::up::UpError;
+use crate::internal::config::up::UpOptions;
 use crate::internal::config::ConfigValue;
 use crate::internal::env::shell_is_interactive;
 use crate::internal::user_interface::StringColor;
@@ -36,7 +40,7 @@ impl UpConfigHomebrew {
         UpConfigHomebrew { install, tap }
     }
 
-    pub fn up(&self, progress: Option<(usize, usize)>) -> Result<(), UpError> {
+    pub fn up(&self, options: &UpOptions, progress: Option<(usize, usize)>) -> Result<(), UpError> {
         let desc = "install homebrew dependencies:".light_blue();
         let main_progress_handler = PrintProgressHandler::new(desc, progress);
         main_progress_handler.progress("".to_string());
@@ -51,7 +55,7 @@ impl UpConfigHomebrew {
 
         let num_installs = self.install.len();
         for (idx, install) in self.install.iter().enumerate() {
-            if let Err(err) = install.up(progress, Some((idx + 1, num_installs))) {
+            if let Err(err) = install.up(options, progress, Some((idx + 1, num_installs))) {
                 main_progress_handler.error();
                 return Err(err);
             }
@@ -75,7 +79,11 @@ impl UpConfigHomebrew {
         Ok(())
     }
 
-    pub fn down(&self, progress: Option<(usize, usize)>) -> Result<(), UpError> {
+    pub fn down(
+        &self,
+        options: &UpOptions,
+        progress: Option<(usize, usize)>,
+    ) -> Result<(), UpError> {
         let workdir = workdir(".");
         let repo_id = workdir.id();
         if repo_id.is_none() {
@@ -105,7 +113,7 @@ impl UpConfigHomebrew {
 
             let num_uninstalls = to_uninstall.len();
             for (idx, (rmidx, install)) in to_uninstall.iter().enumerate() {
-                if let Err(err) = install.down(progress, Some((idx + 1, num_uninstalls))) {
+                if let Err(err) = install.down(options, progress, Some((idx + 1, num_uninstalls))) {
                     main_progress_handler.error();
                     return_value = Err(err);
                     return updated;
@@ -593,7 +601,7 @@ impl HomebrewInstall {
         }
     }
 
-    fn update_cache(&self, progress_handler: Option<&dyn ProgressHandler>) {
+    fn update_cache(&self, options: &UpOptions, progress_handler: Option<&dyn ProgressHandler>) {
         let workdir = workdir(".");
         let workdir_id = workdir.id();
         if workdir_id.is_none() {
@@ -605,7 +613,7 @@ impl HomebrewInstall {
             progress_handler.progress("updating cache".to_string())
         }
 
-        let result = HomebrewOperationCache::exclusive(|brew_cache| {
+        if let Err(err) = HomebrewOperationCache::exclusive(|brew_cache| {
             brew_cache.add_install(
                 &workdir_id,
                 &self.name,
@@ -613,19 +621,40 @@ impl HomebrewInstall {
                 self.is_cask(),
                 self.was_handled(),
             )
-        });
-
-        if let Err(err) = result {
+        }) {
             if let Some(progress_handler) = progress_handler {
                 progress_handler.progress(format!("failed to update cache: {}", err))
             }
-        } else if let Some(progress_handler) = progress_handler {
+            return;
+        }
+
+        let bin_path = self.bin_path(options);
+        let brew_bin_path = self.brew_bin_path(options);
+        if bin_path.is_some() || brew_bin_path.is_some() {
+            if let Err(err) = UpEnvironmentsCache::exclusive(|up_env| {
+                if let Some(bin_path) = bin_path {
+                    up_env.add_path(&workdir_id, bin_path);
+                }
+                if let Some(brew_bin_path) = brew_bin_path {
+                    up_env.add_path(&workdir_id, brew_bin_path);
+                }
+                true
+            }) {
+                if let Some(progress_handler) = progress_handler {
+                    progress_handler.progress(format!("failed to update cache: {}", err))
+                }
+                return;
+            }
+        }
+
+        if let Some(progress_handler) = progress_handler {
             progress_handler.progress("updated cache".to_string())
         }
     }
 
     fn up(
         &self,
+        options: &UpOptions,
         main_progress: Option<(usize, usize)>,
         sub_progress: Option<(usize, usize)>,
     ) -> Result<(), UpError> {
@@ -656,36 +685,39 @@ impl HomebrewInstall {
         };
         let progress_handler: Option<&dyn ProgressHandler> = Some(progress_handler.as_ref());
 
-        let installed = self.is_installed();
+        let installed = self.is_installed(options);
         if installed && self.version.is_some() {
-            self.update_cache(progress_handler);
+            self.update_cache(options, progress_handler);
             if let Some(progress_handler) = progress_handler {
                 progress_handler.success_with_message("already installed".light_black())
             }
             return Ok(());
         }
 
-        if let Err(err) = self.install(progress_handler, installed) {
-            if let Some(progress_handler) = progress_handler {
-                progress_handler.error_with_message(err.to_string());
+        match self.install(options, progress_handler, installed) {
+            Ok(did_something) => {
+                self.update_cache(options, progress_handler);
+                if let Some(progress_handler) = progress_handler {
+                    progress_handler.success_with_message(match (installed, did_something) {
+                        (true, true) => "updated".light_green(),
+                        (true, false) => "up to date (cached)".light_black(),
+                        (false, _) => "installed".light_green(),
+                    })
+                }
+                Ok(())
             }
-            return Err(err);
+            Err(err) => {
+                if let Some(progress_handler) = progress_handler {
+                    progress_handler.error_with_message(err.to_string());
+                }
+                Err(err)
+            }
         }
-
-        self.update_cache(progress_handler);
-        if let Some(progress_handler) = progress_handler {
-            progress_handler.success_with_message(
-                if installed { "up to date" } else { "installed" }
-                    .to_string()
-                    .light_green(),
-            );
-        }
-
-        Ok(())
     }
 
     fn down(
         &self,
+        options: &UpOptions,
         main_progress: Option<(usize, usize)>,
         sub_progress: Option<(usize, usize)>,
     ) -> Result<(), UpError> {
@@ -716,7 +748,7 @@ impl HomebrewInstall {
         };
         let progress_handler: Option<&dyn ProgressHandler> = Some(progress_handler.as_ref());
 
-        let installed = self.is_installed();
+        let installed = self.is_installed(options);
         if !installed {
             if let Some(progress_handler) = progress_handler {
                 progress_handler.success_with_message("not installed".light_black())
@@ -787,12 +819,14 @@ impl HomebrewInstall {
         self.install_type == HomebrewInstallType::Cask
     }
 
-    fn is_installed(&self) -> bool {
-        if !HomebrewOperationCache::get().should_check_install(
-            &self.name,
-            self.version.clone(),
-            self.is_cask(),
-        ) {
+    fn is_installed(&self, options: &UpOptions) -> bool {
+        if options.cache_enabled
+            && !HomebrewOperationCache::get().should_check_install(
+                &self.name,
+                self.version.clone(),
+                self.is_cask(),
+            )
+        {
             return true;
         }
 
@@ -817,6 +851,88 @@ impl HomebrewInstall {
         }
 
         false
+    }
+
+    fn brew_bin_path(&self, options: &UpOptions) -> Option<PathBuf> {
+        if options.cache_enabled {
+            if let Some(bin_path) = HomebrewOperationCache::get().homebrew_bin_path() {
+                if !bin_path.is_empty() {
+                    return Some(bin_path.into());
+                }
+            }
+        }
+
+        let mut brew_list = std::process::Command::new("brew");
+        brew_list.arg("--prefix");
+        brew_list.stdout(std::process::Stdio::piped());
+        brew_list.stderr(std::process::Stdio::null());
+
+        if let Ok(output) = brew_list.output() {
+            if output.status.success() {
+                let bin_path =
+                    PathBuf::from(String::from_utf8(output.stdout).unwrap().trim()).join("bin");
+                if bin_path.exists() {
+                    _ = HomebrewOperationCache::exclusive(|cache| {
+                        cache.set_homebrew_bin_path(bin_path.to_string_lossy().to_string());
+                        true
+                    });
+
+                    return Some(bin_path);
+                }
+            }
+        }
+
+        None
+    }
+
+    fn bin_path(&self, options: &UpOptions) -> Option<PathBuf> {
+        if self.is_cask() {
+            // brew --prefix doesn't work for casks
+            return None;
+        }
+
+        if options.cache_enabled {
+            if let Some(bin_path) = HomebrewOperationCache::get().homebrew_install_bin_path(
+                &self.name,
+                self.version.clone(),
+                self.is_cask(),
+            ) {
+                if !bin_path.is_empty() {
+                    return Some(bin_path.into());
+                }
+            }
+        }
+
+        let mut brew_list = std::process::Command::new("brew");
+        brew_list.arg("--prefix");
+        brew_list.arg("--installed");
+        brew_list.arg(self.package_id());
+        brew_list.stdout(std::process::Stdio::piped());
+        brew_list.stderr(std::process::Stdio::null());
+
+        if let Ok(output) = brew_list.output() {
+            if output.status.success() {
+                let bin_path =
+                    PathBuf::from(String::from_utf8(output.stdout).unwrap().trim()).join("bin");
+                let bin_path = if bin_path.exists() {
+                    bin_path
+                } else {
+                    PathBuf::from("")
+                };
+
+                _ = HomebrewOperationCache::exclusive(|cache| {
+                    cache.set_homebrew_install_bin_path(
+                        &self.name,
+                        self.version.clone(),
+                        self.is_cask(),
+                        bin_path.to_string_lossy().to_string(),
+                    );
+                    true
+                });
+            }
+        }
+
+        None
     }
 
     fn is_in_local_tap(&self) -> bool {
@@ -855,36 +971,39 @@ impl HomebrewInstall {
 
     fn install(
         &self,
+        options: &UpOptions,
         progress_handler: Option<&dyn ProgressHandler>,
         installed: bool,
-    ) -> Result<(), UpError> {
+    ) -> Result<bool, UpError> {
         if !installed {
-            self.extract_package(progress_handler)?;
-        } else if !HomebrewOperationCache::get().should_update_install(
-            &self.name,
-            self.version.clone(),
-            self.is_cask(),
-        ) {
+            self.extract_package(options, progress_handler)?;
+        } else if options.cache_enabled
+            && !HomebrewOperationCache::get().should_update_install(
+                &self.name,
+                self.version.clone(),
+                self.is_cask(),
+            )
+        {
             if let Some(progress_handler) = progress_handler {
                 progress_handler.progress("already up to date".light_black())
             }
 
-            return Ok(());
+            return Ok(false);
         }
 
-        let mut brew_tap = TokioCommand::new("brew");
+        let mut brew_install = TokioCommand::new("brew");
         if installed {
-            brew_tap.arg("upgrade");
+            brew_install.arg("upgrade");
         } else {
-            brew_tap.arg("install");
+            brew_install.arg("install");
         }
         if self.install_type == HomebrewInstallType::Cask {
-            brew_tap.arg("--cask");
+            brew_install.arg("--cask");
         }
-        brew_tap.arg(self.package_id());
+        brew_install.arg(self.package_id());
 
-        brew_tap.stdout(std::process::Stdio::piped());
-        brew_tap.stderr(std::process::Stdio::piped());
+        brew_install.stdout(std::process::Stdio::piped());
+        brew_install.stderr(std::process::Stdio::piped());
 
         if let Some(progress_handler) = progress_handler {
             progress_handler.progress(if installed {
@@ -894,20 +1013,24 @@ impl HomebrewInstall {
             })
         }
 
-        let result = run_progress(&mut brew_tap, progress_handler, RunConfig::default());
-        if result.is_ok() && self.was_handled.set(true).is_err() {
-            unreachable!();
-        }
+        match run_progress(&mut brew_install, progress_handler, RunConfig::default()) {
+            Ok(_) => {
+                if self.was_handled.set(true).is_err() {
+                    unreachable!();
+                }
 
-        // Update the cache
-        if let Err(err) = HomebrewOperationCache::exclusive(|cache| {
-            cache.updated_install(&self.name, self.version.clone(), self.is_cask());
-            true
-        }) {
-            return Err(UpError::Cache(err.to_string()));
-        }
+                // Update the cache
+                if let Err(err) = HomebrewOperationCache::exclusive(|cache| {
+                    cache.updated_install(&self.name, self.version.clone(), self.is_cask());
+                    true
+                }) {
+                    return Err(UpError::Cache(err.to_string()));
+                }
 
-        result
+                Ok(true)
+            }
+            Err(err) => Err(err),
+        }
     }
 
     fn uninstall(&self, progress_handler: Option<&dyn ProgressHandler>) -> Result<(), UpError> {
@@ -934,6 +1057,7 @@ impl HomebrewInstall {
 
     fn extract_package(
         &self,
+        options: &UpOptions,
         progress_handler: Option<&dyn ProgressHandler>,
     ) -> Result<(), UpError> {
         if self.version.is_none() {
@@ -1002,7 +1126,7 @@ impl HomebrewInstall {
         // }
         // }
 
-        if HomebrewOperationCache::get().should_update_homebrew() {
+        if !options.cache_enabled || HomebrewOperationCache::get().should_update_homebrew() {
             let mut update_brew_cache = false;
             let brew_updated = BREW_UPDATED.get_or_init(|| {
                 if let Some(progress_handler) = progress_handler {

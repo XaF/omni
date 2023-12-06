@@ -29,6 +29,7 @@ use crate::internal::config::up::utils::RunConfig;
 use crate::internal::config::up::ProgressHandler;
 use crate::internal::config::up::SpinnerProgressHandler;
 use crate::internal::config::up::UpConfig;
+use crate::internal::config::up::UpOptions;
 use crate::internal::config::CommandSyntax;
 use crate::internal::config::ConfigExtendOptions;
 use crate::internal::config::ConfigLoader;
@@ -52,6 +53,7 @@ use crate::omni_warning;
 
 #[derive(Debug, Clone)]
 struct UpCommandArgs {
+    cache_enabled: bool,
     clone_suggested: UpCommandArgsCloneSuggestedOptions,
     trust: UpCommandArgsTrustOptions,
     update_repository: bool,
@@ -66,6 +68,11 @@ impl UpCommandArgs {
         let matches = clap::Command::new("")
             .disable_help_subcommand(true)
             .disable_version_flag(true)
+            .arg(
+                clap::Arg::new("no-cache")
+                    .long("no-cache")
+                    .action(clap::ArgAction::SetTrue),
+            )
             .arg(
                 clap::Arg::new("bootstrap")
                     .long("bootstrap")
@@ -169,6 +176,7 @@ impl UpCommandArgs {
             };
 
         Self {
+            cache_enabled: !*matches.get_one::<bool>("no-cache").unwrap_or(&false),
             clone_suggested,
             trust,
             update_repository: *matches
@@ -286,6 +294,17 @@ impl UpCommand {
         Some(CommandSyntax {
             usage: None,
             parameters: vec![
+                SyntaxOptArg {
+                    name: "--no-cache".to_string(),
+                    desc: Some(
+                        concat!(
+                            "Whether we should disable the cache while running the command ",
+                            "\x1B[90m(default: no)\x1B[0m",
+                        )
+                        .to_string(),
+                    ),
+                    required: false,
+                },
                 SyntaxOptArg {
                     name: "--bootstrap".to_string(),
                     desc: Some(
@@ -503,12 +522,14 @@ impl UpCommand {
 
         // If it has an up configuration, handle it
         if has_up_config {
+            let options = UpOptions::new().cache(self.cli_args().cache_enabled);
+
             let up_config = up_config.unwrap();
             if self.is_up() {
-                if let Err(err) = up_config.up() {
+                if let Err(err) = up_config.up(&options) {
                     omni_error!(format!("issue while setting repo up: {}", err));
                 }
-            } else if let Err(err) = up_config.down() {
+            } else if let Err(err) = up_config.down(&options) {
                 omni_error!(format!("issue while tearing repo down: {}", err));
             }
         }

@@ -198,6 +198,12 @@ impl DynamicEnv {
                 hasher.update(DATA_SEPARATOR.as_bytes());
             }
 
+            // Add the requested paths to the hash
+            for path in up_env.paths.iter().rev() {
+                hasher.update(path.to_str().unwrap().as_bytes());
+                hasher.update(DATA_SEPARATOR.as_bytes());
+            }
+
             // Go over the tool versions in the up environment cache
             for toolversion in up_env.versions_for_dir(&dir).iter() {
                 hasher.update(toolversion.tool.as_bytes());
@@ -240,6 +246,11 @@ impl DynamicEnv {
             }
             for (key, value) in up_env.env_vars.iter() {
                 envsetter.set_value(key, value);
+            }
+
+            // Add the requested paths
+            for path in up_env.paths.iter().rev() {
+                envsetter.prepend_to_list("PATH", path.to_str().unwrap());
             }
 
             // Go over the tool versions in the up environment cache

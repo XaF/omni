@@ -10,6 +10,7 @@ use serde::{Deserialize, Serialize};
 use crate::internal::commands::utils::abs_path;
 use crate::internal::config::up::UpConfigAsdfBase;
 use crate::internal::config::up::UpError;
+use crate::internal::config::up::UpOptions;
 use crate::internal::ConfigValue;
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -48,12 +49,16 @@ impl UpConfigGolang {
         }
     }
 
-    pub fn up(&self, progress: Option<(usize, usize)>) -> Result<(), UpError> {
-        self.asdf_base()?.up(progress)
+    pub fn up(&self, options: &UpOptions, progress: Option<(usize, usize)>) -> Result<(), UpError> {
+        self.asdf_base()?.up(options, progress)
     }
 
-    pub fn down(&self, progress: Option<(usize, usize)>) -> Result<(), UpError> {
-        self.asdf_base()?.down(progress)
+    pub fn down(
+        &self,
+        options: &UpOptions,
+        progress: Option<(usize, usize)>,
+    ) -> Result<(), UpError> {
+        self.asdf_base()?.down(options, progress)
     }
 
     pub fn asdf_base(&self) -> Result<&UpConfigAsdfBase, UpError> {
