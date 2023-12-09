@@ -528,9 +528,11 @@ impl UpCommand {
             if self.is_up() {
                 if let Err(err) = up_config.up(&options) {
                     omni_error!(format!("issue while setting repo up: {}", err));
+                    exit(1);
                 }
             } else if let Err(err) = up_config.down(&options) {
                 omni_error!(format!("issue while tearing repo down: {}", err));
+                exit(1);
             }
         }
 
