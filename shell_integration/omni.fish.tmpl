@@ -74,7 +74,7 @@ function _omni_complete_fish
 
     {% endif -%}
     # Remove the first element (command) from cmdline
-    set -l args (string join -- " " $cmdline[2..-1])
+    set -l args $cmdline[2..-1]
 
     set -f opts (env COMP_CWORD=$cword OMNI_SHELL=fish $autocomplete $args)
     string join \n -- $opts
