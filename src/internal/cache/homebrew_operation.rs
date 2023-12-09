@@ -352,6 +352,16 @@ impl HomebrewOperationUpdateCache {
         }
     }
 
+    pub fn removed_homebrew_install(
+        &mut self,
+        install_name: &str,
+        install_version: Option<String>,
+        is_cask: bool,
+    ) {
+        let key = self.install_key(install_name, install_version, is_cask);
+        self.install.remove(&key);
+    }
+
     pub fn should_update_homebrew_install(
         &self,
         install_name: &str,

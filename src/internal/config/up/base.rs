@@ -147,7 +147,7 @@ impl UpConfig {
         Ok(())
     }
 
-    pub fn down(&self, options: &UpOptions) -> Result<(), UpError> {
+    pub fn down(&self) -> Result<(), UpError> {
         // Filter the steps to only the available ones
         let steps = self
             .steps
@@ -163,7 +163,7 @@ impl UpConfig {
             // the command can consider it right away
             update_dynamic_env_for_command(".");
 
-            step.down(options, Some((idx + 1, num_steps)))?
+            step.down(Some((idx + 1, num_steps)))?
         }
 
         UpConfigAsdfBase::cleanup_unused(Vec::new(), Some((num_steps, num_steps)))?;

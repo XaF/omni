@@ -89,22 +89,18 @@ impl UpConfigTool {
         }
     }
 
-    pub fn down(
-        &self,
-        options: &UpOptions,
-        progress: Option<(usize, usize)>,
-    ) -> Result<(), UpError> {
+    pub fn down(&self, progress: Option<(usize, usize)>) -> Result<(), UpError> {
         match self {
-            UpConfigTool::Bash(config) => config.down(options, progress),
+            UpConfigTool::Bash(config) => config.down(progress),
             UpConfigTool::Bundler(config) => config.down(progress),
             UpConfigTool::Custom(config) => config.down(progress),
-            UpConfigTool::Go(config) => config.down(options, progress),
-            UpConfigTool::Homebrew(config) => config.down(options, progress),
-            UpConfigTool::Nodejs(config) => config.down(options, progress),
-            UpConfigTool::Python(config) => config.down(options, progress),
-            UpConfigTool::Ruby(config) => config.down(options, progress),
-            UpConfigTool::Rust(config) => config.down(options, progress),
-            UpConfigTool::Terraform(config) => config.down(options, progress),
+            UpConfigTool::Go(config) => config.down(progress),
+            UpConfigTool::Homebrew(config) => config.down(progress),
+            UpConfigTool::Nodejs(config) => config.down(progress),
+            UpConfigTool::Python(config) => config.down(progress),
+            UpConfigTool::Ruby(config) => config.down(progress),
+            UpConfigTool::Rust(config) => config.down(progress),
+            UpConfigTool::Terraform(config) => config.down(progress),
         }
     }
 

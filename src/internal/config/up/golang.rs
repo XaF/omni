@@ -53,12 +53,8 @@ impl UpConfigGolang {
         self.asdf_base()?.up(options, progress)
     }
 
-    pub fn down(
-        &self,
-        options: &UpOptions,
-        progress: Option<(usize, usize)>,
-    ) -> Result<(), UpError> {
-        self.asdf_base()?.down(options, progress)
+    pub fn down(&self, progress: Option<(usize, usize)>) -> Result<(), UpError> {
+        self.asdf_base()?.down(progress)
     }
 
     pub fn asdf_base(&self) -> Result<&UpConfigAsdfBase, UpError> {

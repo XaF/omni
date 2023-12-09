@@ -522,14 +522,13 @@ impl UpCommand {
 
         // If it has an up configuration, handle it
         if has_up_config {
-            let options = UpOptions::new().cache(self.cli_args().cache_enabled);
-
             let up_config = up_config.unwrap();
             if self.is_up() {
+                let options = UpOptions::new().cache(self.cli_args().cache_enabled);
                 if let Err(err) = up_config.up(&options) {
                     omni_error!(format!("issue while setting repo up: {}", err));
                 }
-            } else if let Err(err) = up_config.down(&options) {
+            } else if let Err(err) = up_config.down() {
                 omni_error!(format!("issue while tearing repo down: {}", err));
             }
         }
