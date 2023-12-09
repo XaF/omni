@@ -3,18 +3,26 @@ use serde::Serialize;
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct UpOptions {
-    pub cache_enabled: bool,
+    pub read_cache: bool,
+    pub write_cache: bool,
 }
 
 impl UpOptions {
     pub fn new() -> Self {
         Self {
-            cache_enabled: true,
+            read_cache: true,
+            write_cache: false,
         }
     }
 
-    pub fn cache(mut self, cache_enabled: bool) -> Self {
-        self.cache_enabled = cache_enabled;
+    pub fn cache(mut self, read_cache: bool) -> Self {
+        self.read_cache = read_cache;
+        self
+    }
+
+    pub fn cache_disabled(mut self) -> Self {
+        self.read_cache = false;
+        self.write_cache = false;
         self
     }
 }

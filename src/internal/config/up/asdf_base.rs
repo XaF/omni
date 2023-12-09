@@ -466,11 +466,7 @@ impl UpConfigAsdfBase {
         Ok(())
     }
 
-    pub fn down(
-        &self,
-        _options: &UpOptions,
-        _progress: Option<(usize, usize)>,
-    ) -> Result<(), UpError> {
+    pub fn down(&self, _progress: Option<(usize, usize)>) -> Result<(), UpError> {
         Ok(())
     }
 
