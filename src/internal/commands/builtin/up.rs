@@ -527,9 +527,11 @@ impl UpCommand {
                 let options = UpOptions::new().cache(self.cli_args().cache_enabled);
                 if let Err(err) = up_config.up(&options) {
                     omni_error!(format!("issue while setting repo up: {}", err));
+                    exit(1);
                 }
             } else if let Err(err) = up_config.down() {
                 omni_error!(format!("issue while tearing repo down: {}", err));
+                exit(1);
             }
         }
 
