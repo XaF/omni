@@ -349,6 +349,10 @@ pub fn current_exe() -> PathBuf {
     (*CURRENT_EXE).clone()
 }
 
+pub fn current_dir() -> PathBuf {
+    std::env::current_dir().expect("failed to get current dir")
+}
+
 #[derive(Debug, Clone)]
 pub struct GitRepoEnvByPath {
     env_by_path: HashMap<String, GitRepoEnv>,
@@ -526,6 +530,7 @@ pub struct WorkDirEnv {
     in_workdir: bool,
     root: Option<String>,
     id: OnceCell<Option<String>>,
+    data_path: OnceCell<PathBuf>,
 }
 
 impl WorkDirEnv {
@@ -534,6 +539,7 @@ impl WorkDirEnv {
             in_workdir: false,
             root: None,
             id: OnceCell::new(),
+            data_path: OnceCell::new(),
         };
 
         let git = git_env(path);
@@ -570,6 +576,25 @@ impl WorkDirEnv {
             Some(root) => Some(root.as_str()),
             None => None,
         }
+    }
+
+    pub fn data_path(&self) -> Option<&PathBuf> {
+        if let Some(id) = &self.id() {
+            let data_path = self.data_path.get_or_init(|| {
+                // Generate a hash from the id
+                let mut hasher = Hasher::new();
+                hasher.update(id.as_bytes());
+                let hash_bytes = hasher.finalize();
+                let hash_b62 = base_62::encode(hash_bytes.as_bytes())[..20].to_string();
+
+                let mut data_path = PathBuf::from(data_home());
+                data_path.push("wd");
+                data_path.push(hash_b62);
+                data_path
+            });
+            return Some(data_path);
+        }
+        None
     }
 
     pub fn reldir(&self, path: &str) -> Option<String> {

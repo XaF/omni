@@ -15,16 +15,16 @@ pub enum UpError {
     StepFailed(String, Option<(usize, usize)>),
 }
 
-impl UpError {
-    // fn error_type(&self) -> String {
-    // match self {
-    // UpError::Config(_) => "configuration error".to_string(),
-    // UpError::Exec(_) => "execution error".to_string(),
-    // UpError::Timeout(_) => "timeout".to_string(),
-    // UpError::HomebrewTapInUse => "tap in use".to_string(),
-    // }
-    // }
-}
+// impl UpError {
+// fn error_type(&self) -> String {
+// match self {
+// UpError::Config(_) => "configuration error".to_string(),
+// UpError::Exec(_) => "execution error".to_string(),
+// UpError::Timeout(_) => "timeout".to_string(),
+// UpError::HomebrewTapInUse => "tap in use".to_string(),
+// }
+// }
+// }
 
 impl Display for UpError {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), Error> {
