@@ -229,6 +229,7 @@ pub struct CommandDefinition {
     pub aliases: Vec<String>,
     pub syntax: Option<CommandSyntax>,
     pub category: Option<Vec<String>>,
+    pub dir: Option<String>,
     pub subcommands: Option<HashMap<String, CommandDefinition>>,
     pub source: ConfigSource,
 }
@@ -288,6 +289,9 @@ impl CommandDefinition {
             aliases,
             syntax,
             category,
+            dir: config_value
+                .get_as_str("dir")
+                .map(|value| value.to_string()),
             subcommands,
             source: config_value.get_source().clone(),
         }

@@ -44,9 +44,8 @@ commands:
 
       This opens up a browser window once the server is started.
       Most changes are reflected live without having to restart the server.
+    dir: website
     run: |
-      cd website
-      eval "$(omni hook env 2>/dev/null)"
       yarn start
 
   cargo-package:
