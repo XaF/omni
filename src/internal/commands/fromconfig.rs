@@ -1,14 +1,19 @@
 use std::collections::HashMap;
 use std::os::unix::process::CommandExt;
 use std::path::Path;
+use std::path::PathBuf;
+use std::process::exit;
 use std::process::Command as ProcessCommand;
 
 use crate::internal::commands::utils::abs_or_rel_path;
+use crate::internal::commands::utils::abs_path;
 use crate::internal::commands::utils::split_name;
 use crate::internal::config::config;
 use crate::internal::config::CommandDefinition;
 use crate::internal::config::CommandSyntax;
 use crate::internal::config::ConfigSource;
+use crate::internal::user_interface::colors::StringColor;
+use crate::omni_error;
 
 #[derive(Debug, Clone)]
 pub struct ConfigCommand {
@@ -143,17 +148,52 @@ impl ConfigCommand {
         Some(category)
     }
 
+    pub fn exec_dir(&self) -> Result<PathBuf, String> {
+        let config_file = self.source();
+        let config_dir = abs_path(
+            Path::new(&config_file)
+                .parent()
+                .expect("Failed to get config directory"),
+        );
+
+        let exec_dir = if let Some(dir) = self.details.dir.clone() {
+            abs_path(config_dir.join(dir))
+        } else {
+            config_dir.to_path_buf()
+        };
+
+        // Raise error if the resulting directory is not in the config directory
+        if !exec_dir.starts_with(config_dir.clone()) {
+            return Err(format!(
+                "directory {} is not a subpath of {}",
+                exec_dir.display(),
+                config_dir.display()
+            ));
+        }
+
+        Ok(exec_dir)
+    }
+
     pub fn exec(&self, argv: Vec<String>) {
         // Get the current directory so we can store it in a variable
         let current_dir = std::env::current_dir().expect("Failed to get current directory");
         std::env::set_var("OMNI_CWD", current_dir.display().to_string());
 
-        let config_file = self.source();
-        let config_dir = Path::new(&config_file)
-            .parent()
-            .expect("Failed to get config directory");
-        if std::env::set_current_dir(config_dir).is_err() {
-            println!("Failed to change directory to {}", config_dir.display());
+        // Raise error if the resulting directory is not in the config directory
+        match self.exec_dir() {
+            Ok(exec_dir) => {
+                if std::env::set_current_dir(exec_dir.clone()).is_err() {
+                    omni_error!(format!(
+                        "failed to change directory to {}",
+                        exec_dir.display()
+                    ));
+                    exit(1);
+                }
+            }
+            Err(err) => {
+                omni_error!(err.to_string());
+                exit(1);
+            }
         }
 
         ProcessCommand::new("bash")

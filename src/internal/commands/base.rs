@@ -159,6 +159,21 @@ impl Command {
         }
     }
 
+    pub fn exec_dir(&self) -> String {
+        match self {
+            Command::FromConfig(command) => command
+                .exec_dir()
+                .map_err(|err| {
+                    omni_error!(err.to_string());
+                    exit(1);
+                })
+                .expect("Failed to get exec dir")
+                .to_string_lossy()
+                .to_string(),
+            _ => self.source_dir(),
+        }
+    }
+
     pub fn help_source(&self) -> String {
         let source = self.source();
         if !source.starts_with('/') {
@@ -317,7 +332,7 @@ impl Command {
 
     pub fn exec(&self, argv: Vec<String>, called_as: Option<Vec<String>>) {
         // Load the dynamic environment for that command
-        update_dynamic_env_for_command(&self.source_dir());
+        update_dynamic_env_for_command(&self.exec_dir());
 
         // Set the general execution environment
         let name = if let Some(ref called_as) = called_as {

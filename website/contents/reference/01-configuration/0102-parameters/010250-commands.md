@@ -15,6 +15,8 @@ Any command defined in a global configuration file will be available throughout 
 | `aliases` | string (list) | list of aliases for that command |
 | `desc` | string | the description of the command that will be used in `omni help`. This can be on multiple lines, in which case the first paragraph (until the first empty line) will be shown in `omni help`, while the rest of the help message will be shown when calling `omni help <command>`. |
 | `run` | multiline string | the command to run when the command is being called. This will be called through `bash -c` and can thus receive any kind of bash scripting, or call to an executable file. |
+| `category` | string (list) | comma-separated or actual list of categories, organized hierarchically from the least significative to the most significative |
+| `dir` | string | path to the directory from which to execute the command, relative to the location of the configuration file, and needs to be a subdirectory |
 | `subcommands` | [`commands`](commands) (map) | Subcommands of that command; the name of those commands will be prefixed by the name of the current command (e.g. command `main` and subcommand `sub` would create a command `main sub`) |
 | `syntax` | [`syntax`](#syntax) | Define the parameters that the command can take. This will be used when calling `omni help <command>`. |
 
