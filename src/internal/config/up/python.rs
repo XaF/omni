@@ -226,7 +226,7 @@ fn setup_python_venv_per_dir(
     };
 
     // Get the hash of the relative path
-    let venv_dir = if dir == "" {
+    let venv_dir = if dir.is_empty() {
         "root".to_string()
     } else {
         let mut hasher = Hasher::new();
