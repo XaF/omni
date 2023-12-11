@@ -1040,10 +1040,8 @@ impl HomebrewInstall {
 
         match run_progress(&mut brew_install, progress_handler, RunConfig::default()) {
             Ok(_) => {
-                if !installed {
-                    if self.was_handled.set(true).is_err() {
-                        unreachable!();
-                    }
+                if !installed && self.was_handled.set(true).is_err() {
+                    unreachable!();
                 }
 
                 if options.write_cache {
