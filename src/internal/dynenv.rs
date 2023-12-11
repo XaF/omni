@@ -10,7 +10,7 @@ use shell_escape::escape;
 
 use crate::internal::cache::CacheObject;
 use crate::internal::cache::UpEnvironmentsCache;
-use crate::internal::config::up::ASDF_PATH;
+use crate::internal::config::up::asdf_tool_path;
 use crate::internal::user_interface::StringColor;
 use crate::internal::workdir;
 
@@ -210,6 +210,10 @@ impl DynamicEnv {
                 hasher.update(DATA_SEPARATOR.as_bytes());
                 hasher.update(toolversion.version.as_bytes());
                 hasher.update(DATA_SEPARATOR.as_bytes());
+                if let Some(data_path) = &toolversion.data_path {
+                    hasher.update(data_path.as_bytes());
+                    hasher.update(DATA_SEPARATOR.as_bytes());
+                }
             }
 
             // Convert the hash to a u64
@@ -259,7 +263,7 @@ impl DynamicEnv {
                 let tool = toolversion.tool.clone();
                 let version = toolversion.version.clone();
                 let version_minor = version.split('.').take(2).join(".");
-                let tool_prefix = format!("{}/installs/{}/{}", *ASDF_PATH, tool, version);
+                let tool_prefix = asdf_tool_path(&tool, &version);
 
                 self.features.push(format!("{}:{}", tool, version));
 
@@ -321,15 +325,21 @@ impl DynamicEnv {
                         envsetter.set_value("GOVERSION", &version);
                         envsetter.prepend_to_list("PATH", &format!("{}/go/bin", tool_prefix));
                     }
+                    "python" => {
+                        let tool_prefix = if let Some(data_path) = &toolversion.data_path {
+                            envsetter.set_value("VIRTUAL_ENV", &data_path);
+                            data_path.clone()
+                        } else {
+                            tool_prefix
+                        };
+
+                        envsetter.unset_value("PYTHONHOME");
+                        envsetter.prepend_to_list("PATH", &format!("{}/bin", tool_prefix));
+                    }
                     // "nodejs" => {
                     // envsetter.set_value("NVM_DIR", "$HOME/.nvm");
                     // envsetter.set_value("NVM_BIN", "$NVM_DIR/versions/node/$NODE_VERSION/bin");
                     // envsetter.set_value("NODE_VERSION", &toolversion.version);
-                    // }
-                    // "python" => {
-                    // envsetter.set_value("PYENV_ROOT", "$HOME/.pyenv");
-                    // envsetter.set_value("PYENV_BIN", "$PYENV_ROOT/versions/$PYTHON_VERSION/bin");
-                    // envsetter.set_value("PYTHON_VERSION", &toolversion.version);
                     // }
                     _ => {
                         envsetter.prepend_to_list("PATH", &format!("{}/bin", tool_prefix));

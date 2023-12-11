@@ -102,15 +102,32 @@ impl UpEnvironmentsCache {
         };
 
         for dir in dirs {
-            wd_up_env.versions.push(UpVersion {
-                tool: tool.to_string(),
-                version: version.to_string(),
-                dir: dir.to_string(),
-            });
+            wd_up_env.versions.push(UpVersion::new(tool, version, &dir));
         }
 
         self.updated();
         true
+    }
+
+    pub fn add_version_data_path(
+        &mut self,
+        workdir_id: &str,
+        tool: &str,
+        version: &str,
+        dir: &str,
+        data_path: &str,
+    ) -> bool {
+        if let Some(wd_up_env) = self.env.get_mut(workdir_id) {
+            for exists in wd_up_env.versions.iter_mut() {
+                if exists.tool == tool && exists.version == version && exists.dir == dir {
+                    exists.data_path = Some(data_path.to_string());
+                    self.updated();
+                    return true;
+                }
+            }
+        }
+
+        false
     }
 
     pub fn contains(&self, workdir_id: &str) -> bool {
@@ -217,4 +234,17 @@ pub struct UpVersion {
     pub version: String,
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub dir: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub data_path: Option<String>,
+}
+
+impl UpVersion {
+    pub fn new(tool: &str, version: &str, dir: &str) -> Self {
+        Self {
+            tool: tool.to_string(),
+            version: version.to_string(),
+            dir: dir.to_string(),
+            data_path: None,
+        }
+    }
 }

@@ -33,20 +33,32 @@ use crate::internal::workdir;
 use crate::omni_error;
 
 lazy_static! {
-    pub static ref ASDF_PATH: String = format!("{}/asdf", data_home());
-    pub static ref ASDF_BIN: String = format!("{}/bin/asdf", *ASDF_PATH);
+    static ref ASDF_PATH: String = format!("{}/asdf", data_home());
+    static ref ASDF_BIN: String = format!("{}/bin/asdf", *ASDF_PATH);
+}
+
+fn asdf_path() -> String {
+    (*ASDF_PATH).clone()
+}
+
+fn asdf_bin() -> &'static str {
+    &(*ASDF_BIN)
+}
+
+pub fn asdf_tool_path(tool: &str, version: &str) -> String {
+    format!("{}/installs/{}/{}", asdf_path(), tool, version)
 }
 
 fn is_asdf_installed() -> bool {
-    let bin_path = std::path::Path::new(&*ASDF_BIN);
+    let bin_path = std::path::Path::new(asdf_bin());
     bin_path.is_file() && bin_path.metadata().unwrap().permissions().mode() & 0o111 != 0
 }
 
-fn install_asdf(progress_handler: Option<&dyn ProgressHandler>) -> Result<(), UpError> {
+fn install_asdf(progress_handler: &dyn ProgressHandler) -> Result<(), UpError> {
     // Add asdf to PATH if not there yet, as some of the asdf plugins depend on it being
     // in the PATH. We will want it to be at the beginning of the PATH, so that it takes
     // precedence over any other asdf installation.
-    let bin_path = PathBuf::from(format!("{}/bin", *ASDF_PATH));
+    let bin_path = PathBuf::from(format!("{}/bin", asdf_path()));
     let path_env = std::env::var("PATH").unwrap();
     let paths: Vec<PathBuf> = std::env::split_paths(&path_env).collect();
     let mut new_paths: Vec<PathBuf> = paths.into_iter().filter(|p| *p != bin_path).collect();
@@ -55,14 +67,12 @@ fn install_asdf(progress_handler: Option<&dyn ProgressHandler>) -> Result<(), Up
     std::env::set_var("PATH", new_path_env);
 
     if !is_asdf_installed() {
-        if let Some(handler) = progress_handler {
-            handler.progress("installing asdf".to_string());
-        }
+        progress_handler.progress("installing asdf".to_string());
 
         let mut git_clone = TokioCommand::new("git");
         git_clone.arg("clone");
         git_clone.arg("https://github.com/asdf-vm/asdf.git");
-        git_clone.arg(&*ASDF_PATH);
+        git_clone.arg(asdf_path());
         git_clone.arg("--branch");
         // We hardcode the version we initially get, but since we update asdf right after,
         // and then update it on every run, this is not _this_ version that will keep being
@@ -71,29 +81,31 @@ fn install_asdf(progress_handler: Option<&dyn ProgressHandler>) -> Result<(), Up
         git_clone.stdout(std::process::Stdio::piped());
         git_clone.stderr(std::process::Stdio::piped());
 
-        run_progress(&mut git_clone, progress_handler, RunConfig::default())?;
+        run_progress(&mut git_clone, Some(progress_handler), RunConfig::default())?;
     }
 
     update_asdf(progress_handler)
 }
 
-fn update_asdf(progress_handler: Option<&dyn ProgressHandler>) -> Result<(), UpError> {
+fn update_asdf(progress_handler: &dyn ProgressHandler) -> Result<(), UpError> {
     if !AsdfOperationCache::get().should_update_asdf() {
         return Ok(());
     }
 
-    if let Some(handler) = progress_handler {
-        handler.progress("updating asdf".to_string());
-    }
+    progress_handler.progress("updating asdf".to_string());
 
-    let mut asdf_update = TokioCommand::new(&(*ASDF_BIN));
+    let mut asdf_update = TokioCommand::new(asdf_bin());
     asdf_update.arg("update");
-    asdf_update.env("ASDF_DIR", &*ASDF_PATH);
-    asdf_update.env("ASDF_DATA_DIR", &*ASDF_PATH);
+    asdf_update.env("ASDF_DIR", asdf_path());
+    asdf_update.env("ASDF_DATA_DIR", asdf_path());
     asdf_update.stdout(std::process::Stdio::piped());
     asdf_update.stderr(std::process::Stdio::piped());
 
-    run_progress(&mut asdf_update, progress_handler, RunConfig::default())?;
+    run_progress(
+        &mut asdf_update,
+        Some(progress_handler),
+        RunConfig::default(),
+    )?;
 
     if let Err(err) = AsdfOperationCache::exclusive(|asdf_cache| {
         asdf_cache.updated_asdf();
@@ -106,12 +118,12 @@ fn update_asdf(progress_handler: Option<&dyn ProgressHandler>) -> Result<(), UpE
 }
 
 fn is_asdf_tool_version_installed(tool: &str, version: &str) -> bool {
-    let mut asdf_list = std::process::Command::new(&(*ASDF_BIN));
+    let mut asdf_list = std::process::Command::new(asdf_bin());
     asdf_list.arg("list");
     asdf_list.arg(tool);
     asdf_list.arg(version);
-    asdf_list.env("ASDF_DIR", &*ASDF_PATH);
-    asdf_list.env("ASDF_DATA_DIR", &*ASDF_PATH);
+    asdf_list.env("ASDF_DIR", asdf_path());
+    asdf_list.env("ASDF_DATA_DIR", asdf_path());
     asdf_list.stdout(std::process::Stdio::null());
     asdf_list.stderr(std::process::Stdio::null());
 
@@ -126,14 +138,52 @@ fn is_asdf_tool_version_installed(tool: &str, version: &str) -> bool {
 
 #[derive(Debug, Serialize, Deserialize, Clone, Default)]
 pub struct UpConfigAsdfBase {
+    /// The name of the tool to install.
     pub tool: String,
+
+    /// The URL to use to install the tool.
     pub tool_url: Option<String>,
+
+    /// The version of the tool to install, as specified in the config file.
     pub version: String,
+
+    /// A list of directories to install the tool for.
     pub dirs: BTreeSet<String>,
+
+    /// A list of functions to run to detect the version of the tool.
+    /// The functions will be called with the following parameters:
+    /// - tool: the name of the tool
+    /// - path: the path currently being searched
+    /// The functions should return the version of the tool if found, or None
+    /// if not found.
+    /// The functions will be called in order, and the first one to return a
+    /// version will be used.
+    /// If no function returns a version, the version will be considered not
+    /// found.
     #[serde(skip)]
     detect_version_funcs: Vec<fn(String, PathBuf) -> Option<String>>,
+
+    /// A list of functions to run after installing a version of the tool.
+    /// This is useful for tools that require additional steps after installing
+    /// a version, such as installing plugins or running post-install scripts.
+    /// The functions will be called with the following parameters:
+    /// - progress_handler: a progress handler to use to report progress
+    /// - tool: the name of the tool
+    /// - versions: AsdfToolUpVersion objects describing the versions that were
+    ///             up-ed, with the following fields:
+    ///     - version: the version of the tool that was installed
+    ///     - installed: whether the tool was installed or already installed
+    ///     - paths: the relative paths where the tool version was installed
+    #[serde(skip)]
+    post_install_funcs:
+        Vec<fn(&dyn ProgressHandler, String, Vec<AsdfToolUpVersion>) -> Result<(), UpError>>,
+
+    /// The actual version of the tool that has to be installed.
     #[serde(skip)]
     actual_version: OnceCell<String>,
+
+    /// The actual versions of the tool that have been installed.
+    /// This is only used when the version is "auto".
     #[serde(skip)]
     actual_versions: OnceCell<BTreeSet<String>>,
 }
@@ -146,6 +196,7 @@ impl UpConfigAsdfBase {
             version: version.to_string(),
             dirs: BTreeSet::new(),
             detect_version_funcs: vec![],
+            post_install_funcs: vec![],
             actual_version: OnceCell::new(),
             actual_versions: OnceCell::new(),
         }
@@ -155,13 +206,26 @@ impl UpConfigAsdfBase {
         self.detect_version_funcs.push(func);
     }
 
+    pub fn add_post_install_func(
+        &mut self,
+        func: fn(&dyn ProgressHandler, String, Vec<AsdfToolUpVersion>) -> Result<(), UpError>,
+    ) {
+        self.post_install_funcs.push(func);
+    }
+
     fn new_from_auto(&self, version: &str, dirs: BTreeSet<String>) -> Self {
         UpConfigAsdfBase {
             tool: self.tool.clone(),
             tool_url: self.tool_url.clone(),
             version: version.to_string(),
             dirs: dirs.clone(),
+
+            // We can ignore all those fields, as they won't be used,
+            // since the version passed to that call is a specific version
+            // that we got from running the detection functions from a
+            // main instance called with "auto" as the version.
             detect_version_funcs: vec![],
+            post_install_funcs: vec![],
             actual_version: OnceCell::new(),
             actual_versions: OnceCell::new(),
         }
@@ -215,35 +279,33 @@ impl UpConfigAsdfBase {
             version,
             dirs,
             detect_version_funcs: vec![],
+            post_install_funcs: vec![],
             actual_version: OnceCell::new(),
             actual_versions: OnceCell::new(),
         }
     }
 
-    fn update_cache(&self, progress_handler: Option<&dyn ProgressHandler>) {
+    fn update_cache(&self, progress_handler: &dyn ProgressHandler) {
         let workdir = workdir(".");
-        let repo_id = workdir.id();
-        if repo_id.is_none() {
-            return;
-        }
-        let repo_id = repo_id.unwrap();
 
-        let version = self.version(None);
-        if version.is_err() {
+        let repo_id = if let Some(repo_id) = workdir.id() {
+            repo_id
+        } else {
             return;
-        }
-        let version = version.unwrap().to_string();
+        };
 
-        if let Some(progress_handler) = progress_handler {
-            progress_handler.progress("updating cache".to_string())
-        }
+        let version = if let Ok(version) = self.version(None) {
+            version.to_string()
+        } else {
+            return;
+        };
+
+        progress_handler.progress("updating cache".to_string());
 
         if let Err(err) = AsdfOperationCache::exclusive(|asdf_cache| {
             asdf_cache.add_installed(&repo_id, &self.tool, &version)
         }) {
-            if let Some(progress_handler) = progress_handler {
-                progress_handler.progress(format!("failed to update tool cache: {}", err))
-            }
+            progress_handler.progress(format!("failed to update tool cache: {}", err));
             return;
         }
 
@@ -255,15 +317,11 @@ impl UpConfigAsdfBase {
 
             up_env.add_version(&repo_id, &self.tool, &version, dirs.clone())
         }) {
-            if let Some(progress_handler) = progress_handler {
-                progress_handler.progress(format!("failed to update tool cache: {}", err))
-            }
+            progress_handler.progress(format!("failed to update tool cache: {}", err));
             return;
         }
 
-        if let Some(progress_handler) = progress_handler {
-            progress_handler.progress("updated cache".to_string())
-        }
+        progress_handler.progress("updated cache".to_string());
     }
 
     pub fn up(
@@ -277,26 +335,20 @@ impl UpConfigAsdfBase {
         } else {
             Box::new(PrintProgressHandler::new(desc, progress))
         };
-        let progress_handler: Option<&dyn ProgressHandler> = Some(progress_handler.as_ref());
+        let progress_handler: &dyn ProgressHandler = progress_handler.as_ref();
 
         if let Err(err) = install_asdf(progress_handler) {
-            if let Some(ph) = progress_handler {
-                ph.error_with_message(format!("error: {}", err))
-            }
+            progress_handler.error_with_message(format!("error: {}", err));
             return Err(err);
         }
 
         if let Err(err) = self.install_plugin(progress_handler) {
-            if let Some(ph) = progress_handler {
-                ph.error_with_message(format!("error: {}", err))
-            }
+            progress_handler.error_with_message(format!("error: {}", err));
             return Err(err);
         }
 
         if self.version == "auto" {
-            if let Some(ph) = progress_handler {
-                ph.progress("detecting required versions and paths".to_string())
-            }
+            progress_handler.progress("detecting required versions and paths".to_string());
 
             let mut detected_versions: BTreeMap<String, BTreeSet<String>> = BTreeMap::new();
 
@@ -365,29 +417,25 @@ impl UpConfigAsdfBase {
             }
 
             if detected_versions.is_empty() {
-                if let Some(progress_handler) = progress_handler {
-                    progress_handler.success_with_message("no version detected".to_string())
-                }
+                progress_handler.success_with_message("no version detected".to_string());
                 return Ok(());
             }
 
             let mut installed_versions = Vec::new();
             let mut already_installed_versions = Vec::new();
-            let mut all_versions = BTreeSet::new();
+            let mut all_versions = BTreeMap::new();
 
             for (version, dirs) in detected_versions.iter() {
                 let asdf_base = self.new_from_auto(version, dirs.clone());
                 let installed = asdf_base.install_version(progress_handler);
                 if installed.is_err() {
                     let err = installed.err().unwrap();
-                    if let Some(handler) = progress_handler {
-                        handler.error_with_message(format!("error: {}", err));
-                    }
+                    progress_handler.error_with_message(format!("error: {}", err));
                     return Err(err);
                 }
 
                 let version = asdf_base.version(None).unwrap();
-                all_versions.insert(version.clone());
+                all_versions.insert(version.clone(), dirs.clone());
                 if installed.unwrap() {
                     installed_versions.push(version.clone());
                 } else {
@@ -398,72 +446,111 @@ impl UpConfigAsdfBase {
             }
 
             self.actual_versions
-                .set(all_versions)
+                .set(all_versions.keys().cloned().collect())
                 .expect("failed to set installed versions");
 
-            if let Some(handler) = progress_handler {
-                let mut msgs = Vec::new();
+            if !self.post_install_funcs.is_empty() {
+                let post_install_versions = all_versions
+                    .iter()
+                    .map(|(version, dirs)| AsdfToolUpVersion {
+                        version: version.clone(),
+                        dirs: dirs.clone(),
+                        installed: installed_versions.contains(version),
+                    })
+                    .collect::<Vec<AsdfToolUpVersion>>();
 
-                if !installed_versions.is_empty() {
-                    msgs.push(
-                        format!(
-                            "{} {} installed",
-                            self.tool,
-                            installed_versions
-                                .iter()
-                                .map(|version| version.to_string())
-                                .collect::<Vec<String>>()
-                                .join(", ")
-                        )
-                        .green(),
-                    );
+                for func in self.post_install_funcs.iter() {
+                    if let Err(err) = func(
+                        progress_handler,
+                        self.tool.clone(),
+                        post_install_versions.clone(),
+                    ) {
+                        progress_handler.error_with_message(format!("error: {}", err));
+                        return Err(err);
+                    }
                 }
-
-                if !already_installed_versions.is_empty() {
-                    msgs.push(
-                        format!(
-                            "{} {} already installed",
-                            self.tool,
-                            already_installed_versions
-                                .iter()
-                                .map(|version| version.to_string())
-                                .collect::<Vec<String>>()
-                                .join(", ")
-                        )
-                        .light_black(),
-                    );
-                }
-
-                handler.success_with_message(msgs.join(", "));
-            }
-        } else {
-            let install_version = self.install_version(progress_handler);
-            if install_version.is_err() {
-                let err = install_version.err().unwrap();
-                if let Some(handler) = progress_handler {
-                    handler.error_with_message(format!("error: {}", err));
-                }
-                return Err(err);
             }
 
-            self.update_cache(progress_handler);
+            let mut msgs = Vec::new();
 
-            if let Some(handler) = progress_handler {
-                let msg = if install_version.unwrap() {
-                    format!("{} {} installed", self.tool, self.version(None).unwrap()).green()
-                } else {
+            if !installed_versions.is_empty() {
+                msgs.push(
+                    format!(
+                        "{} {} installed",
+                        self.tool,
+                        installed_versions
+                            .iter()
+                            .map(|version| version.to_string())
+                            .collect::<Vec<String>>()
+                            .join(", ")
+                    )
+                    .green(),
+                );
+            }
+
+            if !already_installed_versions.is_empty() {
+                msgs.push(
                     format!(
                         "{} {} already installed",
                         self.tool,
-                        self.version(None).unwrap(),
+                        already_installed_versions
+                            .iter()
+                            .map(|version| version.to_string())
+                            .collect::<Vec<String>>()
+                            .join(", ")
                     )
-                    .light_black()
-                };
-                handler.success_with_message(msg);
+                    .light_black(),
+                );
+            }
+
+            progress_handler.success_with_message(msgs.join(", "));
+
+            Ok(())
+        } else {
+            match self.install_version(progress_handler) {
+                Ok(installed) => {
+                    self.update_cache(progress_handler);
+
+                    let version = self.version(None).unwrap();
+
+                    if !self.post_install_funcs.is_empty() {
+                        let post_install_versions = vec![AsdfToolUpVersion {
+                            version: version.clone(),
+                            dirs: if self.dirs.is_empty() {
+                                vec!["".to_string()].into_iter().collect()
+                            } else {
+                                self.dirs.clone()
+                            },
+                            installed,
+                        }];
+
+                        for func in self.post_install_funcs.iter() {
+                            if let Err(err) = func(
+                                progress_handler,
+                                self.tool.clone(),
+                                post_install_versions.clone(),
+                            ) {
+                                progress_handler.error_with_message(format!("error: {}", err));
+                                return Err(err);
+                            }
+                        }
+                    }
+
+                    let msg = if installed {
+                        format!("{} {} installed", self.tool, version).green()
+                    } else {
+                        format!("{} {} already installed", self.tool, version).light_black()
+                    };
+                    progress_handler.success_with_message(msg);
+
+                    Ok(())
+                }
+                Err(err) => {
+                    progress_handler.error_with_message(format!("error: {}", err));
+                    Err(err)
+                }
             }
         }
-
-        Ok(())
     }
 
     pub fn down(&self, _progress: Option<(usize, usize)>) -> Result<(), UpError> {
@@ -496,12 +583,12 @@ impl UpConfigAsdfBase {
             {
                 versions
             } else {
-                let mut asdf_list_all = std::process::Command::new(&(*ASDF_BIN));
+                let mut asdf_list_all = std::process::Command::new(asdf_bin());
                 asdf_list_all.arg("list");
                 asdf_list_all.arg("all");
                 asdf_list_all.arg(self.tool.clone());
-                asdf_list_all.env("ASDF_DIR", &*ASDF_PATH);
-                asdf_list_all.env("ASDF_DATA_DIR", &*ASDF_PATH);
+                asdf_list_all.env("ASDF_DIR", asdf_path());
+                asdf_list_all.env("ASDF_DATA_DIR", asdf_path());
                 asdf_list_all.stdout(std::process::Stdio::piped());
                 asdf_list_all.stderr(std::process::Stdio::piped());
 
@@ -557,11 +644,11 @@ impl UpConfigAsdfBase {
     }
 
     fn is_plugin_installed(&self) -> bool {
-        let mut asdf_plugin_list = std::process::Command::new(&(*ASDF_BIN));
+        let mut asdf_plugin_list = std::process::Command::new(&(asdf_bin()));
         asdf_plugin_list.arg("plugin");
         asdf_plugin_list.arg("list");
-        asdf_plugin_list.env("ASDF_DIR", &*ASDF_PATH);
-        asdf_plugin_list.env("ASDF_DATA_DIR", &*ASDF_PATH);
+        asdf_plugin_list.env("ASDF_DIR", asdf_path());
+        asdf_plugin_list.env("ASDF_DATA_DIR", asdf_path());
         asdf_plugin_list.stdout(std::process::Stdio::piped());
         asdf_plugin_list.stderr(std::process::Stdio::null());
 
@@ -575,31 +662,30 @@ impl UpConfigAsdfBase {
         false
     }
 
-    fn install_plugin(
-        &self,
-        progress_handler: Option<&dyn ProgressHandler>,
-    ) -> Result<(), UpError> {
+    fn install_plugin(&self, progress_handler: &dyn ProgressHandler) -> Result<(), UpError> {
         if self.is_plugin_installed() {
             return Ok(());
         }
 
-        if let Some(handler) = progress_handler {
-            handler.progress(format!("installing {} plugin", self.tool));
-        }
+        progress_handler.progress(format!("installing {} plugin", self.tool));
 
-        let mut asdf_plugin_add = TokioCommand::new(&(*ASDF_BIN));
+        let mut asdf_plugin_add = TokioCommand::new(asdf_bin());
         asdf_plugin_add.arg("plugin");
         asdf_plugin_add.arg("add");
         asdf_plugin_add.arg(self.tool.clone());
         if let Some(tool_url) = &self.tool_url {
             asdf_plugin_add.arg(tool_url.clone());
         }
-        asdf_plugin_add.env("ASDF_DIR", &*ASDF_PATH);
-        asdf_plugin_add.env("ASDF_DATA_DIR", &*ASDF_PATH);
+        asdf_plugin_add.env("ASDF_DIR", asdf_path());
+        asdf_plugin_add.env("ASDF_DATA_DIR", asdf_path());
         asdf_plugin_add.stdout(std::process::Stdio::piped());
         asdf_plugin_add.stderr(std::process::Stdio::piped());
 
-        run_progress(&mut asdf_plugin_add, progress_handler, RunConfig::default())
+        run_progress(
+            &mut asdf_plugin_add,
+            Some(progress_handler),
+            RunConfig::default(),
+        )
     }
 
     fn update_plugin(&self, progress_handler: Option<&dyn ProgressHandler>) -> Result<(), UpError> {
@@ -607,16 +693,16 @@ impl UpConfigAsdfBase {
             return Ok(());
         }
 
-        if let Some(handler) = progress_handler {
-            handler.progress(format!("updating {} plugin", self.tool));
+        if let Some(ph) = progress_handler {
+            ph.progress(format!("updating {} plugin", self.tool));
         }
 
-        let mut asdf_plugin_update = TokioCommand::new(&(*ASDF_BIN));
+        let mut asdf_plugin_update = TokioCommand::new(asdf_bin());
         asdf_plugin_update.arg("plugin");
         asdf_plugin_update.arg("update");
         asdf_plugin_update.arg(self.tool.clone());
-        asdf_plugin_update.env("ASDF_DIR", &*ASDF_PATH);
-        asdf_plugin_update.env("ASDF_DATA_DIR", &*ASDF_PATH);
+        asdf_plugin_update.env("ASDF_DIR", asdf_path());
+        asdf_plugin_update.env("ASDF_DATA_DIR", asdf_path());
         asdf_plugin_update.stdout(std::process::Stdio::piped());
         asdf_plugin_update.stderr(std::process::Stdio::piped());
 
@@ -647,30 +733,29 @@ impl UpConfigAsdfBase {
         is_asdf_tool_version_installed(&self.tool, version)
     }
 
-    fn install_version(
-        &self,
-        progress_handler: Option<&dyn ProgressHandler>,
-    ) -> Result<bool, UpError> {
-        let version = self.version(progress_handler)?;
+    fn install_version(&self, progress_handler: &dyn ProgressHandler) -> Result<bool, UpError> {
+        let version = self.version(Some(progress_handler))?;
 
         if self.is_version_installed() {
             return Ok(false);
         }
 
-        if let Some(handler) = progress_handler {
-            handler.progress(format!("installing {} {}", self.tool, version));
-        }
+        progress_handler.progress(format!("installing {} {}", self.tool, version));
 
-        let mut asdf_install = tokio::process::Command::new(&(*ASDF_BIN));
+        let mut asdf_install = tokio::process::Command::new(asdf_bin());
         asdf_install.arg("install");
         asdf_install.arg(self.tool.clone());
         asdf_install.arg(version);
-        asdf_install.env("ASDF_DIR", &*ASDF_PATH);
-        asdf_install.env("ASDF_DATA_DIR", &*ASDF_PATH);
+        asdf_install.env("ASDF_DIR", asdf_path());
+        asdf_install.env("ASDF_DATA_DIR", asdf_path());
         asdf_install.stdout(std::process::Stdio::piped());
         asdf_install.stderr(std::process::Stdio::piped());
 
-        run_progress(&mut asdf_install, progress_handler, RunConfig::default())?;
+        run_progress(
+            &mut asdf_install,
+            Some(progress_handler),
+            RunConfig::default(),
+        )?;
 
         Ok(true)
     }
@@ -740,12 +825,12 @@ impl UpConfigAsdfBase {
                         ));
                     }
 
-                    let mut asdf_uninstall = tokio::process::Command::new(&(*ASDF_BIN));
+                    let mut asdf_uninstall = tokio::process::Command::new(asdf_bin());
                     asdf_uninstall.arg("uninstall");
                     asdf_uninstall.arg(to_remove.tool.clone());
                     asdf_uninstall.arg(to_remove.version.clone());
-                    asdf_uninstall.env("ASDF_DIR", &*ASDF_PATH);
-                    asdf_uninstall.env("ASDF_DATA_DIR", &*ASDF_PATH);
+                    asdf_uninstall.env("ASDF_DIR", asdf_path());
+                    asdf_uninstall.env("ASDF_DATA_DIR", asdf_path());
                     asdf_uninstall.stdout(std::process::Stdio::piped());
                     asdf_uninstall.stderr(std::process::Stdio::piped());
 
@@ -903,4 +988,11 @@ fn detect_version_from_tool_version_file(tool_name: String, path: PathBuf) -> Op
     }
 
     None
+}
+
+#[derive(Debug, Clone)]
+pub struct AsdfToolUpVersion {
+    pub version: String,
+    pub dirs: BTreeSet<String>,
+    pub installed: bool,
 }

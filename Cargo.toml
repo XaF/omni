@@ -22,6 +22,7 @@ path = "src/main.rs"
 time = { version = "0.3.30", features = ["serde-well-known"] }
 
 [dependencies]
+base-62 = "0.1.1"
 blake3 = "1.5.0"
 clap = "4.4.11"
 duct = "0.13.6"
