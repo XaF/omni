@@ -7,7 +7,7 @@ use indicatif::ProgressStyle;
 use regex::Regex;
 use tempfile::NamedTempFile;
 use time::format_description::well_known::Rfc3339;
-use tokio;
+
 use tokio::io::AsyncBufReadExt;
 use tokio::io::AsyncReadExt;
 use tokio::io::BufReader;
