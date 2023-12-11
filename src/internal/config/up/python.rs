@@ -79,19 +79,19 @@ fn setup_python_venv(
             .map(|v| v.version.clone())
             .collect::<HashSet<String>>();
 
-        let python_dirs = std::fs::read_dir(python_root_path.clone()).or_else(|_| {
-            Err(UpError::Exec(format!(
+        let python_dirs = std::fs::read_dir(python_root_path.clone()).map_err(|_| {
+            UpError::Exec(format!(
                 "failed to read python directory {}",
                 python_root_path.display()
-            )))
+            ))
         })?;
 
         for python_dir in python_dirs {
-            let python_dir = python_dir.or_else(|_| {
-                Err(UpError::Exec(format!(
+            let python_dir = python_dir.map_err(|_| {
+                UpError::Exec(format!(
                     "failed to read python directory {}",
                     python_root_path.display()
-                )))
+                ))
             })?;
 
             let python_dir_name = python_dir.file_name().to_string_lossy().to_string();
@@ -102,11 +102,11 @@ fn setup_python_venv(
 
             let python_dir_path = python_dir.path();
             progress_handler.progress(format!("removing all venv for python {}", python_dir_name,));
-            std::fs::remove_dir_all(&python_dir_path).or_else(|_| {
-                Err(UpError::Exec(format!(
+            std::fs::remove_dir_all(&python_dir_path).map_err(|_| {
+                UpError::Exec(format!(
                     "failed to remove python directory {}",
                     python_dir_path.display(),
-                )))
+                ))
             })?;
         }
     }
@@ -164,19 +164,19 @@ fn setup_python_venv_per_version(
 
     let venv_root_path = data_path.join("python").join(version.version.clone());
     if venv_root_path.exists() {
-        let venv_dirs = std::fs::read_dir(venv_root_path.clone()).or_else(|_| {
-            Err(UpError::Exec(format!(
+        let venv_dirs = std::fs::read_dir(venv_root_path.clone()).map_err(|_| {
+            UpError::Exec(format!(
                 "failed to read venv directory {}",
                 venv_root_path.display()
-            )))
+            ))
         })?;
 
         for venv_dir in venv_dirs {
-            let venv_dir = venv_dir.or_else(|_| {
-                Err(UpError::Exec(format!(
+            let venv_dir = venv_dir.map_err(|_| {
+                UpError::Exec(format!(
                     "failed to read venv directory {}",
                     venv_root_path.display()
-                )))
+                ))
             })?;
 
             let venv_dir_name = venv_dir.file_name().to_string_lossy().to_string();
@@ -186,11 +186,11 @@ fn setup_python_venv_per_version(
                     "removing venv {} for python {}",
                     venv_dir_name, version.version,
                 ));
-                std::fs::remove_dir_all(&venv_dir_path).or_else(|_| {
-                    Err(UpError::Exec(format!(
+                std::fs::remove_dir_all(&venv_dir_path).map_err(|_| {
+                    UpError::Exec(format!(
                         "failed to remove venv directory {}",
                         venv_dir_path.display()
-                    )))
+                    ))
                 })?;
             }
         }
@@ -249,11 +249,11 @@ fn setup_python_venv_per_dir(
         } else {
             // Remove the directory since it exists but is not a venv,
             // so we clean it up and replace it by a clean venv
-            std::fs::remove_dir_all(&venv_path).or_else(|_| {
-                Err(UpError::Exec(format!(
+            std::fs::remove_dir_all(&venv_path).map_err(|_| {
+                UpError::Exec(format!(
                     "failed to remove existing venv directory {}",
                     venv_path.display()
-                )))
+                ))
             })?;
             false
         }
@@ -268,11 +268,11 @@ fn setup_python_venv_per_dir(
             .join("bin")
             .join("python");
 
-        std::fs::create_dir_all(&venv_path).or_else(|_| {
-            Err(UpError::Exec(format!(
+        std::fs::create_dir_all(&venv_path).map_err(|_| {
+            UpError::Exec(format!(
                 "failed to create venv directory {}",
                 venv_path.display()
-            )))
+            ))
         })?;
 
         let mut venv_create = TokioCommand::new(python_bin);
@@ -298,7 +298,7 @@ fn setup_python_venv_per_dir(
             "python",
             &version,
             &dir,
-            &venv_path.to_string_lossy().to_string(),
+            &venv_path.to_string_lossy(),
         )
     }) {
         progress_handler.progress(format!("failed to update tool cache: {}", err));

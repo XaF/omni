@@ -37,12 +37,16 @@ lazy_static! {
     static ref ASDF_BIN: String = format!("{}/bin/asdf", *ASDF_PATH);
 }
 
+type DetectVersionFunc = fn(String, PathBuf) -> Option<String>;
+type PostInstallFunc =
+    fn(&dyn ProgressHandler, String, Vec<AsdfToolUpVersion>) -> Result<(), UpError>;
+
 fn asdf_path() -> String {
     (*ASDF_PATH).clone()
 }
 
 fn asdf_bin() -> &'static str {
-    &(*ASDF_BIN)
+    ASDF_BIN.as_str()
 }
 
 pub fn asdf_tool_path(tool: &str, version: &str) -> String {
@@ -161,7 +165,7 @@ pub struct UpConfigAsdfBase {
     /// If no function returns a version, the version will be considered not
     /// found.
     #[serde(skip)]
-    detect_version_funcs: Vec<fn(String, PathBuf) -> Option<String>>,
+    detect_version_funcs: Vec<DetectVersionFunc>,
 
     /// A list of functions to run after installing a version of the tool.
     /// This is useful for tools that require additional steps after installing
@@ -175,8 +179,7 @@ pub struct UpConfigAsdfBase {
     ///     - installed: whether the tool was installed or already installed
     ///     - paths: the relative paths where the tool version was installed
     #[serde(skip)]
-    post_install_funcs:
-        Vec<fn(&dyn ProgressHandler, String, Vec<AsdfToolUpVersion>) -> Result<(), UpError>>,
+    post_install_funcs: Vec<PostInstallFunc>,
 
     /// The actual version of the tool that has to be installed.
     #[serde(skip)]
@@ -202,14 +205,11 @@ impl UpConfigAsdfBase {
         }
     }
 
-    pub fn add_detect_version_func(&mut self, func: fn(String, PathBuf) -> Option<String>) {
+    pub fn add_detect_version_func(&mut self, func: DetectVersionFunc) {
         self.detect_version_funcs.push(func);
     }
 
-    pub fn add_post_install_func(
-        &mut self,
-        func: fn(&dyn ProgressHandler, String, Vec<AsdfToolUpVersion>) -> Result<(), UpError>,
-    ) {
+    pub fn add_post_install_func(&mut self, func: PostInstallFunc) {
         self.post_install_funcs.push(func);
     }
 
@@ -644,7 +644,7 @@ impl UpConfigAsdfBase {
     }
 
     fn is_plugin_installed(&self) -> bool {
-        let mut asdf_plugin_list = std::process::Command::new(&(asdf_bin()));
+        let mut asdf_plugin_list = std::process::Command::new(asdf_bin());
         asdf_plugin_list.arg("plugin");
         asdf_plugin_list.arg("list");
         asdf_plugin_list.env("ASDF_DIR", asdf_path());
