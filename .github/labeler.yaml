@@ -1,28 +1,38 @@
 # Add the rust label if any *.rs file is modified
 rust:
-  - '**/*.rs'
-  - 'Cargo.toml'
-  - 'Cargo.lock'
+  - changed-files:
+    - any-glob-to-any-file:
+      - '**/*.rs'
+      - 'Cargo.toml'
+      - 'Cargo.lock'
 
 # Add the documentation label if any *.md file is modified
 documentation:
-  - '**/*.md'
+  - changed-files:
+    - any-glob-to-any-file:
+      - '**/*.md'
 
 # Add the javascript label if any *.js or *.ts file is modified
 javascript:
-  - '**/*.js'
-  - '**/*.ts'
-  - 'website/package.json'
-  - 'website/yarn.lock'
+  - changed-files:
+    - any-glob-to-any-file:
+      - '**/*.js'
+      - '**/*.ts'
+      - 'website/package.json'
+      - 'website/yarn.lock'
 
 # Add the dependencies label if Cargo.lock, Cargo.toml,
 # package.json or yarn.lock are modified
 dependencies:
-  - 'Cargo.toml'
-  - 'Cargo.lock'
-  - 'website/package.json'
-  - 'website/yarn.lock'
+  - changed-files:
+    - any-glob-to-any-file:
+      - 'Cargo.toml'
+      - 'Cargo.lock'
+      - 'website/package.json'
+      - 'website/yarn.lock'
 
 # Add the github_actions label if any change to github_actions
 github_actions:
-  - '.github/**/*.yaml'
+  - changed-files:
+    - any-glob-to-any-file:
+      - '.github/**/*.yaml'
