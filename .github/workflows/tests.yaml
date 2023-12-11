@@ -6,15 +6,6 @@ on:
   push:
     branches:
       - main
-    paths:
-      - '.github/workflows/build.yaml'
-      - '.github/workflows/tests.yaml'
-      - 'Cargo.lock'
-      - 'Cargo.toml'
-      - 'build.rs'
-      - 'shell_integration/**'
-      - 'src/**'
-      - 'website/**'
 
   # Runs on a pull request
   pull_request:
@@ -194,7 +185,7 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '>=16.14 <20.6.0 || >=20.6.1'
+          node-version: '>=18.0 <20.6.0 || >=20.6.1'
           cache: yarn
           cache-dependency-path: 'website/yarn.lock'
 
