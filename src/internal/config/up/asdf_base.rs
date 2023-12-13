@@ -780,7 +780,7 @@ impl UpConfigAsdfBase {
 
                 // If any data path in the versions
                 if !any(&env_tools, |tool| tool.data_path.is_some()) {
-                    std::fs::remove_dir_all(&wd_data_path).map_err(|err| {
+                    std::fs::remove_dir_all(wd_data_path).map_err(|err| {
                         UpError::Exec(format!(
                             "failed to remove workdir data path {}: {}",
                             wd_data_path.display(),
