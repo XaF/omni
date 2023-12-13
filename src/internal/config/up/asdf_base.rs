@@ -5,6 +5,7 @@ use std::os::unix::fs::PermissionsExt;
 use std::path::PathBuf;
 use std::str::FromStr;
 
+use itertools::any;
 use lazy_static::lazy_static;
 use node_semver::Range as semverRange;
 use node_semver::Version as semverVersion;
@@ -17,7 +18,6 @@ use walkdir::WalkDir;
 use crate::internal::cache::AsdfOperationCache;
 use crate::internal::cache::CacheObject;
 use crate::internal::cache::UpEnvironmentsCache;
-use crate::internal::config::up::tool::UpConfigTool;
 use crate::internal::config::up::utils::run_progress;
 use crate::internal::config::up::utils::PrintProgressHandler;
 use crate::internal::config::up::utils::ProgressHandler;
@@ -557,17 +557,6 @@ impl UpConfigAsdfBase {
         Ok(())
     }
 
-    fn versions(&self) -> BTreeSet<String> {
-        if self.version != "auto" {
-            let mut versions = BTreeSet::new();
-            if let Ok(version) = self.version(None) {
-                versions.insert(version.clone());
-            }
-            return versions;
-        }
-        self.actual_versions.get_or_init(BTreeSet::new).clone()
-    }
-
     fn version(&self, progress_handler: Option<&dyn ProgressHandler>) -> Result<&String, UpError> {
         let version = self.actual_version.get_or_init(|| {
             if self.update_plugin(progress_handler).is_err() {
@@ -760,10 +749,7 @@ impl UpConfigAsdfBase {
         Ok(true)
     }
 
-    pub fn cleanup_unused(
-        steps: Vec<UpConfigTool>,
-        progress: Option<(usize, usize)>,
-    ) -> Result<(), UpError> {
+    pub fn cleanup_unused(progress: Option<(usize, usize)>) -> Result<(), UpError> {
         let desc = "resources cleanup:".light_blue();
         let progress_handler: Box<dyn ProgressHandler> = if shell_is_interactive() {
             Box::new(SpinnerProgressHandler::new(desc, progress))
@@ -772,36 +758,168 @@ impl UpConfigAsdfBase {
         };
         let progress_handler: Option<&dyn ProgressHandler> = Some(progress_handler.as_ref());
 
-        let mut expected_tools = HashSet::new();
-        let all_tool_versions = steps
-            .iter()
-            .filter_map(|step| step.asdf_tool())
-            .map(|tool| (tool.tool.clone(), tool.versions()))
-            .filter(|(_, version)| !version.is_empty());
-        for (tool, versions) in all_tool_versions {
-            for version in versions {
-                expected_tools.insert((tool.clone(), version));
+        let workdir = workdir(".");
+        let workdir_id = if let Some(workdir_id) = workdir.id() {
+            workdir_id
+        } else {
+            return Err(UpError::Exec("failed to get workdir id".to_string()));
+        };
+
+        // Get the expected installed versions of the tool from
+        // the up environment cache
+        let mut env_tools = Vec::new();
+        if let Some(env) = UpEnvironmentsCache::get().get_env(&workdir_id) {
+            env_tools.extend(env.versions.iter().cloned());
+        }
+
+        if let Some(wd_data_path) = workdir.data_path() {
+            if wd_data_path.exists() {
+                if let Some(ph) = progress_handler {
+                    ph.progress("removing unused data paths".to_string());
+                }
+
+                // If any data path in the versions
+                if !any(&env_tools, |tool| tool.data_path.is_some()) {
+                    std::fs::remove_dir_all(wd_data_path).map_err(|err| {
+                        UpError::Exec(format!(
+                            "failed to remove workdir data path {}: {}",
+                            wd_data_path.display(),
+                            err
+                        ))
+                    })?;
+                } else {
+                    let expected_tools = env_tools
+                        .iter()
+                        .map(|tool| tool.tool.clone())
+                        .collect::<BTreeSet<_>>();
+
+                    let tool_dirs = std::fs::read_dir(wd_data_path.clone()).map_err(|err| {
+                        UpError::Exec(format!(
+                            "failed to read data path directory for {}: {}",
+                            workdir_id, err,
+                        ))
+                    })?;
+                    for tool_dir in tool_dirs {
+                        let tool_dir = tool_dir.map_err(|err| {
+                            UpError::Exec(format!(
+                                "failed to read data path directory for {}: {}",
+                                workdir_id, err,
+                            ))
+                        })?;
+
+                        let tool_dir_name = tool_dir.file_name().to_string_lossy().to_string();
+
+                        // Remove the tool directory if the tool is not expected
+                        if !expected_tools.contains(&tool_dir_name) {
+                            std::fs::remove_dir_all(tool_dir.path()).map_err(|err| {
+                                UpError::Exec(format!(
+                                    "failed to remove workdir data path for workdir {}: {}",
+                                    workdir_id, err
+                                ))
+                            })?;
+                            continue;
+                        }
+
+                        // Check the versions for that tool
+                        let expected_versions = env_tools
+                            .iter()
+                            .filter(|tool| tool.tool == tool_dir_name)
+                            .map(|tool| tool.version.clone())
+                            .collect::<BTreeSet<_>>();
+
+                        let version_dirs = std::fs::read_dir(tool_dir.path()).map_err(|err| {
+                            UpError::Exec(format!(
+                                "failed to read data path directory for workdir {} and tool {}: {}",
+                                workdir_id, tool_dir_name, err,
+                            ))
+                        })?;
+
+                        for version_dir in version_dirs {
+                            let version_dir = version_dir.map_err(|err| {
+                                UpError::Exec(format!(
+                                    "failed to read data path directory for workdir {} and tool {}: {}",
+                                    workdir_id, tool_dir_name, err,
+                                ))
+                            })?;
+
+                            let version_dir_name =
+                                version_dir.file_name().to_string_lossy().to_string();
+
+                            // Remove the version directory if the version is not expected
+                            if !expected_versions.contains(&version_dir_name) {
+                                std::fs::remove_dir_all(version_dir.path()).map_err(|err| {
+                                    UpError::Exec(format!(
+                                        "failed to remove workdir data path for workdir {}, tool {} and version {}: {}",
+                                        workdir_id, tool_dir_name, version_dir_name, err
+                                    ))
+                                })?;
+                                continue;
+                            }
+
+                            // Check the paths for that version
+                            let expected_paths = env_tools
+                                .iter()
+                                .filter(|tool| tool.tool == tool_dir_name)
+                                .filter(|tool| tool.version == version_dir_name)
+                                .filter_map(|tool| tool.data_path.clone())
+                                .filter_map(|path| {
+                                    PathBuf::from(&path)
+                                        .strip_prefix(&version_dir.path())
+                                        .map(|path| path.to_string_lossy().to_string())
+                                        .ok()
+                                })
+                                .collect::<BTreeSet<_>>();
+
+                            let path_dirs = std::fs::read_dir(version_dir.path()).map_err(|err| {
+                                UpError::Exec(format!(
+                                    "failed to read data path directory for workdir {}, tool {} and version {}: {}",
+                                    workdir_id, tool_dir_name, version_dir_name, err,
+                                ))
+                            })?;
+
+                            for path_dir in path_dirs {
+                                let path_dir = path_dir.map_err(|err| {
+                                    UpError::Exec(format!(
+                                        "failed to read data path directory for workdir {}, tool {} and version {}: {}",
+                                        workdir_id, tool_dir_name, version_dir_name, err,
+                                    ))
+                                })?;
+
+                                let path_dir_name =
+                                    path_dir.file_name().to_string_lossy().to_string();
+
+                                // Remove the path directory if the path is not expected
+                                if !expected_paths.contains(&path_dir_name) {
+                                    std::fs::remove_dir_all(path_dir.path()).map_err(|err| {
+                                        UpError::Exec(format!(
+                                            "failed to remove workdir data path for workdir {}, tool {}, version {} and path {}: {}",
+                                            workdir_id, tool_dir_name, version_dir_name, path_dir_name, err
+                                        ))
+                                    })?;
+                                }
+                            }
+                        }
+                    }
+                }
             }
         }
 
+        let expected_tools = env_tools
+            .iter()
+            .map(|tool| (tool.tool.clone(), tool.version.clone()))
+            .collect::<HashSet<_>>();
+
         let mut uninstalled = Vec::new();
         let write_cache = AsdfOperationCache::exclusive(|asdf_cache| {
-            let workdir = workdir(".");
-            let repo_id = workdir.id();
-            if repo_id.is_none() {
-                return false;
-            }
-            let repo_id = repo_id.unwrap();
-
             // Update the asdf versions cache
             let mut updated = false;
             let mut to_remove = Vec::new();
 
             for (idx, exists) in asdf_cache.installed.iter_mut().enumerate() {
-                if exists.required_by.contains(&repo_id)
+                if exists.required_by.contains(&workdir_id)
                     && !expected_tools.contains(&(exists.tool.clone(), exists.version.clone()))
                 {
-                    exists.required_by.retain(|id| id != &repo_id);
+                    exists.required_by.retain(|id| id != &workdir_id);
                     updated = true;
                 }
                 if exists.required_by.is_empty() {

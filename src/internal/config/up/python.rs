@@ -1,4 +1,3 @@
-use std::collections::HashSet;
 use std::path::PathBuf;
 
 use blake3::Hasher;
@@ -60,57 +59,6 @@ fn setup_python_venv(
         setup_python_venv_per_version(progress_handler, version.clone())?;
     }
 
-    // Go over all the versions in the data path, and remove those
-    // that are not in the set of expected versions
-    progress_handler.progress("cleaning up venv python versions".to_string());
-
-    let wd = workdir(".");
-    let data_path = wd.data_path().ok_or_else(|| {
-        UpError::Exec(format!(
-            "failed to get data path for {}",
-            current_dir().display()
-        ))
-    })?;
-
-    let python_root_path = data_path.join("python");
-    if python_root_path.exists() {
-        let versions_str = versions
-            .iter()
-            .map(|v| v.version.clone())
-            .collect::<HashSet<String>>();
-
-        let python_dirs = std::fs::read_dir(python_root_path.clone()).map_err(|_| {
-            UpError::Exec(format!(
-                "failed to read python directory {}",
-                python_root_path.display()
-            ))
-        })?;
-
-        for python_dir in python_dirs {
-            let python_dir = python_dir.map_err(|_| {
-                UpError::Exec(format!(
-                    "failed to read python directory {}",
-                    python_root_path.display()
-                ))
-            })?;
-
-            let python_dir_name = python_dir.file_name().to_string_lossy().to_string();
-
-            if versions_str.contains(&python_dir_name) {
-                continue;
-            }
-
-            let python_dir_path = python_dir.path();
-            progress_handler.progress(format!("removing all venv for python {}", python_dir_name,));
-            std::fs::remove_dir_all(&python_dir_path).map_err(|_| {
-                UpError::Exec(format!(
-                    "failed to remove python directory {}",
-                    python_dir_path.display(),
-                ))
-            })?;
-        }
-    }
-
     Ok(())
 }
 
@@ -138,62 +86,8 @@ fn setup_python_venv_per_version(
         }
     }
 
-    let mut expected_venv_dirs = HashSet::new();
-
     for dir in version.dirs {
-        let venv_dir = setup_python_venv_per_dir(progress_handler, version.version.clone(), dir)?;
-
-        // Add the venv dir to the set of expected venv dirs
-        expected_venv_dirs.insert(venv_dir);
-    }
-
-    // Go over all venv dirs in the data path, and remove those
-    // that are not in the set of expected venv dirs
-    progress_handler.progress(format!(
-        "cleaning up venv directories for python {}",
-        version.version
-    ));
-
-    let wd = workdir(".");
-    let data_path = wd.data_path().ok_or_else(|| {
-        UpError::Exec(format!(
-            "failed to get data path for {}",
-            current_dir().display()
-        ))
-    })?;
-
-    let venv_root_path = data_path.join("python").join(version.version.clone());
-    if venv_root_path.exists() {
-        let venv_dirs = std::fs::read_dir(venv_root_path.clone()).map_err(|_| {
-            UpError::Exec(format!(
-                "failed to read venv directory {}",
-                venv_root_path.display()
-            ))
-        })?;
-
-        for venv_dir in venv_dirs {
-            let venv_dir = venv_dir.map_err(|_| {
-                UpError::Exec(format!(
-                    "failed to read venv directory {}",
-                    venv_root_path.display()
-                ))
-            })?;
-
-            let venv_dir_name = venv_dir.file_name().to_string_lossy().to_string();
-            if !expected_venv_dirs.contains(&venv_dir_name) {
-                let venv_dir_path = venv_dir.path();
-                progress_handler.progress(format!(
-                    "removing venv {} for python {}",
-                    venv_dir_name, version.version,
-                ));
-                std::fs::remove_dir_all(&venv_dir_path).map_err(|_| {
-                    UpError::Exec(format!(
-                        "failed to remove venv directory {}",
-                        venv_dir_path.display()
-                    ))
-                })?;
-            }
-        }
+        setup_python_venv_per_dir(progress_handler, version.version.clone(), dir)?;
     }
 
     Ok(())
@@ -203,7 +97,7 @@ fn setup_python_venv_per_dir(
     progress_handler: &dyn ProgressHandler,
     version: String,
     dir: String,
-) -> Result<String, UpError> {
+) -> Result<(), UpError> {
     // Get the data path for the work directory
     let workdir = workdir(".");
 
@@ -308,5 +202,5 @@ fn setup_python_venv_per_dir(
         )));
     }
 
-    Ok(venv_dir)
+    Ok(())
 }
