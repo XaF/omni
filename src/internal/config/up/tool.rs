@@ -111,25 +111,6 @@ impl UpConfigTool {
         }
     }
 
-    pub fn asdf_tool(&self) -> Option<&UpConfigAsdfBase> {
-        match self {
-            UpConfigTool::Bash(config) => Some(config),
-            UpConfigTool::Go(config) => {
-                if let Ok(config) = config.asdf_base() {
-                    Some(config)
-                } else {
-                    None
-                }
-            }
-            UpConfigTool::Nodejs(config) => Some(&config.asdf_base),
-            UpConfigTool::Python(config) => Some(&config.asdf_base),
-            UpConfigTool::Ruby(config) => Some(config),
-            UpConfigTool::Rust(config) => Some(config),
-            UpConfigTool::Terraform(config) => Some(config),
-            _ => None,
-        }
-    }
-
     pub fn dir(&self) -> Option<String> {
         match self {
             UpConfigTool::Custom(config) => config.dir(),

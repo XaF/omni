@@ -139,10 +139,10 @@ impl UpConfig {
             step.up(options, Some((idx + 1, num_steps)))?
         }
 
-        // This is a special case, as we could have multiple versions of a single
-        // tool loaded in the same repo (for some reason...) we need to clean up
+        // This is a special case, as we could have multiple versions of
+        // a single tool loaded in the same repo we need to clean up
         // the unused ones _at the end_ of the process
-        UpConfigAsdfBase::cleanup_unused(steps.clone(), Some((num_steps, num_steps)))?;
+        UpConfigAsdfBase::cleanup_unused(Some((num_steps, num_steps)))?;
 
         Ok(())
     }
@@ -166,7 +166,7 @@ impl UpConfig {
             step.down(Some((idx + 1, num_steps)))?
         }
 
-        UpConfigAsdfBase::cleanup_unused(Vec::new(), Some((num_steps, num_steps)))?;
+        UpConfigAsdfBase::cleanup_unused(Some((num_steps, num_steps)))?;
 
         Ok(())
     }

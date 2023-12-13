@@ -183,6 +183,7 @@ impl CacheObject for UpEnvironmentsCache {
         )
     }
 }
+
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct UpEnvironment {
     #[serde(default = "Vec::new", skip_serializing_if = "Vec::is_empty")]
