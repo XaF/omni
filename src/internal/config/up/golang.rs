@@ -1,22 +1,32 @@
+use std::collections::BTreeSet;
 use std::fs::File;
 use std::io::BufRead;
 use std::io::BufReader;
 use std::path::Path;
 use std::path::PathBuf;
 
+use normalize_path::NormalizePath;
 use once_cell::sync::OnceCell;
 use serde::{Deserialize, Serialize};
 
+use crate::internal::cache::utils::CacheObject;
+use crate::internal::cache::UpEnvironmentsCache;
 use crate::internal::commands::utils::abs_path;
+use crate::internal::config::up::utils::data_path_dir_hash;
+use crate::internal::config::up::AsdfToolUpVersion;
+use crate::internal::config::up::ProgressHandler;
 use crate::internal::config::up::UpConfigAsdfBase;
 use crate::internal::config::up::UpError;
 use crate::internal::config::up::UpOptions;
+use crate::internal::env::current_dir;
+use crate::internal::workdir;
 use crate::internal::ConfigValue;
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct UpConfigGolang {
     pub version: Option<String>,
     pub version_file: Option<String>,
+    pub dirs: BTreeSet<String>,
     #[serde(skip)]
     pub asdf_base: OnceCell<UpConfigAsdfBase>,
 }
@@ -25,6 +35,7 @@ impl UpConfigGolang {
     pub fn from_config_value(config_value: Option<&ConfigValue>) -> Self {
         let mut version = None;
         let mut version_file = None;
+        let mut dirs = BTreeSet::new();
 
         if let Some(config_value) = config_value {
             if let Some(value) = config_value.as_str() {
@@ -33,11 +44,31 @@ impl UpConfigGolang {
                 version = Some(value.to_string());
             } else if let Some(value) = config_value.as_integer() {
                 version = Some(value.to_string());
-            } else if let Some(value) = config_value.as_table() {
-                if let Some(value) = value.get("version") {
-                    version = Some(value.as_str().unwrap().to_string());
-                } else if let Some(value) = value.get("version_file") {
-                    version_file = Some(value.as_str().unwrap().to_string());
+            } else {
+                if let Some(value) = config_value.get_as_str_forced("version") {
+                    version = Some(value.to_string());
+                } else if let Some(value) = config_value.get_as_str_forced("version_file") {
+                    version_file = Some(value.to_string());
+                }
+
+                if let Some(value) = config_value.get_as_str("dir") {
+                    dirs.insert(
+                        PathBuf::from(value)
+                            .normalize()
+                            .to_string_lossy()
+                            .to_string(),
+                    );
+                } else if let Some(array) = config_value.get_as_array("dir") {
+                    for value in array {
+                        if let Some(value) = value.as_str_forced() {
+                            dirs.insert(
+                                PathBuf::from(value)
+                                    .normalize()
+                                    .to_string_lossy()
+                                    .to_string(),
+                            );
+                        }
+                    }
                 }
             }
         }
@@ -46,6 +77,7 @@ impl UpConfigGolang {
             asdf_base: OnceCell::new(),
             version,
             version_file,
+            dirs,
         }
     }
 
@@ -67,8 +99,10 @@ impl UpConfigGolang {
                 "latest".to_string()
             };
 
-            let mut asdf_base = UpConfigAsdfBase::new("golang", version.as_ref());
+            let mut asdf_base =
+                UpConfigAsdfBase::new("golang", version.as_ref(), self.dirs.clone());
             asdf_base.add_detect_version_func(detect_version_from_gomod);
+            asdf_base.add_post_install_func(setup_individual_gopath);
 
             Ok(asdf_base)
         })
@@ -139,4 +173,67 @@ fn extract_version_from_gomod_file(
         "no version found in version file ({})",
         version_file.display(),
     )))
+}
+
+fn setup_individual_gopath(
+    progress_handler: &dyn ProgressHandler,
+    tool: String,
+    versions: Vec<AsdfToolUpVersion>,
+) -> Result<(), UpError> {
+    if tool != "golang" {
+        panic!("setup_individual_gopath called with wrong tool: {}", tool);
+    }
+
+    // Get the data path for the work directory
+    let workdir = workdir(".");
+
+    let workdir_id = if let Some(workdir_id) = workdir.id() {
+        workdir_id
+    } else {
+        return Err(UpError::Exec(format!(
+            "failed to get workdir id for {}",
+            current_dir().display()
+        )));
+    };
+
+    let data_path = if let Some(data_path) = workdir.data_path() {
+        data_path
+    } else {
+        return Err(UpError::Exec(format!(
+            "failed to get data path for {}",
+            current_dir().display()
+        )));
+    };
+
+    // Handle each version individually
+    for version in &versions {
+        if let Err(err) = UpEnvironmentsCache::exclusive(|up_env| {
+            let mut any_changed = false;
+            for dir in &version.dirs {
+                let gopath_dir = data_path_dir_hash(&dir);
+
+                let gopath = data_path
+                    .join(&tool)
+                    .join(&version.version)
+                    .join(&gopath_dir);
+
+                any_changed = up_env.add_version_data_path(
+                    &workdir_id,
+                    &tool,
+                    &version.version,
+                    &dir,
+                    &gopath.to_string_lossy(),
+                ) || any_changed;
+            }
+            any_changed
+        }) {
+            progress_handler.progress(format!("failed to update tool cache: {}", err));
+            return Err(UpError::Cache(format!(
+                "failed to update tool cache: {}",
+                err
+            )));
+        }
+    }
+
+    Ok(())
 }

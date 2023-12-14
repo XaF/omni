@@ -9,6 +9,7 @@ use itertools::any;
 use lazy_static::lazy_static;
 use node_semver::Range as semverRange;
 use node_semver::Version as semverVersion;
+use normalize_path::NormalizePath;
 use once_cell::sync::OnceCell;
 use serde::Deserialize;
 use serde::Serialize;
@@ -18,6 +19,7 @@ use walkdir::WalkDir;
 use crate::internal::cache::AsdfOperationCache;
 use crate::internal::cache::CacheObject;
 use crate::internal::cache::UpEnvironmentsCache;
+use crate::internal::config::up::utils::force_remove_dir_all;
 use crate::internal::config::up::utils::run_progress;
 use crate::internal::config::up::utils::PrintProgressHandler;
 use crate::internal::config::up::utils::ProgressHandler;
@@ -192,12 +194,12 @@ pub struct UpConfigAsdfBase {
 }
 
 impl UpConfigAsdfBase {
-    pub fn new(tool: &str, version: &str) -> Self {
+    pub fn new(tool: &str, version: &str, dirs: BTreeSet<String>) -> Self {
         UpConfigAsdfBase {
             tool: tool.to_string(),
             tool_url: None,
             version: version.to_string(),
-            dirs: BTreeSet::new(),
+            dirs: dirs.clone(),
             detect_version_funcs: vec![],
             post_install_funcs: vec![],
             actual_version: OnceCell::new(),
@@ -259,15 +261,27 @@ impl UpConfigAsdfBase {
             } else if let Some(value) = config_value.as_integer() {
                 version = value.to_string();
             } else {
-                if let Some(value) = config_value.get("version") {
-                    version = value.as_str().unwrap().to_string();
+                if let Some(value) = config_value.get_as_str_forced("version") {
+                    version = value.to_string();
                 }
 
                 if let Some(value) = config_value.get_as_str("dir") {
-                    dirs.insert(value.to_string());
+                    dirs.insert(
+                        PathBuf::from(value)
+                            .normalize()
+                            .to_string_lossy()
+                            .to_string(),
+                    );
                 } else if let Some(array) = config_value.get_as_array("dir") {
                     for value in array {
-                        dirs.insert(value.as_str().unwrap().to_string());
+                        if let Some(value) = value.as_str_forced() {
+                            dirs.insert(
+                                PathBuf::from(value)
+                                    .normalize()
+                                    .to_string_lossy()
+                                    .to_string(),
+                            );
+                        }
                     }
                 }
             }
@@ -780,7 +794,7 @@ impl UpConfigAsdfBase {
 
                 // If any data path in the versions
                 if !any(&env_tools, |tool| tool.data_path.is_some()) {
-                    std::fs::remove_dir_all(wd_data_path).map_err(|err| {
+                    force_remove_dir_all(wd_data_path).map_err(|err| {
                         UpError::Exec(format!(
                             "failed to remove workdir data path {}: {}",
                             wd_data_path.display(),
@@ -811,10 +825,10 @@ impl UpConfigAsdfBase {
 
                         // Remove the tool directory if the tool is not expected
                         if !expected_tools.contains(&tool_dir_name) {
-                            std::fs::remove_dir_all(tool_dir.path()).map_err(|err| {
+                            force_remove_dir_all(tool_dir.path()).map_err(|err| {
                                 UpError::Exec(format!(
-                                    "failed to remove workdir data path for workdir {}: {}",
-                                    workdir_id, err
+                                    "failed to remove workdir data path for tool {}: {}",
+                                    tool_dir_name, err
                                 ))
                             })?;
                             continue;
@@ -847,7 +861,7 @@ impl UpConfigAsdfBase {
 
                             // Remove the version directory if the version is not expected
                             if !expected_versions.contains(&version_dir_name) {
-                                std::fs::remove_dir_all(version_dir.path()).map_err(|err| {
+                                force_remove_dir_all(version_dir.path()).map_err(|err| {
                                     UpError::Exec(format!(
                                         "failed to remove workdir data path for workdir {}, tool {} and version {}: {}",
                                         workdir_id, tool_dir_name, version_dir_name, err
@@ -890,7 +904,7 @@ impl UpConfigAsdfBase {
 
                                 // Remove the path directory if the path is not expected
                                 if !expected_paths.contains(&path_dir_name) {
-                                    std::fs::remove_dir_all(path_dir.path()).map_err(|err| {
+                                    force_remove_dir_all(path_dir.path()).map_err(|err| {
                                         UpError::Exec(format!(
                                             "failed to remove workdir data path for workdir {}, tool {}, version {} and path {}: {}",
                                             workdir_id, tool_dir_name, version_dir_name, path_dir_name, err

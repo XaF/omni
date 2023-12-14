@@ -3,8 +3,8 @@ use std::io;
 use std::io::Write;
 use std::path::{Path, PathBuf};
 
+use normalize_path::NormalizePath;
 use path_clean::PathClean;
-
 use requestty::question::{completions, Completions};
 
 use crate::internal::env::omni_cmd_file;
@@ -16,7 +16,7 @@ pub fn split_name(string: &str, split_on: &str) -> Vec<String> {
 
 pub fn abs_or_rel_path(path: &str) -> String {
     let current_dir = std::env::current_dir().unwrap();
-    let path = std::path::PathBuf::from(&path);
+    let path = std::path::PathBuf::from(&path).normalize();
     let path = if path.is_absolute() {
         path
     } else {
@@ -44,7 +44,7 @@ pub fn abs_or_rel_path(path: &str) -> String {
 }
 
 pub fn abs_path(path: impl AsRef<Path>) -> PathBuf {
-    let path = path.as_ref();
+    let path = path.as_ref().normalize();
 
     let absolute_path = if path.is_absolute() {
         path.to_path_buf()
