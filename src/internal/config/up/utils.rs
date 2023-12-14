@@ -1,10 +1,14 @@
 use std::io::Write;
+use std::path::Path;
 
+use blake3::Hasher;
 use indicatif::MultiProgress;
 use indicatif::ProgressBar;
 use indicatif::ProgressDrawTarget;
 use indicatif::ProgressStyle;
+use normalize_path::NormalizePath;
 use regex::Regex;
+use std::os::unix::fs::PermissionsExt;
 use tempfile::NamedTempFile;
 use time::format_description::well_known::Rfc3339;
 use tokio::io::AsyncBufReadExt;
@@ -510,4 +514,60 @@ impl ProgressHandler for PrintProgressHandler {
     fn show(&self) {
         // do nothing
     }
+}
+
+/// Return the name of the directory to use in the data path
+/// for the given subdirectory of the work directory.
+pub fn data_path_dir_hash(dir: &str) -> String {
+    let dir = Path::new(dir).normalize().to_string_lossy().to_string();
+
+    if dir.is_empty() {
+        "root".to_string()
+    } else {
+        let mut hasher = Hasher::new();
+        hasher.update(dir.as_bytes());
+        let hash_bytes = hasher.finalize();
+        let hash_b62 = base_62::encode(hash_bytes.as_bytes())[..20].to_string();
+        hash_b62
+    }
+}
+
+/// Remove the given directory, even if it contains read-only files.
+/// This will first try to remove the directory normally, and if that
+/// fails with a PermissionDenied error, it will make all files and
+/// directories in the given path writeable, and then try again.
+pub fn force_remove_dir_all<P: AsRef<Path>>(path: P) -> std::io::Result<()> {
+    let path = path.as_ref();
+    if path.exists() {
+        match std::fs::remove_dir_all(path) {
+            Ok(_) => {}
+            Err(err) => {
+                if err.kind() == std::io::ErrorKind::PermissionDenied {
+                    set_writeable_recursive(path)?;
+                    std::fs::remove_dir_all(path)?;
+                } else {
+                    return Err(err);
+                }
+            }
+        }
+    }
+    Ok(())
+}
+
+/// Set all files and directories in the given path to be writeable.
+/// This is useful when we want to remove a directory that contains
+/// read-only files, which would otherwise fail.
+pub fn set_writeable_recursive<P: AsRef<Path>>(path: P) -> std::io::Result<()> {
+    for entry in walkdir::WalkDir::new(&path)
+        .into_iter()
+        .filter_map(|e| e.ok())
+    {
+        let metadata = entry.metadata()?;
+        let mut permissions = metadata.permissions();
+        if permissions.readonly() {
+            permissions.set_mode(0o775);
+            std::fs::set_permissions(entry.path(), permissions)?;
+        }
+    }
+    Ok(())
 }

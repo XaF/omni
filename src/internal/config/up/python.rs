@@ -1,6 +1,5 @@
 use std::path::PathBuf;
 
-use blake3::Hasher;
 use semver::Version;
 use serde::{Deserialize, Serialize};
 use tokio::process::Command as TokioCommand;
@@ -9,6 +8,7 @@ use crate::internal::cache::utils::CacheObject;
 use crate::internal::cache::UpEnvironmentsCache;
 use crate::internal::config::up::asdf_tool_path;
 use crate::internal::config::up::run_progress;
+use crate::internal::config::up::utils::data_path_dir_hash;
 use crate::internal::config::up::utils::RunConfig;
 use crate::internal::config::up::AsdfToolUpVersion;
 use crate::internal::config::up::ProgressHandler;
@@ -120,15 +120,7 @@ fn setup_python_venv_per_dir(
     };
 
     // Get the hash of the relative path
-    let venv_dir = if dir.is_empty() {
-        "root".to_string()
-    } else {
-        let mut hasher = Hasher::new();
-        hasher.update(dir.as_bytes());
-        let hash_bytes = hasher.finalize();
-        let hash_b62 = base_62::encode(hash_bytes.as_bytes())[..20].to_string();
-        hash_b62
-    };
+    let venv_dir = data_path_dir_hash(&dir);
 
     let venv_path = data_path
         .join("python")
