@@ -210,7 +210,7 @@ fn setup_individual_gopath(
         if let Err(err) = UpEnvironmentsCache::exclusive(|up_env| {
             let mut any_changed = false;
             for dir in &version.dirs {
-                let gopath_dir = data_path_dir_hash(&dir);
+                let gopath_dir = data_path_dir_hash(dir);
 
                 let gopath = data_path
                     .join(&tool)
@@ -221,7 +221,7 @@ fn setup_individual_gopath(
                     &workdir_id,
                     &tool,
                     &version.version,
-                    &dir,
+                    dir,
                     &gopath.to_string_lossy(),
                 ) || any_changed;
             }

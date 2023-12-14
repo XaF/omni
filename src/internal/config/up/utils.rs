@@ -8,6 +8,7 @@ use indicatif::ProgressDrawTarget;
 use indicatif::ProgressStyle;
 use normalize_path::NormalizePath;
 use regex::Regex;
+use std::os::unix::fs::PermissionsExt;
 use tempfile::NamedTempFile;
 use time::format_description::well_known::Rfc3339;
 use tokio::io::AsyncBufReadExt;
@@ -538,11 +539,11 @@ pub fn data_path_dir_hash(dir: &str) -> String {
 pub fn force_remove_dir_all<P: AsRef<Path>>(path: P) -> std::io::Result<()> {
     let path = path.as_ref();
     if path.exists() {
-        match std::fs::remove_dir_all(&path) {
+        match std::fs::remove_dir_all(path) {
             Ok(_) => {}
             Err(err) => {
                 if err.kind() == std::io::ErrorKind::PermissionDenied {
-                    set_writeable_recursive(&path)?;
+                    set_writeable_recursive(path)?;
                     std::fs::remove_dir_all(path)?;
                 } else {
                     return Err(err);
@@ -564,7 +565,7 @@ pub fn set_writeable_recursive<P: AsRef<Path>>(path: P) -> std::io::Result<()> {
         let metadata = entry.metadata()?;
         let mut permissions = metadata.permissions();
         if permissions.readonly() {
-            permissions.set_readonly(false);
+            permissions.set_mode(0o775);
             std::fs::set_permissions(entry.path(), permissions)?;
         }
     }
