@@ -228,11 +228,13 @@ impl OmniRelease {
             self.download(progress_handler.as_ref())
         };
 
-        if updated.is_err() {
-            progress_handler.error_with_message("Failed to update".to_string());
-            return;
-        }
-        let updated = updated.unwrap();
+        let updated = match updated {
+            Ok(updated) => updated,
+            Err(err) => {
+                progress_handler.error_with_message(format!("failed to update: {}", err));
+                return;
+            }
+        };
 
         if updated {
             progress_handler
