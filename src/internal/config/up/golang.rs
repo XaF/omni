@@ -178,7 +178,9 @@ fn extract_version_from_gomod_file(
 
 fn setup_individual_gopath(
     progress_handler: &dyn ProgressHandler,
+    _config_value: Option<ConfigValue>,
     tool: String,
+    _requested_version: String,
     versions: Vec<AsdfToolUpVersion>,
 ) -> Result<(), UpError> {
     if tool != "golang" {
