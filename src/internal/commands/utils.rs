@@ -1,11 +1,13 @@
 use std::fs::OpenOptions;
 use std::io;
 use std::io::Write;
-use std::path::{Path, PathBuf};
+use std::path::Path;
+use std::path::PathBuf;
 
 use normalize_path::NormalizePath;
 use path_clean::PathClean;
-use requestty::question::{completions, Completions};
+use requestty::question::completions;
+use requestty::question::Completions;
 
 use crate::internal::env::omni_cmd_file;
 use crate::internal::env::user_home;

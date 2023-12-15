@@ -4,7 +4,6 @@ use std::collections::HashSet;
 use std::sync::Mutex;
 
 use lazy_static::lazy_static;
-
 use strsim::normalized_damerau_levenshtein;
 
 use crate::internal::commands::base::Command;

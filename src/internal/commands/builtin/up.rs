@@ -6,10 +6,11 @@ use std::process::exit;
 use std::str::FromStr;
 
 use blake3::Hasher as Blake3Hasher;
-
 use git_url_parse::GitUrl;
+use imara_diff::diff;
 use imara_diff::intern::InternedInput;
-use imara_diff::{diff, Algorithm, UnifiedDiffBuilder};
+use imara_diff::Algorithm;
+use imara_diff::UnifiedDiffBuilder;
 use once_cell::sync::OnceCell;
 use serde::Serialize;
 use tokio::process::Command as TokioCommand;

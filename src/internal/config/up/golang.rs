@@ -7,7 +7,8 @@ use std::path::PathBuf;
 
 use normalize_path::NormalizePath;
 use once_cell::sync::OnceCell;
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
+use serde::Serialize;
 
 use crate::internal::cache::utils::CacheObject;
 use crate::internal::cache::UpEnvironmentsCache;

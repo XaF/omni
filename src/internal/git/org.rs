@@ -7,7 +7,6 @@ use indicatif::ProgressBar;
 use indicatif::ProgressStyle;
 use lazy_static::lazy_static;
 use once_cell::sync::OnceCell;
-
 use strsim::normalized_damerau_levenshtein;
 use url::Url;
 use walkdir::WalkDir;

@@ -1,7 +1,8 @@
 use std::path::PathBuf;
 
 use semver::Version;
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
+use serde::Serialize;
 use tokio::process::Command as TokioCommand;
 
 use crate::internal::cache::utils::CacheObject;

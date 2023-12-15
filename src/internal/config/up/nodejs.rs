@@ -3,7 +3,8 @@ use std::str::FromStr;
 
 use node_semver::Range as semverRange;
 use package_json::PackageJsonManager;
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
+use serde::Serialize;
 
 use crate::internal::config::up::UpConfigAsdfBase;
 use crate::internal::config::up::UpError;

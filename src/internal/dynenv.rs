@@ -5,7 +5,6 @@ use itertools::Itertools;
 use once_cell::sync::OnceCell;
 use serde::Deserialize;
 use serde::Serialize;
-
 use shell_escape::escape;
 
 use crate::internal::cache::CacheObject;

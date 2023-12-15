@@ -8,11 +8,11 @@ use std::path::Path;
 use std::process::Command as ProcessCommand;
 
 use lazy_static::lazy_static;
-use semver::{Prerelease, Version};
+use semver::Prerelease;
+use semver::Version;
 use serde::Deserialize;
 use sha2::Digest;
 use sha2::Sha256;
-
 use tokio::process::Command as TokioCommand;
 
 use crate::internal::config::config;

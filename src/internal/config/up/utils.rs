@@ -1,4 +1,5 @@
 use std::io::Write;
+use std::os::unix::fs::PermissionsExt;
 use std::path::Path;
 
 use blake3::Hasher;
@@ -8,7 +9,6 @@ use indicatif::ProgressDrawTarget;
 use indicatif::ProgressStyle;
 use normalize_path::NormalizePath;
 use regex::Regex;
-use std::os::unix::fs::PermissionsExt;
 use tempfile::NamedTempFile;
 use time::format_description::well_known::Rfc3339;
 use tokio::io::AsyncBufReadExt;
