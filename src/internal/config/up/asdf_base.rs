@@ -40,8 +40,13 @@ lazy_static! {
 }
 
 type DetectVersionFunc = fn(String, PathBuf) -> Option<String>;
-type PostInstallFunc =
-    fn(&dyn ProgressHandler, String, Vec<AsdfToolUpVersion>) -> Result<(), UpError>;
+type PostInstallFunc = fn(
+    &dyn ProgressHandler,
+    Option<ConfigValue>,
+    String,
+    String,
+    Vec<AsdfToolUpVersion>,
+) -> Result<(), UpError>;
 
 fn asdf_path() -> String {
     (*ASDF_PATH).clone()
@@ -191,6 +196,9 @@ pub struct UpConfigAsdfBase {
     /// This is only used when the version is "auto".
     #[serde(skip)]
     actual_versions: OnceCell<BTreeSet<String>>,
+
+    #[serde(skip)]
+    config_value: Option<ConfigValue>,
 }
 
 impl UpConfigAsdfBase {
@@ -204,6 +212,7 @@ impl UpConfigAsdfBase {
             post_install_funcs: vec![],
             actual_version: OnceCell::new(),
             actual_versions: OnceCell::new(),
+            config_value: None,
         }
     }
 
@@ -230,6 +239,7 @@ impl UpConfigAsdfBase {
             post_install_funcs: vec![],
             actual_version: OnceCell::new(),
             actual_versions: OnceCell::new(),
+            config_value: None,
         }
     }
 
@@ -296,6 +306,7 @@ impl UpConfigAsdfBase {
             post_install_funcs: vec![],
             actual_version: OnceCell::new(),
             actual_versions: OnceCell::new(),
+            config_value: config_value.cloned(),
         }
     }
 
@@ -476,7 +487,9 @@ impl UpConfigAsdfBase {
                 for func in self.post_install_funcs.iter() {
                     if let Err(err) = func(
                         progress_handler,
+                        self.config_value.clone(),
                         self.tool.clone(),
+                        self.version.clone(),
                         post_install_versions.clone(),
                     ) {
                         progress_handler.error_with_message(format!("error: {}", err));
@@ -541,7 +554,9 @@ impl UpConfigAsdfBase {
                         for func in self.post_install_funcs.iter() {
                             if let Err(err) = func(
                                 progress_handler,
+                                self.config_value.clone(),
                                 self.tool.clone(),
+                                self.version.clone(),
                                 post_install_versions.clone(),
                             ) {
                                 progress_handler.error_with_message(format!("error: {}", err));

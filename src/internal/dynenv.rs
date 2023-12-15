@@ -21,7 +21,7 @@ pub fn update_dynamic_env(export_mode: DynamicEnvExportMode) {
     update_dynamic_env_with_path(export_mode, None);
 }
 
-pub fn update_dynamic_env_for_command(path: &str) {
+pub fn update_dynamic_env_for_command<T: ToString>(path: T) {
     update_dynamic_env_with_path(DynamicEnvExportMode::Env, Some(path.to_string()));
 }
 
