@@ -81,11 +81,10 @@ impl UpConfigHomebrew {
 
     pub fn down(&self, progress: Option<(usize, usize)>) -> Result<(), UpError> {
         let workdir = workdir(".");
-        let repo_id = workdir.id();
-        if repo_id.is_none() {
-            return Ok(());
-        }
-        let repo_id = repo_id.unwrap();
+        let repo_id = match workdir.id() {
+            Some(repo_id) => repo_id,
+            None => return Ok(()),
+        };
 
         let mut return_value = Ok(());
 

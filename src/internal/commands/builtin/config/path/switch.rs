@@ -324,23 +324,30 @@ impl ConfigPathSwitchCommand {
         let package_path = package_path.unwrap();
 
         let repo_id = repo_id.unwrap_or_else(|| {
-            let git_url = full_git_url_parse(&repo_handle);
-            if git_url.is_err() {
-                omni_error!(format!(
-                    "failed to parse git url {}",
-                    repo_handle.light_blue()
-                ));
-                exit(1);
-            }
-            let repo_id = id_from_git_url(&git_url.unwrap());
-            if repo_id.is_none() {
-                omni_error!(format!(
-                    "failed to resolve repository id from git url {}",
-                    repo_handle.light_blue()
-                ));
-                exit(1);
-            }
-            repo_id.unwrap()
+            let git_url = match full_git_url_parse(&repo_handle) {
+                Ok(git_url) => git_url,
+                Err(err) => {
+                    omni_error!(format!(
+                        "failed to parse git url {}: {}",
+                        repo_handle.light_blue(),
+                        err
+                    ));
+                    exit(1);
+                }
+            };
+
+            let repo_id = match id_from_git_url(&git_url) {
+                Some(repo_id) => repo_id,
+                None => {
+                    omni_error!(format!(
+                        "failed to resolve repository id from git url {}",
+                        repo_handle.light_blue()
+                    ));
+                    exit(1);
+                }
+            };
+
+            repo_id
         });
 
         let worktree_exists = worktree_path.exists();

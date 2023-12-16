@@ -19,12 +19,11 @@ pub fn is_trusted(path: &str) -> bool {
     }
 
     let workdir = workdir(path);
-    let repo_id = workdir.id();
-    if repo_id.is_some() && RepositoriesCache::get().has_trusted(&repo_id.clone().unwrap()) {
-        return true;
+    if let Some(workdir_id) = workdir.trust_id() {
+        RepositoriesCache::get().has_trusted(&workdir_id)
+    } else {
+        false
     }
-
-    false
 }
 
 pub fn is_trusted_or_ask(path: &str, ask: String) -> bool {
@@ -36,16 +35,14 @@ pub fn is_trusted_or_ask(path: &str, ask: String) -> bool {
         return false;
     }
 
-    let workdir = workdir(path);
-    let repo_id = workdir.id();
-
     let mut choices = vec![('y', "Yes, this time (and ask me everytime)"), ('n', "No")];
 
-    if repo_id.is_some() {
+    let workdir = workdir(path);
+    if let Some(workdir_id) = workdir.trust_id() {
         choices.insert(0, ('a', "Yes, always (add to trusted directories)"));
         omni_info!(format!(
             "The directory {} is not in your trusted directories.",
-            repo_id.clone().unwrap().light_blue()
+            workdir_id.light_blue()
         ));
         omni_info!(format!(
             "{} all repositories in a trusted organization are automatically trusted.",
@@ -82,9 +79,8 @@ pub fn is_trusted_or_ask(path: &str, ask: String) -> bool {
 
 pub fn add_trust(path: &str) -> bool {
     let wd = workdir(path);
-    let repo_id = wd.id();
-    if let Some(repo_id) = repo_id {
-        if let Err(err) = RepositoriesCache::exclusive(|repos| repos.add_trusted(&repo_id)) {
+    if let Some(workdir_id) = wd.trust_id() {
+        if let Err(err) = RepositoriesCache::exclusive(|repos| repos.add_trusted(&workdir_id)) {
             omni_error!(format!("Unable to update cache: {:?}", err.to_string()));
             return false;
         }
