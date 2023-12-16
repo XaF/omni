@@ -336,7 +336,7 @@ impl ConfigPathSwitchCommand {
                 }
             };
 
-            let repo_id = match id_from_git_url(&git_url) {
+            match id_from_git_url(&git_url) {
                 Some(repo_id) => repo_id,
                 None => {
                     omni_error!(format!(
@@ -345,9 +345,7 @@ impl ConfigPathSwitchCommand {
                     ));
                     exit(1);
                 }
-            };
-
-            repo_id
+            }
         });
 
         let worktree_exists = worktree_path.exists();
