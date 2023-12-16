@@ -10,6 +10,7 @@ use shell_escape::escape;
 use crate::internal::cache::CacheObject;
 use crate::internal::cache::UpEnvironmentsCache;
 use crate::internal::config::up::asdf_tool_path;
+use crate::internal::env::user_home;
 use crate::internal::user_interface::StringColor;
 use crate::internal::workdir;
 
@@ -318,6 +319,17 @@ impl DynamicEnv {
                                 "PATH",
                                 &format!("{}/bin", goroot.to_str().unwrap()),
                             );
+                        }
+
+                        if std::env::var_os("GOMODCACHE").is_none() {
+                            let gopath = match std::env::var_os("GOPATH") {
+                                Some(gopath) => match gopath.to_str() {
+                                    Some(gopath) => gopath.to_string(),
+                                    None => format!("{}/go", user_home()),
+                                },
+                                None => format!("{}/go", user_home()),
+                            };
+                            envsetter.set_value("GOMODCACHE", &format!("{}/pkg/mod", gopath));
                         }
 
                         envsetter.set_value("GOROOT", &format!("{}/go", tool_prefix));
