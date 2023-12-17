@@ -15,6 +15,7 @@ use lazy_static::lazy_static;
 
 use crate::internal::config::ConfigExtendOptions;
 use crate::internal::config::ConfigExtendStrategy;
+use crate::internal::config::ConfigScope;
 use crate::internal::config::ConfigSource;
 use crate::internal::config::ConfigValue;
 use crate::internal::env::config_home;
@@ -113,7 +114,7 @@ impl ConfigLoader {
             raw_config: ConfigValue::default(),
         };
 
-        new_config_loader.import_config_files(Self::user_config_files(), vec!["user".to_owned()]);
+        new_config_loader.import_config_files(Self::user_config_files(), ConfigScope::User);
 
         new_config_loader
     }
@@ -121,7 +122,7 @@ impl ConfigLoader {
     fn new_empty() -> Self {
         Self {
             loaded_config_files: vec![],
-            raw_config: ConfigValue::new_null(ConfigSource::Null, vec![]),
+            raw_config: ConfigValue::new_null(ConfigSource::Null, ConfigScope::Null),
         }
     }
 
@@ -225,7 +226,7 @@ impl ConfigLoader {
         let mut config_loader = Self::new_empty();
         config_loader.import_config_file_with_strategy(
             &file_path,
-            vec![],
+            ConfigScope::User,
             ConfigExtendStrategy::Raw,
         );
 
@@ -263,27 +264,27 @@ impl ConfigLoader {
         workdir_config_files.push(format!("{}/.omni.yaml", wd_root));
         workdir_config_files.push(format!("{}/.omni/config.yaml", wd_root));
 
-        new_config_loader.import_config_files(workdir_config_files, vec!["git_repo".to_owned()]);
+        new_config_loader.import_config_files(workdir_config_files, ConfigScope::Workdir);
 
         new_config_loader
     }
 
-    pub fn import_config_files(&mut self, config_files: Vec<String>, labels: Vec<String>) {
+    pub fn import_config_files(&mut self, config_files: Vec<String>, scope: ConfigScope) {
         for config_file in &config_files.clone() {
             if !self.loaded_config_files.contains(config_file) {
-                self.import_config_file(config_file, labels.clone());
+                self.import_config_file(config_file, scope.clone());
             }
         }
     }
 
-    pub fn import_config_file(&mut self, config_file: &String, labels: Vec<String>) {
-        self.import_config_file_with_strategy(config_file, labels, ConfigExtendStrategy::Default)
+    pub fn import_config_file(&mut self, config_file: &String, scope: ConfigScope) {
+        self.import_config_file_with_strategy(config_file, scope, ConfigExtendStrategy::Default)
     }
 
     pub fn import_config_file_with_strategy(
         &mut self,
         config_file: &String,
-        labels: Vec<String>,
+        scope: ConfigScope,
         strategy: ConfigExtendStrategy,
     ) {
         let file = File::open(config_file);
@@ -307,7 +308,7 @@ impl ConfigLoader {
                 ConfigSource::File(config_file.to_string())
             };
 
-            let config_value = ConfigValue::from_value(source, labels.clone(), value);
+            let config_value = ConfigValue::from_value(source, scope.clone(), value);
             self.raw_config.extend(
                 config_value,
                 ConfigExtendOptions::new().with_strategy(strategy),

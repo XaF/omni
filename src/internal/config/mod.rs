@@ -1,6 +1,7 @@
 pub(crate) mod config_value;
 pub(crate) use config_value::ConfigExtendOptions;
 pub(crate) use config_value::ConfigExtendStrategy;
+pub(crate) use config_value::ConfigScope;
 pub(crate) use config_value::ConfigSource;
 pub(crate) use config_value::ConfigValue;
 

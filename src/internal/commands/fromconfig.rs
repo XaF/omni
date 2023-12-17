@@ -11,6 +11,7 @@ use crate::internal::commands::utils::split_name;
 use crate::internal::config::config;
 use crate::internal::config::CommandDefinition;
 use crate::internal::config::CommandSyntax;
+use crate::internal::config::ConfigScope;
 use crate::internal::config::ConfigSource;
 use crate::internal::user_interface::colors::StringColor;
 use crate::omni_error;
@@ -116,6 +117,11 @@ impl ConfigCommand {
         }
 
         aliases
+    }
+
+    pub fn is_trusted(&self) -> bool {
+        // User scope or better is trusted
+        self.details.scope <= ConfigScope::User
     }
 
     pub fn source(&self) -> String {
