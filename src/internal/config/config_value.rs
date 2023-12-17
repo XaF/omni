@@ -1,5 +1,6 @@
 use std::collections::BTreeMap;
 use std::collections::HashMap;
+use std::collections::HashSet;
 use std::path::Path;
 
 use serde::Deserialize;
@@ -17,6 +18,15 @@ pub enum ConfigSource {
     File(String),
     Package(PathEntryConfig),
     Null,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Hash, Eq, Ord, PartialOrd)]
+pub enum ConfigScope {
+    Null,
+    Default,
+    System,
+    User,
+    Workdir,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -68,7 +78,7 @@ pub enum ConfigExtendStrategy {
 #[derive(Debug, Clone, PartialEq, Deserialize)]
 pub struct ConfigValue {
     source: ConfigSource,
-    labels: Vec<String>,
+    scope: ConfigScope,
     value: Option<Box<ConfigData>>,
 }
 
@@ -96,18 +106,18 @@ impl Serialize for ConfigValue {
 }
 
 impl ConfigValue {
-    pub fn new(source: ConfigSource, labels: Vec<String>, value: Option<Box<ConfigData>>) -> Self {
+    pub fn new(source: ConfigSource, scope: ConfigScope, value: Option<Box<ConfigData>>) -> Self {
         Self {
             source,
-            labels,
+            scope,
             value,
         }
     }
 
-    pub fn new_null(source: ConfigSource, labels: Vec<String>) -> Self {
+    pub fn new_null(source: ConfigSource, scope: ConfigScope) -> Self {
         Self::new(
             source,
-            labels,
+            scope,
             Some(Box::new(ConfigData::Value(serde_yaml::Value::Null))),
         )
     }
@@ -167,32 +177,30 @@ up_command:
         let yaml_str = yaml_str.as_str();
 
         let value: serde_yaml::Value = serde_yaml::from_str(yaml_str).unwrap();
-        Self::from_value(ConfigSource::Default, vec!["default".to_string()], value)
+        Self::from_value(ConfigSource::Default, ConfigScope::Default, value)
     }
 
-    pub fn from_value(source: ConfigSource, labels: Vec<String>, value: serde_yaml::Value) -> Self {
+    pub fn from_value(source: ConfigSource, scope: ConfigScope, value: serde_yaml::Value) -> Self {
         let config_data = match value {
             serde_yaml::Value::Mapping(mapping) => {
-                ConfigData::Mapping(Self::from_mapping(source.clone(), labels.clone(), mapping))
+                ConfigData::Mapping(Self::from_mapping(source.clone(), scope.clone(), mapping))
             }
-            serde_yaml::Value::Sequence(sequence) => ConfigData::Sequence(Self::from_sequence(
-                source.clone(),
-                labels.clone(),
-                sequence,
-            )),
+            serde_yaml::Value::Sequence(sequence) => {
+                ConfigData::Sequence(Self::from_sequence(source.clone(), scope.clone(), sequence))
+            }
             _ => ConfigData::Value(value),
         };
-        Self::new(source, labels, Some(Box::new(config_data)))
+        Self::new(source, scope.clone(), Some(Box::new(config_data)))
     }
 
     fn from_mapping(
         source: ConfigSource,
-        labels: Vec<String>,
+        scope: ConfigScope,
         mapping: serde_yaml::Mapping,
     ) -> HashMap<String, ConfigValue> {
         let mut config_mapping = HashMap::new();
         for (key, value) in mapping {
-            let new_value = ConfigValue::from_value(source.clone(), labels.clone(), value);
+            let new_value = ConfigValue::from_value(source.clone(), scope.clone(), value);
             config_mapping.insert(key.as_str().unwrap().to_string(), new_value);
         }
         config_mapping
@@ -200,12 +208,12 @@ up_command:
 
     fn from_sequence(
         source: ConfigSource,
-        labels: Vec<String>,
+        scope: ConfigScope,
         sequence: serde_yaml::Sequence,
     ) -> Vec<ConfigValue> {
         let mut config_mapping = Vec::new();
         for value in sequence {
-            let new_value = ConfigValue::from_value(source.clone(), labels.clone(), value);
+            let new_value = ConfigValue::from_value(source.clone(), scope.clone(), value);
             config_mapping.push(new_value);
         }
         config_mapping
@@ -213,112 +221,121 @@ up_command:
 
     pub fn from_str(value: &str) -> Self {
         let value: serde_yaml::Value = serde_yaml::from_str(value).unwrap();
-        Self::from_value(ConfigSource::Null, vec![], value)
+        Self::from_value(ConfigSource::Null, ConfigScope::Null, value)
     }
 
-    pub fn add_label(&mut self, label: &str) {
-        self.labels.push(label.to_owned());
-        if let Some(data) = self.value.as_mut().map(|data| data.as_mut()) {
+    pub fn reject_scope(&self, scope: &ConfigScope) -> Option<ConfigValue> {
+        if let Some(data) = self.value.as_ref().map(|data| data.as_ref()) {
             match data {
                 ConfigData::Mapping(mapping) => {
-                    for ref mut value in mapping.values_mut() {
-                        value.add_label(label);
+                    let mut new_mapping = HashMap::new();
+                    for (key, value) in mapping {
+                        if let Some(new_value) = value.reject_scope(scope) {
+                            new_mapping.insert(key.to_owned(), new_value);
+                        }
+                    }
+                    if !new_mapping.is_empty() {
+                        return Some(ConfigValue {
+                            source: self.source.clone(),
+                            scope: self.scope.clone(),
+                            value: Some(Box::new(ConfigData::Mapping(new_mapping))),
+                        });
                     }
                 }
                 ConfigData::Sequence(sequence) => {
-                    for ref mut value in sequence {
-                        value.add_label(label);
+                    let mut new_sequence = Vec::new();
+                    for value in sequence {
+                        if let Some(new_value) = value.reject_scope(scope) {
+                            new_sequence.push(new_value);
+                        }
+                    }
+                    if !new_sequence.is_empty() {
+                        return Some(ConfigValue {
+                            source: self.source.clone(),
+                            scope: self.scope.clone(),
+                            value: Some(Box::new(ConfigData::Sequence(new_sequence))),
+                        });
+                    }
+                }
+                ConfigData::Value(_) => {
+                    if self.scope != *scope {
+                        return Some(self.clone());
+                    }
+                }
+            }
+        }
+        None
+    }
+
+    pub fn select_scope(&self, scope: &ConfigScope) -> Option<ConfigValue> {
+        if let Some(data) = self.value.as_ref().map(|data| data.as_ref()) {
+            match data {
+                ConfigData::Mapping(mapping) => {
+                    let mut new_mapping = HashMap::new();
+                    for (key, value) in mapping {
+                        if let Some(new_value) = value.select_scope(scope) {
+                            new_mapping.insert(key.to_owned(), new_value);
+                        }
+                    }
+                    if !new_mapping.is_empty() {
+                        return Some(ConfigValue {
+                            source: self.source.clone(),
+                            scope: self.scope.clone(),
+                            value: Some(Box::new(ConfigData::Mapping(new_mapping))),
+                        });
+                    }
+                }
+                ConfigData::Sequence(sequence) => {
+                    let mut new_sequence = Vec::new();
+                    for value in sequence {
+                        if let Some(new_value) = value.select_scope(scope) {
+                            new_sequence.push(new_value);
+                        }
+                    }
+                    if !new_sequence.is_empty() {
+                        return Some(ConfigValue {
+                            source: self.source.clone(),
+                            scope: self.scope.clone(),
+                            value: Some(Box::new(ConfigData::Sequence(new_sequence))),
+                        });
+                    }
+                }
+                ConfigData::Value(_) => {
+                    if self.scope == *scope {
+                        return Some(self.clone());
+                    }
+                }
+            }
+        }
+        None
+    }
+
+    pub fn current_scope(&self) -> ConfigScope {
+        match self.scopes().iter().max() {
+            Some(scope) => scope.clone(),
+            None => ConfigScope::Null,
+        }
+    }
+
+    pub fn scopes(&self) -> HashSet<ConfigScope> {
+        let mut scopes = HashSet::new();
+        scopes.insert(self.scope.clone());
+        if let Some(data) = self.value.as_ref().map(|data| data.as_ref()) {
+            match data {
+                ConfigData::Mapping(mapping) => {
+                    for value in mapping.values() {
+                        scopes.extend(value.scopes());
+                    }
+                }
+                ConfigData::Sequence(sequence) => {
+                    for value in sequence {
+                        scopes.extend(value.scopes());
                     }
                 }
                 _ => {}
             }
         }
-    }
-
-    pub fn reject_label(&self, label: &str) -> Option<ConfigValue> {
-        if let Some(data) = self.value.as_ref().map(|data| data.as_ref()) {
-            match data {
-                ConfigData::Mapping(mapping) => {
-                    let mut new_mapping = HashMap::new();
-                    for (key, value) in mapping {
-                        if let Some(new_value) = value.reject_label(label) {
-                            new_mapping.insert(key.to_owned(), new_value);
-                        }
-                    }
-                    if !new_mapping.is_empty() {
-                        return Some(ConfigValue {
-                            source: self.source.clone(),
-                            labels: self.labels.clone(),
-                            value: Some(Box::new(ConfigData::Mapping(new_mapping))),
-                        });
-                    }
-                }
-                ConfigData::Sequence(sequence) => {
-                    let mut new_sequence = Vec::new();
-                    for value in sequence {
-                        if let Some(new_value) = value.reject_label(label) {
-                            new_sequence.push(new_value);
-                        }
-                    }
-                    if !new_sequence.is_empty() {
-                        return Some(ConfigValue {
-                            source: self.source.clone(),
-                            labels: self.labels.clone(),
-                            value: Some(Box::new(ConfigData::Sequence(new_sequence))),
-                        });
-                    }
-                }
-                ConfigData::Value(_) => {
-                    if !self.labels.contains(&label.to_string()) {
-                        return Some(self.clone());
-                    }
-                }
-            }
-        }
-        None
-    }
-
-    pub fn select_label(&self, label: &str) -> Option<ConfigValue> {
-        if let Some(data) = self.value.as_ref().map(|data| data.as_ref()) {
-            match data {
-                ConfigData::Mapping(mapping) => {
-                    let mut new_mapping = HashMap::new();
-                    for (key, value) in mapping {
-                        if let Some(new_value) = value.select_label(label) {
-                            new_mapping.insert(key.to_owned(), new_value);
-                        }
-                    }
-                    if !new_mapping.is_empty() {
-                        return Some(ConfigValue {
-                            source: self.source.clone(),
-                            labels: self.labels.clone(),
-                            value: Some(Box::new(ConfigData::Mapping(new_mapping))),
-                        });
-                    }
-                }
-                ConfigData::Sequence(sequence) => {
-                    let mut new_sequence = Vec::new();
-                    for value in sequence {
-                        if let Some(new_value) = value.select_label(label) {
-                            new_sequence.push(new_value);
-                        }
-                    }
-                    if !new_sequence.is_empty() {
-                        return Some(ConfigValue {
-                            source: self.source.clone(),
-                            labels: self.labels.clone(),
-                            value: Some(Box::new(ConfigData::Sequence(new_sequence))),
-                        });
-                    }
-                }
-                ConfigData::Value(_) => {
-                    if self.labels.contains(&label.to_string()) {
-                        return Some(self.clone());
-                    }
-                }
-            }
-        }
-        None
+        scopes
     }
 
     pub fn dig(&self, keypath: Vec<&str>) -> Option<ConfigValue> {
@@ -544,7 +561,7 @@ up_command:
             }
             return Some(ConfigValue {
                 value: Some(Box::new(ConfigData::Mapping(new_mapping))),
-                labels: self.labels.clone(),
+                scope: self.scope.clone(),
                 source: self.source.clone(),
             });
         }
@@ -695,7 +712,7 @@ up_command:
                             );
                         } else {
                             let mut new_value =
-                                ConfigValue::new_null(other.source.clone(), other.labels.clone());
+                                ConfigValue::new_null(other.source.clone(), other.scope.clone());
                             new_value.extend(
                                 value,
                                 options.with_strategy(children_strategy),
@@ -724,7 +741,7 @@ up_command:
                         keypath.push((init_index + index).to_string());
 
                         let mut new_value =
-                            ConfigValue::new_null(other.source.clone(), other.labels.clone());
+                            ConfigValue::new_null(other.source.clone(), other.scope.clone());
                         new_value.extend(
                             value.clone(),
                             options.with_strategy(children_strategy.clone()),
@@ -778,7 +795,7 @@ up_command:
                         keypath.push(key.clone());
 
                         let mut new_value =
-                            ConfigValue::new_null(other.source.clone(), other.labels.clone());
+                            ConfigValue::new_null(other.source.clone(), other.scope.clone());
                         new_value.extend(value, options.with_strategy(children_strategy), keypath);
                         new_mapping.insert(key, new_value);
                     }
@@ -795,7 +812,7 @@ up_command:
                         keypath.push(index.to_string());
 
                         let mut new_value =
-                            ConfigValue::new_null(other.source.clone(), other.labels.clone());
+                            ConfigValue::new_null(other.source.clone(), other.scope.clone());
                         new_value.extend(
                             value.clone(),
                             options.with_strategy(children_strategy.clone()),
@@ -810,8 +827,7 @@ up_command:
                     if self_null.is_null() || options.strategy != ConfigExtendStrategy::Keep =>
                 {
                     self.source = other.source.clone();
-                    self.labels.clear();
-                    self.labels.extend(other.labels.clone());
+                    self.scope = other.scope.clone();
                     *self_value = Box::new(ConfigData::Value(other_val));
                     if options.transform {
                         self.transform(&keypath);
@@ -897,7 +913,7 @@ up_command:
                                             "package".to_string(),
                                             ConfigValue {
                                                 source: self.source.clone(),
-                                                labels: self.labels.clone(),
+                                                scope: self.scope.clone(),
                                                 value: Some(Box::new(ConfigData::Value(
                                                     serde_yaml::Value::String(
                                                         source.package.clone().unwrap().to_string(),
@@ -909,7 +925,7 @@ up_command:
                                             "path".to_string(),
                                             ConfigValue {
                                                 source: self.source.clone(),
-                                                labels: self.labels.clone(),
+                                                scope: self.scope.clone(),
                                                 value: Some(Box::new(ConfigData::Value(
                                                     serde_yaml::Value::String(relpath),
                                                 ))),

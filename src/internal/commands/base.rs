@@ -344,6 +344,10 @@ impl Command {
         std::env::set_var("OMNI_SUBCOMMAND", name.clone());
 
         match self {
+            Command::FromConfig(cmd) if cmd.is_trusted() => {
+                // If the configuration command is not provided by a workdir,
+                // we can trust it right away
+            }
             Command::FromPath(_) | Command::FromConfig(_) | Command::FromMakefile(_) => {
                 // Check if the workdir where the command is located is trusted
                 if !is_trusted_or_ask(

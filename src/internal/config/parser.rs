@@ -12,6 +12,7 @@ use crate::internal::config::config_value::ConfigData;
 use crate::internal::config::flush_config_loader;
 use crate::internal::config::global_config_loader;
 use crate::internal::config::up::UpConfig;
+use crate::internal::config::ConfigScope;
 use crate::internal::config::ConfigSource;
 use crate::internal::config::ConfigValue;
 use crate::internal::env::cache_home;
@@ -232,6 +233,7 @@ pub struct CommandDefinition {
     pub dir: Option<String>,
     pub subcommands: Option<HashMap<String, CommandDefinition>>,
     pub source: ConfigSource,
+    pub scope: ConfigScope,
 }
 
 impl CommandDefinition {
@@ -294,6 +296,7 @@ impl CommandDefinition {
                 .map(|value| value.to_string()),
             subcommands,
             source: config_value.get_source().clone(),
+            scope: config_value.current_scope().clone(),
         }
     }
 }
@@ -317,7 +320,7 @@ impl CommandSyntax {
         D: serde::Deserializer<'de>,
     {
         let value = serde_yaml::Value::deserialize(deserializer)?;
-        let config_value = ConfigValue::from_value(ConfigSource::Null, vec![], value);
+        let config_value = ConfigValue::from_value(ConfigSource::Null, ConfigScope::Null, value);
         if let Some(command_syntax) = CommandSyntax::from_config_value(&config_value) {
             Ok(command_syntax)
         } else {
@@ -658,7 +661,7 @@ impl PathEntryConfig {
             map.insert("package".to_string(), ConfigValue::from_str(package));
             ConfigValue::new(
                 ConfigSource::Null,
-                vec![],
+                ConfigScope::Null,
                 Some(Box::new(ConfigData::Mapping(map))),
             )
         } else {
@@ -955,7 +958,7 @@ impl SuggestCloneConfig {
         if let Some(config_value) = config_value {
             // We can filter by values provided by the repository, as this is only
             // a repository-scoped configuration
-            if let Some(config_value) = config_value.select_label("git_repo") {
+            if let Some(config_value) = config_value.select_scope(&ConfigScope::Workdir) {
                 if let Some(array) = config_value.as_array() {
                     for value in array {
                         if let Some(repository) =
@@ -1068,7 +1071,7 @@ pub struct UpCommandConfig {
 impl UpCommandConfig {
     fn from_config_value(config_value: Option<ConfigValue>) -> Self {
         if let Some(config_value) = config_value {
-            if let Some(config_value) = config_value.reject_label("git_repo") {
+            if let Some(config_value) = config_value.reject_scope(&ConfigScope::Workdir) {
                 return Self {
                     auto_bootstrap: match config_value.get("auto_bootstrap") {
                         Some(value) => value.as_bool().unwrap(),

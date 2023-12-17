@@ -34,6 +34,7 @@ use crate::internal::config::up::UpOptions;
 use crate::internal::config::CommandSyntax;
 use crate::internal::config::ConfigExtendOptions;
 use crate::internal::config::ConfigLoader;
+use crate::internal::config::ConfigScope;
 use crate::internal::config::ConfigValue;
 use crate::internal::config::SyntaxOptArg;
 use crate::internal::env::shell_is_interactive;
@@ -412,7 +413,9 @@ impl UpCommand {
         let mut suggest_config_updated = false;
         let config_loader = config_loader(".");
         if self.is_up() {
-            if let Some(git_repo_config) = config_loader.raw_config.select_label("git_repo") {
+            if let Some(git_repo_config) =
+                config_loader.raw_config.select_scope(&ConfigScope::Workdir)
+            {
                 if let Some(suggestion) = git_repo_config.get("suggest_config") {
                     if suggestion.is_table() {
                         if self.should_suggest_config() {
@@ -634,8 +637,7 @@ impl UpCommand {
         let result = ConfigLoader::edit_main_user_config_file(|config_value| {
             let before = config_value.clone();
 
-            let mut suggest_config = suggest_config.clone();
-            suggest_config.add_label("suggest_config");
+            let suggest_config = suggest_config.clone();
             let mut after = config_value.clone();
             after.extend(suggest_config.clone(), ConfigExtendOptions::new(), vec![]);
 
