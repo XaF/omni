@@ -915,12 +915,13 @@ impl UpCommand {
 
     fn suggest_clone_from_config(&self, path: &str) -> HashSet<RepositoryToClone> {
         let git_env = git_env(path);
-        let repo_id = git_env.id();
-        if repo_id.is_none() {
-            omni_error!("Unable to get repository id for path {}", path);
-            return HashSet::new();
-        }
-        let repo_id = repo_id.unwrap();
+        let repo_id = match git_env.id() {
+            Some(repo_id) => repo_id,
+            None => {
+                omni_error!("Unable to get repository id for path {}", path);
+                return HashSet::new();
+            }
+        };
 
         let config = config(path);
 
@@ -1336,12 +1337,13 @@ impl UpCommand {
         }
 
         let git_env = git_env(".");
-        let repo_id = git_env.id();
-        if repo_id.is_none() {
-            omni_error!("Unable to get repository id");
-            exit(1);
-        }
-        let repo_id = repo_id.unwrap();
+        let repo_id = match git_env.id() {
+            Some(repo_id) => repo_id,
+            None => {
+                omni_error!("Unable to get repository id");
+                exit(1);
+            }
+        };
 
         let config = config(".");
         let updated = config.path_repo_updates.update(&repo_id);

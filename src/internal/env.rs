@@ -14,6 +14,7 @@ use is_terminal::IsTerminal;
 use lazy_static::lazy_static;
 use once_cell::sync::OnceCell;
 
+use crate::internal::config::parser::PathEntryConfig;
 use crate::internal::config::OrgConfig;
 use crate::internal::dynenv::DynamicEnvExportMode;
 use crate::internal::git::id_from_git_url;
@@ -615,7 +616,7 @@ impl WorkDirEnv {
         None
     }
 
-    pub fn id(&self) -> Option<String> {
+    pub fn trust_id(&self) -> Option<String> {
         self.id
             .get_or_init(|| {
                 self.root.as_ref()?;
@@ -631,6 +632,23 @@ impl WorkDirEnv {
                 None
             })
             .clone()
+    }
+
+    pub fn id(&self) -> Option<String> {
+        match self.trust_id() {
+            Some(id) => match self.is_package() {
+                true => Some(format!("package#{}", id)),
+                false => Some(id),
+            },
+            None => None,
+        }
+    }
+
+    pub fn is_package(&self) -> bool {
+        match &self.root {
+            Some(root) => PathEntryConfig::from_path(root).is_package(),
+            None => false,
+        }
     }
 
     pub fn has_id(&self) -> bool {

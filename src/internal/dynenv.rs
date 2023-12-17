@@ -160,17 +160,16 @@ impl DynamicEnv {
             }
 
             // Get the workdir id
-            let repo_id = workdir.id();
-            if repo_id.is_none() {
-                return 0;
-            }
-            let repo_id = repo_id.unwrap();
+            let workdir_id = match workdir.id() {
+                Some(workdir_id) => workdir_id,
+                None => return 0,
+            };
 
             // Get the relative directory
             let dir = workdir.reldir(&path).unwrap_or("".to_string());
 
             // Check if repo is 'up' and should have its environment loaded
-            let up_env = if let Some(up_env) = self.cache.get_env(&repo_id) {
+            let up_env = if let Some(up_env) = self.cache.get_env(&workdir_id) {
                 up_env
             } else {
                 return 0;
@@ -236,8 +235,8 @@ impl DynamicEnv {
         let path = self.path.clone().unwrap_or(".".to_string());
         let workdir = workdir(&path);
         if workdir.in_workdir() {
-            if let Some(repo_id) = workdir.id() {
-                up_env = self.cache.get_env(&repo_id);
+            if let Some(workdir_id) = workdir.id() {
+                up_env = self.cache.get_env(&workdir_id);
             } else {
                 return;
             }
