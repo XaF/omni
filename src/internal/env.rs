@@ -20,6 +20,7 @@ use crate::internal::dynenv::DynamicEnvExportMode;
 use crate::internal::git::id_from_git_url;
 use crate::internal::git::safe_git_url_parse;
 use crate::internal::user_interface::StringColor;
+use crate::internal::utils::base62_encode;
 use crate::omni_error;
 use crate::omni_warning;
 
@@ -586,7 +587,7 @@ impl WorkDirEnv {
                 let mut hasher = Hasher::new();
                 hasher.update(id.as_bytes());
                 let hash_bytes = hasher.finalize();
-                let hash_b62 = base_62::encode(hash_bytes.as_bytes())[..20].to_string();
+                let hash_b62 = base62_encode(hash_bytes.as_bytes())[..20].to_string();
 
                 let mut data_path = PathBuf::from(data_home());
                 data_path.push("wd");

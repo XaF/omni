@@ -22,6 +22,8 @@ pub(crate) mod workdir;
 pub(crate) mod user_interface;
 pub(crate) use user_interface::StringColor;
 
+pub(crate) mod utils;
+
 pub(crate) mod dynenv;
 
 pub(crate) mod self_updater;

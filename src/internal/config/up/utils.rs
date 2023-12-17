@@ -20,6 +20,7 @@ use tokio::time::Duration;
 
 use crate::internal::config::up::UpError;
 use crate::internal::user_interface::StringColor;
+use crate::internal::utils::base62_encode;
 
 #[derive(Debug, Clone)]
 pub struct RunConfig {
@@ -527,7 +528,7 @@ pub fn data_path_dir_hash(dir: &str) -> String {
         let mut hasher = Hasher::new();
         hasher.update(dir.as_bytes());
         let hash_bytes = hasher.finalize();
-        let hash_b62 = base_62::encode(hash_bytes.as_bytes())[..20].to_string();
+        let hash_b62 = base62_encode(hash_bytes.as_bytes())[..20].to_string();
         hash_b62
     }
 }
