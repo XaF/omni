@@ -332,7 +332,7 @@ impl Command {
 
     pub fn exec(&self, argv: Vec<String>, called_as: Option<Vec<String>>) {
         // Load the dynamic environment for that command
-        update_dynamic_env_for_command(&self.exec_dir());
+        update_dynamic_env_for_command(self.exec_dir());
 
         // Set the general execution environment
         let name = if let Some(ref called_as) = called_as {
@@ -433,7 +433,7 @@ impl Command {
             Command::BuiltinUp(command) => command.autocomplete(comp_cword, argv),
             Command::FromPath(command) => {
                 // Load the dynamic environment for that command
-                update_dynamic_env_for_command(&self.source_dir());
+                update_dynamic_env_for_command(self.source_dir());
 
                 command.autocomplete(comp_cword, argv)
             }
