@@ -284,7 +284,7 @@ pub fn update(
     // to trigger ssh agent authentication if needed
     // TODO: disable that if no agent is setup for the given host
     let mut failed_early_auth = HashSet::new();
-    if !config.path_repo_updates.pre_auth {
+    if config.path_repo_updates.pre_auth {
         let mut auth_hosts = HashMap::new();
         for path_entry in &omnipath_entries {
             let git_env = git_env(&path_entry.as_string());
