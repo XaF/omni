@@ -125,7 +125,7 @@ jobs:
 
       - name: upload cargo-fix.zip artifact for use in PR
         if: ${{ env.UPDATES == 'true' }}
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: cargo-fix
           path: cargo-fix.zip

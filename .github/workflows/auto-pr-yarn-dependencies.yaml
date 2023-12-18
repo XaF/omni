@@ -125,7 +125,7 @@ jobs:
 
       - name: upload package.json artifact for use in PR
         if: ${{ env.PACKAGE_UPDATES == 'true' }}
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: package-json
           path: website/package.json
@@ -133,7 +133,7 @@ jobs:
 
       - name: upload yarn.lock artifact for use in PR
         if: ${{ env.YARN_UPDATES == 'true' }}
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: yarn-lock
           path: website/yarn.lock
