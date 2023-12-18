@@ -181,7 +181,7 @@ jobs:
           ref: ${{ inputs.git_sha || github.sha }}
 
       - name: Download artifact for ${{ matrix.suffix }}
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v4
         with:
           name: ${{ env.BUILD_FILENAME }}
 
