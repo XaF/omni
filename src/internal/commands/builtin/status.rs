@@ -31,7 +31,7 @@ impl StatusCommandArgs {
         let mut parse_argv = vec!["".to_string()];
         parse_argv.extend(argv);
 
-        let args = vec![
+        let args = [
             "shell-integration",
             "config",
             "config-files",
