@@ -125,7 +125,7 @@ jobs:
 
       - name: upload cargo-fix.zip artifact for use in PR
         if: ${{ env.UPDATES == 'true' }}
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: cargo-fix
           path: cargo-fix.zip
@@ -160,7 +160,7 @@ jobs:
           token: ${{ steps.app-token.outputs.token }}
 
       - name: Download cargo-fix.zip from update job
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v4
         with:
           name: cargo-fix
 

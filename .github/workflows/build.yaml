@@ -130,7 +130,7 @@ jobs:
           $sha256sum ${{ env.BUILD_FILENAME }}.tar.gz | tee -a ${{ env.BUILD_FILENAME }}.sha256
 
       - name: Publish artifacts
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: ${{ env.BUILD_FILENAME }}
           path: ${{ env.BUILD_FILENAME }}.*
@@ -181,7 +181,7 @@ jobs:
           ref: ${{ inputs.git_sha || github.sha }}
 
       - name: Download artifact for ${{ matrix.suffix }}
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v4
         with:
           name: ${{ env.BUILD_FILENAME }}
 

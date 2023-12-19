@@ -98,7 +98,7 @@ jobs:
 
       - name: upload Cargo.lock artifact for use in PR
         if: ${{ env.UPDATES == 'true' }}
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: Cargo-lock
           path: Cargo.lock
@@ -106,7 +106,7 @@ jobs:
 
       - name: upload cargo-update log artifact for use in PR
         if: ${{ env.UPDATES == 'true' }}
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: cargo-updates
           path: cargo_update.log
@@ -141,12 +141,12 @@ jobs:
           token: ${{ steps.app-token.outputs.token }}
 
       - name: Download Cargo.lock from update job
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v4
         with:
           name: Cargo-lock
 
       - name: Download cargo-update log from update job
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v4
         with:
           name: cargo-updates
 
