@@ -232,10 +232,25 @@ impl StatusCommand {
     }
 
     pub fn autocompletion(&self) -> bool {
-        false
+        true
     }
 
-    pub fn autocomplete(&self, _comp_cword: usize, _argv: Vec<String>) {}
+    pub fn autocomplete(&self, _comp_cword: usize, argv: Vec<String>) {
+        for arg in &[
+            "--shell-integration",
+            "--config",
+            "--config-files",
+            "--worktree",
+            "--orgs",
+            "--path",
+        ] {
+            if !argv.contains(&arg.to_string()) {
+                println!("{}", arg);
+            }
+        }
+
+        exit(0);
+    }
 
     fn print_shell_integration(&self) {
         if !self.cli_args().shell_integration {
