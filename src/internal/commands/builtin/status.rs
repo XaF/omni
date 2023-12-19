@@ -8,6 +8,7 @@ use crate::internal::commands::path::omnipath_entries;
 use crate::internal::config::config;
 use crate::internal::config::config_loader;
 use crate::internal::config::CommandSyntax;
+use crate::internal::config::SyntaxOptArg;
 use crate::internal::env::shell_integration_is_loaded;
 use crate::internal::git::ORG_LOADER;
 use crate::internal::user_interface::StringColor;
@@ -15,49 +16,103 @@ use crate::omni_error;
 use crate::omni_header;
 
 #[derive(Debug, Clone)]
-struct StatusCommandArgs {}
+struct StatusCommandArgs {
+    single: bool,
+    shell_integration: bool,
+    config: bool,
+    config_files: bool,
+    worktree: bool,
+    orgs: bool,
+    path: bool,
+}
 
 impl StatusCommandArgs {
     fn parse(argv: Vec<String>) -> Self {
         let mut parse_argv = vec!["".to_string()];
         parse_argv.extend(argv);
 
-        let matches = clap::Command::new("")
-            .disable_help_subcommand(true)
-            .disable_version_flag(true)
-            .try_get_matches_from(&parse_argv);
+        let args = vec![
+            "shell-integration",
+            "config",
+            "config-files",
+            "worktree",
+            "orgs",
+            "path",
+        ];
 
-        if let Err(err) = matches {
-            match err.kind() {
-                clap::error::ErrorKind::DisplayHelp
-                | clap::error::ErrorKind::DisplayHelpOnMissingArgumentOrSubcommand => {
-                    HelpCommand::new().exec(vec!["status".to_string()]);
+        let command = args.iter().fold(
+            clap::Command::new("")
+                .disable_help_subcommand(true)
+                .disable_version_flag(true),
+            |command, &arg| {
+                command.arg(
+                    clap::Arg::new(arg)
+                        .long(arg)
+                        .action(clap::ArgAction::SetTrue),
+                )
+            },
+        );
+        let matches = command.try_get_matches_from(&parse_argv);
+
+        let matches = match matches {
+            Ok(matches) => matches,
+            Err(err) => {
+                match err.kind() {
+                    clap::error::ErrorKind::DisplayHelp
+                    | clap::error::ErrorKind::DisplayHelpOnMissingArgumentOrSubcommand => {
+                        HelpCommand::new().exec(vec!["status".to_string()]);
+                    }
+                    clap::error::ErrorKind::DisplayVersion => {
+                        unreachable!("version flag is disabled");
+                    }
+                    _ => {
+                        let err_str = format!("{}", err);
+                        let err_str = err_str
+                            .split('\n')
+                            .take_while(|line| !line.is_empty())
+                            .collect::<Vec<_>>()
+                            .join(" ");
+                        let err_str = err_str.trim_start_matches("error: ");
+                        omni_error!(err_str);
+                    }
                 }
-                clap::error::ErrorKind::DisplayVersion => {
-                    unreachable!("version flag is disabled");
-                }
-                _ => {
-                    let err_str = format!("{}", err);
-                    let err_str = err_str
-                        .split('\n')
-                        .take_while(|line| !line.is_empty())
-                        .collect::<Vec<_>>()
-                        .join(" ");
-                    let err_str = err_str.trim_start_matches("error: ");
-                    omni_error!(err_str);
-                }
+                exit(1);
             }
-            exit(1);
+        };
+
+        let options = args
+            .iter()
+            .map(|&key| {
+                (
+                    key.to_string(),
+                    *matches.get_one::<bool>(key).unwrap_or(&false),
+                )
+            })
+            .collect::<std::collections::HashMap<_, _>>();
+
+        let selected = options.values().filter(|&&selected| selected).count();
+
+        if selected == 0 {
+            return Self {
+                single: false,
+                shell_integration: true,
+                config: false,
+                config_files: true,
+                worktree: true,
+                orgs: true,
+                path: true,
+            };
         }
 
-        let matches = matches.unwrap();
-
-        if *matches.get_one::<bool>("help").unwrap_or(&false) {
-            HelpCommand::new().exec(vec!["status".to_string()]);
-            exit(1);
+        Self {
+            single: selected == 1,
+            shell_integration: *options.get("shell-integration").unwrap(),
+            config: *options.get("config").unwrap(),
+            config_files: *options.get("config-files").unwrap(),
+            worktree: *options.get("worktree").unwrap(),
+            orgs: *options.get("orgs").unwrap(),
+            path: *options.get("path").unwrap(),
         }
-
-        Self {}
     }
 }
 
@@ -73,7 +128,6 @@ impl StatusCommand {
         }
     }
 
-    #[allow(dead_code)]
     fn cli_args(&self) -> &StatusCommandArgs {
         self.cli_args.get_or_init(|| {
             omni_error!("command arguments not initialized");
@@ -104,7 +158,53 @@ impl StatusCommand {
     pub fn syntax(&self) -> Option<CommandSyntax> {
         Some(CommandSyntax {
             usage: None,
-            parameters: vec![],
+            parameters: vec![
+                SyntaxOptArg {
+                    name: "--shell-integration".to_string(),
+                    desc: Some("Show if the shell integration is loaded or not.".to_string()),
+                    required: false,
+                },
+                SyntaxOptArg {
+                    name: "--config".to_string(),
+                    desc: Some(
+                        "Show the configuration that omni is using for the current directory. This is not shown by default."
+                            .to_string(),
+                    ),
+                    required: false,
+                },
+                SyntaxOptArg {
+                    name: "--config-files".to_string(),
+                    desc: Some(
+                        "Show the configuration files that omni is loading for the current directory."
+                            .to_string(),
+                    ),
+                    required: false,
+                },
+                SyntaxOptArg {
+                    name: "--worktree".to_string(),
+                    desc: Some(
+                        "Show the default worktree."
+                            .to_string(),
+                    ),
+                    required: false,
+                },
+                SyntaxOptArg {
+                    name: "--orgs".to_string(),
+                    desc: Some(
+                        "Show the organizations."
+                            .to_string(),
+                    ),
+                    required: false,
+                },
+                SyntaxOptArg {
+                    name: "--path".to_string(),
+                    desc: Some(
+                        "Show the current omnipath."
+                            .to_string(),
+                    ),
+                    required: false,
+                },
+            ],
         })
     }
 
@@ -117,10 +217,13 @@ impl StatusCommand {
             unreachable!();
         }
 
-        println!("{}", omni_header!());
+        if !self.cli_args().single {
+            println!("{}", omni_header!());
+        }
 
         self.print_shell_integration();
         self.print_configuration();
+        self.print_configuration_files();
         self.print_worktree();
         self.print_orgs();
         self.print_path();
@@ -135,44 +238,93 @@ impl StatusCommand {
     pub fn autocomplete(&self, _comp_cword: usize, _argv: Vec<String>) {}
 
     fn print_shell_integration(&self) {
-        println!("\n{}", "Shell integration".bold());
+        if !self.cli_args().shell_integration {
+            return;
+        }
+
+        let prefix = if self.cli_args().single {
+            "".to_string()
+        } else {
+            println!("\n{}", "Shell integration".bold());
+            "  ".to_string()
+        };
+
         let status = if shell_integration_is_loaded() {
             "loaded".light_green()
         } else {
             "not loaded".light_red()
         };
-        println!("  {}", status);
+        println!("{}{}", prefix, status);
     }
 
     fn print_configuration(&self) {
+        if !self.cli_args().config {
+            return;
+        }
+
+        if !self.cli_args().single {
+            println!("\n{}", "Configuration".bold());
+        }
+
         let config_loader = config_loader(".");
-        println!("\n{}", "Configuration".bold());
 
         let yaml_code = config_loader.raw_config.as_yaml();
         println!("{}", self.color_yaml(&yaml_code));
+    }
 
-        println!("\n{}", "Loaded configuration files".bold());
+    fn print_configuration_files(&self) {
+        if !self.cli_args().config_files {
+            return;
+        }
+
+        let prefix = if self.cli_args().single {
+            "".to_string()
+        } else {
+            println!("\n{}", "Loaded configuration files".bold());
+            "  ".to_string()
+        };
+
+        let config_loader = config_loader(".");
+
         if config_loader.loaded_config_files.is_empty() {
-            println!("  {}", "none".light_red());
+            println!("{}{}", prefix, "none".light_red());
         } else {
             for config_file in &config_loader.loaded_config_files {
-                println!("  - {}", config_file);
+                println!("{}- {}", prefix, config_file);
             }
         }
     }
 
     fn print_worktree(&self) {
-        println!("\n{}", "Worktree".bold());
+        if !self.cli_args().worktree {
+            return;
+        }
+
+        let prefix = if self.cli_args().single {
+            "".to_string()
+        } else {
+            println!("\n{}", "Worktree".bold());
+            "  ".to_string()
+        };
 
         let config = config(".");
-        println!("  {}", config.worktree());
+        println!("{}{}", prefix, config.worktree());
     }
 
     fn print_orgs(&self) {
-        println!("\n{}", "Git Orgs".bold());
+        if !self.cli_args().orgs {
+            return;
+        }
+
+        let prefix = if self.cli_args().single {
+            "".to_string()
+        } else {
+            println!("\n{}", "Git Orgs".bold());
+            "  ".to_string()
+        };
 
         if ORG_LOADER.orgs.is_empty() {
-            println!("  {}", "none".light_red());
+            println!("{}{}", prefix, "none".light_red());
         } else {
             for org in &ORG_LOADER.orgs {
                 let mut org_str = org.config.handle.to_string();
@@ -186,17 +338,26 @@ impl StatusCommand {
                     org_str.push_str(&format!(" {}", "untrusted").light_red().italic());
                 }
 
-                println!("  - {}", org_str);
+                println!("{}- {}", prefix, org_str);
             }
         }
     }
 
     fn print_path(&self) {
-        println!("\n{}", "Current omnipath".bold());
+        if !self.cli_args().path {
+            return;
+        }
+
+        let prefix = if self.cli_args().single {
+            "".to_string()
+        } else {
+            println!("\n{}", "Current omnipath".bold());
+            "  ".to_string()
+        };
 
         let omnipath = omnipath_entries();
         if omnipath.is_empty() {
-            println!("  {}", "none".light_red());
+            println!("{}{}", prefix, "none".light_red());
         } else {
             for path in &omnipath {
                 if let Some(package) = &path.package {
@@ -205,12 +366,14 @@ impl StatusCommand {
                         pkg_string.push_str(&format!(", {} {}", "path:".light_cyan(), path.path));
                     }
                     println!(
-                        "  - {}\n    {}",
+                        "{}- {}\n{}  {}",
+                        prefix,
                         pkg_string,
+                        prefix,
                         format!("({})", path.full_path).light_black()
                     );
                 } else {
-                    println!("  - {}", path.path);
+                    println!("{}- {}", prefix, path.path);
                 }
             }
         }
@@ -238,6 +401,10 @@ impl StatusCommand {
                 }
             })
             .collect::<Vec<String>>();
+
+        if self.cli_args().single {
+            return yaml_lines.join("\n");
+        }
 
         let yaml_code = yaml_lines.join("\n  │ ");
         format!("  │ {}", yaml_code)
