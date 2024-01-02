@@ -392,6 +392,7 @@ impl HelpCommandOrganizer {
 
     fn add_command(&mut self, path: Vec<String>, command: &Command) {
         let mut command_itself = true;
+        let mut inserted_paths = vec![path.clone()].into_iter().collect::<HashSet<_>>();
 
         for i in (1..=path.len()).rev() {
             let (cmdpath, _) = path.split_at(i);
@@ -402,14 +403,14 @@ impl HelpCommandOrganizer {
             // Check if that key already exists in the commands
             if let Some(cmd) = self.commands.get_mut(&key) {
                 if !command_itself {
-                    cmd.subcommands.insert(path.clone());
+                    cmd.subcommands.extend(inserted_paths.clone());
                     continue;
                 }
 
                 match cmd.command {
                     Command::Void(_) => {
                         cmd.command = command.clone();
-                        cmd.subcommands.insert(path.clone());
+                        cmd.subcommands.extend(inserted_paths.clone());
                     }
                     _ => {
                         // Command exists twice in the path, but second entry in the path
@@ -429,8 +430,12 @@ impl HelpCommandOrganizer {
                 };
 
                 let mut new_command = HelpCommandMetadata::new(&insert_command);
-                new_command.subcommands.insert(path.clone());
+                new_command.subcommands.extend(inserted_paths.clone());
                 self.commands.insert(key, new_command);
+
+                if !command_itself {
+                    inserted_paths.insert(cmdpath.to_vec());
+                }
             }
 
             command_itself = false;
