@@ -110,6 +110,20 @@ impl Command {
             .collect()
     }
 
+    pub fn shadow_names(&self) -> Vec<Vec<String>> {
+        match self {
+            Command::FromConfig(command) => match command.orig_name() {
+                Some(orig_name) => vec![orig_name],
+                None => vec![],
+            },
+            Command::FromMakefile(command) => match command.orig_name() {
+                Some(orig_name) => vec![vec![orig_name]],
+                None => vec![],
+            },
+            _ => vec![],
+        }
+    }
+
     pub fn has_source(&self) -> bool {
         matches!(
             self,
@@ -265,7 +279,15 @@ impl Command {
 
     pub fn usage(&self, called_as: Option<String>) -> String {
         let name = if let Some(called_as) = called_as {
-            called_as
+            if self
+                .all_names()
+                .iter()
+                .any(|name| name.join(" ") == called_as)
+            {
+                called_as
+            } else {
+                self.name().join(" ")
+            }
         } else {
             self.name().join(" ")
         };
@@ -290,11 +312,11 @@ impl Command {
         usage
     }
 
-    pub fn serves(&self, argv: &[String]) -> usize {
+    pub fn commands_serve(&self, argv: &[String], command_names: Vec<Vec<String>>) -> usize {
         let argv = argv.to_vec();
 
         let mut max_match: usize = 0;
-        'outer: for alias in self.all_names() {
+        'outer: for alias in command_names {
             if argv.len() < alias.len() {
                 continue;
             }
@@ -314,6 +336,14 @@ impl Command {
         }
 
         max_match
+    }
+
+    pub fn serves(&self, argv: &[String]) -> usize {
+        self.commands_serve(argv, self.all_names())
+    }
+
+    pub fn shadow_serves(&self, argv: &[String]) -> usize {
+        self.commands_serve(argv, self.shadow_names())
     }
 
     pub fn is_subcommand_of(&self, argv: &[String]) -> bool {

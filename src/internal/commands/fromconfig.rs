@@ -19,6 +19,7 @@ use crate::omni_error;
 #[derive(Debug, Clone)]
 pub struct ConfigCommand {
     name: Vec<String>,
+    orig_name: Option<Vec<String>>,
     details: CommandDefinition,
 }
 
@@ -74,6 +75,7 @@ impl ConfigCommand {
         let mut name = vec![name];
 
         name = name.into_iter().flat_map(|n| split_name(&n, " ")).collect();
+        let orig_name = name.clone();
 
         if config(".").config_commands.split_on_dash {
             name = name.into_iter().flat_map(|n| split_name(&n, "-")).collect();
@@ -82,11 +84,25 @@ impl ConfigCommand {
             name = name.into_iter().flat_map(|n| split_name(&n, "/")).collect();
         }
 
-        ConfigCommand { name, details }
+        let orig_name = if name != orig_name {
+            Some(orig_name)
+        } else {
+            None
+        };
+
+        ConfigCommand {
+            name,
+            orig_name,
+            details,
+        }
     }
 
     pub fn name(&self) -> Vec<String> {
         self.name.clone()
+    }
+
+    pub fn orig_name(&self) -> Option<Vec<String>> {
+        self.orig_name.clone()
     }
 
     pub fn aliases(&self) -> Vec<Vec<String>> {
