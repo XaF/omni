@@ -607,7 +607,7 @@ impl DynamicEnvData {
         };
 
         self.lists.get_mut(key).unwrap().push(DynamicEnvListValue {
-            operation: operation,
+            operation,
             value: value.to_string(),
             index: 0,
         });
@@ -635,7 +635,7 @@ impl DynamicEnvData {
         };
 
         self.lists.get_mut(key).unwrap().push(DynamicEnvListValue {
-            operation: operation,
+            operation,
             value: value.to_string(),
             index,
         });
@@ -688,8 +688,7 @@ impl DynamicEnvData {
         for (key, operations) in self.lists.clone().iter() {
             if operations
                 .iter()
-                .find(|o| o.operation == DynamicEnvListOperation::Create)
-                .is_some()
+                .any(|o| o.operation == DynamicEnvListOperation::Create)
             {
                 self.env_unset_var(key);
                 continue;
@@ -831,16 +830,6 @@ struct DynamicEnvListValue {
     value: String,
     #[serde(rename = "i")]
     index: usize,
-}
-
-impl DynamicEnvListValue {
-    // fn new(operation: DynamicEnvListOperation, value: &str, index: usize) -> Self {
-    // Self {
-    // operation: operation,
-    // value: value.to_string(),
-    // index: index,
-    // }
-    // }
 }
 
 fn set_none() -> Option<String> {
