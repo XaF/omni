@@ -323,8 +323,8 @@ impl DynamicEnv {
                         if std::env::var_os("GOMODCACHE").is_none() {
                             let gopath = match std::env::var_os("GOPATH") {
                                 Some(gopath) => match gopath.to_str() {
+                                    Some("") | None => format!("{}/go", user_home()),
                                     Some(gopath) => gopath.to_string(),
-                                    None => format!("{}/go", user_home()),
                                 },
                                 None => format!("{}/go", user_home()),
                             };
