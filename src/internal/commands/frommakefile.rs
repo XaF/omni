@@ -17,6 +17,7 @@ use crate::internal::workdir;
 #[derive(Debug, Clone)]
 pub struct MakefileCommand {
     name: Vec<String>,
+    orig_name: Option<String>,
     category: Option<String>,
     desc: Option<String>,
     target: String,
@@ -139,8 +140,15 @@ impl MakefileCommand {
             name = name.into_iter().flat_map(|n| split_name(&n, "/")).collect();
         }
 
+        let orig_name = if name.len() > 1 || name[0] != target {
+            Some(target.clone())
+        } else {
+            None
+        };
+
         MakefileCommand {
             name,
+            orig_name,
             category,
             desc,
             target,
@@ -155,6 +163,10 @@ impl MakefileCommand {
 
     pub fn aliases(&self) -> Vec<Vec<String>> {
         vec![]
+    }
+
+    pub fn orig_name(&self) -> Option<String> {
+        self.orig_name.clone()
     }
 
     pub fn source(&self) -> String {
