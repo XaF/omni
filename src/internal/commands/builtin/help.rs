@@ -207,6 +207,21 @@ impl HelpCommand {
             eprintln!("\n{}", wrap_blocks(&help, max_width).join("\n"));
         }
 
+        let is_shadow_name = command
+            .all_names()
+            .iter()
+            .any(|name| name.join(" ") == called_as.join(" "));
+        if !is_shadow_name {
+            eprintln!(
+                "\n{}",
+                format!(
+                    "\u{26A0}\u{FE0F}  '{}' is a shadow alias of '{}';\n   you should use the latter instead, as shadow\n   aliases can be overriden by any command at any time.",
+                    called_as.join(" "),
+                    command.name().join(" "),
+                ).light_yellow(),
+            );
+        }
+
         eprintln!(
             "\n{} {}",
             "Usage:".italic().bold(),

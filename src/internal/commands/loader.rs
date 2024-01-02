@@ -136,12 +136,26 @@ impl CommandLoader {
         let mut command: Option<&Command> = None;
         let mut cur_match_len = 0;
 
+        let mut shadow_command: Option<&Command> = None;
+        let mut shadow_cur_match_len = 0;
+
         for command_candidate in &self.commands {
             let match_len = command_candidate.serves(argv);
             if match_len > 0 && (command.is_none() || match_len > cur_match_len) {
                 command = Some(command_candidate);
                 cur_match_len = match_len;
             }
+
+            let shadow_match_len = command_candidate.shadow_serves(argv);
+            if shadow_match_len > shadow_cur_match_len {
+                shadow_command = Some(command_candidate);
+                shadow_cur_match_len = shadow_match_len;
+            }
+        }
+
+        if shadow_cur_match_len > cur_match_len {
+            command = shadow_command;
+            cur_match_len = shadow_cur_match_len;
         }
 
         if let Some(command) = command {
