@@ -601,13 +601,17 @@ impl DynamicEnvData {
             self.lists.insert(key.to_string(), Vec::new());
         }
 
+        let (cur_val, operation) = match self.env_get_var(key) {
+            Some(cur_val) => (cur_val, DynamicEnvListOperation::Add),
+            None => ("".to_string(), DynamicEnvListOperation::Create),
+        };
+
         self.lists.get_mut(key).unwrap().push(DynamicEnvListValue {
-            operation: DynamicEnvListOperation::Add,
+            operation,
             value: value.to_string(),
             index: 0,
         });
 
-        let cur_val = self.env_get_var(key).unwrap_or("".to_string());
         if cur_val.is_empty() {
             self.env_set_var(key, value);
         } else {
@@ -620,7 +624,10 @@ impl DynamicEnvData {
             self.lists.insert(key.to_string(), Vec::new());
         }
 
-        let cur_val = self.env_get_var(key).unwrap_or("".to_string());
+        let (cur_val, operation) = match self.env_get_var(key) {
+            Some(cur_val) => (cur_val, DynamicEnvListOperation::Add),
+            None => ("".to_string(), DynamicEnvListOperation::Create),
+        };
 
         let index = {
             let prev = cur_val.split(':').collect::<Vec<&str>>();
@@ -628,7 +635,7 @@ impl DynamicEnvData {
         };
 
         self.lists.get_mut(key).unwrap().push(DynamicEnvListValue {
-            operation: DynamicEnvListOperation::Add,
+            operation,
             value: value.to_string(),
             index,
         });
@@ -679,6 +686,14 @@ impl DynamicEnvData {
         }
 
         for (key, operations) in self.lists.clone().iter() {
+            if operations
+                .iter()
+                .any(|o| o.operation == DynamicEnvListOperation::Create)
+            {
+                self.env_unset_var(key);
+                continue;
+            }
+
             // Load the content of the variables, as we'll need to "undo" the
             // operations we've done to the closest of our ability; since it's
             // a list, we'll also split it, so we're ready to "search and update"
@@ -687,6 +702,9 @@ impl DynamicEnvData {
 
             for operation in operations.iter().rev() {
                 match operation.operation {
+                    DynamicEnvListOperation::Create => {
+                        unreachable!();
+                    }
                     DynamicEnvListOperation::Add => {
                         // Search for the operation.value in the current list, and return the closest index
                         // with operation.index in case the value is there multiple times
@@ -796,6 +814,8 @@ struct DynamicEnvValue {
 
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
 enum DynamicEnvListOperation {
+    #[serde(rename = "c")]
+    Create,
     #[serde(rename = "a")]
     Add,
     #[serde(rename = "d")]
@@ -810,16 +830,6 @@ struct DynamicEnvListValue {
     value: String,
     #[serde(rename = "i")]
     index: usize,
-}
-
-impl DynamicEnvListValue {
-    // fn new(operation: DynamicEnvListOperation, value: &str, index: usize) -> Self {
-    // Self {
-    // operation: operation,
-    // value: value.to_string(),
-    // index: index,
-    // }
-    // }
 }
 
 fn set_none() -> Option<String> {
