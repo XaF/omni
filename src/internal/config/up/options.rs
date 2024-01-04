@@ -11,7 +11,7 @@ impl UpOptions {
     pub fn new() -> Self {
         Self {
             read_cache: true,
-            write_cache: false,
+            write_cache: true,
         }
     }
 
