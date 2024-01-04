@@ -333,7 +333,6 @@ impl DynamicEnv {
 
                         envsetter.set_value("GOROOT", &format!("{}/go", tool_prefix));
                         envsetter.set_value("GOVERSION", &version);
-                        envsetter.prepend_to_list("GOPATH", &format!("{}/go", tool_prefix));
                         envsetter.prepend_to_list("PATH", &format!("{}/go/bin", tool_prefix));
 
                         // Handle the isolated GOPATH
