@@ -771,21 +771,12 @@ impl OrgConfig {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
+#[derive(Default, Debug, Serialize, Deserialize, Clone)]
 pub struct PathConfig {
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub append: Vec<PathEntryConfig>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub prepend: Vec<PathEntryConfig>,
-}
-
-impl Default for PathConfig {
-    fn default() -> Self {
-        Self {
-            append: vec![],
-            prepend: vec![],
-        }
-    }
 }
 
 impl PathConfig {

@@ -839,19 +839,26 @@ impl ConfigValue {
     }
 
     fn keypath_transform(keypath: &Vec<String>) -> bool {
-        if keypath.len() == 3 {
-            if keypath[0] == "path" && ["append", "prepend"].contains(&keypath[1].as_str()) {
-                return true;
-            } else if keypath[0] == "org" && keypath[2] == "worktree" {
-                return true;
-            }
-        } else if keypath.len() == 2 && keypath[0] == "cache" && keypath[1] == "path" {
-            return true;
-        } else if keypath.len() == 1 && keypath[0] == "worktree" {
-            return true;
+        match (keypath.len(), keypath[0].as_str()) {
+            // path => append => <item> or path => prepend => <item>
+            (3, "path") => match keypath[1].as_str() {
+                "append" | "prepend" => true,
+                _ => false,
+            },
+            // org => <item> => worktree
+            (3, "org") => match keypath[2].as_str() {
+                "worktree" => true,
+                _ => false,
+            },
+            // cache => path
+            (2, "cache") => match keypath[1].as_str() {
+                "path" => true,
+                _ => false,
+            },
+            // worktree
+            (1, "worktree") => true,
+            _ => false,
         }
-
-        false
     }
 
     fn transform(&mut self, keypath: &Vec<String>) {
