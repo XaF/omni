@@ -11,7 +11,7 @@ Omni configuration files accept the following parameters:
 
 | Parameter               | Type | Description                                                            |
 |-------------------------|------|------------------------------------------------------------------------|
-| `cache` | string | Location of the cache file used by omni |
+| `cache` | [cache](parameters/cache) | Configuration related to the cache of omni |
 | `cd` | [cd](parameters/cd) | Configuration related to the `omni cd` command |
 | `clone` | [clone](parameters/clone) | Configuration related to the `omni clone` command |
 | `command_match_min_score` | float | the minimum score to be considered when fuzzy matching a command |
