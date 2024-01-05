@@ -7,7 +7,6 @@ use serde::Deserialize;
 use serde::Serialize;
 
 use crate::internal::config::parser::PathEntryConfig;
-use crate::internal::env::cache_home;
 use crate::internal::env::user_home;
 use crate::internal::user_interface::colors::StringColor;
 use crate::omni_error;
@@ -20,6 +19,12 @@ pub enum ConfigSource {
     Null,
 }
 
+impl Default for ConfigSource {
+    fn default() -> Self {
+        Self::Default
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Hash, Eq, Ord, PartialOrd)]
 pub enum ConfigScope {
     Null,
@@ -27,6 +32,12 @@ pub enum ConfigScope {
     System,
     User,
     Workdir,
+}
+
+impl Default for ConfigScope {
+    fn default() -> Self {
+        Self::Default
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -123,61 +134,11 @@ impl ConfigValue {
     }
 
     pub fn default() -> Self {
-        // Check if ~/git exists and is a directory
-        let default_cache_path = cache_home();
-        let default_cache_config = format!("cache:\n  path: \"{}\"\n", default_cache_path);
-
-        // Parse a default yaml file using serde
-        let yaml_str = default_cache_config
-            + r#"
-worktree: null
-commands: {}
-command_match_min_score: 0.12
-command_match_skip_prompt_if:
-  enabled: true
-  first_min: 0.80
-  second_max: 0.60
-cd:
-  path_match_min_score: 0.12
-  path_match_skip_prompt_if:
-    enabled: true
-    first_min: 0.80
-    second_max: 0.60
-clone:
-  ls_remote_timeout_seconds: 5
-config_commands:
-  split_on_dash: true
-  split_on_slash: true
-env: {}
-makefile_commands:
-  enabled: true
-  split_on_dash: true
-  split_on_slash: true
-org: []
-path:
-  append: []
-  prepend: []
-path_repo_updates:
-  enabled: true
-  self_update: ask
-  pre_auth: true
-  pre_auth_timeout: 120
-  background_updates: true
-  background_updates_timeout: 3600 # 1 hour
-  interval: 43200 # 12 hours
-  ref_type: "branch" # branch or tag
-  ref_match: null # regex or null
-  per_repo_config: {}
-repo_path_format: "%{host}/%{org}/%{repo}"
-up_command:
-  auto_bootstrap: true
-"#;
-
-        // Convert yaml_str from String to &str
-        let yaml_str = yaml_str.as_str();
-
-        let value: serde_yaml::Value = serde_yaml::from_str(yaml_str).unwrap();
-        Self::from_value(ConfigSource::Default, ConfigScope::Default, value)
+        Self::from_value(
+            ConfigSource::Default,
+            ConfigScope::Default,
+            serde_yaml::Value::Mapping(serde_yaml::Mapping::new()),
+        )
     }
 
     pub fn from_value(source: ConfigSource, scope: ConfigScope, value: serde_yaml::Value) -> Self {
@@ -877,70 +838,83 @@ up_command:
         ConfigExtendStrategy::Default
     }
 
+    fn keypath_transform(keypath: &Vec<String>) -> bool {
+        if keypath.len() == 3 {
+            if keypath[0] == "path" && ["append", "prepend"].contains(&keypath[1].as_str()) {
+                return true;
+            } else if keypath[0] == "org" && keypath[2] == "worktree" {
+                return true;
+            }
+        } else if keypath.len() == 2 && keypath[0] == "cache" && keypath[1] == "path" {
+            return true;
+        } else if keypath.len() == 1 && keypath[0] == "worktree" {
+            return true;
+        }
+
+        false
+    }
+
     fn transform(&mut self, keypath: &Vec<String>) {
-        if (keypath.len() == 3
-            && ((keypath[0] == "path" && ["append", "prepend"].contains(&keypath[1].as_str()))
-                || (keypath[0] == "org" && keypath[2] == "worktree")))
-            || (keypath.len() == 1 && keypath[0] == "worktree")
-        {
-            if let Some(data) = self.value.as_mut().map(|data| data.as_mut()) {
-                if let ConfigData::Value(value) = data {
-                    if let serde_yaml::Value::String(string_value) = value {
-                        let value_string = string_value.to_owned();
-                        let mut abs_path = value_string.clone();
-                        if abs_path.starts_with("~/") {
-                            abs_path = Path::new(&user_home())
-                                .join(abs_path.trim_start_matches("~/"))
-                                .to_str()
-                                .unwrap()
-                                .to_string();
-                        }
-                        if !abs_path.starts_with('/') {
-                            match self.source.clone() {
-                                ConfigSource::File(source) => {
-                                    if let Some(source) = Path::new(&source).parent() {
-                                        abs_path =
-                                            source.join(abs_path).to_str().unwrap().to_string();
-                                    }
-                                }
-                                ConfigSource::Package(source) => {
-                                    if let Some(relpath) = Path::new(&source.path).parent() {
-                                        let relpath =
-                                            relpath.join(&abs_path).to_str().unwrap().to_string();
+        if !ConfigValue::keypath_transform(keypath) {
+            return;
+        }
 
-                                        let mut package_path = HashMap::new();
-                                        package_path.insert(
-                                            "package".to_string(),
-                                            ConfigValue {
-                                                source: self.source.clone(),
-                                                scope: self.scope.clone(),
-                                                value: Some(Box::new(ConfigData::Value(
-                                                    serde_yaml::Value::String(
-                                                        source.package.clone().unwrap().to_string(),
-                                                    ),
-                                                ))),
-                                            },
-                                        );
-                                        package_path.insert(
-                                            "path".to_string(),
-                                            ConfigValue {
-                                                source: self.source.clone(),
-                                                scope: self.scope.clone(),
-                                                value: Some(Box::new(ConfigData::Value(
-                                                    serde_yaml::Value::String(relpath),
-                                                ))),
-                                            },
-                                        );
-
-                                        *data = ConfigData::Mapping(package_path);
-                                        return;
-                                    }
-                                }
-                                _ => {}
-                            }
-                        }
-                        *value = serde_yaml::Value::String(abs_path);
+        if let Some(data) = self.value.as_mut().map(|data| data.as_mut()) {
+            if let ConfigData::Value(value) = data {
+                if let serde_yaml::Value::String(string_value) = value {
+                    let value_string = string_value.to_owned();
+                    let mut abs_path = value_string.clone();
+                    if abs_path.starts_with("~/") {
+                        abs_path = Path::new(&user_home())
+                            .join(abs_path.trim_start_matches("~/"))
+                            .to_str()
+                            .unwrap()
+                            .to_string();
                     }
+                    if !abs_path.starts_with('/') {
+                        match self.source.clone() {
+                            ConfigSource::File(source) => {
+                                if let Some(source) = Path::new(&source).parent() {
+                                    abs_path = source.join(abs_path).to_str().unwrap().to_string();
+                                }
+                            }
+                            ConfigSource::Package(source) => {
+                                if let Some(relpath) = Path::new(&source.path).parent() {
+                                    let relpath =
+                                        relpath.join(&abs_path).to_str().unwrap().to_string();
+
+                                    let mut package_path = HashMap::new();
+                                    package_path.insert(
+                                        "package".to_string(),
+                                        ConfigValue {
+                                            source: self.source.clone(),
+                                            scope: self.scope.clone(),
+                                            value: Some(Box::new(ConfigData::Value(
+                                                serde_yaml::Value::String(
+                                                    source.package.clone().unwrap().to_string(),
+                                                ),
+                                            ))),
+                                        },
+                                    );
+                                    package_path.insert(
+                                        "path".to_string(),
+                                        ConfigValue {
+                                            source: self.source.clone(),
+                                            scope: self.scope.clone(),
+                                            value: Some(Box::new(ConfigData::Value(
+                                                serde_yaml::Value::String(relpath),
+                                            ))),
+                                        },
+                                    );
+
+                                    *data = ConfigData::Mapping(package_path);
+                                    return;
+                                }
+                            }
+                            _ => {}
+                        }
+                    }
+                    *value = serde_yaml::Value::String(abs_path);
                 }
             }
         }

@@ -63,7 +63,7 @@ cd:
     first_min: 0.80
     second_max: 0.60
 clone:
-  ls_remote_timeout_seconds: 5
+  ls_remote_timeout: 5s
 config_commands:
   split_on_dash: true
   split_on_slash: true

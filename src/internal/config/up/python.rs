@@ -26,10 +26,19 @@ use crate::internal::ConfigValue;
 const MIN_VERSION_VENV: Version = Version::new(3, 3, 0);
 // const MIN_VERSION_VIRTUALENV: Version = Version::new(2, 6, 0);
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
+#[derive(Debug, Deserialize, Clone)]
 pub struct UpConfigPython {
-    #[serde(skip)]
     pub asdf_base: UpConfigAsdfBase,
+}
+
+impl Serialize for UpConfigPython {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: ::serde::ser::Serializer,
+    {
+        self.asdf_base.serialize(serializer)
+        // TODO: add pip option serialization
+    }
 }
 
 impl UpConfigPython {

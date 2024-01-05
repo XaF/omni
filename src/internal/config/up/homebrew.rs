@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::path::PathBuf;
 
 use duct::cmd;
@@ -28,7 +29,9 @@ static BREW_UPDATED: OnceCell<bool> = OnceCell::new();
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct UpConfigHomebrew {
+    #[serde(default = "Vec::new", skip_serializing_if = "Vec::is_empty")]
     pub install: Vec<HomebrewInstall>,
+    #[serde(default = "Vec::new", skip_serializing_if = "Vec::is_empty")]
     pub tap: Vec<HomebrewTap>,
 }
 
@@ -211,6 +214,7 @@ impl UpConfigHomebrew {
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct HomebrewTap {
     name: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
     url: Option<String>,
 
     #[serde(skip)]
@@ -494,7 +498,7 @@ pub enum HomebrewInstallType {
     Cask,
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
+#[derive(Debug, Deserialize, Clone)]
 pub struct HomebrewInstall {
     install_type: HomebrewInstallType,
     name: String,
@@ -502,6 +506,27 @@ pub struct HomebrewInstall {
 
     #[serde(skip)]
     was_handled: OnceCell<bool>,
+}
+
+impl Serialize for HomebrewInstall {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: ::serde::ser::Serializer,
+    {
+        let mut install = HashMap::new();
+        install.insert(
+            self.name.clone(),
+            self.version.clone().unwrap_or("latest".to_string()),
+        );
+
+        if self.install_type == HomebrewInstallType::Cask {
+            let mut cask = HashMap::new();
+            cask.insert("cask".to_string(), install);
+            cask.serialize(serializer)
+        } else {
+            install.serialize(serializer)
+        }
+    }
 }
 
 impl HomebrewInstall {

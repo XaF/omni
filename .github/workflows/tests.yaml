@@ -64,7 +64,7 @@ jobs:
               - 'Cargo.lock'
               - 'Cargo.toml'
               - 'build.rs'
-              - 'shell_integration/**'
+              - 'templates/**'
               - 'src/**'
 
       - name: List all changed files

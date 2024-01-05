@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use serde::Deserialize;
 use serde::Serialize;
 
@@ -12,7 +14,7 @@ use crate::internal::config::up::UpError;
 use crate::internal::config::up::UpOptions;
 use crate::internal::config::ConfigValue;
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
+#[derive(Debug, Deserialize, Clone)]
 pub enum UpConfigTool {
     // TODO: Apt(UpConfigApt),
     Bash(UpConfigAsdfBase),
@@ -29,6 +31,41 @@ pub enum UpConfigTool {
     Ruby(UpConfigAsdfBase),
     Rust(UpConfigAsdfBase),
     Terraform(UpConfigAsdfBase),
+}
+
+// Generic function to create a hashmap with a single key/value pair.
+fn create_hashmap<T>(key: &str, value: T) -> HashMap<String, T> {
+    let mut new_obj = HashMap::new();
+    new_obj.insert(key.to_string(), value);
+    new_obj
+}
+
+impl Serialize for UpConfigTool {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: ::serde::ser::Serializer,
+    {
+        // When serializing, we want to create a yaml object with the key being the UpConfigTool
+        // type and the value being the UpConfigTool struct.
+        match self {
+            UpConfigTool::Bash(config) => create_hashmap("bash", config).serialize(serializer),
+            UpConfigTool::Bundler(config) => {
+                create_hashmap("bundler", config).serialize(serializer)
+            }
+            UpConfigTool::Custom(config) => create_hashmap("custom", config).serialize(serializer),
+            UpConfigTool::Go(config) => create_hashmap("go", config).serialize(serializer),
+            UpConfigTool::Homebrew(config) => {
+                create_hashmap("homebrew", config).serialize(serializer)
+            }
+            UpConfigTool::Nodejs(config) => create_hashmap("nodejs", config).serialize(serializer),
+            UpConfigTool::Python(config) => create_hashmap("python", config).serialize(serializer),
+            UpConfigTool::Ruby(config) => create_hashmap("ruby", config).serialize(serializer),
+            UpConfigTool::Rust(config) => create_hashmap("rust", config).serialize(serializer),
+            UpConfigTool::Terraform(config) => {
+                create_hashmap("terraform", config).serialize(serializer)
+            }
+        }
+    }
 }
 
 impl UpConfigTool {

@@ -20,7 +20,9 @@ use crate::internal::workdir;
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct UpConfigBundler {
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub gemfile: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub path: Option<String>,
 }
 
