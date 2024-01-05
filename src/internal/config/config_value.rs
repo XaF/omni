@@ -841,20 +841,11 @@ impl ConfigValue {
     fn keypath_transform(keypath: &Vec<String>) -> bool {
         match (keypath.len(), keypath[0].as_str()) {
             // path => append => <item> or path => prepend => <item>
-            (3, "path") => match keypath[1].as_str() {
-                "append" | "prepend" => true,
-                _ => false,
-            },
+            (3, "path") => matches!(keypath[1].as_str(), "append" | "prepend"),
             // org => <item> => worktree
-            (3, "org") => match keypath[2].as_str() {
-                "worktree" => true,
-                _ => false,
-            },
+            (3, "org") => matches!(keypath[2].as_str(), "worktree"),
             // cache => path
-            (2, "cache") => match keypath[1].as_str() {
-                "path" => true,
-                _ => false,
-            },
+            (2, "cache") => matches!(keypath[1].as_str(), "path"),
             // worktree
             (1, "worktree") => true,
             _ => false,
