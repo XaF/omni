@@ -1,0 +1,209 @@
+name: Build and test target
+run-name: Build and test ${{ inputs.git_sha }} on ${{ inputs.suffix }} for ${{ inputs.release_version }}
+
+
+on:
+  # Allows to run this workflow by being called from another workflow
+  workflow_call:
+    inputs:
+      git_sha:
+        description: The git sha to build the release for
+        type: string
+      release_version:
+        description: The release version to use for the build
+        type: string
+      target:
+        description: The build target
+        type: string
+      os:
+        description: The OS to use for the build
+        type: string
+      suffix:
+        description: The binary suffix for the build
+        type: string
+      run_tests:
+        description: Whether to run tests
+        type: boolean
+      extra_test_containers:
+        description: JSON list of containers to run tests with (extra)
+        type: string
+
+  # Allows to run this workflow manually from the Actions tab
+  workflow_dispatch:
+    inputs:
+      git_sha:
+        description: The git sha to build the release for
+        type: string
+      release_version:
+        description: The release version to use for the build
+        type: string
+      target:
+        description: The build target
+        type: string
+      os:
+        description: The OS to use for the build
+        type: string
+      suffix:
+        description: The binary suffix for the build
+        type: string
+      run_tests:
+        description: Whether to run tests
+        type: boolean
+      extra_test_containers:
+        description: JSON list of containers to run tests with (extra)
+        type: string
+
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
+  BUILD_FILENAME: omni-${{ inputs.release_version }}-${{ inputs.suffix }}
+
+
+concurrency:
+  group: ${{ github.workflow }}-${{ inputs.git_sha }}-${{ inputs.target }}
+  cancel-in-progress: false
+
+
+jobs:
+  build-and-upload-artifacts:
+    name: Build binary for ${{ inputs.suffix }}
+    timeout-minutes: 10
+
+    env:
+      BINARY_TESTS: '[]'
+
+    outputs:
+      binary_tests: ${{ env.BINARY_TESTS }}
+
+    runs-on: ${{ inputs.os }}
+
+    steps:
+      - name: Checkout commit
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.git_sha || github.sha }}
+
+      - name: Set up cargo cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: omni-build
+
+      - name: Install cross
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cross
+
+      - name: Install musl-tools
+        run: |
+          sudo apt-get update --yes && sudo apt-get install --yes musl-tools
+        if: contains(inputs.target, 'musl')
+
+      - name: Override Cargo.toml and Cargo.lock version
+        run: |
+          perl -i -pe 's/^version = "0\.0\.0-git"$/version = "${{ inputs.release_version }}"/' Cargo.toml
+          perl -i -pe 's/^version = "0\.0\.0-git"$/version = "${{ inputs.release_version }}"/' Cargo.lock
+
+      - name: Build binary
+        uses: houseabsolute/actions-rust-cross@v0
+        timeout-minutes: 30
+        env:
+          OMNI_RELEASE_VERSION: ${{ inputs.release_version }}
+        with:
+          command: build
+          target: ${{ inputs.target }}
+          toolchain: stable
+          args: "--locked --release"
+          strip: true
+
+      - name: Run tests
+        if: inputs.run_tests
+        uses: houseabsolute/actions-rust-cross@v0
+        with:
+          command: test
+          target: ${{ inputs.target }}
+          toolchain: stable
+          args: "--locked --release"
+
+      - name: Package as archive
+        shell: bash
+        run: |
+          cd "target/${{ inputs.target }}/release" && \
+            tar czvf ../../../${{ env.BUILD_FILENAME }}.tar.gz omni && \
+            cd -
+
+      - name: Generate SHA-256
+        run: |
+          sha256sum=$(command -v sha256sum || echo "shasum --algorithm 256")
+          $sha256sum ${{ env.BUILD_FILENAME }}.tar.gz | tee -a ${{ env.BUILD_FILENAME }}.sha256
+
+      - name: Publish artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.BUILD_FILENAME }}
+          path: ${{ env.BUILD_FILENAME }}.*
+          retention-days: 1
+
+      - name: Prepare test matrix
+        if: inputs.run_tests
+        run: |
+          binary_tests=$(echo '[{"os": "${{ inputs.os }}"}]' | jq '. + '"$(echo '${{ inputs.extra_test_containers || '[]' }}' | jq '. | map({"os": "${{ inputs.os }}", "container": .})')")
+          echo "BINARY_TESTS=$(echo "$binary_tests" | jq --compact-output)" | tee -a "$GITHUB_ENV"
+
+  test-binaries:
+    name: Check that ${{ inputs.suffix }} binary works on ${{ matrix.container || matrix.os }}
+    timeout-minutes: 5
+
+    needs:
+      - build-and-upload-artifacts
+
+    if: inputs.run_tests
+
+    runs-on: ${{ matrix.os }}
+    container: ${{ matrix.container }}
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJSON(needs.build-and-upload-artifacts.outputs.binary_tests) }}
+
+    steps:
+      - name: Install os/container dependencies
+        run: |
+          if command -v pacman >/dev/null; then
+            yes | sudo pacman -Sy --noconfirm perl
+          elif command -v dnf >/dev/null; then
+            echo "fastestmirror=1" | sudo tee -a /etc/dnf/dnf.conf
+            sudo dnf -y install perl-Digest-SHA
+          fi
+
+      - name: Checkout current commit
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.git_sha || github.sha }}
+
+      - name: Download artifact for ${{ inputs.suffix }}
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ env.BUILD_FILENAME }}
+
+      - name: Verify checksum
+        shell: bash
+        run: |
+          sha256sum=$(command -v sha256sum || echo "shasum --algorithm 256")
+          $sha256sum --check "${{ env.BUILD_FILENAME }}.sha256"
+
+      - name: Unarchive the artifact
+        shell: bash
+        run: |
+          tar xzvf "${{ env.BUILD_FILENAME }}.tar.gz"
+
+      - name: Try running 'omni help'
+        shell: bash
+        run: |
+          ./omni help
+
+      - name: Try running 'omni status'
+        shell: bash
+        run: |
+          ./omni status
