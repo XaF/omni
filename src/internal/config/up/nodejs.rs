@@ -11,10 +11,18 @@ use crate::internal::config::up::UpError;
 use crate::internal::config::up::UpOptions;
 use crate::internal::ConfigValue;
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
+#[derive(Debug, Deserialize, Clone)]
 pub struct UpConfigNodejs {
-    #[serde(skip)]
     pub asdf_base: UpConfigAsdfBase,
+}
+
+impl Serialize for UpConfigNodejs {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: ::serde::ser::Serializer,
+    {
+        self.asdf_base.serialize(serializer)
+    }
 }
 
 impl UpConfigNodejs {

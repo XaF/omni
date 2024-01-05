@@ -447,7 +447,7 @@ impl CloneCommand {
                 },
                 RunConfig::new()
                     .without_ctrl_chars()
-                    .with_timeout(config(".").clone.ls_remote_timeout_seconds),
+                    .with_timeout(config(".").clone.ls_remote_timeout),
             );
 
             if result.is_err() {

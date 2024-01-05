@@ -150,15 +150,18 @@ fn is_asdf_tool_version_installed(tool: &str, version: &str) -> bool {
 #[derive(Debug, Serialize, Deserialize, Clone, Default)]
 pub struct UpConfigAsdfBase {
     /// The name of the tool to install.
+    #[serde(skip)]
     pub tool: String,
 
     /// The URL to use to install the tool.
+    #[serde(skip)]
     pub tool_url: Option<String>,
 
     /// The version of the tool to install, as specified in the config file.
     pub version: String,
 
     /// A list of directories to install the tool for.
+    #[serde(default, skip_serializing_if = "BTreeSet::is_empty")]
     pub dirs: BTreeSet<String>,
 
     /// A list of functions to run to detect the version of the tool.

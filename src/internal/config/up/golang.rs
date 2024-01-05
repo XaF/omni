@@ -24,12 +24,41 @@ use crate::internal::workdir;
 use crate::internal::ConfigValue;
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
+struct UpConfigGolangSerialized {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    version: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    version_file: Option<String>,
+    #[serde(skip_serializing_if = "BTreeSet::is_empty")]
+    dirs: BTreeSet<String>,
+}
+
+#[derive(Debug, Deserialize, Clone)]
 pub struct UpConfigGolang {
     pub version: Option<String>,
     pub version_file: Option<String>,
     pub dirs: BTreeSet<String>,
     #[serde(skip)]
     pub asdf_base: OnceCell<UpConfigAsdfBase>,
+}
+
+impl Serialize for UpConfigGolang {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: ::serde::ser::Serializer,
+    {
+        let mut serialized = UpConfigGolangSerialized {
+            version: self.version.clone(),
+            version_file: self.version_file.clone(),
+            dirs: self.dirs.clone(),
+        };
+
+        if serialized.version.is_none() && serialized.version_file.is_none() {
+            serialized.version = Some("latest".to_string());
+        }
+
+        serialized.serialize(serializer)
+    }
 }
 
 impl UpConfigGolang {

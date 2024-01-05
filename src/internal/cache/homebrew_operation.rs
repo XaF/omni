@@ -1,10 +1,10 @@
 use std::collections::BTreeSet;
 use std::collections::HashMap;
 use std::io;
+use std::time::Duration;
 
 use serde::Deserialize;
 use serde::Serialize;
-use time::Duration;
 use time::OffsetDateTime;
 
 use crate::internal::cache::handler::exclusive;
@@ -14,6 +14,7 @@ use crate::internal::cache::loaders::set_homebrew_operation_cache;
 use crate::internal::cache::utils;
 use crate::internal::cache::utils::Empty;
 use crate::internal::cache::CacheObject;
+use crate::internal::config::global_config;
 
 const HOMEBREW_OPERATION_CACHE_NAME: &str = "homebrew_operation";
 
@@ -111,8 +112,10 @@ impl HomebrewOperationCache {
     }
 
     pub fn should_update_homebrew(&self) -> bool {
-        // TODO: add configuration option for the duration?
-        self.update_cache.should_update_homebrew(Duration::days(1))
+        self.update_cache
+            .should_update_homebrew(Duration::from_secs(
+                global_config().cache.homebrew.update_expire,
+            ))
     }
 
     pub fn homebrew_install_bin_path(
@@ -162,8 +165,7 @@ impl HomebrewOperationCache {
             install_name,
             install_version,
             is_cask,
-            // TODO: add configuration option for the duration?
-            Duration::days(1),
+            Duration::from_secs(global_config().cache.homebrew.install_update_expire),
         )
     }
 
@@ -188,8 +190,7 @@ impl HomebrewOperationCache {
             install_name,
             install_version,
             is_cask,
-            // TODO: add configuration option for the duration?
-            Duration::hours(12),
+            Duration::from_secs(global_config().cache.homebrew.install_check_expire),
         )
     }
 }

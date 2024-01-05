@@ -3,10 +3,12 @@ use std::path::PathBuf;
 use std::str::FromStr;
 use std::sync::Mutex;
 
+use humantime::parse_duration;
 use lazy_static::lazy_static;
 use serde::Deserialize;
 use serde::Serialize;
 
+use crate::internal::cache::utils::Empty;
 use crate::internal::config::config_loader;
 use crate::internal::config::config_value::ConfigData;
 use crate::internal::config::flush_config_loader;
@@ -50,6 +52,19 @@ lazy_static! {
         }
         default_worktree_path
     };
+}
+
+fn parse_duration_or_default(value: Option<&ConfigValue>, default: u64) -> u64 {
+    if let Some(value) = value {
+        if let Some(value) = value.as_unsigned_integer() {
+            return value;
+        } else if let Some(value) = value.as_str() {
+            if let Ok(value) = parse_duration(&value) {
+                return value.as_secs();
+            }
+        }
+    }
+    default
 }
 
 pub fn config(path: &str) -> OmniConfig {
@@ -117,25 +132,36 @@ impl OmniConfigPerPath {
 pub struct OmniConfig {
     pub worktree: String,
     pub cache: CacheConfig,
+    #[serde(skip_serializing_if = "HashMap::is_empty")]
     pub commands: HashMap<String, CommandDefinition>,
     pub command_match_min_score: f64,
     pub command_match_skip_prompt_if: MatchSkipPromptIfConfig,
     pub config_commands: ConfigCommandsConfig,
     pub makefile_commands: MakefileCommandsConfig,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
     pub org: Vec<OrgConfig>,
     pub path: PathConfig,
     pub path_repo_updates: PathRepoUpdatesConfig,
     pub repo_path_format: String,
+    #[serde(skip_serializing_if = "HashMap::is_empty")]
     pub env: HashMap<String, String>,
     pub cd: CdConfig,
     pub clone: CloneConfig,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub up: Option<UpConfig>,
+    #[serde(skip_serializing_if = "SuggestCloneConfig::is_empty")]
     pub suggest_clone: SuggestCloneConfig,
+    #[serde(skip_serializing_if = "serde_yaml::Value::is_null")]
+    pub suggest_config: serde_yaml::Value,
     pub up_command: UpCommandConfig,
+    #[serde(skip_serializing_if = "ShellAliasesConfig::is_empty")]
     pub shell_aliases: ShellAliasesConfig,
 }
 
 impl OmniConfig {
+    const DEFAULT_COMMAND_MATCH_MIN_SCORE: f64 = 0.12;
+    const DEFAULT_REPO_PATH_FORMAT: &'static str = "%{host}/%{org}/%{repo}";
+
     pub fn from_config_value(config_value: &ConfigValue) -> Self {
         let mut commands_config = HashMap::new();
         if let Some(value) = config_value.get("commands") {
@@ -165,34 +191,38 @@ impl OmniConfig {
             worktree: config_value
                 .get_as_str("worktree")
                 .unwrap_or_else(|| (*DEFAULT_WORKTREE).to_string()),
-            cache: CacheConfig::from_config_value(&config_value.get("cache").unwrap()),
+            cache: CacheConfig::from_config_value(config_value.get("cache")),
             commands: commands_config,
             command_match_min_score: config_value
                 .get_as_float("command_match_min_score")
-                .unwrap_or(0.12),
+                .unwrap_or(Self::DEFAULT_COMMAND_MATCH_MIN_SCORE),
             command_match_skip_prompt_if: MatchSkipPromptIfConfig::from_config_value(
                 config_value.get("command_match_skip_prompt_if"),
             ),
             config_commands: ConfigCommandsConfig::from_config_value(
-                &config_value.get("config_commands").unwrap(),
+                config_value.get("config_commands"),
             ),
             makefile_commands: MakefileCommandsConfig::from_config_value(
-                &config_value.get("makefile_commands").unwrap(),
+                config_value.get("makefile_commands"),
             ),
             org: org_config,
-            path: PathConfig::from_config_value(&config_value.get("path").unwrap()),
+            path: PathConfig::from_config_value(config_value.get("path")),
             path_repo_updates: PathRepoUpdatesConfig::from_config_value(
-                &config_value.get("path_repo_updates").unwrap(),
+                config_value.get("path_repo_updates"),
             ),
             repo_path_format: config_value
                 .get_as_str("repo_path_format")
-                .unwrap()
+                .unwrap_or(Self::DEFAULT_REPO_PATH_FORMAT.to_string())
                 .to_string(),
             env: env_config,
             cd: CdConfig::from_config_value(config_value.get("cd")),
             clone: CloneConfig::from_config_value(config_value.get("clone")),
             up: UpConfig::from_config_value(config_value.get("up")),
             suggest_clone: SuggestCloneConfig::from_config_value(config_value.get("suggest_clone")),
+            suggest_config: match config_value.get("suggest_config") {
+                Some(value) => value.as_serde_yaml(),
+                None => serde_yaml::Value::Null,
+            },
             up_command: UpCommandConfig::from_config_value(config_value.get("up_command")),
             shell_aliases: ShellAliasesConfig::from_config_value(config_value.get("shell_aliases")),
         }
@@ -210,29 +240,164 @@ impl OmniConfig {
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct CacheConfig {
     pub path: String,
+    pub asdf: AsdfCacheConfig,
+    pub homebrew: HomebrewCacheConfig,
+}
+
+impl Default for CacheConfig {
+    fn default() -> Self {
+        Self {
+            path: cache_home(),
+            asdf: AsdfCacheConfig::default(),
+            homebrew: HomebrewCacheConfig::default(),
+        }
+    }
 }
 
 impl CacheConfig {
-    fn from_config_value(config_value: &ConfigValue) -> Self {
+    fn from_config_value(config_value: Option<ConfigValue>) -> Self {
+        let config_value = match config_value {
+            Some(config_value) => config_value,
+            None => return Self::default(),
+        };
+
+        let path = match config_value.get("path") {
+            Some(value) => value.as_str().unwrap().to_string(),
+            None => cache_home(),
+        };
+
+        let asdf = AsdfCacheConfig::from_config_value(config_value.get("asdf"));
+
+        let homebrew = HomebrewCacheConfig::from_config_value(config_value.get("homebrew"));
+
         Self {
-            path: match config_value.get("path") {
-                Some(value) => value.as_str().unwrap().to_string(),
-                None => cache_home(),
-            },
+            path,
+            asdf,
+            homebrew,
+        }
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct AsdfCacheConfig {
+    pub update_expire: u64,
+    pub plugin_update_expire: u64,
+    pub plugin_versions_expire: u64,
+}
+
+impl Default for AsdfCacheConfig {
+    fn default() -> Self {
+        Self {
+            update_expire: Self::DEFAULT_UPDATE_EXPIRE,
+            plugin_update_expire: Self::DEFAULT_PLUGIN_UPDATE_EXPIRE,
+            plugin_versions_expire: Self::DEFAULT_PLUGIN_VERSIONS_EXPIRE,
+        }
+    }
+}
+
+impl AsdfCacheConfig {
+    const DEFAULT_UPDATE_EXPIRE: u64 = 86400; // 1 day
+    const DEFAULT_PLUGIN_UPDATE_EXPIRE: u64 = 86400; // 1 day
+    const DEFAULT_PLUGIN_VERSIONS_EXPIRE: u64 = 3600; // 1 hour
+
+    fn from_config_value(config_value: Option<ConfigValue>) -> Self {
+        let config_value = match config_value {
+            Some(config_value) => config_value,
+            None => return Self::default(),
+        };
+
+        let update_expire = parse_duration_or_default(
+            config_value.get("update_expire").as_ref(),
+            Self::DEFAULT_UPDATE_EXPIRE,
+        );
+
+        let plugin_update_expire = parse_duration_or_default(
+            config_value.get("plugin_update_expire").as_ref(),
+            Self::DEFAULT_PLUGIN_UPDATE_EXPIRE,
+        );
+
+        let plugin_versions_expire = parse_duration_or_default(
+            config_value.get("plugin_versions_expire").as_ref(),
+            Self::DEFAULT_PLUGIN_VERSIONS_EXPIRE,
+        );
+
+        Self {
+            update_expire,
+            plugin_update_expire,
+            plugin_versions_expire,
+        }
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct HomebrewCacheConfig {
+    pub update_expire: u64,
+    pub install_update_expire: u64,
+    pub install_check_expire: u64,
+}
+
+impl Default for HomebrewCacheConfig {
+    fn default() -> Self {
+        Self {
+            update_expire: Self::DEFAULT_UPDATE_EXPIRE,
+            install_update_expire: Self::DEFAULT_INSTALL_UPDATE_EXPIRE,
+            install_check_expire: Self::DEFAULT_INSTALL_CHECK_EXPIRE,
+        }
+    }
+}
+
+impl HomebrewCacheConfig {
+    const DEFAULT_UPDATE_EXPIRE: u64 = 86400; // 1 day
+    const DEFAULT_INSTALL_UPDATE_EXPIRE: u64 = 86400; // 1 day
+    const DEFAULT_INSTALL_CHECK_EXPIRE: u64 = 43200; // 12 hours
+
+    fn from_config_value(config_value: Option<ConfigValue>) -> Self {
+        let config_value = match config_value {
+            Some(config_value) => config_value,
+            None => return Self::default(),
+        };
+
+        let update_expire = parse_duration_or_default(
+            config_value.get("update_expire").as_ref(),
+            Self::DEFAULT_UPDATE_EXPIRE,
+        );
+
+        let install_update_expire = parse_duration_or_default(
+            config_value.get("install_update_expire").as_ref(),
+            Self::DEFAULT_INSTALL_UPDATE_EXPIRE,
+        );
+
+        let install_check_expire = parse_duration_or_default(
+            config_value.get("install_check_expire").as_ref(),
+            Self::DEFAULT_INSTALL_CHECK_EXPIRE,
+        );
+
+        Self {
+            update_expire,
+            install_update_expire,
+            install_check_expire,
         }
     }
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct CommandDefinition {
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub desc: Option<String>,
     pub run: String,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
     pub aliases: Vec<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub syntax: Option<CommandSyntax>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub category: Option<Vec<String>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub dir: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub subcommands: Option<HashMap<String, CommandDefinition>>,
+    #[serde(skip)]
     pub source: ConfigSource,
+    #[serde(skip)]
     pub scope: ConfigScope,
 }
 
@@ -303,7 +468,9 @@ impl CommandDefinition {
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct CommandSyntax {
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub usage: Option<String>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
     pub parameters: Vec<SyntaxOptArg>,
 }
 
@@ -382,6 +549,7 @@ impl CommandSyntax {
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct SyntaxOptArg {
     pub name: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub desc: Option<String>,
     pub required: bool,
 }
@@ -451,6 +619,7 @@ pub struct MatchSkipPromptIfConfig {
 }
 
 impl MatchSkipPromptIfConfig {
+    const DEFAULT_ENABLED: bool = true;
     const DEFAULT_FIRST_MIN: f64 = 0.80;
     const DEFAULT_SECOND_MAX: f64 = 0.60;
 
@@ -459,10 +628,7 @@ impl MatchSkipPromptIfConfig {
             Some(config_value) => Self {
                 enabled: match config_value.get("enabled") {
                     Some(value) => value.as_bool().unwrap(),
-                    None => {
-                        config_value.get("first_min").is_some()
-                            || config_value.get("second_max").is_some()
-                    }
+                    None => Self::DEFAULT_ENABLED,
                 },
                 first_min: match config_value.get("first_min") {
                     Some(value) => value.as_float().unwrap(),
@@ -492,16 +658,33 @@ pub struct ConfigCommandsConfig {
     pub split_on_slash: bool,
 }
 
+impl Default for ConfigCommandsConfig {
+    fn default() -> Self {
+        Self {
+            split_on_dash: Self::DEFAULT_SPLIT_ON_DASH,
+            split_on_slash: Self::DEFAULT_SPLIT_ON_SLASH,
+        }
+    }
+}
+
 impl ConfigCommandsConfig {
-    fn from_config_value(config_value: &ConfigValue) -> Self {
+    const DEFAULT_SPLIT_ON_DASH: bool = true;
+    const DEFAULT_SPLIT_ON_SLASH: bool = true;
+
+    fn from_config_value(config_value: Option<ConfigValue>) -> Self {
+        let config_value = match config_value {
+            Some(config_value) => config_value,
+            None => return Self::default(),
+        };
+
         Self {
             split_on_dash: match config_value.get("split_on_dash") {
                 Some(value) => value.as_bool().unwrap(),
-                None => true,
+                None => Self::DEFAULT_SPLIT_ON_DASH,
             },
             split_on_slash: match config_value.get("split_on_slash") {
                 Some(value) => value.as_bool().unwrap(),
-                None => true,
+                None => Self::DEFAULT_SPLIT_ON_SLASH,
             },
         }
     }
@@ -514,20 +697,39 @@ pub struct MakefileCommandsConfig {
     pub split_on_slash: bool,
 }
 
+impl Default for MakefileCommandsConfig {
+    fn default() -> Self {
+        Self {
+            enabled: Self::DEFAULT_ENABLED,
+            split_on_dash: Self::DEFAULT_SPLIT_ON_DASH,
+            split_on_slash: Self::DEFAULT_SPLIT_ON_SLASH,
+        }
+    }
+}
+
 impl MakefileCommandsConfig {
-    fn from_config_value(config_value: &ConfigValue) -> Self {
+    const DEFAULT_ENABLED: bool = true;
+    const DEFAULT_SPLIT_ON_DASH: bool = true;
+    const DEFAULT_SPLIT_ON_SLASH: bool = true;
+
+    fn from_config_value(config_value: Option<ConfigValue>) -> Self {
+        let config_value = match config_value {
+            Some(config_value) => config_value,
+            None => return Self::default(),
+        };
+
         Self {
             enabled: match config_value.get("enabled") {
                 Some(value) => value.as_bool().unwrap(),
-                None => true,
+                None => Self::DEFAULT_ENABLED,
             },
             split_on_dash: match config_value.get("split_on_dash") {
                 Some(value) => value.as_bool().unwrap(),
-                None => true,
+                None => Self::DEFAULT_SPLIT_ON_DASH,
             },
             split_on_slash: match config_value.get("split_on_slash") {
                 Some(value) => value.as_bool().unwrap(),
-                None => true,
+                None => Self::DEFAULT_SPLIT_ON_SLASH,
             },
         }
     }
@@ -569,35 +771,47 @@ impl OrgConfig {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
+#[derive(Default, Debug, Serialize, Deserialize, Clone)]
 pub struct PathConfig {
+    #[serde(skip_serializing_if = "Vec::is_empty")]
     pub append: Vec<PathEntryConfig>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
     pub prepend: Vec<PathEntryConfig>,
 }
 
 impl PathConfig {
-    fn from_config_value(config_value: &ConfigValue) -> Self {
-        Self {
-            append: config_value
-                .get_as_array("append")
-                .unwrap()
+    fn from_config_value(config_value: Option<ConfigValue>) -> Self {
+        let config_value = match config_value {
+            Some(config_value) => config_value,
+            None => return Self::default(),
+        };
+
+        let append = match config_value.get_as_array("append") {
+            Some(value) => value
                 .iter()
                 .map(PathEntryConfig::from_config_value)
                 .collect(),
-            prepend: config_value
-                .get_as_array("prepend")
-                .unwrap()
+            None => vec![],
+        };
+
+        let prepend = match config_value.get_as_array("prepend") {
+            Some(value) => value
                 .iter()
                 .map(PathEntryConfig::from_config_value)
                 .collect(),
-        }
+            None => vec![],
+        };
+
+        Self { append, prepend }
     }
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
 pub struct PathEntryConfig {
     pub path: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub package: Option<String>,
+    #[serde(skip)]
     pub full_path: String,
 }
 
@@ -749,12 +963,45 @@ pub struct PathRepoUpdatesConfig {
     pub background_updates_timeout: u64,
     pub interval: u64,
     pub ref_type: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub ref_match: Option<String>,
+    #[serde(skip_serializing_if = "HashMap::is_empty")]
     pub per_repo_config: HashMap<String, PathRepoUpdatesPerRepoConfig>,
 }
 
+impl Default for PathRepoUpdatesConfig {
+    fn default() -> Self {
+        Self {
+            enabled: Self::DEFAULT_ENABLED,
+            self_update: Self::DEFAULT_SELF_UPDATE,
+            pre_auth: Self::DEFAULT_PRE_AUTH,
+            pre_auth_timeout: Self::DEFAULT_PRE_AUTH_TIMEOUT,
+            background_updates: Self::DEFAULT_BACKGROUND_UPDATES,
+            background_updates_timeout: Self::DEFAULT_BACKGROUND_UPDATES_TIMEOUT,
+            interval: Self::DEFAULT_INTERVAL,
+            ref_type: Self::DEFAULT_REF_TYPE.to_string(),
+            ref_match: None,
+            per_repo_config: HashMap::new(),
+        }
+    }
+}
+
 impl PathRepoUpdatesConfig {
-    fn from_config_value(config_value: &ConfigValue) -> Self {
+    const DEFAULT_ENABLED: bool = true;
+    const DEFAULT_SELF_UPDATE: PathRepoUpdatesSelfUpdateEnum = PathRepoUpdatesSelfUpdateEnum::Ask;
+    const DEFAULT_PRE_AUTH: bool = true;
+    const DEFAULT_PRE_AUTH_TIMEOUT: u64 = 120; // 2 minutes
+    const DEFAULT_BACKGROUND_UPDATES: bool = true;
+    const DEFAULT_BACKGROUND_UPDATES_TIMEOUT: u64 = 3600; // 1 hour
+    const DEFAULT_INTERVAL: u64 = 43200; // 12 hours
+    const DEFAULT_REF_TYPE: &'static str = "branch";
+
+    fn from_config_value(config_value: Option<ConfigValue>) -> Self {
+        let config_value = match config_value {
+            Some(config_value) => config_value,
+            None => return Self::default(),
+        };
+
         let mut per_repo_config = HashMap::new();
         if let Some(value) = config_value.get("per_repo_config") {
             for (key, value) in value.as_table().unwrap() {
@@ -765,41 +1012,59 @@ impl PathRepoUpdatesConfig {
             }
         };
 
+        let pre_auth_timeout = parse_duration_or_default(
+            config_value.get("pre_auth_timeout").as_ref(),
+            Self::DEFAULT_PRE_AUTH_TIMEOUT,
+        );
+        let background_updates_timeout = parse_duration_or_default(
+            config_value.get("background_updates_timeout").as_ref(),
+            Self::DEFAULT_BACKGROUND_UPDATES_TIMEOUT,
+        );
+        let interval = parse_duration_or_default(
+            config_value.get("interval").as_ref(),
+            Self::DEFAULT_INTERVAL,
+        );
+
+        let self_update = if let Some(value) = config_value.get_as_bool("self_update") {
+            match value {
+                true => PathRepoUpdatesSelfUpdateEnum::True,
+                false => PathRepoUpdatesSelfUpdateEnum::False,
+            }
+        } else if let Some(value) = config_value.get_as_str("self_update") {
+            match value.to_lowercase().as_str() {
+                "true" | "yes" | "y" => PathRepoUpdatesSelfUpdateEnum::True,
+                "false" | "no" | "n" => PathRepoUpdatesSelfUpdateEnum::False,
+                "nocheck" => PathRepoUpdatesSelfUpdateEnum::NoCheck,
+                "ask" => PathRepoUpdatesSelfUpdateEnum::Ask,
+                _ => PathRepoUpdatesSelfUpdateEnum::Ask,
+            }
+        } else if let Some(value) = config_value.get_as_integer("self_update") {
+            match value {
+                0 => PathRepoUpdatesSelfUpdateEnum::False,
+                1 => PathRepoUpdatesSelfUpdateEnum::True,
+                _ => PathRepoUpdatesSelfUpdateEnum::Ask,
+            }
+        } else {
+            PathRepoUpdatesSelfUpdateEnum::Ask
+        };
+
         Self {
-            enabled: config_value.get_as_bool("enabled").unwrap_or(true),
-            self_update: match (
-                config_value.get_as_str("self_update"),
-                config_value.get_as_bool("self_update"),
-            ) {
-                (_, Some(value)) => match value {
-                    true => PathRepoUpdatesSelfUpdateEnum::True,
-                    false => PathRepoUpdatesSelfUpdateEnum::False,
-                },
-                (Some(value), _) => match value.to_lowercase().as_str() {
-                    "true" | "yes" | "y" => PathRepoUpdatesSelfUpdateEnum::True,
-                    "false" | "no" | "n" => PathRepoUpdatesSelfUpdateEnum::False,
-                    "nocheck" => PathRepoUpdatesSelfUpdateEnum::NoCheck,
-                    "ask" => PathRepoUpdatesSelfUpdateEnum::Ask,
-                    _ => PathRepoUpdatesSelfUpdateEnum::Ask,
-                },
-                (None, None) => PathRepoUpdatesSelfUpdateEnum::Ask,
-            },
-            pre_auth: config_value.get_as_bool("pre_auth").unwrap_or(true),
-            pre_auth_timeout: config_value
-                .get_as_unsigned_integer("pre_auth_timeout")
-                .unwrap_or(120),
+            enabled: config_value
+                .get_as_bool("enabled")
+                .unwrap_or(Self::DEFAULT_ENABLED),
+            self_update,
+            pre_auth: config_value
+                .get_as_bool("pre_auth")
+                .unwrap_or(Self::DEFAULT_PRE_AUTH),
+            pre_auth_timeout,
             background_updates: config_value
                 .get_as_bool("background_updates")
-                .unwrap_or(true),
-            background_updates_timeout: config_value
-                .get_as_unsigned_integer("background_updates_timeout")
-                .unwrap_or(3600),
-            interval: config_value
-                .get_as_unsigned_integer("interval")
-                .unwrap_or(12 * 60 * 60),
+                .unwrap_or(Self::DEFAULT_BACKGROUND_UPDATES),
+            background_updates_timeout,
+            interval,
             ref_type: config_value
                 .get_as_str("ref_type")
-                .unwrap_or("branch".to_string()),
+                .unwrap_or(Self::DEFAULT_REF_TYPE.to_string()),
             ref_match: config_value.get_as_str("ref_match"),
             per_repo_config,
         }
@@ -829,10 +1094,13 @@ impl PathRepoUpdatesConfig {
 
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
 pub enum PathRepoUpdatesSelfUpdateEnum {
+    #[serde(rename = "true")]
     True,
+    #[serde(rename = "false")]
     False,
+    #[serde(rename = "nocheck")]
     NoCheck,
-    #[serde(other)]
+    #[serde(other, rename = "ask")]
     Ask,
 }
 
@@ -868,6 +1136,7 @@ impl PathRepoUpdatesSelfUpdateEnum {
 pub struct PathRepoUpdatesPerRepoConfig {
     pub enabled: bool,
     pub ref_type: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub ref_match: Option<String>,
 }
 
@@ -921,34 +1190,43 @@ impl CdConfig {
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct CloneConfig {
-    pub ls_remote_timeout_seconds: u64,
+    pub ls_remote_timeout: u64,
 }
 
 impl CloneConfig {
-    const DEFAULT_LS_REMOTE_TIMEOUT_SECONDS: u64 = 5;
+    const DEFAULT_LS_REMOTE_TIMEOUT: u64 = 5;
 
     fn from_config_value(config_value: Option<ConfigValue>) -> Self {
-        if config_value.is_none() {
-            return Self {
-                ls_remote_timeout_seconds: Self::DEFAULT_LS_REMOTE_TIMEOUT_SECONDS,
-            };
-        }
-        let config_value = config_value.unwrap();
+        let config_value = match config_value {
+            Some(config_value) => config_value,
+            None => {
+                return Self {
+                    ls_remote_timeout: Self::DEFAULT_LS_REMOTE_TIMEOUT,
+                };
+            }
+        };
 
-        Self {
-            ls_remote_timeout_seconds: match config_value
+        let ls_remote_timeout = parse_duration_or_default(
+            config_value.get("ls_remote_timeout").as_ref(),
+            config_value
                 .get_as_unsigned_integer("ls_remote_timeout_seconds")
-            {
-                Some(value) => value,
-                None => Self::DEFAULT_LS_REMOTE_TIMEOUT_SECONDS,
-            },
-        }
+                .unwrap_or(Self::DEFAULT_LS_REMOTE_TIMEOUT),
+        );
+
+        Self { ls_remote_timeout }
     }
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct SuggestCloneConfig {
+    #[serde(skip_serializing_if = "Vec::is_empty")]
     pub repositories: Vec<SuggestCloneRepositoryConfig>,
+}
+
+impl Empty for SuggestCloneConfig {
+    fn is_empty(&self) -> bool {
+        self.repositories.is_empty()
+    }
 }
 
 impl SuggestCloneConfig {
@@ -989,7 +1267,9 @@ impl SuggestCloneConfig {
 
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
 pub enum SuggestCloneTypeEnum {
+    #[serde(rename = "package")]
     Package,
+    #[serde(rename = "worktree")]
     Worktree,
 }
 
@@ -1008,6 +1288,7 @@ impl FromStr for SuggestCloneTypeEnum {
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct SuggestCloneRepositoryConfig {
     pub handle: String,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
     pub args: Vec<String>,
     pub clone_type: SuggestCloneTypeEnum,
 }
@@ -1069,20 +1350,22 @@ pub struct UpCommandConfig {
 }
 
 impl UpCommandConfig {
+    const DEFAULT_AUTO_BOOTSTRAP: bool = true;
+
     fn from_config_value(config_value: Option<ConfigValue>) -> Self {
         if let Some(config_value) = config_value {
             if let Some(config_value) = config_value.reject_scope(&ConfigScope::Workdir) {
                 return Self {
                     auto_bootstrap: match config_value.get("auto_bootstrap") {
                         Some(value) => value.as_bool().unwrap(),
-                        None => true,
+                        None => Self::DEFAULT_AUTO_BOOTSTRAP,
                     },
                 };
             }
         }
 
         Self {
-            auto_bootstrap: true,
+            auto_bootstrap: Self::DEFAULT_AUTO_BOOTSTRAP,
         }
     }
 }
@@ -1091,6 +1374,12 @@ impl UpCommandConfig {
 pub struct ShellAliasesConfig {
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub aliases: Vec<ShellAliasConfig>,
+}
+
+impl Empty for ShellAliasesConfig {
+    fn is_empty(&self) -> bool {
+        self.aliases.is_empty()
+    }
 }
 
 impl ShellAliasesConfig {

@@ -15,9 +15,13 @@ use crate::internal::user_interface::StringColor;
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct UpConfigCustom {
     pub meet: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub met: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub unmeet: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub name: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub dir: Option<String>,
 }
 

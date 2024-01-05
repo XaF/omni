@@ -1,6 +1,7 @@
 use serde::Deserialize;
 use serde::Serialize;
 
+use crate::internal::cache::utils::Empty;
 use crate::internal::cache::CacheObject;
 use crate::internal::cache::UpEnvironmentsCache;
 use crate::internal::config::up::UpConfigAsdfBase;
@@ -13,10 +14,26 @@ use crate::internal::user_interface::colors::StringColor;
 use crate::internal::workdir;
 use crate::omni_warning;
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
+#[derive(Debug, Deserialize, Clone)]
 pub struct UpConfig {
     pub steps: Vec<UpConfigTool>,
     pub errors: Vec<UpError>,
+}
+
+impl Empty for UpConfig {
+    fn is_empty(&self) -> bool {
+        self.steps.is_empty()
+    }
+}
+
+impl Serialize for UpConfig {
+    // Serialization of UpConfig is serialization of the steps
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::ser::Serializer,
+    {
+        self.steps.serialize(serializer)
+    }
 }
 
 impl UpConfig {

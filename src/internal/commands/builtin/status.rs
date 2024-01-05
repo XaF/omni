@@ -281,10 +281,14 @@ impl StatusCommand {
             println!("\n{}", "Configuration".bold());
         }
 
-        let config_loader = config_loader(".");
-
-        let yaml_code = config_loader.raw_config.as_yaml();
-        println!("{}", self.color_yaml(&yaml_code));
+        let config = config(".");
+        match serde_yaml::to_string(&config) {
+            Ok(yaml_code) => println!("{}", self.color_yaml(&yaml_code)),
+            Err(err) => {
+                omni_error!(format!("failed to serialize configuration: {}", err));
+                exit(1);
+            }
+        }
     }
 
     fn print_configuration_files(&self) {

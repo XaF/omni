@@ -1,10 +1,10 @@
 use std::collections::BTreeSet;
 use std::collections::HashMap;
 use std::io;
+use std::time::Duration;
 
 use serde::Deserialize;
 use serde::Serialize;
-use time::Duration;
 use time::OffsetDateTime;
 
 use crate::internal::cache::handler::exclusive;
@@ -15,6 +15,7 @@ use crate::internal::cache::offsetdatetime_hashmap;
 use crate::internal::cache::utils;
 use crate::internal::cache::utils::Empty;
 use crate::internal::cache::CacheObject;
+use crate::internal::config::global_config;
 
 const ASDF_OPERATION_CACHE_NAME: &str = "asdf_operation";
 
@@ -56,20 +57,23 @@ impl AsdfOperationCache {
     }
 
     pub fn should_update_asdf(&self) -> bool {
-        // TODO: add configuration option for the duration?
-        self.update_cache.should_update_asdf(Duration::days(1))
+        self.update_cache.should_update_asdf(Duration::from_secs(
+            global_config().cache.asdf.update_expire,
+        ))
     }
 
     pub fn should_update_asdf_plugin(&self, plugin: &str) -> bool {
-        // TODO: add configuration option for the duration?
-        self.update_cache
-            .should_update_asdf_plugin(plugin, Duration::days(1))
+        self.update_cache.should_update_asdf_plugin(
+            plugin,
+            Duration::from_secs(global_config().cache.asdf.plugin_update_expire),
+        )
     }
 
     pub fn get_asdf_plugin_versions(&self, plugin: &str) -> Option<Vec<String>> {
-        // TODO: add configuration option for the duration?
-        self.update_cache
-            .get_asdf_plugin_versions(plugin, Duration::hours(1))
+        self.update_cache.get_asdf_plugin_versions(
+            plugin,
+            Duration::from_secs(global_config().cache.asdf.plugin_versions_expire),
+        )
     }
 
     pub fn add_installed(&mut self, workdir_id: &str, tool: &str, version: &str) -> bool {
