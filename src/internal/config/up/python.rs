@@ -1,3 +1,4 @@
+use std::collections::BTreeSet;
 use std::path::PathBuf;
 
 use normalize_path::NormalizePath;
@@ -26,9 +27,19 @@ use crate::internal::ConfigValue;
 const MIN_VERSION_VENV: Version = Version::new(3, 3, 0);
 // const MIN_VERSION_VIRTUALENV: Version = Version::new(2, 6, 0);
 
+#[derive(Debug, Serialize, Deserialize, Clone)]
+struct UpConfigPythonSerialized {
+    version: String,
+    #[serde(skip_serializing_if = "BTreeSet::is_empty")]
+    dirs: BTreeSet<String>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pip: Vec<String>,
+}
+
 #[derive(Debug, Deserialize, Clone)]
 pub struct UpConfigPython {
     pub asdf_base: UpConfigAsdfBase,
+    pub pip: Vec<String>,
 }
 
 impl Serialize for UpConfigPython {
@@ -36,8 +47,13 @@ impl Serialize for UpConfigPython {
     where
         S: ::serde::ser::Serializer,
     {
-        self.asdf_base.serialize(serializer)
-        // TODO: add pip option serialization
+        let serialized = UpConfigPythonSerialized {
+            version: self.asdf_base.version.clone(),
+            dirs: self.asdf_base.dirs.clone(),
+            pip: self.pip.clone(),
+        };
+
+        serialized.serialize(serializer)
     }
 }
 
@@ -47,7 +63,20 @@ impl UpConfigPython {
         asdf_base.add_post_install_func(setup_python_venv);
         asdf_base.add_post_install_func(setup_python_pip);
 
-        Self { asdf_base }
+        let mut pip = Vec::new();
+        if let Some(config_value) = config_value {
+            if let Some(config_value) = config_value.get_as_array("pip") {
+                for file_path in config_value {
+                    if let Some(file_path) = file_path.as_str_forced() {
+                        pip.push(file_path.to_string());
+                    }
+                }
+            } else if let Some(file_path) = config_value.get_as_str_forced("pip") {
+                pip.push(file_path.to_string());
+            }
+        };
+
+        Self { asdf_base, pip }
     }
 
     pub fn up(&self, options: &UpOptions, progress: Option<(usize, usize)>) -> Result<(), UpError> {
