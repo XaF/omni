@@ -93,15 +93,26 @@ pub fn format_path(worktree: &str, git_url: &GitUrl) -> PathBuf {
     format_path_with_template(worktree, git_url, path_format)
 }
 
+pub fn format_path_with_data(worktree: &str, host: &str, owner: &str, repo: &str) -> PathBuf {
+    // Get the configured path format
+    let path_format = config(".").repo_path_format.clone();
+
+    format_path_with_template_and_data(worktree, host, owner, repo, path_format)
+}
+
 pub fn format_path_with_template(worktree: &str, git_url: &GitUrl, path_format: String) -> PathBuf {
+    let git_url = git_url.clone();
+    format_path_with_template_and_data(worktree, &git_url.host.unwrap(), &git_url.owner.unwrap(), &git_url.name, path_format)
+}
+
+pub fn format_path_with_template_and_data(worktree: &str, host: &str, owner: &str, repo: &str, path_format: String) -> PathBuf {
     // Create a path object
     let mut path = PathBuf::from(worktree.to_string());
 
     // Replace %{host}, #{owner}, and %{repo} with the actual values
-    let git_url = git_url.clone();
-    let path_format = path_format.replace("%{host}", &git_url.host.unwrap());
-    let path_format = path_format.replace("%{org}", &git_url.owner.unwrap());
-    let path_format = path_format.replace("%{repo}", &git_url.name);
+    let path_format = path_format.replace("%{host}", host);
+    let path_format = path_format.replace("%{org}", owner);
+    let path_format = path_format.replace("%{repo}", repo);
 
     // Split the path format into parts
     let path_format_parts = path_format.split('/');

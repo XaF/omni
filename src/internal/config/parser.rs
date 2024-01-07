@@ -235,6 +235,18 @@ impl OmniConfig {
 
         self.worktree.clone()
     }
+
+    pub fn repo_path_format_host(&self) -> bool {
+        self.repo_path_format.contains("%{host}")
+    }
+
+    pub fn repo_path_format_org(&self) -> bool {
+        self.repo_path_format.contains("%{org}")
+    }
+
+    pub fn repo_path_format_repo(&self) -> bool {
+        self.repo_path_format.contains("%{repo}")
+    }
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -1160,16 +1172,19 @@ impl PathRepoUpdatesPerRepoConfig {
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct CdConfig {
+    pub fast_search: bool,
     pub path_match_min_score: f64,
     pub path_match_skip_prompt_if: MatchSkipPromptIfConfig,
 }
 
 impl CdConfig {
+    const DEFAULT_FAST_SEARCH: bool = true;
     const DEFAULT_PATH_MATCH_MIN_SCORE: f64 = 0.12;
 
     fn from_config_value(config_value: Option<ConfigValue>) -> Self {
         if config_value.is_none() {
             return Self {
+                fast_search: Self::DEFAULT_FAST_SEARCH,
                 path_match_min_score: Self::DEFAULT_PATH_MATCH_MIN_SCORE,
                 path_match_skip_prompt_if: MatchSkipPromptIfConfig::default(),
             };
@@ -1177,8 +1192,12 @@ impl CdConfig {
         let config_value = config_value.unwrap();
 
         Self {
-            path_match_min_score: match config_value.get("path_match_min_score") {
-                Some(value) => value.as_float().unwrap(),
+            fast_search: match config_value.get_as_bool("fast_search") {
+                Some(value) => value,
+                None => Self::DEFAULT_FAST_SEARCH,
+            },
+            path_match_min_score: match config_value.get_as_float("path_match_min_score") {
+                Some(value) => value,
                 None => Self::DEFAULT_PATH_MATCH_MIN_SCORE,
             },
             path_match_skip_prompt_if: MatchSkipPromptIfConfig::from_config_value(

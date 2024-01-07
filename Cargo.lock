@@ -1505,6 +1505,7 @@ dependencies = [
  "gethostname",
  "git-url-parse",
  "git2",
+ "glob",
  "humantime",
  "imara-diff",
  "indicatif",
