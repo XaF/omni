@@ -77,75 +77,79 @@ impl SearchEntry {
             return results;
         };
 
-        for entry in glob::glob(glob_path).expect("Failed to read glob pattern") {
-            if let Ok(path) = entry {
-                let parent = if let Some(parent) = path.parent() {
-                    parent
+        let entries = if let Ok(entries) = glob::glob(glob_path) {
+            entries
+        } else {
+            return results;
+        };
+
+        for path in entries.into_iter().flatten() {
+            let parent = if let Some(parent) = path.parent() {
+                parent
+            } else {
+                continue;
+            };
+
+            let rel_path = if let Ok(rel_path) = parent.strip_prefix(&self.worktree) {
+                rel_path
+            } else {
+                continue;
+            };
+
+            let (parent, rel_path) =
+                if let (Some(parent), Some(rel_path)) = (parent.to_str(), rel_path.to_str()) {
+                    (parent, rel_path)
                 } else {
                     continue;
                 };
 
-                let rel_path = if let Ok(rel_path) = parent.strip_prefix(&self.worktree) {
-                    rel_path
-                } else {
-                    continue;
-                };
+            let entry_str = if let Some(entry_str) = path.to_str() {
+                entry_str
+            } else {
+                continue;
+            };
 
-                let (parent, rel_path) =
-                    if let (Some(parent), Some(rel_path)) = (parent.to_str(), rel_path.to_str()) {
-                        (parent, rel_path)
-                    } else {
-                        continue;
-                    };
+            let captures = if let Some(captures) = regex.captures(entry_str) {
+                captures
+            } else {
+                continue;
+            };
 
-                let entry_str = if let Some(entry_str) = path.to_str() {
-                    entry_str
-                } else {
-                    continue;
-                };
-
-                let captures = if let Some(captures) = regex.captures(entry_str) {
-                    captures
-                } else {
-                    continue;
-                };
-
-                let match_name = match (
-                    self.match_start,
-                    captures.name("host"),
-                    captures.name("owner"),
-                    captures.name("repo"),
-                ) {
-                    (SearchEntryMatchStart::Host, Some(host), owner, repo) => {
-                        let mut result = host.as_str().to_string();
-                        if let Some(owner) = owner {
-                            result.push('/');
-                            result.push_str(owner.as_str());
-                            if let Some(repo) = repo {
-                                result.push('/');
-                                result.push_str(repo.as_str());
-                            }
-                        }
-                        result
-                    }
-                    (SearchEntryMatchStart::Owner, _, Some(owner), repo) => {
-                        let mut result = owner.as_str().to_string();
+            let match_name = match (
+                self.match_start,
+                captures.name("host"),
+                captures.name("owner"),
+                captures.name("repo"),
+            ) {
+                (SearchEntryMatchStart::Host, Some(host), owner, repo) => {
+                    let mut result = host.as_str().to_string();
+                    if let Some(owner) = owner {
+                        result.push('/');
+                        result.push_str(owner.as_str());
                         if let Some(repo) = repo {
                             result.push('/');
                             result.push_str(repo.as_str());
                         }
-                        result
                     }
-                    (SearchEntryMatchStart::Repo, _, _, Some(repo)) => repo.as_str().to_string(),
-                    _ => continue,
-                };
+                    result
+                }
+                (SearchEntryMatchStart::Owner, _, Some(owner), repo) => {
+                    let mut result = owner.as_str().to_string();
+                    if let Some(repo) = repo {
+                        result.push('/');
+                        result.push_str(repo.as_str());
+                    }
+                    result
+                }
+                (SearchEntryMatchStart::Repo, _, _, Some(repo)) => repo.as_str().to_string(),
+                _ => continue,
+            };
 
-                results.insert(ResultEntry {
-                    path: parent.to_string(),
-                    rel_path: rel_path.to_string(),
-                    match_name: match_name.to_string(),
-                });
-            }
+            results.insert(ResultEntry {
+                path: parent.to_string(),
+                rel_path: rel_path.to_string(),
+                match_name: match_name.to_string(),
+            });
         }
 
         results
@@ -457,11 +461,9 @@ impl OrgLoader {
 
                 if let Some(glob_path) = glob_path.to_str() {
                     if let Ok(entries) = glob::glob(glob_path) {
-                        for entry in entries {
-                            if let Ok(path) = entry {
-                                if path.is_dir() {
-                                    return Some(path);
-                                }
+                        for path in entries.into_iter().flatten() {
+                            if path.is_dir() {
+                                return Some(path);
                             }
                         }
                     }
