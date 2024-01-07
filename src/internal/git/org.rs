@@ -1,4 +1,5 @@
 use std::collections::HashSet;
+use std::hash::Hash;
 use std::path::PathBuf;
 
 use git_url_parse::GitUrl;
@@ -21,6 +22,7 @@ use crate::internal::git::package_path_from_handle;
 use crate::internal::git::package_root_path;
 use crate::internal::git::safe_git_url_parse;
 use crate::internal::git::safe_normalize_url;
+use crate::internal::git::utils::format_path_with_data;
 use crate::internal::git_env;
 use crate::internal::user_interface::colors::StringColor;
 use crate::omni_print;
@@ -28,6 +30,126 @@ use crate::omni_print;
 lazy_static! {
         #[derive(Debug)]
         pub static ref ORG_LOADER: OrgLoader = OrgLoader::new();
+}
+
+#[derive(Debug, Eq, Hash, PartialEq, Clone, Copy)]
+enum SearchEntryMatchStart {
+    Host,
+    Owner,
+    Repo,
+}
+
+#[derive(Debug, Eq, Hash, PartialEq)]
+pub struct ResultEntry {
+    path: String,
+    rel_path: String,
+    match_name: String,
+}
+
+#[derive(Debug, Eq, Hash, PartialEq)]
+struct SearchEntry {
+    worktree: String,
+    match_start: SearchEntryMatchStart,
+    regex_path: PathBuf,
+    glob_path: PathBuf,
+}
+
+impl SearchEntry {
+    fn extract(&self) -> HashSet<ResultEntry> {
+        let mut results = HashSet::new();
+
+        let glob_path = self.glob_path.join(".git");
+        let glob_path = if let Some(glob_path) = glob_path.to_str() {
+            glob_path
+        } else {
+            return results;
+        };
+
+        let regex_path = self.regex_path.join(".git");
+        let regex = if let Some(regex_path) = regex_path.to_str() {
+            let regex_str = format!("^{}$", regex_path);
+            if let Ok(regex) = regex::Regex::new(regex_str.as_str()) {
+                regex
+            } else {
+                return results;
+            }
+        } else {
+            return results;
+        };
+
+        for entry in glob::glob(glob_path).expect("Failed to read glob pattern") {
+            if let Ok(path) = entry {
+                let parent = if let Some(parent) = path.parent() {
+                    parent
+                } else {
+                    continue;
+                };
+
+                let rel_path = if let Ok(rel_path) = parent.strip_prefix(&self.worktree) {
+                    rel_path
+                } else {
+                    continue;
+                };
+
+                let (parent, rel_path) =
+                    if let (Some(parent), Some(rel_path)) = (parent.to_str(), rel_path.to_str()) {
+                        (parent, rel_path)
+                    } else {
+                        continue;
+                    };
+
+                let entry_str = if let Some(entry_str) = path.to_str() {
+                    entry_str
+                } else {
+                    continue;
+                };
+
+                let captures = if let Some(captures) = regex.captures(entry_str) {
+                    captures
+                } else {
+                    continue;
+                };
+
+                let match_name = match (
+                    self.match_start,
+                    captures.name("host"),
+                    captures.name("owner"),
+                    captures.name("repo"),
+                ) {
+                    (SearchEntryMatchStart::Host, Some(host), owner, repo) => {
+                        let mut result = host.as_str().to_string();
+                        if let Some(owner) = owner {
+                            result.push('/');
+                            result.push_str(owner.as_str());
+                            if let Some(repo) = repo {
+                                result.push('/');
+                                result.push_str(repo.as_str());
+                            }
+                        }
+                        result
+                    }
+                    (SearchEntryMatchStart::Owner, _, Some(owner), repo) => {
+                        let mut result = owner.as_str().to_string();
+                        if let Some(repo) = repo {
+                            result.push('/');
+                            result.push_str(repo.as_str());
+                        }
+                        result
+                    }
+                    (SearchEntryMatchStart::Repo, _, _, Some(repo)) => repo.as_str().to_string(),
+                    _ => continue,
+                };
+
+                results.insert(ResultEntry {
+                    path: parent.to_string(),
+                    rel_path: rel_path.to_string(),
+                    match_name: match_name.to_string(),
+                });
+            }
+        }
+
+        results
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -62,35 +184,169 @@ impl OrgLoader {
         &self.orgs
     }
 
+    pub fn search_glob_org(&self, repo: &str) -> HashSet<ResultEntry> {
+        if let Ok(parsed) = Repo::parse(repo) {
+            let cfg = config(".");
+
+            let mut searches = HashSet::new();
+            for org in self.orgs.iter() {
+                // Prepare a regex for the path so we can extract the host, owner,
+                // and repo from a matching path
+                let regex_path = format_path_with_data(
+                    &org.worktree(),
+                    "(?P<host>[^/]+)",
+                    "(?P<owner>[^/]+)",
+                    "(?P<repo>[^/]+)",
+                );
+
+                match (&parsed.host, &parsed.owner) {
+                    (Some(search_host), Some(search_owner)) => {
+                        if cfg.repo_path_format_repo() {
+                            searches.insert(SearchEntry {
+                                worktree: org.worktree(),
+                                match_start: SearchEntryMatchStart::Host,
+                                regex_path: regex_path.clone(),
+                                glob_path: format_path_with_data(
+                                    &org.worktree(),
+                                    search_host,
+                                    search_owner,
+                                    format!("{}*", parsed.name).as_str(),
+                                ),
+                            });
+                        }
+                    }
+                    (None, Some(search_owner)) => {
+                        if cfg.repo_path_format_org() {
+                            searches.insert(SearchEntry {
+                                worktree: org.worktree(),
+                                match_start: SearchEntryMatchStart::Host,
+                                regex_path: regex_path.clone(),
+                                glob_path: format_path_with_data(
+                                    &org.worktree(),
+                                    search_owner,
+                                    format!("{}*", parsed.name).as_str(),
+                                    "*",
+                                ),
+                            });
+                        }
+                        if cfg.repo_path_format_repo() {
+                            searches.insert(SearchEntry {
+                                worktree: org.worktree(),
+                                match_start: SearchEntryMatchStart::Owner,
+                                regex_path: regex_path.clone(),
+                                glob_path: format_path_with_data(
+                                    &org.worktree(),
+                                    "*",
+                                    search_owner,
+                                    format!("{}*", parsed.name).as_str(),
+                                ),
+                            });
+                        }
+                    }
+                    (None, None) => {
+                        if cfg.repo_path_format_host() {
+                            searches.insert(SearchEntry {
+                                worktree: org.worktree(),
+                                match_start: SearchEntryMatchStart::Host,
+                                regex_path: regex_path.clone(),
+                                glob_path: format_path_with_data(
+                                    &org.worktree(),
+                                    format!("{}*", parsed.name).as_str(),
+                                    "*",
+                                    "*",
+                                ),
+                            });
+                        }
+                        if cfg.repo_path_format_org() {
+                            searches.insert(SearchEntry {
+                                worktree: org.worktree(),
+                                match_start: SearchEntryMatchStart::Owner,
+                                regex_path: regex_path.clone(),
+                                glob_path: format_path_with_data(
+                                    &org.worktree(),
+                                    "*",
+                                    format!("{}*", parsed.name).as_str(),
+                                    "*",
+                                ),
+                            });
+                        }
+                        if cfg.repo_path_format_repo() {
+                            searches.insert(SearchEntry {
+                                worktree: org.worktree(),
+                                match_start: SearchEntryMatchStart::Repo,
+                                regex_path: regex_path.clone(),
+                                glob_path: format_path_with_data(
+                                    &org.worktree(),
+                                    "*",
+                                    "*",
+                                    format!("{}*", parsed.name).as_str(),
+                                ),
+                            });
+                        }
+                    }
+                    _ => unreachable!(),
+                }
+            }
+
+            let mut results = HashSet::new();
+            for search_entry in searches.iter() {
+                results.extend(search_entry.extract());
+            }
+
+            return results;
+        }
+
+        HashSet::new()
+    }
+
     pub fn complete(&self, repo: &str) -> Vec<String> {
+        let results = self.search_glob_org(repo);
+        if !results.is_empty() {
+            return results
+                .into_iter()
+                .map(|result| result.match_name)
+                .collect::<HashSet<_>>()
+                .into_iter()
+                .collect();
+        }
+
+        if config(".").cd.fast_search {
+            return vec![];
+        }
+
         let mut worktrees = HashSet::new();
         worktrees.insert(config(".").worktree().into());
         for org in self.orgs.iter() {
             let path = PathBuf::from(org.worktree());
             if path.is_dir() {
-                worktrees.insert(path);
+                worktrees.insert(path.clone());
             }
         }
 
+        let mut visited = HashSet::new();
         let mut matches = HashSet::new();
         let find_match = format!("/{}", repo);
         for worktree in worktrees.iter() {
+            if !visited.insert(worktree.to_owned()) {
+                continue;
+            }
+
             for entry in WalkDir::new(worktree)
                 .follow_links(true)
                 .into_iter()
-                .flatten()
+                .filter_map(|e| {
+                    if let Ok(entry) = e {
+                        if entry.file_type().is_dir()
+                            && entry.file_name() == ".git"
+                            && visited.insert(entry.path().to_owned())
+                        {
+                            return Some(entry);
+                        }
+                    }
+                    None
+                })
             {
-                let filetype = entry.file_type();
                 let filepath = entry.path();
-
-                // We only want places where there's a `.git` directory, since it generally
-                // indicates that we are in a git repository
-                if !filetype.is_dir()
-                    || filepath.file_name().is_none()
-                    || filepath.file_name().unwrap() != ".git"
-                {
-                    continue;
-                }
 
                 // Take the parent
                 let filepath = filepath.parent().unwrap();
@@ -127,7 +383,7 @@ impl OrgLoader {
         if let Some(path) = self.omnipath_lookup(repo, include_packages) {
             return Some(path);
         }
-        if let Some(path) = self.basic_naive_lookup(repo) {
+        if let Some(path) = self.basic_naive_lookup(repo, include_packages) {
             return Some(path);
         }
         if let Some(path) = self.file_system_lookup(repo, include_packages, allow_interactive) {
@@ -183,7 +439,7 @@ impl OrgLoader {
         None
     }
 
-    pub fn basic_naive_lookup(&self, repo: &str) -> Option<PathBuf> {
+    pub fn basic_naive_lookup(&self, repo: &str, include_packages: bool) -> Option<PathBuf> {
         for org in self.orgs.iter() {
             if let Some(path) = org.get_repo_path(repo) {
                 if path.is_dir() {
@@ -191,6 +447,28 @@ impl OrgLoader {
                 }
             }
         }
+
+        if include_packages {
+            if let Ok(parsed) = Repo::parse(repo) {
+                let glob_path = PathBuf::from(&package_root_path())
+                    .join(parsed.host.as_deref().unwrap_or("*"))
+                    .join(parsed.owner.as_deref().unwrap_or("*"))
+                    .join(parsed.name.as_str());
+
+                if let Some(glob_path) = glob_path.to_str() {
+                    if let Ok(entries) = glob::glob(glob_path) {
+                        for entry in entries {
+                            if let Ok(path) = entry {
+                                if path.is_dir() {
+                                    return Some(path);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
         None
     }
 
@@ -202,110 +480,125 @@ impl OrgLoader {
     ) -> Option<PathBuf> {
         let interactive = allow_interactive && shell_is_interactive();
 
-        let repo_url = Repo::parse(repo);
-        if repo_url.is_err() {
-            dbg!("repo_url.is_err()");
+        let repo_url = if let Ok(repo_url) = Repo::parse(repo) {
+            repo_url
+        } else {
             return None;
-        }
-        let repo_url = repo_url.unwrap();
+        };
         let rel_path = repo_url.rel_path();
 
-        // Get worktrees
-        let mut worktrees = Vec::new();
-        let mut seen = HashSet::new();
-        for org in self.orgs.iter() {
-            if seen.insert(org.worktree()) {
-                worktrees.push(org.worktree());
-            }
-        }
-
-        let worktree = config(".").worktree();
-        if seen.insert(worktree.clone()) {
-            worktrees.push(worktree.clone());
-        }
-
-        if include_packages {
-            worktrees.push(package_root_path());
-        }
-
-        // Prepare a spinner for the research
-        let spinner = if interactive {
-            let spinner = ProgressBar::new_spinner();
-            spinner.set_style(
-                ProgressStyle::default_spinner()
-                    .template("{spinner:.green} {msg:.green}")
-                    .unwrap(),
-            );
-            spinner.set_message("Searching repositories...");
-            Some(spinner)
-        } else {
-            None
-        };
-
-        // Start a timer
-        let start = std::time::Instant::now();
-
-        // Walk worktrees to try and find the repo
-        let slash_rel_path = format!("/{}", rel_path);
         let mut all_repos = Vec::new();
-        for worktree in worktrees.iter() {
-            for entry in WalkDir::new(worktree).follow_links(true) {
-                if let Ok(entry) = entry {
-                    let filetype = entry.file_type();
-                    let filepath = entry.path();
 
-                    // We only want places where there's a `.git` directory, since it generally
-                    // indicates that we are in a git repository
-                    if !filetype.is_dir()
-                        || filepath.file_name().is_none()
-                        || filepath.file_name().unwrap() != ".git"
-                    {
-                        continue;
-                    }
-
-                    // Take the parent
-                    let filepath = filepath.parent().unwrap();
-
-                    if let Some(s) = spinner.clone() {
-                        s.set_message(filepath.to_str().unwrap().to_string())
-                    }
-
-                    // Check if it ends with the expected rel_path
-                    if filepath
-                        .to_str()
-                        .unwrap()
-                        .ends_with(slash_rel_path.as_str())
-                    {
-                        if let Some(s) = spinner.clone() {
-                            s.finish_and_clear()
-                        }
-
-                        if start.elapsed() > std::time::Duration::from_secs(1) {
-                            omni_print!(format!("{} Setting up your organizations will make repository lookup much faster.", "Did you know?".bold()));
-                        }
-
-                        return Some(filepath.to_path_buf());
-                    }
-
+        if config(".").cd.fast_search {
+            self.search_glob_org("")
+                .into_iter()
+                .map(|result| (result.path.clone(), result.rel_path.clone()))
+                .collect::<HashSet<_>>()
+                .into_iter()
+                .for_each(|(path, rel_path)| {
                     all_repos.push(PathScore {
                         score: 0.0,
-                        abspath: filepath.to_path_buf(),
-                        relpath: filepath
-                            .strip_prefix(worktree)
-                            .unwrap()
-                            .to_str()
-                            .unwrap()
-                            .to_string(),
+                        abspath: PathBuf::from(path),
+                        relpath: rel_path,
                     });
-                }
-                if let Some(s) = spinner.clone() {
-                    s.tick()
+                });
+        } else {
+            // Get worktrees
+            let mut worktrees = Vec::new();
+            let mut seen = HashSet::new();
+            for org in self.orgs.iter() {
+                if seen.insert(org.worktree()) {
+                    worktrees.push(org.worktree());
                 }
             }
-        }
 
-        if let Some(s) = spinner.clone() {
-            s.finish_and_clear()
+            let worktree = config(".").worktree();
+            if seen.insert(worktree.clone()) {
+                worktrees.push(worktree.clone());
+            }
+
+            if include_packages {
+                worktrees.push(package_root_path());
+            }
+
+            // Prepare a spinner for the research
+            let spinner = if interactive {
+                let spinner = ProgressBar::new_spinner();
+                spinner.set_style(
+                    ProgressStyle::default_spinner()
+                        .template("{spinner:.green} {msg:.green}")
+                        .unwrap(),
+                );
+                spinner.set_message("Searching repositories...");
+                Some(spinner)
+            } else {
+                None
+            };
+
+            // Start a timer
+            let start = std::time::Instant::now();
+
+            // Walk worktrees to try and find the repo
+            let slash_rel_path = format!("/{}", rel_path);
+            for worktree in worktrees.iter() {
+                for entry in WalkDir::new(worktree).follow_links(true) {
+                    if let Ok(entry) = entry {
+                        let filetype = entry.file_type();
+                        let filepath = entry.path();
+
+                        // We only want places where there's a `.git` directory, since it generally
+                        // indicates that we are in a git repository
+                        if !filetype.is_dir()
+                            || filepath.file_name().is_none()
+                            || filepath.file_name().unwrap() != ".git"
+                        {
+                            continue;
+                        }
+
+                        // Take the parent
+                        let filepath = filepath.parent().unwrap();
+
+                        if let Some(s) = spinner.clone() {
+                            s.set_message(filepath.to_str().unwrap().to_string())
+                        }
+
+                        // Check if it ends with the expected rel_path
+                        if filepath
+                            .to_str()
+                            .unwrap()
+                            .ends_with(slash_rel_path.as_str())
+                        {
+                            if let Some(s) = spinner.clone() {
+                                s.finish_and_clear()
+                            }
+
+                            if start.elapsed() > std::time::Duration::from_secs(1) {
+                                omni_print!(format!("{} Setting up your organizations will make repository lookup much faster.", "Did you know?".bold()));
+                            }
+
+                            return Some(filepath.to_path_buf());
+                        }
+
+                        all_repos.push(PathScore {
+                            score: 0.0,
+                            abspath: filepath.to_path_buf(),
+                            relpath: filepath
+                                .strip_prefix(worktree)
+                                .unwrap()
+                                .to_str()
+                                .unwrap()
+                                .to_string(),
+                        });
+                    }
+                    if let Some(s) = spinner.clone() {
+                        s.tick()
+                    }
+                }
+            }
+
+            if let Some(s) = spinner.clone() {
+                s.finish_and_clear()
+            }
         }
 
         let mut with_score = all_repos
@@ -691,10 +984,16 @@ impl Repo {
                     None
                 };
 
+                let host = if !parts.is_empty() && parts[0].contains('.') {
+                    Some(parts[0].to_string())
+                } else {
+                    None
+                };
+
                 return Ok(Self {
                     name,
                     owner,
-                    host: None,
+                    host,
                     port: None,
                     scheme: None,
                     scheme_prefix: false,
