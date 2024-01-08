@@ -68,7 +68,7 @@ concurrency:
 jobs:
   build-and-upload-artifacts:
     name: Build binary for ${{ inputs.suffix }}
-    timeout-minutes: 10
+    timeout-minutes: 15
 
     env:
       BINARY_TESTS: '[]'
