@@ -229,11 +229,13 @@ impl ConfigBootstrapCommand {
         true
     }
 
-    pub fn autocomplete(&self, _comp_cword: usize, _argv: Vec<String>) {
+    pub fn autocomplete(&self, _comp_cword: usize, _argv: Vec<String>) -> Result<(), ()> {
         println!("--organizations");
         println!("--repo-path-format");
         println!("--shell");
         println!("--worktree");
+
+        Ok(())
     }
 }
 

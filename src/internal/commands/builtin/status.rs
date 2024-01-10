@@ -235,7 +235,7 @@ impl StatusCommand {
         true
     }
 
-    pub fn autocomplete(&self, _comp_cword: usize, argv: Vec<String>) {
+    pub fn autocomplete(&self, _comp_cword: usize, argv: Vec<String>) -> Result<(), ()> {
         for arg in &[
             "--shell-integration",
             "--config",
@@ -249,7 +249,7 @@ impl StatusCommand {
             }
         }
 
-        exit(0);
+        Ok(())
     }
 
     fn print_shell_integration(&self) {

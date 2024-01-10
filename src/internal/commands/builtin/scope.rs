@@ -6,6 +6,7 @@ use crate::internal::commands::builtin::HelpCommand;
 use crate::internal::commands::command_loader;
 use crate::internal::config::CommandSyntax;
 use crate::internal::config::SyntaxOptArg;
+use crate::internal::env::current_dir;
 use crate::internal::env::Shell;
 use crate::internal::git::ORG_LOADER;
 use crate::internal::user_interface::StringColor;
@@ -189,11 +190,16 @@ impl ScopeCommand {
             unreachable!();
         }
 
-        self.switch_scope(
-            &self.cli_args().scope,
-            self.cli_args().include_packages,
-            false,
-        );
+        if self
+            .switch_scope(
+                &self.cli_args().scope,
+                self.cli_args().include_packages,
+                false,
+            )
+            .is_err()
+        {
+            exit(1);
+        }
 
         let argv = self.cli_args().command.clone();
         let command_loader = command_loader(".");
@@ -221,7 +227,7 @@ impl ScopeCommand {
         true
     }
 
-    pub fn autocomplete(&self, comp_cword: usize, argv: Vec<String>) {
+    pub fn autocomplete(&self, comp_cword: usize, argv: Vec<String>) -> Result<(), ()> {
         match comp_cword.cmp(&0) {
             std::cmp::Ordering::Equal => {
                 let repo = if !argv.is_empty() {
@@ -229,33 +235,43 @@ impl ScopeCommand {
                 } else {
                     "".to_string()
                 };
-                self.autocomplete_repo(repo);
+                self.autocomplete_repo(repo)
             }
             std::cmp::Ordering::Greater => {
                 if argv.is_empty() {
                     // Unsure why we would get here, but if we try to complete
                     // a command but a repository is not provided, we can't, so
                     // let's simply skip it
-                    exit(0);
+                    return Ok(());
                 }
 
                 // We want to switch context to the repository, so we can offer
                 // completion of the commands for that specific repository
                 let mut argv = argv.clone();
                 let repo = argv.remove(0);
+
+                let curdir = current_dir();
                 // TODO: use the previous arguments to know if we should include packages or not
-                self.switch_scope(&repo, true, true);
+                if self.switch_scope(&repo, true, true).is_err() {
+                    return Err(());
+                }
 
                 // Finally, we can try completing the command
                 let command_loader = command_loader(".");
-                command_loader.complete(comp_cword - 1, argv.to_vec(), true);
+                let result = command_loader.complete(comp_cword - 1, argv.to_vec(), true);
+
+                // Restore current scope
+                if std::env::set_current_dir(curdir).is_err() {
+                    return Err(());
+                }
+
+                result
             }
-            std::cmp::Ordering::Less => {}
+            std::cmp::Ordering::Less => Err(()),
         }
-        exit(0);
     }
 
-    fn autocomplete_repo(&self, repo: String) {
+    fn autocomplete_repo(&self, repo: String) -> Result<(), ()> {
         // Figure out if this is a path, so we can avoid the expensive repository search
         let path_only = repo.starts_with('/')
             || repo.starts_with('.')
@@ -296,9 +312,16 @@ impl ScopeCommand {
                 println!("{}{}", match_repo, add_space);
             }
         }
+
+        Ok(())
     }
 
-    fn switch_scope(&self, repo: &str, include_packages: bool, silent_failure: bool) {
+    fn switch_scope(
+        &self,
+        repo: &str,
+        include_packages: bool,
+        silent_failure: bool,
+    ) -> Result<(), ()> {
         if let Ok(repo_path) = std::fs::canonicalize(repo) {
             if let Err(err) = std::env::set_current_dir(&repo_path) {
                 if !silent_failure {
@@ -308,9 +331,9 @@ impl ScopeCommand {
                         format!("{}", err).red()
                     ));
                 }
-                exit(1);
+                return Err(());
             }
-            return;
+            return Ok(());
         }
 
         if let Some(repo_path) = ORG_LOADER.find_repo(repo, include_packages, true) {
@@ -322,14 +345,15 @@ impl ScopeCommand {
                         format!("{}", err).red()
                     ));
                 }
-                exit(1);
+                return Err(());
             }
-            return;
+            return Ok(());
         }
 
         if !silent_failure {
             omni_error!(format!("{}: No such repository", repo.yellow()));
         }
-        exit(1);
+
+        Err(())
     }
 }

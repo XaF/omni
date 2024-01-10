@@ -1,5 +1,3 @@
-use std::process::exit;
-
 use crate::internal::config::CommandSyntax;
 use crate::internal::config::SyntaxOptArg;
 
@@ -49,12 +47,13 @@ impl HookCommand {
         false
     }
 
-    pub fn autocomplete(&self, comp_cword: usize, _argv: Vec<String>) {
+    pub fn autocomplete(&self, comp_cword: usize, _argv: Vec<String>) -> Result<(), ()> {
         if comp_cword == 0 {
             println!("env");
             println!("init");
             println!("uuid");
         }
-        exit(0);
+
+        Ok(())
     }
 }

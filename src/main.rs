@@ -126,9 +126,10 @@ fn complete_omni_subcommand(argv: &[String]) {
         .map(|s| s.parse().unwrap_or(0) - 1)
         .unwrap_or(0);
 
-    let command_loader = command_loader(".");
-    command_loader.complete(comp_cword, argv.to_vec(), true);
-    exit(0);
+    match command_loader(".").complete(comp_cword, argv.to_vec(), true) {
+        Ok(_) => exit(0),
+        Err(_) => exit(1),
+    }
 }
 
 fn run_omni_subcommand(parsed: &MainArgs) {
