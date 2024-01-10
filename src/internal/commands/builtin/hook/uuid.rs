@@ -50,7 +50,7 @@ impl HookUuidCommand {
         false
     }
 
-    pub fn autocomplete(&self, _comp_cword: usize, _argv: Vec<String>) {
-        exit(0);
+    pub fn autocomplete(&self, _comp_cword: usize, _argv: Vec<String>) -> Result<(), ()> {
+        Err(())
     }
 }

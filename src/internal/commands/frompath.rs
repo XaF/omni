@@ -181,14 +181,19 @@ impl PathCommand {
             .unwrap_or(false)
     }
 
-    pub fn autocomplete(&self, comp_cword: usize, argv: Vec<String>) {
+    pub fn autocomplete(&self, comp_cword: usize, argv: Vec<String>) -> Result<(), ()> {
         let mut command = ProcessCommand::new(self.source.clone());
         command.arg("--complete");
         command.args(argv);
         command.env("COMP_CWORD", comp_cword.to_string());
-        command.exec();
 
-        panic!("Something went wrong");
+        match command.output() {
+            Ok(output) => {
+                println!("{}", String::from_utf8_lossy(&output.stdout));
+                Ok(())
+            }
+            Err(_) => Err(()),
+        }
     }
 
     fn file_details(&self) -> Option<&PathCommandFileDetails> {

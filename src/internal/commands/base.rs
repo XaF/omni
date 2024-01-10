@@ -440,41 +440,52 @@ impl Command {
         }
     }
 
-    pub fn autocomplete(&self, comp_cword: usize, argv: Vec<String>) {
+    pub fn autocomplete(&self, comp_cword: usize, argv: Vec<String>) -> Result<(), ()> {
         match self {
             Command::FromPath(_) | Command::FromConfig(_) | Command::FromMakefile(_) => {
                 // Check if the workdir where the command is located is trusted
                 if !is_trusted(&self.source_dir()) {
-                    exit(1);
+                    return Err(());
                 }
             }
             _ => {}
         }
 
         match self {
-            Command::BuiltinCd(command) => command.autocomplete(comp_cword, argv),
-            Command::BuiltinClone(command) => command.autocomplete(comp_cword, argv),
-            Command::BuiltinConfigBootstrap(command) => command.autocomplete(comp_cword, argv),
-            Command::BuiltinConfigPathSwitch(command) => command.autocomplete(comp_cword, argv),
-            Command::BuiltinHelp(command) => command.autocomplete(comp_cword, argv),
-            Command::BuiltinHook(command) => command.autocomplete(comp_cword, argv),
-            Command::BuiltinHookEnv(command) => command.autocomplete(comp_cword, argv),
-            Command::BuiltinHookInit(command) => command.autocomplete(comp_cword, argv),
-            Command::BuiltinHookUuid(command) => command.autocomplete(comp_cword, argv),
-            Command::BuiltinScope(command) => command.autocomplete(comp_cword, argv),
-            Command::BuiltinStatus(command) => command.autocomplete(comp_cword, argv),
-            Command::BuiltinTidy(command) => command.autocomplete(comp_cword, argv),
-            Command::BuiltinUp(command) => command.autocomplete(comp_cword, argv),
+            Command::BuiltinCd(command) => return command.autocomplete(comp_cword, argv),
+            Command::BuiltinClone(command) => return command.autocomplete(comp_cword, argv),
+            Command::BuiltinConfigBootstrap(command) => {
+                return command.autocomplete(comp_cword, argv)
+            }
+            Command::BuiltinConfigPathSwitch(command) => {
+                return command.autocomplete(comp_cword, argv)
+            }
+            Command::BuiltinHelp(command) => return command.autocomplete(comp_cword, argv),
+            Command::BuiltinHook(command) => return command.autocomplete(comp_cword, argv),
+            Command::BuiltinHookEnv(command) => return command.autocomplete(comp_cword, argv),
+            Command::BuiltinHookInit(command) => return command.autocomplete(comp_cword, argv),
+            Command::BuiltinHookUuid(command) => return command.autocomplete(comp_cword, argv),
+            Command::BuiltinScope(command) => return command.autocomplete(comp_cword, argv),
+            Command::BuiltinStatus(command) => return command.autocomplete(comp_cword, argv),
+            Command::BuiltinTidy(command) => return command.autocomplete(comp_cword, argv),
+            Command::BuiltinUp(command) => return command.autocomplete(comp_cword, argv),
             Command::FromPath(command) => {
                 // Load the dynamic environment for that command
                 update_dynamic_env_for_command(self.source_dir());
 
-                command.autocomplete(comp_cword, argv)
+                let result = command.autocomplete(comp_cword, argv);
+
+                // Reset the dynamic environment
+                update_dynamic_env_for_command(".");
+
+                return result;
             }
             Command::FromConfig(_command) => {}
             Command::FromMakefile(_command) => {}
             Command::Void(_) => {}
         }
+
+        Err(())
     }
 
     fn command_type_sort_order(&self) -> usize {

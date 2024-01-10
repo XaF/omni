@@ -567,13 +567,14 @@ impl UpCommand {
         true
     }
 
-    pub fn autocomplete(&self, _comp_cword: usize, _argv: Vec<String>) {
+    pub fn autocomplete(&self, _comp_cword: usize, _argv: Vec<String>) -> Result<(), ()> {
         println!("--bootstrap");
         println!("--clone-suggested");
         println!("--trust");
         println!("--update-repository");
         println!("--update-user-config");
-        exit(0);
+
+        Ok(())
     }
 
     fn subcommand(&self) -> String {

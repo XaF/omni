@@ -209,9 +209,9 @@ impl CdCommand {
         true
     }
 
-    pub fn autocomplete(&self, comp_cword: usize, argv: Vec<String>) {
+    pub fn autocomplete(&self, comp_cword: usize, argv: Vec<String>) -> Result<(), ()> {
         if comp_cword > 0 {
-            exit(0);
+            return Ok(());
         }
 
         let repo = if !argv.is_empty() {
@@ -261,7 +261,7 @@ impl CdCommand {
             }
         }
 
-        exit(0);
+        Ok(())
     }
 
     fn cd_main_org(&self) {

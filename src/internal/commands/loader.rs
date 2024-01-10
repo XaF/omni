@@ -183,7 +183,12 @@ impl CommandLoader {
         commands
     }
 
-    pub fn complete(&self, comp_cword: usize, argv: Vec<String>, allow_delegate: bool) {
+    pub fn complete(
+        &self,
+        comp_cword: usize,
+        argv: Vec<String>,
+        allow_delegate: bool,
+    ) -> Result<(), ()> {
         // Prepare until which word we need to match
         let match_pos = comp_cword;
 
@@ -228,6 +233,30 @@ impl CommandLoader {
             .iter()
             .fold(0.0, |acc: f32, x| acc.max(x.match_level));
 
+        let mut printed_command_completion = None;
+        if allow_delegate {
+            // Check if there is a parent command
+            if let Some(parent_command) = matched_commands
+                .clone()
+                .into_iter()
+                .find(|x| x.match_level == match_pos as f32 && x.match_name.len() == match_pos)
+            {
+                if parent_command.command.autocompletion() {
+                    // Set the environment variables that we need to pass to the
+                    // subcommand
+                    let new_comp_cword = comp_cword - parent_command.match_level as usize;
+
+                    // We want to edit the argv to remove the command name
+                    let new_argv = argv[parent_command.match_level as usize..].to_vec();
+
+                    let result = parent_command
+                        .command
+                        .autocomplete(new_comp_cword, new_argv);
+                    printed_command_completion = Some((parent_command, result));
+                }
+            }
+        }
+
         // Filter only the highest matching scores
         matched_commands.retain(|x| x.match_level == max_match_level);
 
@@ -237,20 +266,28 @@ impl CommandLoader {
             for matched_command in matched_commands.iter() {
                 println!("{}", matched_command.match_name[match_pos]);
             }
-            return;
+            return Ok(());
         }
 
         // If we have a full match, we also want to return it
         if max_match_level == match_pos as f32 + 1.0 {
             let matched_command = &matched_commands[0];
             println!("{}", matched_command.match_name[match_pos]);
-            return;
+            return Ok(());
         }
 
         // If we get here, and if there is a single command, then we can try and
         // delegate the autocompletion if supported by that command
         if allow_delegate && matched_commands.len() == 1 {
             let matched_command = &matched_commands[0];
+
+            // If this was already printed, we don't want to print it again
+            if let Some((printed_command_completion, result)) = printed_command_completion {
+                if printed_command_completion.match_name == matched_command.match_name {
+                    return result;
+                }
+            }
+
             if matched_command.command.autocompletion() {
                 // Set the environment variables that we need to pass to the
                 // subcommand
@@ -259,10 +296,9 @@ impl CommandLoader {
                 // We want to edit the argv to remove the command name
                 let new_argv = argv[matched_command.match_level as usize..].to_vec();
 
-                matched_command
+                return matched_command
                     .command
                     .autocomplete(new_comp_cword, new_argv);
-                return;
             }
         }
 
@@ -274,6 +310,8 @@ impl CommandLoader {
 
             println!("{}", matched_command.match_name[match_pos]);
         }
+
+        Ok(())
     }
 
     pub fn find_command(&self, argv: &[String]) -> Option<(Command, Vec<String>, Vec<String>)> {

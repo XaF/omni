@@ -178,8 +178,8 @@ impl HelpCommand {
         true
     }
 
-    pub fn autocomplete(&self, comp_cword: usize, argv: Vec<String>) {
-        command_loader(".").complete(comp_cword, argv, false);
+    pub fn autocomplete(&self, comp_cword: usize, argv: Vec<String>) -> Result<(), ()> {
+        command_loader(".").complete(comp_cword, argv, false)
     }
 
     fn help_global(&self) {

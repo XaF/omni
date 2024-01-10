@@ -229,8 +229,8 @@ impl CloneCommand {
         false
     }
 
-    pub fn autocomplete(&self, _comp_cword: usize, _argv: Vec<String>) {
-        // noop
+    pub fn autocomplete(&self, _comp_cword: usize, _argv: Vec<String>) -> Result<(), ()> {
+        Err(())
     }
 
     pub fn lookup_repo_handle(

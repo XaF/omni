@@ -497,5 +497,7 @@ impl ConfigPathSwitchCommand {
         false
     }
 
-    pub fn autocomplete(&self, _comp_cword: usize, _argv: Vec<String>) {}
+    pub fn autocomplete(&self, _comp_cword: usize, _argv: Vec<String>) -> Result<(), ()> {
+        Err(())
+    }
 }

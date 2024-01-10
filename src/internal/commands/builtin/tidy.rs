@@ -430,7 +430,7 @@ impl TidyCommand {
         true
     }
 
-    pub fn autocomplete(&self, _comp_cword: usize, _argv: Vec<String>) {
+    pub fn autocomplete(&self, _comp_cword: usize, _argv: Vec<String>) -> Result<(), ()> {
         // TODO: if the last parameter before completion is `search-path`,
         // TODO: we should autocomplete with the file system paths
         println!("--search-path");
@@ -439,7 +439,8 @@ impl TidyCommand {
         println!("--up-all");
         println!("-h");
         println!("--help");
-        exit(0);
+
+        Ok(())
     }
 
     fn list_repositories(&self) -> Vec<TidyGitRepo> {
