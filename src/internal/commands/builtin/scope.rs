@@ -261,7 +261,7 @@ impl ScopeCommand {
                 let result = command_loader.complete(comp_cword - 1, argv.to_vec(), true);
 
                 // Restore current scope
-                if std::env::set_current_dir(&curdir).is_err() {
+                if std::env::set_current_dir(curdir).is_err() {
                     return Err(());
                 }
 
