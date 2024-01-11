@@ -247,6 +247,26 @@ impl OmniConfig {
     pub fn repo_path_format_repo(&self) -> bool {
         self.repo_path_format.contains("%{repo}")
     }
+
+    pub fn up_hash(&self) -> String {
+        let mut config_hasher = blake3::Hasher::new();
+
+        if let Some(up) = &self.up {
+            if let Ok(up_str) = serde_yaml::to_string(&up) {
+                config_hasher.update(up_str.as_bytes());
+            }
+        }
+
+        if let Ok(suggest_config_str) = serde_yaml::to_string(&self.suggest_config) {
+            config_hasher.update(suggest_config_str.as_bytes());
+        }
+
+        if let Ok(suggest_clone_str) = serde_yaml::to_string(&self.suggest_clone) {
+            config_hasher.update(suggest_clone_str.as_bytes());
+        }
+
+        return config_hasher.finalize().to_hex()[..16].to_string();
+    }
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -1366,18 +1386,34 @@ impl SuggestCloneRepositoryConfig {
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct UpCommandConfig {
     pub auto_bootstrap: bool,
+    pub notify_workdir_config_updated: bool,
+    pub notify_workdir_config_available: bool,
 }
 
 impl UpCommandConfig {
     const DEFAULT_AUTO_BOOTSTRAP: bool = true;
+    const DEFAULT_NOTIFY_WORKDIR_CONFIG_UPDATED: bool = true;
+    const DEFAULT_NOTIFY_WORKDIR_CONFIG_AVAILABLE: bool = true;
 
     fn from_config_value(config_value: Option<ConfigValue>) -> Self {
         if let Some(config_value) = config_value {
             if let Some(config_value) = config_value.reject_scope(&ConfigScope::Workdir) {
                 return Self {
-                    auto_bootstrap: match config_value.get("auto_bootstrap") {
-                        Some(value) => value.as_bool().unwrap(),
+                    auto_bootstrap: match config_value.get_as_bool("auto_bootstrap") {
+                        Some(value) => value,
                         None => Self::DEFAULT_AUTO_BOOTSTRAP,
+                    },
+                    notify_workdir_config_updated: match config_value
+                        .get_as_bool("notify_workdir_config_updated")
+                    {
+                        Some(value) => value,
+                        None => Self::DEFAULT_NOTIFY_WORKDIR_CONFIG_UPDATED,
+                    },
+                    notify_workdir_config_available: match config_value
+                        .get_as_bool("notify_workdir_config_available")
+                    {
+                        Some(value) => value,
+                        None => Self::DEFAULT_NOTIFY_WORKDIR_CONFIG_AVAILABLE,
                     },
                 };
             }
@@ -1385,6 +1421,8 @@ impl UpCommandConfig {
 
         Self {
             auto_bootstrap: Self::DEFAULT_AUTO_BOOTSTRAP,
+            notify_workdir_config_updated: Self::DEFAULT_NOTIFY_WORKDIR_CONFIG_UPDATED,
+            notify_workdir_config_available: Self::DEFAULT_NOTIFY_WORKDIR_CONFIG_AVAILABLE,
         }
     }
 }

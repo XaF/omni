@@ -9,7 +9,9 @@ use shell_escape::escape;
 
 use crate::internal::cache::CacheObject;
 use crate::internal::cache::UpEnvironmentsCache;
+use crate::internal::config;
 use crate::internal::config::up::asdf_tool_path;
+use crate::internal::config::up::utils::get_config_mod_times;
 use crate::internal::env::user_home;
 use crate::internal::user_interface::StringColor;
 use crate::internal::workdir;
@@ -17,6 +19,7 @@ use crate::internal::workdir;
 const DATA_SEPARATOR: &str = "\x1C";
 const DYNENV_VAR: &str = "__omni_dynenv";
 const DYNENV_SEPARATOR: &str = ";";
+const WD_CONFIG_MODTIME_VAR: &str = "__omni_wd_config_modtime";
 
 pub fn update_dynamic_env(export_mode: DynamicEnvExportMode) {
     update_dynamic_env_with_path(export_mode, None);
@@ -26,10 +29,142 @@ pub fn update_dynamic_env_for_command<T: ToString>(path: T) {
     update_dynamic_env_with_path(DynamicEnvExportMode::Env, Some(path.to_string()));
 }
 
+fn remove_wd_config_modtime_var(export_mode: DynamicEnvExportMode) {
+    let mut dynenvdata = DynamicEnvData::new();
+    dynenvdata.env_unset_var(WD_CONFIG_MODTIME_VAR);
+    dynenvdata.export(export_mode);
+}
+
+fn check_workdir_config_updated(
+    export_mode: DynamicEnvExportMode,
+    path: Option<String>,
+    cache: &UpEnvironmentsCache,
+) {
+    // TODO: add configuration option to not show that message at all,
+    //       with maybe an option to only show it if the repo has been
+    //       up-ed before (right now it does that by default, but we
+    //       may want an option to show it all the time if a repo can
+    //       be omni up-ed but is not up to date)
+
+    let wdpath = path.unwrap_or(".".to_string());
+
+    let wdid = if let Some(wdid) = workdir(&wdpath).id() {
+        wdid
+    } else {
+        remove_wd_config_modtime_var(export_mode.clone());
+        return;
+    };
+
+    // Check if we need notify the user about the workdir configuration
+    // files. If not, we will just skip the rest of the function.
+    let config = config(&wdpath);
+    let notify_updated = config.up_command.notify_workdir_config_updated;
+    let notify_available = config.up_command.notify_workdir_config_available;
+
+    if !notify_updated && !notify_available {
+        remove_wd_config_modtime_var(export_mode.clone());
+        return;
+    }
+
+    // Get the mod times for the config files in the workdir
+    let modtimes = get_config_mod_times(&wdpath);
+
+    // Get the cache for the workdir
+    let mut notify_change = false;
+    let mut change_type = "update";
+    if let Some(wdcache) = cache.env.get(&wdid) {
+        if notify_updated {
+            for config_file in wdcache.config_modtimes.keys() {
+                if !modtimes.contains_key(config_file) {
+                    notify_change = true;
+                    break;
+                }
+            }
+
+            if !notify_change {
+                for (config_file, modtime) in modtimes.iter() {
+                    match wdcache.config_modtimes.get(config_file) {
+                        Some(known_modtime) => {
+                            if *known_modtime != *modtime {
+                                notify_change = true;
+                                break;
+                            }
+                        }
+                        None => {
+                            notify_change = true;
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+    } else if notify_available && modtimes.len() > 0 {
+        notify_change = true;
+        change_type = "set up";
+    }
+    if !notify_change {
+        remove_wd_config_modtime_var(export_mode.clone());
+        return;
+    }
+
+    // Flatten the mod times in order of the config files paths
+    let flattened = modtimes
+        .iter()
+        .sorted_by_key(|(config_file, _)| config_file.to_owned())
+        .map(|(_, modtime)| modtime)
+        .join(",");
+    let expected_value = format!("{}:{}", wdid, flattened);
+    let hashed = blake3::hash(expected_value.as_bytes()).to_hex()[..16].to_string();
+
+    // Check if we have, in the environment, a variable that
+    // indicates that the user has already been notified
+    // about the config file being updated
+    if let Some(env_var) = std::env::var_os(&WD_CONFIG_MODTIME_VAR) {
+        if let Ok(env_var) = env_var.into_string() {
+            if env_var == hashed {
+                return;
+            }
+        }
+    }
+
+    // If we get here, last check: we want to read the `up` configuration
+    // of the workdir and hash it, and check if it is the same as the hash
+    // in the cache. If it is, we don't need to notify the user, but we
+    // still need to set the environment variable to avoid checking on
+    // every prompt.
+    if let Some(wdcache) = cache.env.get(&wdid) {
+        if wdcache.config_hash == config.up_hash() {
+            notify_change = false;
+        }
+    }
+
+    if notify_change {
+        print_update(
+            format!(
+                "run {} to {} the dependencies",
+                "omni up".force_light_blue(),
+                change_type.force_light_yellow(),
+            )
+            .as_str(),
+        );
+    }
+
+    // Set the environment variable to indicate that the user
+    // has been notified about the config file being updated
+    let mut dynenvdata = DynamicEnvData::new();
+    dynenvdata.env_set_var(WD_CONFIG_MODTIME_VAR, &hashed);
+    dynenvdata.export(export_mode.clone());
+}
+
 pub fn update_dynamic_env_with_path(export_mode: DynamicEnvExportMode, path: Option<String>) {
     let cache = UpEnvironmentsCache::get();
     let mut current_env = DynamicEnv::from_env(cache.clone());
-    let mut expected_env = DynamicEnv::new_with_path(path, cache.clone());
+    let mut expected_env = DynamicEnv::new_with_path(path.clone(), cache.clone());
+
+    let print = export_mode != DynamicEnvExportMode::Env;
+    if print {
+        check_workdir_config_updated(export_mode.clone(), path.clone(), &cache);
+    }
 
     if current_env.id() == expected_env.id() {
         return;
@@ -38,7 +173,7 @@ pub fn update_dynamic_env_with_path(export_mode: DynamicEnvExportMode, path: Opt
     current_env.undo(export_mode.clone());
     expected_env.apply(export_mode.clone());
 
-    if export_mode != DynamicEnvExportMode::Env {
+    if print {
         match (current_env.id(), expected_env.id()) {
             (0, 0) => {}
             (0, _) => {
@@ -58,7 +193,7 @@ pub fn update_dynamic_env_with_path(export_mode: DynamicEnvExportMode, path: Opt
                 print_update(
                     format!(
                         "dynamic environment {}{}",
-                        "enabled".to_string().force_light_green(),
+                        "enabled".force_light_green(),
                         features_str,
                     )
                     .as_str(),
@@ -66,11 +201,7 @@ pub fn update_dynamic_env_with_path(export_mode: DynamicEnvExportMode, path: Opt
             }
             (_, 0) => {
                 print_update(
-                    format!(
-                        "dynamic environment {}",
-                        "disabled".to_string().force_light_red(),
-                    )
-                    .as_str(),
+                    format!("dynamic environment {}", "disabled".force_light_red(),).as_str(),
                 );
             }
             (_, _) => {
@@ -90,7 +221,7 @@ pub fn update_dynamic_env_with_path(export_mode: DynamicEnvExportMode, path: Opt
                 print_update(
                     format!(
                         "dynamic environment {}{}",
-                        "updated".to_string().force_light_blue(),
+                        "updated".force_light_blue(),
                         features_str,
                     )
                     .as_str(),
@@ -101,7 +232,7 @@ pub fn update_dynamic_env_with_path(export_mode: DynamicEnvExportMode, path: Opt
 }
 
 fn print_update(status: &str) {
-    eprintln!("{} {}", "omni:".to_string().force_light_cyan(), status);
+    eprintln!("{} {}", "omni:".force_light_cyan(), status);
 }
 
 #[derive(Debug, Clone, PartialEq)]
