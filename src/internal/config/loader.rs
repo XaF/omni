@@ -34,6 +34,8 @@ lazy_static! {
     static ref CONFIG_LOADER_GLOBAL: ConfigLoader = ConfigLoader::new();
 }
 
+pub const WORKDIR_CONFIG_FILES: [&str; 2] = [".omni.yaml", ".omni/config.yaml"];
+
 pub fn config_loader(path: &str) -> ConfigLoader {
     let path = std::fs::canonicalize(path)
         .unwrap_or(path.to_owned().into())
@@ -261,8 +263,9 @@ impl ConfigLoader {
         };
 
         let mut workdir_config_files = vec![];
-        workdir_config_files.push(format!("{}/.omni.yaml", wd_root));
-        workdir_config_files.push(format!("{}/.omni/config.yaml", wd_root));
+        for workdir_config_file in WORKDIR_CONFIG_FILES.iter() {
+            workdir_config_files.push(format!("{}/{}", wd_root, workdir_config_file));
+        }
 
         new_config_loader.import_config_files(workdir_config_files, ConfigScope::Workdir);
 

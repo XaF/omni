@@ -1,6 +1,8 @@
 use std::io::Write;
 use std::os::unix::fs::PermissionsExt;
 use std::path::Path;
+use std::path::PathBuf;
+use std::collections::HashMap;
 
 use blake3::Hasher;
 use indicatif::MultiProgress;
@@ -21,6 +23,8 @@ use tokio::time::Duration;
 use crate::internal::config::up::UpError;
 use crate::internal::user_interface::StringColor;
 use crate::internal::utils::base62_encode;
+use crate::internal::workdir;
+use crate::internal::config::loader::WORKDIR_CONFIG_FILES;
 
 #[derive(Debug, Clone)]
 pub struct RunConfig {
@@ -571,4 +575,26 @@ pub fn set_writeable_recursive<P: AsRef<Path>>(path: P) -> std::io::Result<()> {
         }
     }
     Ok(())
+}
+
+/// Return the modification time of the configuration files
+/// for the work directory at the given path.
+pub fn get_config_mod_times<T: AsRef<str>>(path: T) -> HashMap<String, u64> {
+    let mut mod_times = HashMap::new();
+
+    if let Some(wdroot) = workdir(path.as_ref()).root() {
+        for config_file in WORKDIR_CONFIG_FILES {
+            let wd_config_path = PathBuf::from(wdroot).join(config_file);
+            if let Ok(metadata) = std::fs::metadata(&wd_config_path) {
+                if let Ok(modified) = metadata.modified() {
+                    if let Ok(modified) = modified.duration_since(std::time::UNIX_EPOCH) {
+                        let modified = modified.as_secs();
+                        mod_times.insert(config_file.to_string(), modified);
+                    }
+                }
+            }
+        }
+    }
+
+    mod_times
 }

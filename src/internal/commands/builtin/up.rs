@@ -484,6 +484,8 @@ impl UpCommand {
                 "No {} configuration found, nothing to do.",
                 "up".italic(),
             ));
+            // TODO: on top of clearing the cache, do we need to run some resource
+            //       cleanup process too ?
             UpConfig::clear_cache();
             exit(0);
         }
@@ -509,17 +511,22 @@ impl UpCommand {
         UpConfig::clear_cache();
 
         // If there are environment variables to set, do it
-        if let Some(env_vars) = env_vars.clone() {
+        if has_up_config && self.is_up() {
             if let Err(err) = UpEnvironmentsCache::exclusive(|up_env| {
                 let wd = workdir(".");
                 if let Some(workdir_id) = wd.id() {
-                    up_env.set_env_vars(&workdir_id, env_vars.clone())
+                    if let Some(env_vars) = env_vars.clone() {
+                        up_env.set_env_vars(&workdir_id, env_vars.clone());
+                    }
+                    up_env.set_config_hash(&workdir_id);
+                    up_env.set_config_modtimes(&workdir_id);
+                    true
                 } else {
                     false
                 }
             }) {
                 omni_warning!(format!("failed to update cache: {}", err));
-            } else {
+            } else if env_vars.is_some() {
                 omni_info!(format!("Repository environment configured"));
             }
         }

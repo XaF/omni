@@ -15,6 +15,8 @@ use crate::internal::cache::loaders::set_up_environments_cache;
 use crate::internal::cache::utils;
 use crate::internal::cache::utils::Empty;
 use crate::internal::cache::CacheObject;
+use crate::internal::config;
+use crate::internal::config::up::utils::get_config_mod_times;
 
 const UP_ENVIRONMENTS_CACHE_NAME: &str = "up_environments";
 
@@ -29,6 +31,32 @@ pub struct UpEnvironmentsCache {
 impl UpEnvironmentsCache {
     fn updated(&mut self) {
         self.updated_at = OffsetDateTime::now_utc();
+    }
+
+    pub fn set_config_hash(&mut self, workdir_id: &str) -> bool {
+        let config_hash = config(".").up_hash();
+        if let Some(env) = self.env.get_mut(workdir_id) {
+            env.config_hash = config_hash.to_string();
+        } else {
+            let mut env = UpEnvironment::new();
+            env.config_hash = config_hash.to_string();
+            self.env.insert(workdir_id.to_string(), env);
+        }
+        self.updated();
+        true
+    }
+
+    pub fn set_config_modtimes(&mut self, workdir_id: &str) -> bool {
+        let config_modtimes = get_config_mod_times(".");
+        if let Some(env) = self.env.get_mut(workdir_id) {
+            env.config_modtimes = config_modtimes;
+        } else {
+            let mut env = UpEnvironment::new();
+            env.config_modtimes = config_modtimes;
+            self.env.insert(workdir_id.to_string(), env);
+        }
+        self.updated();
+        true
     }
 
     pub fn set_env_vars(&mut self, workdir_id: &str, env_vars: HashMap<String, String>) -> bool {
@@ -192,6 +220,10 @@ pub struct UpEnvironment {
     pub paths: Vec<PathBuf>,
     #[serde(default = "HashMap::new", skip_serializing_if = "HashMap::is_empty")]
     pub env_vars: HashMap<String, String>,
+    #[serde(default = "HashMap::new", skip_serializing_if = "HashMap::is_empty")]
+    pub config_modtimes: HashMap<String, u64>,
+    #[serde(default = "String::new", skip_serializing_if = "String::is_empty")]
+    pub config_hash: String,
 }
 
 impl UpEnvironment {
@@ -200,6 +232,8 @@ impl UpEnvironment {
             versions: Vec::new(),
             paths: Vec::new(),
             env_vars: HashMap::new(),
+            config_modtimes: HashMap::new(),
+            config_hash: String::new(),
         }
     }
 
