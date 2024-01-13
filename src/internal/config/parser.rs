@@ -265,7 +265,7 @@ impl OmniConfig {
             config_hasher.update(suggest_clone_str.as_bytes());
         }
 
-        return config_hasher.finalize().to_hex()[..16].to_string();
+        config_hasher.finalize().to_hex()[..16].to_string()
     }
 }
 

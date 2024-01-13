@@ -98,7 +98,7 @@ fn check_workdir_config_updated(
                 }
             }
         }
-    } else if notify_available && modtimes.len() > 0 {
+    } else if notify_available && !modtimes.is_empty() {
         notify_change = true;
         change_type = "set up";
     }
@@ -119,7 +119,7 @@ fn check_workdir_config_updated(
     // Check if we have, in the environment, a variable that
     // indicates that the user has already been notified
     // about the config file being updated
-    if let Some(env_var) = std::env::var_os(&WD_CONFIG_MODTIME_VAR) {
+    if let Some(env_var) = std::env::var_os(WD_CONFIG_MODTIME_VAR) {
         if let Ok(env_var) = env_var.into_string() {
             if env_var == hashed {
                 return;

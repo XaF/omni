@@ -596,5 +596,5 @@ pub fn get_config_mod_times<T: AsRef<str>>(path: T) -> HashMap<String, u64> {
         }
     }
 
-    return mod_times;
+    mod_times
 }
