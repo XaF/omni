@@ -1212,14 +1212,12 @@ impl CdConfig {
         let config_value = config_value.unwrap();
 
         Self {
-            fast_search: match config_value.get_as_bool("fast_search") {
-                Some(value) => value,
-                None => Self::DEFAULT_FAST_SEARCH,
-            },
-            path_match_min_score: match config_value.get_as_float("path_match_min_score") {
-                Some(value) => value,
-                None => Self::DEFAULT_PATH_MATCH_MIN_SCORE,
-            },
+            fast_search: config_value
+                .get_as_bool("fast_search")
+                .unwrap_or(Self::DEFAULT_FAST_SEARCH),
+            path_match_min_score: config_value
+                .get_as_float("path_match_min_score")
+                .unwrap_or(Self::DEFAULT_PATH_MATCH_MIN_SCORE),
             path_match_skip_prompt_if: MatchSkipPromptIfConfig::from_config_value(
                 config_value.get("path_match_skip_prompt_if"),
             ),
@@ -1229,10 +1227,12 @@ impl CdConfig {
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct CloneConfig {
+    pub auto_up: bool,
     pub ls_remote_timeout: u64,
 }
 
 impl CloneConfig {
+    const DEFAULT_AUTO_UP: bool = true;
     const DEFAULT_LS_REMOTE_TIMEOUT: u64 = 5;
 
     fn from_config_value(config_value: Option<ConfigValue>) -> Self {
@@ -1240,6 +1240,7 @@ impl CloneConfig {
             Some(config_value) => config_value,
             None => {
                 return Self {
+                    auto_up: Self::DEFAULT_AUTO_UP,
                     ls_remote_timeout: Self::DEFAULT_LS_REMOTE_TIMEOUT,
                 };
             }
@@ -1252,7 +1253,12 @@ impl CloneConfig {
                 .unwrap_or(Self::DEFAULT_LS_REMOTE_TIMEOUT),
         );
 
-        Self { ls_remote_timeout }
+        Self {
+            auto_up: config_value
+                .get_as_bool("auto_up")
+                .unwrap_or(Self::DEFAULT_AUTO_UP),
+            ls_remote_timeout,
+        }
     }
 }
 
@@ -1399,22 +1405,15 @@ impl UpCommandConfig {
         if let Some(config_value) = config_value {
             if let Some(config_value) = config_value.reject_scope(&ConfigScope::Workdir) {
                 return Self {
-                    auto_bootstrap: match config_value.get_as_bool("auto_bootstrap") {
-                        Some(value) => value,
-                        None => Self::DEFAULT_AUTO_BOOTSTRAP,
-                    },
-                    notify_workdir_config_updated: match config_value
+                    auto_bootstrap: config_value
+                        .get_as_bool("auto_bootstrap")
+                        .unwrap_or(Self::DEFAULT_AUTO_BOOTSTRAP),
+                    notify_workdir_config_updated: config_value
                         .get_as_bool("notify_workdir_config_updated")
-                    {
-                        Some(value) => value,
-                        None => Self::DEFAULT_NOTIFY_WORKDIR_CONFIG_UPDATED,
-                    },
-                    notify_workdir_config_available: match config_value
+                        .unwrap_or(Self::DEFAULT_NOTIFY_WORKDIR_CONFIG_UPDATED),
+                    notify_workdir_config_available: config_value
                         .get_as_bool("notify_workdir_config_available")
-                    {
-                        Some(value) => value,
-                        None => Self::DEFAULT_NOTIFY_WORKDIR_CONFIG_AVAILABLE,
-                    },
+                        .unwrap_or(Self::DEFAULT_NOTIFY_WORKDIR_CONFIG_AVAILABLE),
                 };
             }
         }

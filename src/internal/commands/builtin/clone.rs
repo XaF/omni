@@ -208,7 +208,7 @@ impl CloneCommand {
                 clone_as_package,
                 spinner.clone(),
                 None,
-                true,
+                config(".").clone.auto_up,
             )
             .is_some();
 
