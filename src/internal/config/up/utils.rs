@@ -1,8 +1,8 @@
+use std::collections::HashMap;
 use std::io::Write;
 use std::os::unix::fs::PermissionsExt;
 use std::path::Path;
 use std::path::PathBuf;
-use std::collections::HashMap;
 
 use blake3::Hasher;
 use indicatif::MultiProgress;
@@ -20,11 +20,11 @@ use tokio::process::Command as TokioCommand;
 use tokio::runtime::Runtime;
 use tokio::time::Duration;
 
+use crate::internal::config::loader::WORKDIR_CONFIG_FILES;
 use crate::internal::config::up::UpError;
 use crate::internal::user_interface::StringColor;
 use crate::internal::utils::base62_encode;
 use crate::internal::workdir;
-use crate::internal::config::loader::WORKDIR_CONFIG_FILES;
 
 #[derive(Debug, Clone)]
 pub struct RunConfig {
