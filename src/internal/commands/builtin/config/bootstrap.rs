@@ -885,26 +885,30 @@ fn question_org(worktree: &str) -> (Vec<OrgConfig>, bool) {
     // Let the user order the organizations in the order they want, as the
     // order of the organizations is important when cloning repositories,
     // the first organization that has the repository will be used.
-    let question = requestty::Question::order_select("select_how_to_clone")
-        .ask_if_answered(true)
-        .on_esc(requestty::OnEsc::Terminate)
-        .message("In which order should the organizations be checked for repositories?")
-        .choices(selected_orgs.clone())
-        .transform(|_selected, _, backend| write!(backend, "\u{2714}\u{FE0F}"))
-        .build();
+    let ordered_orgs = if selected_orgs.len() > 1 {
+        let question = requestty::Question::order_select("select_how_to_clone")
+            .ask_if_answered(true)
+            .on_esc(requestty::OnEsc::Terminate)
+            .message("In which order should the organizations be checked for repositories?")
+            .choices(selected_orgs.clone())
+            .transform(|_selected, _, backend| write!(backend, "\u{2714}\u{FE0F}"))
+            .build();
 
-    let ordered_orgs: Vec<String> = match requestty::prompt_one(question) {
-        Ok(answer) => match answer {
-            requestty::Answer::ListItems(items) => items
-                .iter()
-                .map(|item| selected_orgs[item.index].clone())
-                .collect(),
-            _ => unreachable!(),
-        },
-        Err(err) => {
-            println!("{}\x1B[0K", format!("[✘] {:?}", err).red());
-            return (vec![], false);
+        match requestty::prompt_one(question) {
+            Ok(answer) => match answer {
+                requestty::Answer::ListItems(items) => items
+                    .iter()
+                    .map(|item| selected_orgs[item.index].clone())
+                    .collect(),
+                _ => unreachable!(),
+            },
+            Err(err) => {
+                println!("{}\x1B[0K", format!("[✘] {:?}", err).red());
+                return (vec![], false);
+            }
         }
+    } else {
+        selected_orgs
     };
 
     let current_orgs_worktrees: HashMap<String, String> = current_orgs
