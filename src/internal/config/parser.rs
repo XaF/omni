@@ -1200,9 +1200,9 @@ impl Deref for EnvConfig {
     }
 }
 
-impl Into<Vec<EnvOperationConfig>> for EnvConfig {
-    fn into(self) -> Vec<EnvOperationConfig> {
-        self.operations
+impl From<EnvConfig> for Vec<EnvOperationConfig> {
+    fn from(env_config: EnvConfig) -> Self {
+        env_config.operations
     }
 }
 
@@ -1231,8 +1231,8 @@ impl EnvConfig {
             let operations_array = if let Some(array) = config_value.as_array() {
                 array
             } else if let Some(table) = config_value.as_table() {
-                // If this is a map, create individual maps for each key/value pair,
-                // sorted by key for deterministic output.
+                // If this is a map, create a list of individual maps for each
+                // key/value pair, sorted by key for deterministic output.
                 table
                     .iter()
                     .sorted_by_key(|(key, _)| key.to_string())
@@ -1253,8 +1253,7 @@ impl EnvConfig {
 
             operations_array
                 .iter()
-                .map(|value| EnvOperationConfig::from_config_value(value))
-                .flatten()
+                .flat_map(EnvOperationConfig::from_config_value)
                 .collect()
         } else {
             vec![]
@@ -1333,7 +1332,7 @@ impl EnvOperationConfig {
                 if value_type == "path" {
                     match config_value.get_source() {
                         ConfigSource::File(path) => Some(
-                            abs_path_from_path(&value, Some(&path))
+                            abs_path_from_path(&value, Some(path))
                                 .to_string_lossy()
                                 .to_string(),
                         ),

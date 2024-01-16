@@ -378,7 +378,7 @@ impl DynamicEnv {
                 self.features.push("env".to_string());
             }
             for env_var in up_env.env_vars.iter() {
-                match (env_var.operation.clone(), env_var.value.clone()) {
+                match (env_var.operation, env_var.value.clone()) {
                     (EnvOperationEnum::Set, Some(value)) => {
                         envsetter.set_value(&env_var.name, &value);
                     }
