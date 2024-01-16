@@ -25,6 +25,7 @@ use crate::internal::git::path_entry_config;
 use crate::internal::user_interface::StringColor;
 use crate::internal::workdir;
 use crate::omni_error;
+use crate::omni_print;
 
 lazy_static! {
     #[derive(Debug)]
@@ -301,22 +302,32 @@ impl ConfigLoader {
             return;
         }
 
-        if let Ok(value) = serde_yaml::from_str::<serde_yaml::Value>(&contents) {
-            self.loaded_config_files.push(config_file.to_string());
+        match serde_yaml::from_str::<serde_yaml::Value>(&contents) {
+            Ok(value) => {
+                self.loaded_config_files.push(config_file.to_string());
 
-            let path_entry_config = path_entry_config(config_file);
-            let source = if path_entry_config.package.is_some() {
-                ConfigSource::Package(path_entry_config)
-            } else {
-                ConfigSource::File(config_file.to_string())
-            };
+                let path_entry_config = path_entry_config(config_file);
+                let source = if path_entry_config.package.is_some() {
+                    ConfigSource::Package(path_entry_config)
+                } else {
+                    ConfigSource::File(config_file.to_string())
+                };
 
-            let config_value = ConfigValue::from_value(source, scope.clone(), value);
-            self.raw_config.extend(
-                config_value,
-                ConfigExtendOptions::new().with_strategy(strategy),
-                vec![],
-            );
+                let config_value = ConfigValue::from_value(source, scope.clone(), value);
+                self.raw_config.extend(
+                    config_value,
+                    ConfigExtendOptions::new().with_strategy(strategy),
+                    vec![],
+                );
+            }
+            Err(err) => {
+                omni_print!(format!(
+                    "{} {}",
+                    format!("configuration error: unable to parse {}:", config_file).red(),
+                    err
+                ));
+                exit(1);
+            }
         }
     }
 }

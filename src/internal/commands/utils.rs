@@ -46,6 +46,13 @@ pub fn abs_or_rel_path(path: &str) -> String {
 }
 
 pub fn abs_path(path: impl AsRef<Path>) -> PathBuf {
+    abs_path_from_path(path, None)
+}
+
+pub fn abs_path_from_path<T>(path: T, frompath: Option<T>) -> PathBuf
+where
+    T: AsRef<Path>,
+{
     let path = path.as_ref().normalize();
 
     let absolute_path = if path.is_absolute() {
@@ -55,7 +62,12 @@ pub fn abs_path(path: impl AsRef<Path>) -> PathBuf {
         let path = path.strip_prefix("~").expect("Failed to strip prefix");
         PathBuf::from(home_dir).join(path)
     } else {
-        std::env::current_dir().unwrap().join(path)
+        match frompath {
+            Some(frompath) => frompath.as_ref().join(path),
+            None => std::env::current_dir()
+                .expect("Failed to determine current directory")
+                .join(path),
+        }
     }
     .clean();
 

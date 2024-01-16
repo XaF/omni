@@ -15,6 +15,7 @@ use once_cell::sync::OnceCell;
 use serde::Serialize;
 use tokio::process::Command as TokioCommand;
 
+use crate::internal::cache::utils::Empty;
 use crate::internal::cache::CacheObject;
 use crate::internal::cache::RepositoriesCache;
 use crate::internal::cache::UpEnvironmentsCache;
@@ -516,7 +517,7 @@ impl UpCommand {
                 let wd = workdir(".");
                 if let Some(workdir_id) = wd.id() {
                     if let Some(env_vars) = env_vars.clone() {
-                        up_env.set_env_vars(&workdir_id, env_vars.clone());
+                        up_env.set_env_vars(&workdir_id, env_vars.into());
                     }
                     up_env.set_config_hash(&workdir_id);
                     up_env.set_config_modtimes(&workdir_id);

@@ -16,6 +16,8 @@ use crate::internal::cache::utils;
 use crate::internal::cache::utils::Empty;
 use crate::internal::cache::CacheObject;
 use crate::internal::config;
+use crate::internal::config::parser::EnvOperationConfig;
+use crate::internal::config::parser::EnvOperationEnum;
 use crate::internal::config::up::utils::get_config_mod_times;
 
 const UP_ENVIRONMENTS_CACHE_NAME: &str = "up_environments";
@@ -59,12 +61,12 @@ impl UpEnvironmentsCache {
         true
     }
 
-    pub fn set_env_vars(&mut self, workdir_id: &str, env_vars: HashMap<String, String>) -> bool {
+    pub fn set_env_vars(&mut self, workdir_id: &str, env_vars: Vec<EnvOperationConfig>) -> bool {
         if let Some(env) = self.env.get_mut(workdir_id) {
-            env.env_vars = env_vars;
+            env.env_vars = env_vars.into_iter().map(|e| e.into()).collect();
         } else {
             let mut env = UpEnvironment::new();
-            env.env_vars = env_vars;
+            env.env_vars = env_vars.into_iter().map(|e| e.into()).collect();
             self.env.insert(workdir_id.to_string(), env);
         }
         self.updated();
@@ -73,10 +75,18 @@ impl UpEnvironmentsCache {
 
     pub fn add_env_var(&mut self, workdir_id: &str, key: &str, value: &str) -> bool {
         if let Some(env) = self.env.get_mut(workdir_id) {
-            env.env_vars.insert(key.to_string(), value.to_string());
+            env.env_vars.push(UpEnvVars {
+                name: key.to_string(),
+                value: Some(value.to_string()),
+                operation: EnvOperationEnum::Set,
+            });
         } else {
             let mut env = UpEnvironment::new();
-            env.env_vars.insert(key.to_string(), value.to_string());
+            env.env_vars.push(UpEnvVars {
+                name: key.to_string(),
+                value: Some(value.to_string()),
+                operation: EnvOperationEnum::Set,
+            });
             self.env.insert(workdir_id.to_string(), env);
         }
         self.updated();
@@ -218,8 +228,8 @@ pub struct UpEnvironment {
     pub versions: Vec<UpVersion>,
     #[serde(default = "Vec::new", skip_serializing_if = "Vec::is_empty")]
     pub paths: Vec<PathBuf>,
-    #[serde(default = "HashMap::new", skip_serializing_if = "HashMap::is_empty")]
-    pub env_vars: HashMap<String, String>,
+    #[serde(default = "Vec::new", skip_serializing_if = "Vec::is_empty")]
+    pub env_vars: Vec<UpEnvVars>,
     #[serde(default = "HashMap::new", skip_serializing_if = "HashMap::is_empty")]
     pub config_modtimes: HashMap<String, u64>,
     #[serde(default = "String::new", skip_serializing_if = "String::is_empty")]
@@ -231,7 +241,7 @@ impl UpEnvironment {
         Self {
             versions: Vec::new(),
             paths: Vec::new(),
-            env_vars: HashMap::new(),
+            env_vars: Vec::new(),
             config_modtimes: HashMap::new(),
             config_hash: String::new(),
         }
@@ -280,6 +290,23 @@ impl UpVersion {
             version: version.to_string(),
             dir: dir.to_string(),
             data_path: None,
+        }
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct UpEnvVars {
+    pub name: String,
+    pub value: Option<String>,
+    pub operation: EnvOperationEnum,
+}
+
+impl From<EnvOperationConfig> for UpEnvVars {
+    fn from(env_op: EnvOperationConfig) -> Self {
+        Self {
+            name: env_op.name,
+            value: env_op.value,
+            operation: env_op.operation,
         }
     }
 }
