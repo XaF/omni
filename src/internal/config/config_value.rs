@@ -271,6 +271,10 @@ impl ConfigValue {
         None
     }
 
+    pub fn get_scope(&self) -> ConfigScope {
+        self.scope.clone()
+    }
+
     pub fn current_scope(&self) -> ConfigScope {
         match self.scopes().iter().max() {
             Some(scope) => scope.clone(),

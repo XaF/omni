@@ -10,6 +10,7 @@ use shell_escape::escape;
 use crate::internal::cache::CacheObject;
 use crate::internal::cache::UpEnvironmentsCache;
 use crate::internal::config;
+use crate::internal::config::parser::EnvOperationEnum;
 use crate::internal::config::up::asdf_tool_path;
 use crate::internal::config::up::utils::get_config_mod_times;
 use crate::internal::env::user_home;
@@ -40,12 +41,6 @@ fn check_workdir_config_updated(
     path: Option<String>,
     cache: &UpEnvironmentsCache,
 ) {
-    // TODO: add configuration option to not show that message at all,
-    //       with maybe an option to only show it if the repo has been
-    //       up-ed before (right now it does that by default, but we
-    //       may want an option to show it all the time if a repo can
-    //       be omni up-ed but is not up to date)
-
     let wdpath = path.unwrap_or(".".to_string());
 
     let wdid = if let Some(wdid) = workdir(&wdpath).id() {
@@ -320,12 +315,16 @@ impl DynamicEnv {
             hasher.update(workdir.id().unwrap().as_bytes());
             hasher.update(DATA_SEPARATOR.as_bytes());
 
-            // Add the requested environments to the hash, sorted by key
-            for (key, value) in up_env.env_vars.iter().sorted() {
-                hasher.update(key.as_bytes());
+            // Add the requested environment operations to the hash
+            for env_var in up_env.env_vars.iter() {
+                hasher.update(env_var.operation.as_bytes());
                 hasher.update(DATA_SEPARATOR.as_bytes());
-                hasher.update(value.as_bytes());
+                hasher.update(env_var.name.as_bytes());
                 hasher.update(DATA_SEPARATOR.as_bytes());
+                if let Some(value) = &env_var.value {
+                    hasher.update(value.as_bytes());
+                    hasher.update(DATA_SEPARATOR.as_bytes());
+                }
             }
 
             // Add the requested paths to the hash
@@ -374,12 +373,29 @@ impl DynamicEnv {
         }
 
         if let Some(up_env) = &up_env {
-            // Add the requested environments to the hash, sorted by key
+            // Add the requested environments
             if !up_env.env_vars.is_empty() {
                 self.features.push("env".to_string());
             }
-            for (key, value) in up_env.env_vars.iter() {
-                envsetter.set_value(key, value);
+            for env_var in up_env.env_vars.iter() {
+                match (env_var.operation, env_var.value.clone()) {
+                    (EnvOperationEnum::Set, Some(value)) => {
+                        envsetter.set_value(&env_var.name, &value);
+                    }
+                    (EnvOperationEnum::Set, None) => {
+                        envsetter.unset_value(&env_var.name);
+                    }
+                    (EnvOperationEnum::Prepend, Some(value)) => {
+                        envsetter.prepend_to_list(&env_var.name, &value);
+                    }
+                    (EnvOperationEnum::Append, Some(value)) => {
+                        envsetter.append_to_list(&env_var.name, &value);
+                    }
+                    (EnvOperationEnum::Remove, Some(value)) => {
+                        envsetter.remove_from_list(&env_var.name, &value);
+                    }
+                    (_, None) => {}
+                }
             }
 
             // Add the requested paths

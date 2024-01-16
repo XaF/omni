@@ -18,7 +18,7 @@ Omni configuration files accept the following parameters:
 | `command_match_skip_prompt_if` | [*_skip_prompt_if](parameters/skip-prompt-if) | Configuration of prompt skipping when fuzzy matching a command |
 | `commands` | [commands](parameters/commands) (map) | Commands made available through omni |
 | `config_commands` | [config_commands](parameters/config_commands) | Configuration related to the commands defined in the config file |
-| `env` | map | A key-value map of environment variables to be set when running omni commands |
+| `env` | [env](parameters/env) | Definition of the environment variables to be set when running omni commands |
 | `makefile_commands` | [makefile_commands](parameters/makefile_commands) | Configuration related to the commands generated from Makefile targets |
 | `org` | [org](parameters/org) (list) | Configuration for the default organizations |
 | `path_repo_updates` | [path_repo_updates](parameters/path_repo_updates) | Configuration for the automated updates of the repositories in omni path |
