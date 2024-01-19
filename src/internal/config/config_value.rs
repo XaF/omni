@@ -843,6 +843,10 @@ impl ConfigValue {
     }
 
     fn keypath_transform(keypath: &Vec<String>) -> bool {
+        if keypath.is_empty() {
+            return false;
+        }
+
         match (keypath.len(), keypath[0].as_str()) {
             // path => append => <item> or path => prepend => <item>
             (3, "path") => matches!(keypath[1].as_str(), "append" | "prepend"),
