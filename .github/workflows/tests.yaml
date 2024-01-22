@@ -253,9 +253,8 @@ jobs:
       contents: none
 
     steps:
-    - name: Automerge if Dependabot
-      uses: ahmadnassri/action-dependabot-auto-merge@v2
-      with:
-        target: minor
-        command: 'squash and merge'
-        github-token: ${{ secrets.AUTOMERGE_TOKEN }}
+    - name: Enable auto-merge if Dependabot
+      env:
+        GH_TOKEN: ${{ secrets.AUTOMERGE_TOKEN }}
+      run: |
+        gh pr merge --squash --auto "1"
