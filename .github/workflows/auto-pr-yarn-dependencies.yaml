@@ -325,9 +325,12 @@ jobs:
       - name: Create application token
         uses: actions/create-github-app-token@v1
         id: app-token
+        env:
+          APP_ID: ${{ secrets.OMNICLI_APP_ID }}
+          PRIVATE_KEY: ${{ secrets.OMNICLI_PRIVATE_KEY }}
         with:
-          app-id: ${{ secrets.OMNICLI_APP_ID }}
-          private-key: ${{ secrets.OMNICLI_PRIVATE_KEY }}
+          app-id: ${{ env.APP_ID }}
+          private-key: ${{ env.PRIVATE_KEY }}
 
       - name: Close pull-request
         env:
