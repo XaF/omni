@@ -253,8 +253,11 @@ jobs:
       contents: none
 
     steps:
-    - name: Enable auto-merge if Dependabot
-      env:
-        GH_TOKEN: ${{ secrets.AUTOMERGE_TOKEN }}
-      run: |
-        gh pr merge --squash --auto "1"
+      - name: Checkout current commit
+        uses: actions/checkout@v4
+          
+      - name: Enable auto-merge if Dependabot
+        env:
+          GH_TOKEN: ${{ secrets.AUTOMERGE_TOKEN }}
+        run: |
+          gh pr merge --squash --auto "1"
