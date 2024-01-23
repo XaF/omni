@@ -260,4 +260,4 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.AUTOMERGE_TOKEN }}
         run: |
-          gh pr merge --squash --auto "1"
+          gh pr merge --squash --auto
