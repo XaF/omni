@@ -38,27 +38,39 @@ lazy_static! {
 pub const WORKDIR_CONFIG_FILES: [&str; 2] = [".omni.yaml", ".omni/config.yaml"];
 
 pub fn config_loader(path: &str) -> ConfigLoader {
-    let path = std::fs::canonicalize(path)
-        .unwrap_or(path.to_owned().into())
-        .to_str()
-        .unwrap()
-        .to_owned();
+    let path = if path == "/" {
+        path.to_owned()
+    } else {
+        std::fs::canonicalize(path)
+            .unwrap_or(path.to_owned().into())
+            .to_str()
+            .unwrap()
+            .to_owned()
+    };
+
     let mut config_loader_per_path = CONFIG_LOADER_PER_PATH.lock().unwrap();
     config_loader_per_path.get(&path).clone()
 }
 
 pub fn flush_config_loader(path: &str) {
+    if path == "/" {
+        let mut config_loader_per_path = CONFIG_LOADER_PER_PATH.lock().unwrap();
+        config_loader_per_path.loaders.clear();
+        return;
+    }
+
     let path = std::fs::canonicalize(path)
         .unwrap_or(path.to_owned().into())
         .to_str()
         .unwrap()
         .to_owned();
+
     let mut config_loader_per_path = CONFIG_LOADER_PER_PATH.lock().unwrap();
     config_loader_per_path.loaders.remove(&path);
 }
 
 pub fn global_config_loader() -> ConfigLoader {
-    CONFIG_LOADER_GLOBAL.clone()
+    config_loader("/")
 }
 
 #[derive(Debug)]
@@ -75,8 +87,13 @@ impl ConfigLoaderPerPath {
 
     pub fn get(&mut self, path: &str) -> &ConfigLoader {
         if !self.loaders.contains_key(path) {
-            self.loaders
-                .insert(path.to_owned(), CONFIG_LOADER_GLOBAL.get_local(path));
+            let config_loader = if path == "/" {
+                ConfigLoader::new_global()
+            } else {
+                self.get("/").get_local(path)
+            };
+
+            self.loaders.insert(path.to_owned(), config_loader);
         }
 
         self.loaders.get(path).unwrap()

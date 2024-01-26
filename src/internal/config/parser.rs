@@ -15,7 +15,6 @@ use crate::internal::commands::utils::abs_path_from_path;
 use crate::internal::config::config_loader;
 use crate::internal::config::config_value::ConfigData;
 use crate::internal::config::flush_config_loader;
-use crate::internal::config::global_config_loader;
 use crate::internal::config::up::UpConfig;
 use crate::internal::config::ConfigScope;
 use crate::internal::config::ConfigSource;
@@ -31,16 +30,10 @@ use crate::internal::workdir;
 
 lazy_static! {
     #[derive(Debug, Serialize, Deserialize, Clone)]
-    pub static ref CONFIG_PER_PATH: Mutex<OmniConfigPerPath> = Mutex::new(OmniConfigPerPath::new());
+    static ref CONFIG_PER_PATH: Mutex<OmniConfigPerPath> = Mutex::new(OmniConfigPerPath::new());
 
     #[derive(Debug, Serialize, Deserialize, Clone)]
-    pub static ref CONFIG_GLOBAL: OmniConfig = {
-        let config_loader = global_config_loader();
-        OmniConfig::from_config_value(&config_loader.raw_config)
-    };
-
-    #[derive(Debug, Serialize, Deserialize, Clone)]
-    pub static ref DEFAULT_WORKTREE: String = {
+    static ref DEFAULT_WORKTREE: String = {
         let home = user_home();
         let mut default_worktree_path = format!("{}/git", home);
         if !std::path::Path::new(&default_worktree_path).is_dir() {
@@ -71,16 +64,30 @@ fn parse_duration_or_default(value: Option<&ConfigValue>, default: u64) -> u64 {
 }
 
 pub fn config(path: &str) -> OmniConfig {
-    let path = std::fs::canonicalize(path)
-        .unwrap_or(path.to_owned().into())
-        .to_str()
-        .unwrap()
-        .to_owned();
+    let path = if path == "/" {
+        path.to_owned()
+    } else {
+        std::fs::canonicalize(path)
+            .unwrap_or(path.to_owned().into())
+            .to_str()
+            .unwrap()
+            .to_owned()
+    };
+
     let mut config_per_path = CONFIG_PER_PATH.lock().unwrap();
     config_per_path.get(&path).clone()
 }
 
 pub fn flush_config(path: &str) {
+    if path == "/" {
+        flush_config_loader("/");
+
+        let mut config_per_path = CONFIG_PER_PATH.lock().unwrap();
+        config_per_path.config.clear();
+
+        return;
+    }
+
     let path = std::fs::canonicalize(path)
         .unwrap_or(path.to_owned().into())
         .to_str()
@@ -96,7 +103,7 @@ pub fn flush_config(path: &str) {
 }
 
 pub fn global_config() -> OmniConfig {
-    (*CONFIG_GLOBAL).clone()
+    config("/")
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -113,21 +120,25 @@ impl OmniConfigPerPath {
 
     pub fn get(&mut self, path: &str) -> &OmniConfig {
         // Get the git root path, if any
-        let wd = workdir(path);
-        let key = if let Some(wd_root) = wd.root() {
-            wd_root
+        let key = if path == "/" {
+            path.to_owned()
         } else {
-            path
+            let wd = workdir(path);
+            if let Some(wd_root) = wd.root() {
+                wd_root.to_owned()
+            } else {
+                path.to_owned()
+            }
         };
 
         // Get the config for the path
-        if !self.config.contains_key(key) {
-            let config_loader = config_loader(key);
+        if !self.config.contains_key(&key) {
+            let config_loader = config_loader(&key);
             let new_config = OmniConfig::from_config_value(&config_loader.raw_config);
-            self.config.insert(key.to_owned(), new_config);
+            self.config.insert(key.clone(), new_config);
         }
 
-        self.config.get(key).unwrap()
+        self.config.get(&key).unwrap()
     }
 }
 
