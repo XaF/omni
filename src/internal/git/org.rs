@@ -207,7 +207,7 @@ impl OrgLoader {
         self.orgs
             .iter()
             .filter(|org| !org.is_default())
-            .map(|org| org.clone())
+            .cloned()
             .collect()
     }
 
@@ -762,7 +762,7 @@ pub enum OrgError {
     InvalidHandle(&'static str),
 }
 
-#[derive(Debug, Clone)]
+#[derive(Default, Debug, Clone)]
 pub struct Org {
     pub config: OrgConfig,
     url: Option<Url>,
@@ -771,20 +771,6 @@ pub struct Org {
     enforce_scheme: bool,
     enforce_user: bool,
     enforce_password: bool,
-}
-
-impl Default for Org {
-    fn default() -> Self {
-        Self {
-            config: OrgConfig::default(),
-            url: None,
-            owner: None,
-            repo: None,
-            enforce_scheme: false,
-            enforce_user: false,
-            enforce_password: false,
-        }
-    }
 }
 
 impl Org {
