@@ -44,11 +44,11 @@ omni_setup() {
       return 1
     fi
 
-    export OMNI_TEST_BIN="${test_bin_dir}/omni"
+    OMNI_TEST_BIN="${test_bin_dir}/omni"
   fi
 
   # Make sure that OMNI_TEST_BIN is an absolute path
-  OMNI_TEST_BIN="$(cd "$(dirname "$OMNI_TEST_BIN")" && pwd)/omni"
+  export OMNI_TEST_BIN="$(cd "$(dirname "$OMNI_TEST_BIN")" && pwd)/omni"
 
   # Override home directory for the test
   export HOME="${BATS_TEST_TMPDIR}"
