@@ -10,12 +10,6 @@ setup() {
   # Override the default columns to 100 so we have a controlled
   # environment for testing the output of the help command
   export COLUMNS=100
-
-  echo "STATUUS" >&2
-  echo "HOME => $HOME" >&2
-  echo "config file: $HOME/.config/omni/config.yaml" >&2
-  cat $HOME/.config/omni/config.yaml >&2
-  omni status >&2
 }
 
 
