@@ -3,6 +3,7 @@ use std::process::exit;
 use once_cell::sync::OnceCell;
 use regex::Regex;
 
+use crate::internal::cache::utils::Empty;
 use crate::internal::commands::builtin::HelpCommand;
 use crate::internal::commands::path::omnipath_entries;
 use crate::internal::config::config;
@@ -342,10 +343,10 @@ impl StatusCommand {
             "  ".to_string()
         };
 
-        if ORG_LOADER.orgs.is_empty() {
+        if ORG_LOADER.is_empty() {
             println!("{}{}", prefix, "none".light_red());
         } else {
-            for org in &ORG_LOADER.orgs {
+            for org in ORG_LOADER.printable_orgs() {
                 let mut org_str = org.config.handle.to_string();
                 if let Some(worktree) = &org.config.worktree {
                     org_str.push_str(&format!(" ({})", worktree).light_black());

@@ -12,6 +12,7 @@ use strsim::normalized_damerau_levenshtein;
 use url::Url;
 use walkdir::WalkDir;
 
+use crate::internal::cache::utils::Empty;
 use crate::internal::commands::path::omnipath_entries;
 use crate::internal::config::config;
 use crate::internal::config::OrgConfig;
@@ -161,21 +162,35 @@ pub struct OrgLoader {
     pub orgs: Vec<Org>,
 }
 
+impl Empty for OrgLoader {
+    fn is_empty(&self) -> bool {
+        // Empty here means we have only the default org
+        self.orgs.len() < 2
+    }
+}
+
 impl OrgLoader {
     pub fn new() -> Self {
         let mut orgs = vec![];
 
+        // Get all the orgs from the environment
         for org in omni_org_env() {
             if let Ok(org) = Org::new(org.clone()) {
                 orgs.push(org);
             }
         }
 
+        // Get all the orgs from the config
         for org in config(".").org.iter() {
             if let Ok(org) = Org::new(org.clone()) {
                 orgs.push(org);
             }
         }
+
+        // Add a default org that has _no_ parameter and
+        // that is not trusted; it will be used when trying
+        // to go over the find repositories in order
+        orgs.push(Org::default());
 
         Self { orgs }
     }
@@ -186,6 +201,14 @@ impl OrgLoader {
 
     pub fn orgs(&self) -> &Vec<Org> {
         &self.orgs
+    }
+
+    pub fn printable_orgs(&self) -> Vec<Org> {
+        self.orgs
+            .iter()
+            .filter(|org| !org.is_default())
+            .cloned()
+            .collect()
     }
 
     pub fn search_glob_org(&self, repo: &str) -> HashSet<ResultEntry> {
@@ -603,9 +626,31 @@ impl OrgLoader {
             }
         }
 
+        // Check if any matching value is a perfect match
+        for found in all_repos.iter() {
+            let git = git_env(&found.abspath.to_string_lossy());
+
+            let origin = match git.origin() {
+                Some(origin) => origin,
+                None => continue,
+            };
+
+            let found_repo = match Repo::parse(origin) {
+                Ok(found_repo) => found_repo,
+                Err(_) => continue,
+            };
+
+            if repo_url.matches(&found_repo) {
+                return Some(found.abspath.to_path_buf());
+            }
+        }
+
+        // Otherwise, we need to score the results and ask the user
+        // if there's a match that they want to use
         let mut with_score = all_repos
             .iter_mut()
             .map(|found| {
+                // TODO: set scores related to <host>/<org>/<repo>, <org>/<repo>, and <repo> formats too
                 let absscore =
                     normalized_damerau_levenshtein(repo, found.abspath.to_str().unwrap());
                 let relscore = normalized_damerau_levenshtein(repo, found.relpath.as_str());
@@ -717,10 +762,10 @@ pub enum OrgError {
     InvalidHandle(&'static str),
 }
 
-#[derive(Debug, Clone)]
+#[derive(Default, Debug, Clone)]
 pub struct Org {
     pub config: OrgConfig,
-    url: Url,
+    url: Option<Url>,
     pub owner: Option<String>,
     repo: Option<String>,
     enforce_scheme: bool,
@@ -769,7 +814,7 @@ impl Org {
 
         Ok(Self {
             config,
-            url: parsed_url,
+            url: Some(parsed_url),
             owner,
             repo,
             enforce_scheme,
@@ -795,14 +840,28 @@ impl Org {
         Some(format_path(&self.worktree(), &git_url))
     }
 
+    pub fn is_default(&self) -> bool {
+        self.url.is_none()
+    }
+
     pub fn hosts_repo(&self, repo: &str) -> bool {
         if let Ok(url) = safe_git_url_parse(repo) {
-            return (!self.enforce_scheme || self.url.scheme() == url.scheme.to_string())
-                && (self.url.port() == url.port || self.url.port_or_known_default() == url.port)
+            let self_url = match self.url.as_ref() {
+                Some(self_url) => self_url,
+
+                // If url is None, it means it's the default, org,
+                // and the default org matches all as long as the
+                // parsed repository has at least host, owner and
+                // name
+                None => return url.host.is_some() && url.owner.is_some() && !url.name.is_empty(),
+            };
+
+            return (!self.enforce_scheme || self_url.scheme() == url.scheme.to_string())
+                && (self_url.port() == url.port || self_url.port_or_known_default() == url.port)
                 && (!self.enforce_user
-                    || self.url.username() == url.user.as_deref().unwrap_or(""))
-                && (!self.enforce_password || self.url.password() == url.token.as_deref())
-                && self.url.host_str() == url.host.as_deref()
+                    || self_url.username() == url.user.as_deref().unwrap_or(""))
+                && (!self.enforce_password || self_url.password() == url.token.as_deref())
+                && self_url.host_str() == url.host.as_deref()
                 && (self.owner.is_none() || self.owner == url.owner)
                 && (self.repo.is_none() || self.repo == Some(url.name));
         }
@@ -819,114 +878,154 @@ impl Org {
 
     pub fn get_repo_git_url(&self, repo: &str) -> Option<GitUrl> {
         if let Ok(repo) = Repo::parse(repo) {
-            // If the repo has a scheme, we need to make sure it matches the org's scheme
-            if repo.scheme_prefix && self.enforce_scheme {
-                let scheme = repo.scheme.unwrap();
-                let org_scheme = self.url.scheme();
-                if scheme != org_scheme {
-                    return None;
+            if let Some(self_url) = self.url.as_ref() {
+                // If the repo has a scheme, we need to make sure it matches the org's scheme
+                if repo.scheme_prefix && self.enforce_scheme {
+                    if let Some(scheme) = &repo.scheme {
+                        let org_scheme = self_url.scheme();
+                        if scheme != org_scheme {
+                            return None;
+                        }
+                    }
                 }
-            }
 
-            // If the repo has a host, we need to make sure it matches the org's host
-            if repo.host.is_some() {
-                let host = repo.host.unwrap();
-                let org_host = self.url.host_str().unwrap();
-                if host != org_host {
-                    return None;
-                }
-            }
-
-            // If the repo has a user, we need to make sure it matches the org's user (if any)
-            if repo.user.is_some() && self.enforce_user {
-                let user = repo.user.unwrap();
-                let org_user = self.url.username();
-                if user != org_user {
-                    return None;
-                }
-            }
-
-            // If the repo has a password, we need to make sure it matches the org's password (if any)
-            if repo.password.is_some() && self.enforce_password {
-                let token = repo.password.unwrap();
-                if let Some(org_token) = self.url.password() {
-                    if token != org_token {
+                // If the repo has a host, we need to make sure it matches the org's host
+                if let Some(host) = &repo.host {
+                    let org_host = self_url.host_str().unwrap();
+                    if host != org_host {
                         return None;
                     }
-                } else {
-                    return None;
                 }
-            }
 
-            // If the repo has a port, we need to make sure it matches the org's port (if any)
-            if repo.port.is_some() {
-                let port = repo.port.unwrap();
-                if let Some(org_port) = self.url.port() {
-                    if port != org_port {
+                // If the repo has a user, we need to make sure it matches the org's user (if any)
+                if self.enforce_user {
+                    if let Some(user) = &repo.user {
+                        let org_user = self_url.username();
+                        if user != org_user {
+                            return None;
+                        }
+                    }
+                }
+
+                // If the repo has a password, we need to make sure it matches the org's password (if any)
+                if repo.password.is_some() && self.enforce_password {
+                    let token = repo.password.clone().unwrap();
+                    if let Some(org_token) = self_url.password() {
+                        if token != org_token {
+                            return None;
+                        }
+                    } else {
                         return None;
                     }
-                } else {
+                }
+
+                // If the repo has a port, we need to make sure it matches the org's port (if any)
+                if repo.port.is_some() {
+                    let port = repo.port.unwrap();
+                    if let Some(org_port) = self_url.port() {
+                        if port != org_port {
+                            return None;
+                        }
+                    } else {
+                        return None;
+                    }
+                }
+
+                // If we don't have an owner at all, we can't match here
+                if repo.owner.is_none() && self.owner.is_none() {
                     return None;
+                }
+
+                // If the repo has an owner, we need to make sure it matches the org's owner (if any)
+                if repo.owner.is_some() && self.owner.is_some() {
+                    let owner = repo.owner.clone().unwrap();
+                    let org_owner = self.owner.clone().unwrap();
+                    if owner != org_owner {
+                        return None;
+                    }
+                }
+
+                // If the repo has a repo name, we need to make sure it matches the org's repo name (if any)
+                if self.repo.is_some() {
+                    let name = repo.name.to_string();
+                    let org_name = self.repo.clone().unwrap();
+                    if name != org_name {
+                        return None;
+                    }
                 }
             }
 
-            // If we don't have an owner at all, we can't match here
-            if repo.owner.is_none() && self.owner.is_none() {
-                return None;
-            }
-
-            // If the repo has an owner, we need to make sure it matches the org's owner (if any)
-            if repo.owner.is_some() && self.owner.is_some() {
-                let owner = repo.owner.clone().unwrap();
-                let org_owner = self.owner.clone().unwrap();
-                if owner != org_owner {
-                    return None;
-                }
-            }
-
-            // If the repo has a repo name, we need to make sure it matches the org's repo name (if any)
-            if self.repo.is_some() {
-                let name = repo.name.to_string();
-                let org_name = self.repo.clone().unwrap();
-                if name != org_name {
-                    return None;
-                }
-            }
-
-            let owner = self
-                .owner
-                .clone()
-                .unwrap_or(repo.owner.unwrap_or("".to_string()));
-            let name = self.repo.clone().unwrap_or(repo.name.to_string());
-            let user = if self.url.username().is_empty() {
-                None
-            } else {
-                Some(self.url.username().to_string())
+            let host = match (&self.url, repo.host) {
+                (Some(self_url), _) => self_url.host_str().map(|h| h.to_string()),
+                (_, Some(host)) => Some(host),
+                (None, None) => return None,
             };
-            let scheme = if self.url.scheme() == "ssh" {
+
+            let owner = match (&self.owner, &repo.owner) {
+                (Some(owner), _) => owner,
+                (_, Some(owner)) => owner,
+                (None, None) => return None,
+            };
+
+            let name = if let Some(name) = &self.repo {
+                name.clone()
+            } else {
+                repo.name
+            };
+
+            let scheme = match (&self.url, repo.scheme) {
+                (Some(self_url), _) => self_url.scheme().to_string(),
+                (_, Some(scheme)) => scheme,
+                (None, None) => "https".to_string(),
+            };
+            let scheme = if scheme == "ssh" {
                 Scheme::Ssh
             } else {
                 Scheme::Https
             };
 
+            let user = match (&self.url, repo.user) {
+                (Some(self_url), _) => {
+                    if self_url.username().is_empty() {
+                        None
+                    } else {
+                        Some(self_url.username().to_string())
+                    }
+                }
+                (_, Some(user)) => Some(user),
+                (None, None) => None,
+            };
+
+            let password = match (&self.url, repo.password) {
+                (Some(self_url), _) => self_url.password().map(|t| t.to_string()),
+                (_, Some(password)) => Some(password),
+                (None, None) => None,
+            };
+
+            let port = match (&self.url, repo.port) {
+                (Some(self_url), _) => self_url.port(),
+                (_, Some(port)) => Some(port),
+                (None, None) => None,
+            };
+
             let git_url = GitUrl {
-                host: self.url.host_str().map(|h| h.to_string()),
-                name,
+                host,
+                name: name.clone(),
                 owner: Some(owner.clone()),
                 organization: None,
-                fullname: format!("{}/{}", owner.clone(), repo.name),
+                fullname: format!("{}/{}", owner.clone(), name.clone()),
                 scheme,
                 user,
-                token: self.url.password().map(|t| t.to_string()),
-                port: self.url.port(),
+                token: password,
+                port,
                 path: format!(
                     "{}{}/{}",
-                    if self.url.scheme() == "ssh" { "" } else { "/" },
+                    if scheme == Scheme::Ssh { "" } else { "/" },
                     owner.clone(),
-                    repo.name
+                    name,
                 ),
                 git_suffix: repo.git_suffix,
-                scheme_prefix: self.url.scheme() != "ssh" || self.url.port().is_some(),
+                scheme_prefix: scheme != Scheme::Ssh || port.is_some(),
             };
 
             return Some(git_url);
@@ -1007,6 +1106,38 @@ impl Repo {
             }
         }
         Err(RepoError::ParseError)
+    }
+
+    pub fn matches(&self, other: &Self) -> bool {
+        if self.name != other.name {
+            return false;
+        }
+
+        if self.owner.is_some() && other.owner.is_some() && self.owner != other.owner {
+            return false;
+        }
+
+        if self.host.is_some() && other.host.is_some() && self.host != other.host {
+            return false;
+        }
+
+        if self.port.is_some() && other.port.is_some() && self.port != other.port {
+            return false;
+        }
+
+        if self.scheme.is_some() && other.scheme.is_some() && self.scheme != other.scheme {
+            return false;
+        }
+
+        if self.user.is_some() && other.user.is_some() && self.user != other.user {
+            return false;
+        }
+
+        if self.password.is_some() && other.password.is_some() && self.password != other.password {
+            return false;
+        }
+
+        true
     }
 
     pub fn rel_path(&self) -> String {
