@@ -138,7 +138,7 @@ fn term_columns() -> usize {
         return width;
     }
 
-    return 80;
+    80
 }
 
 pub fn term_width() -> usize {

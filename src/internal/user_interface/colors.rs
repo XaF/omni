@@ -56,7 +56,7 @@ pub fn strip_colors_if_needed<T: ToString>(input: T) -> String {
     if colors_enabled() {
         input.to_string()
     } else {
-        strip_colors(&input.to_string())
+        strip_colors(input)
     }
 }
 
