@@ -207,3 +207,18 @@ jobs:
         shell: bash
         run: |
           ./omni status
+
+      - name: Setup bats
+        shell: bash
+        run: |
+          bats_dir="${TMPDIR:-/tmp}/bats-core"
+          git clone https://github.com/bats-core/bats-core.git "${bats_dir}"
+          cd "${bats_dir}"
+          ./install.sh "${HOME}/.local"
+
+      - name: Run bats tests
+        shell: bash
+        env:
+          OMNI_TEST_BIN: ./omni
+        run: |
+          bats --no-tempdir-cleanup tests/
