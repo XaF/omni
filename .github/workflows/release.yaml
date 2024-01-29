@@ -186,7 +186,7 @@ jobs:
           repositories: ${{ env.HOMEBREW_REPOSITORY_NAME }}
 
       - name: Send repository dispatch with update-formulae event
-        uses: peter-evans/repository-dispatch@v2
+        uses: peter-evans/repository-dispatch@v3
         with:
           token: ${{ steps.app-token.outputs.token }}
           repository: ${{ env.HOMEBREW_REPOSITORY_OWNER }}/${{ env.HOMEBREW_REPOSITORY_NAME }}
