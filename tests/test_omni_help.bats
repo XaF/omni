@@ -12,6 +12,9 @@ setup() {
   export COLUMNS=100
 
   echo "STATUUS" >&2
+  echo "HOME => $HOME" >&2
+  echo "config file: $HOME/.config/omni/config.yaml" >&2
+  cat $HOME/.config/omni/config.yaml >&2
   omni status >&2
 }
 
