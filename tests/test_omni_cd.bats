@@ -22,11 +22,11 @@ apply_pattern() {
   # - %{host} with the host
   # - %{org} with the org
   # - %{repo} with the repo
+  # And we do that with `perl` as it is available
+  # on both Linux and macOS
 
-  echo "${pattern}" | sed \
-  -e "s|%{host}|${host}|g" \
-    -e "s|%{org}|${org}|g" \
-    -e "s|%{repo}|${repo}|g"
+  echo "${pattern}" | perl -pe \
+    "s|%{host}|${host}|g; s|%{org}|${org}|g; s|%{repo}|${repo}|g"
 }
 
 test_cd() {
