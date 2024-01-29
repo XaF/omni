@@ -134,6 +134,11 @@ impl ConfigLoader {
             raw_config: ConfigValue::default(),
         };
 
+        eprintln!("DEBUUUUG => importing config file: {}", config_file);
+        eprintln!("DEBUUUUG => user home: {}", user_home());
+        eprintln!("DEBUUUUG => xdg config home: {}", xdg_config_home());
+        eprintln!("DEBUUUUG => config home: {}", config_home());
+
         new_config_loader.import_config_files(Self::user_config_files(), ConfigScope::User);
 
         new_config_loader
@@ -299,7 +304,6 @@ impl ConfigLoader {
     }
 
     pub fn import_config_file(&mut self, config_file: &String, scope: ConfigScope) {
-        eprintln!("DEBUUUUG => importing config file: {}", config_file);
         self.import_config_file_with_strategy(config_file, scope, ConfigExtendStrategy::Default)
     }
 
