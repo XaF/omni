@@ -43,7 +43,12 @@ omni_setup() {
       echo "Could not find the omni binary at ${test_bin_dir}/omni" >&2
       return 1
     fi
+
+    export OMNI_TEST_BIN="${test_bin_dir}/omni"
   fi
+
+  # Make sure that OMNI_TEST_BIN is an absolute path
+  OMNI_TEST_BIN="$(cd "$(dirname "$OMNI_TEST_BIN")" && pwd)/omni"
 
   # Override home directory for the test
   export HOME="${BATS_TEST_TMPDIR}"
@@ -56,15 +61,17 @@ omni_setup() {
   # Disable the updates by default for the tests
   export OMNI_SKIP_UPDATE=true
 
-  # Update the PATH to be only the system's binaries, and
-  # the bin directory of omni
-  export PATH="${test_bin_dir}:/opt/homebrew/bin:/opt/homebrew/opt/coreutils/libexec/gnubin/:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+  # Update the PATH to be only the system's binaries
+  export PATH="/opt/homebrew/bin:/opt/homebrew/opt/coreutils/libexec/gnubin/:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
 
   # Add omni's shell integration to the temporary directory
-  echo "command -v omni >/dev/null && eval \"\$(omni hook init bash)\"" >> "${BATS_TEST_TMPDIR}/.bashrc" || echo "ERROR ?" >&2
+  echo "eval \"\$(\"${OMNI_TEST_BIN}\" hook init bash)\"" >> "${BATS_TEST_TMPDIR}/.bashrc" || echo "ERROR ?" >&2
 
   # Source the .bashrc
   source "${BATS_TEST_TMPDIR}/.bashrc" || echo -n >&2
+
+  # Confirm omni's shell integration in case of error
+  type omni >&2 || echo "ERROR: omni not found" >&2
 
   # Switch current directory to that new temp one
   cd "${BATS_TEST_TMPDIR}"
