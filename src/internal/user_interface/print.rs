@@ -125,12 +125,24 @@ macro_rules! omni_error {
     };
 }
 
+fn term_columns() -> usize {
+    // If the COLUMNS environment variable is set, we respect it
+    if let Ok(columns) = std::env::var("COLUMNS") {
+        if let Ok(columns) = columns.parse::<usize>() {
+            return columns;
+        }
+    }
+
+    // Otherwise, we try to get the terminal size
+    if let Some((width, _)) = term_size::dimensions() {
+        return width;
+    }
+
+    80
+}
+
 pub fn term_width() -> usize {
-    let width = if let Some((width, _)) = term_size::dimensions() {
-        width
-    } else {
-        80
-    };
+    let width = term_columns();
 
     let max = 120;
     if width < max + 4 {
@@ -182,6 +194,11 @@ pub fn wrap_text(text: &str, width: usize) -> Vec<String> {
         line_width += 1;
     }
     lines.push(line);
+
+    // Trim trailing whitespaces for each line
+    lines.iter_mut().for_each(|line| {
+        *line = line.trim_end().to_string();
+    });
 
     lines
 }
