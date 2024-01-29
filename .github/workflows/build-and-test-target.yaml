@@ -182,6 +182,11 @@ jobs:
         with:
           ref: ${{ inputs.git_sha || github.sha }}
 
+      - name: Disable safe.directory
+        if: matrix.container != ''
+        run: |
+          git config --global --add safe.directory '*'
+
       - name: Download artifact for ${{ inputs.suffix }}
         uses: actions/download-artifact@v4
         with:
