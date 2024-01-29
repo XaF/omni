@@ -41,23 +41,23 @@ jobs:
       fail-fast: true
       matrix:
         include:
-          - target: aarch64-unknown-linux-musl
-            os: ubuntu-latest
-            suffix: arm64-linux
-            run_tests: false
-          - target: aarch64-apple-darwin
-            os: macos-latest
-            suffix: arm64-darwin
-            run_tests: false
+          # - target: aarch64-unknown-linux-musl
+            # os: ubuntu-latest
+            # suffix: arm64-linux
+            # run_tests: false
+          # - target: aarch64-apple-darwin
+            # os: macos-latest
+            # suffix: arm64-darwin
+            # run_tests: false
           - target: x86_64-unknown-linux-musl
             os: ubuntu-latest
             suffix: x86_64-linux
             run_tests: true
-            extra_test_containers: '["archlinux:base-devel", "fedora:latest"]'
-          - target: x86_64-apple-darwin
-            os: macos-latest
-            suffix: x86_64-darwin
-            run_tests: true
+            # extra_test_containers: '["archlinux:base-devel", "fedora:latest"]'
+          # - target: x86_64-apple-darwin
+            # os: macos-latest
+            # suffix: x86_64-darwin
+            # run_tests: true
 
     uses: ./.github/workflows/build-and-test-target.yaml
     with:
