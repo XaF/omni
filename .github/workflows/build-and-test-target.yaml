@@ -174,7 +174,7 @@ jobs:
             yes | sudo pacman -Sy --noconfirm perl git
           elif command -v dnf >/dev/null; then
             echo "fastestmirror=1" | sudo tee -a /etc/dnf/dnf.conf
-            sudo dnf -y install perl-Digest-SHA git
+            sudo dnf -y install perl-Digest-SHA git diffutils
           fi
 
       - name: Checkout current commit
