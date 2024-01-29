@@ -9,6 +9,7 @@ use crate::internal::commands::void::VoidCommand;
 use crate::internal::commands::Command;
 use crate::internal::config::CommandSyntax;
 use crate::internal::config::SyntaxOptArg;
+use crate::internal::user_interface::colors::strip_colors_if_needed;
 use crate::internal::user_interface::term_width;
 use crate::internal::user_interface::wrap_blocks;
 use crate::internal::user_interface::wrap_text;
@@ -204,7 +205,10 @@ impl HelpCommand {
 
         let help = command.help();
         if !help.is_empty() {
-            eprintln!("\n{}", wrap_blocks(&help, max_width).join("\n"));
+            eprintln!(
+                "\n{}",
+                wrap_blocks(&strip_colors_if_needed(help), max_width).join("\n")
+            );
         }
 
         let is_shadow_name = command
@@ -244,7 +248,8 @@ impl HelpCommand {
                     let missing_just = ljust - arg.name.len();
                     let str_name = format!("  {}{}", arg.name.cyan(), " ".repeat(missing_just));
                     let help = if let Some(desc) = &arg.desc {
-                        wrap_text(desc, max_width - ljust).join(join_str.as_str())
+                        wrap_text(&strip_colors_if_needed(desc), max_width - ljust)
+                            .join(join_str.as_str())
                     } else {
                         "".to_string()
                     };
@@ -370,7 +375,8 @@ impl HelpCommand {
             let missing_just = ljust - all_names_len - num_folded_len;
             let str_name = format!("  {}{}{}", all_names, num_folded, " ".repeat(missing_just));
 
-            let help = wrap_text(&command.help_short(), help_just).join(join_str.as_str());
+            let help = wrap_text(&strip_colors_if_needed(&command.help_short()), help_just)
+                .join(join_str.as_str());
 
             eprintln!("{}{}", str_name, help);
         }

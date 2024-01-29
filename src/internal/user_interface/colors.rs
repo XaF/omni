@@ -1,6 +1,8 @@
 use is_terminal::IsTerminal;
 use lazy_static::lazy_static;
 
+use regex::Regex;
+
 use crate::internal::env::shell_is_interactive;
 
 pub const BLACK: &str = "30";
@@ -43,7 +45,24 @@ pub const RESET_STRIKETHROUGH: &str = "29";
 pub const RESET: &str = "0";
 
 lazy_static! {
-    pub static ref COLORS_ENABLED: bool = enable_colors();
+    static ref COLORS_ENABLED: bool = enable_colors();
+}
+
+pub fn colors_enabled() -> bool {
+    *COLORS_ENABLED
+}
+
+pub fn strip_colors_if_needed<T: ToString>(input: T) -> String {
+    if colors_enabled() {
+        input.to_string()
+    } else {
+        strip_colors(&input.to_string())
+    }
+}
+
+pub fn strip_colors<T: ToString>(input: T) -> String {
+    let re = Regex::new(r"\x1B\[([0-9]{1,2}(;[0-9]{1,2})?)?[m|K]").unwrap();
+    re.replace_all(&input.to_string(), "").to_string()
 }
 
 // http://bixense.com/clicolors/
@@ -123,7 +142,7 @@ pub trait StringColor {
 // Implement the extension trait for the existing type
 impl<T: ToString> StringColor for T {
     fn colorize(&self, color: &str) -> String {
-        if *COLORS_ENABLED {
+        if colors_enabled() {
             self.force_colorize(color)
         } else {
             self.to_string()
@@ -135,7 +154,7 @@ impl<T: ToString> StringColor for T {
     }
 
     fn noncolormodifier(&self, modifier: &str, cancel_modifier: &str) -> String {
-        if *COLORS_ENABLED {
+        if colors_enabled() {
             self.force_noncolormodifier(modifier, cancel_modifier)
         } else {
             self.to_string()
