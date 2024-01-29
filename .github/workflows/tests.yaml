@@ -66,6 +66,7 @@ jobs:
               - 'build.rs'
               - 'shell_integration/**'
               - 'src/**'
+              - 'tests/**'
 
       - name: List all changed files
         run: |
@@ -255,7 +256,7 @@ jobs:
     steps:
       - name: Checkout current commit
         uses: actions/checkout@v4
-          
+
       - name: Enable auto-merge if Dependabot
         env:
           GH_TOKEN: ${{ secrets.AUTOMERGE_TOKEN }}
