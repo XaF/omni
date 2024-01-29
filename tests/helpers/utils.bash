@@ -53,6 +53,13 @@ omni_setup() {
   # Override home directory for the test
   export HOME="${BATS_TEST_TMPDIR}"
 
+  # Let's unset the XDG variables to make sure that omni
+  # does not use them for the tests
+  unset XDG_CONFIG_HOME
+  unset XDG_DATA_HOME
+  unset XDG_CACHE_HOME
+  unset XDG_RUNTIME_DIR
+
   # Override global git configuration
   git config --global user.email "omni@potent.tool"
   git config --global user.name "omni"
