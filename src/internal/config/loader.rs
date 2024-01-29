@@ -299,6 +299,7 @@ impl ConfigLoader {
     }
 
     pub fn import_config_file(&mut self, config_file: &String, scope: ConfigScope) {
+        eprintln!("DEBUUUUG => importing config file: {}", config_file);
         self.import_config_file_with_strategy(config_file, scope, ConfigExtendStrategy::Default)
     }
 
