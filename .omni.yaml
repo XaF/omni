@@ -73,3 +73,9 @@ commands:
 
       # Reset Cargo.toml
       git checkout Cargo.toml
+
+  test:
+    desc: Runs the tests
+    run: |
+      cargo test
+      bats tests/
