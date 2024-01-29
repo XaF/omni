@@ -133,5 +133,9 @@ EOF
   if [[ "${HAS_WORKTREE}" = false ]]; then
     echo 'worktree: ~/git' >> "${config_file}"
   fi
+
+  echo "==== OMNI CONFIG === BEGIN ====" >&2
+  cat "${config_file}" >&2
+  echo "==== OMNI CONFIG === END   ====" >&2
 }
 
