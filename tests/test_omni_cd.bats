@@ -10,8 +10,6 @@ setup() {
   setup_git_dir "git/github.com/test1org/test1repo" "git@github.com:test1org/test1repo.git"
   setup_git_dir "git/github.com/test2org/test2repo" "https://github.com/test2org/test2repo.git"
   setup_git_dir "git/bitbucket.org/test3org/test3repo" "https://bitbucket.org/test3org/test3repo.git"
-
-  printenv | sort >&2
 }
 
 apply_pattern() {
