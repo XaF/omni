@@ -782,6 +782,16 @@ pub struct OrgConfig {
     pub worktree: Option<String>,
 }
 
+impl Default for OrgConfig {
+    fn default() -> Self {
+        Self {
+            handle: "".to_string(),
+            trusted: false,
+            worktree: None,
+        }
+    }
+}
+
 impl OrgConfig {
     pub fn from_str(value_str: &str) -> Self {
         let mut split = value_str.split('=');
