@@ -224,11 +224,11 @@ jobs:
       - name: Show bats version
         shell: bash
         run: |
-          bats --version
+          "${HOME}/.local/bats" --version
 
       - name: Run bats tests
         shell: bash
         env:
           OMNI_TEST_BIN: ./omni
         run: |
-          bats --no-tempdir-cleanup tests/
+          "${HOME}/.local/bats" --no-tempdir-cleanup tests/
