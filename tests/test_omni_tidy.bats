@@ -4,6 +4,8 @@ load 'helpers/utils'
 
 setup() {
   omni_setup 3>&-
+
+  printenv | sort >&2
 }
 
 # bats test_tags=omni:tidy
