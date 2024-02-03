@@ -411,7 +411,7 @@ impl UpCommand {
         let mut suggest_config = None;
         let mut suggest_config_updated = false;
         let suggest_config_value = config.suggest_config.config();
-        if self.is_up() {
+        if self.is_up() && !suggest_config_value.is_null() {
             if self.should_suggest_config() {
                 suggest_config = Some(suggest_config_value);
             } else if let Some(wd_id) = wd.id() {
@@ -1401,11 +1401,10 @@ fn color_diff(diff: &str) -> String {
 }
 
 fn fingerprint<T: Serialize>(value: &T) -> u64 {
-    let string = serde_yaml::to_string(value);
-    if string.is_err() {
-        return 0;
-    }
-    let string = string.unwrap();
+    let string = match serde_yaml::to_string(value) {
+        Ok(string) => string,
+        Err(_err) => return 0,
+    };
 
     let mut hasher = Blake3Hasher::new();
     hasher.update(string.as_bytes());
