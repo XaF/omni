@@ -10,6 +10,7 @@ use std::sync::Mutex;
 use blake3::Hasher;
 use gethostname::gethostname;
 use git2::Repository;
+use git_url_parse::GitUrl;
 use is_terminal::IsTerminal;
 use lazy_static::lazy_static;
 use once_cell::sync::OnceCell;
@@ -486,6 +487,15 @@ impl GitRepoEnv {
             Some(origin) => Some(origin.as_str()),
             None => None,
         }
+    }
+
+    pub fn url(&self) -> Option<GitUrl> {
+        if let Some(origin) = &self.origin {
+            if let Ok(url) = safe_git_url_parse(origin) {
+                return Some(url);
+            }
+        }
+        None
     }
 
     pub fn id(&self) -> Option<String> {

@@ -116,6 +116,12 @@ impl Serialize for ConfigValue {
     }
 }
 
+impl Default for ConfigValue {
+    fn default() -> Self {
+        Self::new(ConfigSource::Null, ConfigScope::Null, None)
+    }
+}
+
 impl ConfigValue {
     pub fn new(source: ConfigSource, scope: ConfigScope, value: Option<Box<ConfigData>>) -> Self {
         Self {
@@ -133,12 +139,16 @@ impl ConfigValue {
         )
     }
 
-    pub fn default() -> Self {
+    pub fn empty() -> Self {
         Self::from_value(
             ConfigSource::Default,
             ConfigScope::Default,
             serde_yaml::Value::Mapping(serde_yaml::Mapping::new()),
         )
+    }
+
+    pub fn is_null(&self) -> bool {
+        self.value.is_none() || self.as_serde_yaml().is_null()
     }
 
     pub fn from_value(source: ConfigSource, scope: ConfigScope, value: serde_yaml::Value) -> Self {
@@ -854,6 +864,10 @@ impl ConfigValue {
             (3, "org") => matches!(keypath[2].as_str(), "worktree"),
             // cache => path
             (2, "cache") => matches!(keypath[1].as_str(), "path"),
+            // suggest_clone => template_file
+            (2, "suggest_clone") => matches!(keypath[1].as_str(), "template_file"),
+            // suggest_config => template_file
+            (2, "suggest_config") => matches!(keypath[1].as_str(), "template_file"),
             // worktree
             (1, "worktree") => true,
             _ => false,

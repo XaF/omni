@@ -1035,12 +1035,12 @@ impl Org {
 }
 
 #[derive(Debug, Clone)]
-enum RepoError {
+pub enum RepoError {
     ParseError,
 }
 
 #[derive(Debug, Clone)]
-struct Repo {
+pub struct Repo {
     name: String,
     owner: Option<String>,
     host: Option<String>,
@@ -1140,6 +1140,45 @@ impl Repo {
         true
     }
 
+    pub fn partial_resolve(&self, repo: &str) -> Result<Self, RepoError> {
+        let parsed = Repo::parse(repo)?;
+        let mut resolved = self.clone();
+
+        if parsed.name != self.name {
+            resolved.name = parsed.name;
+            resolved.git_suffix = parsed.git_suffix;
+        } else if parsed.git_suffix != resolved.git_suffix {
+            resolved.git_suffix = parsed.git_suffix;
+        }
+
+        if parsed.owner.is_some() {
+            resolved.owner = parsed.owner;
+        }
+
+        if parsed.host.is_some() {
+            resolved.host = parsed.host;
+        }
+
+        if parsed.port.is_some() {
+            resolved.port = parsed.port;
+        }
+
+        if parsed.scheme.is_some() {
+            resolved.scheme = parsed.scheme;
+            resolved.scheme_prefix = parsed.scheme_prefix;
+        }
+
+        if parsed.user.is_some() {
+            resolved.user = parsed.user;
+        }
+
+        if parsed.password.is_some() {
+            resolved.password = parsed.password;
+        }
+
+        Ok(resolved)
+    }
+
     pub fn rel_path(&self) -> String {
         self.rel_path
             .get_or_init(|| {
@@ -1184,5 +1223,55 @@ impl Repo {
                 path
             })
             .clone()
+    }
+}
+
+impl ToString for Repo {
+    fn to_string(&self) -> String {
+        if self.host.is_none() || self.owner.is_none() || self.name.is_empty() {
+            return String::new();
+        }
+
+        let mut repo = String::new();
+
+        if self.scheme_prefix {
+            if let Some(scheme) = &self.scheme {
+                repo.push_str(scheme.as_str());
+                repo.push_str("://");
+            }
+        }
+
+        if self.user.is_some() || self.password.is_some() {
+            if let Some(user) = &self.user {
+                repo.push_str(user.as_str());
+            }
+            if let Some(password) = &self.password {
+                repo.push(':');
+                repo.push_str(password.as_str());
+            }
+            repo.push('@');
+        }
+
+        repo.push_str(self.host.clone().unwrap().as_str());
+        if let Some(port) = &self.port {
+            repo.push(':');
+            repo.push_str(port.to_string().as_str());
+        }
+
+        if !self.scheme_prefix && self.scheme.clone().unwrap_or_default() == "ssh" {
+            repo.push(':');
+        } else {
+            repo.push('/');
+        }
+        repo.push_str(self.owner.clone().unwrap().as_str());
+
+        repo.push('/');
+        repo.push_str(self.name.as_str());
+
+        if self.git_suffix {
+            repo.push_str(".git");
+        }
+
+        repo
     }
 }

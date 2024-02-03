@@ -131,7 +131,7 @@ impl ConfigLoader {
     fn new_global() -> Self {
         let mut new_config_loader = Self {
             loaded_config_files: vec![],
-            raw_config: ConfigValue::default(),
+            raw_config: ConfigValue::empty(),
         };
 
         new_config_loader.import_config_files(Self::user_config_files(), ConfigScope::User);

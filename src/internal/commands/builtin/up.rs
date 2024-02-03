@@ -22,7 +22,6 @@ use crate::internal::cache::UpEnvironmentsCache;
 use crate::internal::commands::builtin::HelpCommand;
 use crate::internal::commands::Command;
 use crate::internal::config::config;
-use crate::internal::config::config_loader;
 use crate::internal::config::flush_config;
 use crate::internal::config::global_config;
 use crate::internal::config::up::run_progress;
@@ -35,7 +34,6 @@ use crate::internal::config::up::UpOptions;
 use crate::internal::config::CommandSyntax;
 use crate::internal::config::ConfigExtendOptions;
 use crate::internal::config::ConfigLoader;
-use crate::internal::config::ConfigScope;
 use crate::internal::config::ConfigValue;
 use crate::internal::config::SyntaxOptArg;
 use crate::internal::env::shell_is_interactive;
@@ -412,29 +410,21 @@ impl UpCommand {
 
         let mut suggest_config = None;
         let mut suggest_config_updated = false;
-        let config_loader = config_loader(".");
+        let suggest_config_value = config.suggest_config.config();
         if self.is_up() {
-            if let Some(git_repo_config) =
-                config_loader.raw_config.select_scope(&ConfigScope::Workdir)
-            {
-                if let Some(suggestion) = git_repo_config.get("suggest_config") {
-                    if suggestion.is_table() {
-                        if self.should_suggest_config() {
-                            suggest_config = Some(suggestion);
-                        } else if let Some(wd_id) = wd.id() {
-                            let suggest_config_fingerprint = fingerprint(&suggestion);
-                            if !RepositoriesCache::get().check_fingerprint(
-                                &wd_id,
-                                "suggest_config",
-                                suggest_config_fingerprint,
-                            ) {
-                                if self.auto_bootstrap() {
-                                    suggest_config = Some(suggestion);
-                                } else {
-                                    suggest_config_updated = true;
-                                }
-                            }
-                        }
+            if self.should_suggest_config() {
+                suggest_config = Some(suggest_config_value);
+            } else if let Some(wd_id) = wd.id() {
+                let suggest_config_fingerprint = fingerprint(&suggest_config_value);
+                if !RepositoriesCache::get().check_fingerprint(
+                    &wd_id,
+                    "suggest_config",
+                    suggest_config_fingerprint,
+                ) {
+                    if self.auto_bootstrap() {
+                        suggest_config = Some(suggest_config_value);
+                    } else {
+                        suggest_config_updated = true;
                     }
                 }
             }
@@ -442,13 +432,14 @@ impl UpCommand {
 
         let mut suggest_clone = false;
         let mut suggest_clone_updated = false;
+        let suggest_clone_repositories = config.suggest_clone.repositories();
         if self.is_up() {
             if self.should_suggest_clone() {
                 suggest_clone = true;
             } else if let Some(wd_id) = wd.id() {
-                let suggest_clone_fingerprint = match config.suggest_clone.repositories.len() {
+                let suggest_clone_fingerprint = match suggest_clone_repositories.len() {
                     0 => 0,
-                    _ => fingerprint(&config.suggest_clone.repositories),
+                    _ => fingerprint(&suggest_clone_repositories),
                 };
                 if !RepositoriesCache::get().check_fingerprint(
                     &wd_id,
@@ -475,7 +466,7 @@ impl UpCommand {
         }
 
         let has_up_config = up_config.is_some() && up_config.clone().unwrap().has_steps();
-        let has_clone_suggested = !config.suggest_clone.repositories.is_empty();
+        let has_clone_suggested = !suggest_clone_repositories.is_empty();
         if !has_up_config
             && suggest_config.is_none()
             && (!has_clone_suggested || !suggest_clone)
@@ -834,12 +825,13 @@ impl UpCommand {
         let wd = workdir(".");
         if let Some(wd_id) = wd.id() {
             let config = config(".");
-            if !config.suggest_clone.repositories.is_empty() {
+            let suggest_clone_repositories = config.suggest_clone.repositories();
+            if !suggest_clone_repositories.is_empty() {
                 if let Err(err) = RepositoriesCache::exclusive(|repos| {
                     repos.update_fingerprint(
                         &wd_id,
                         "suggest_clone",
-                        fingerprint(&config.suggest_clone.repositories),
+                        fingerprint(&suggest_clone_repositories),
                     )
                 }) {
                     omni_warning!(format!("failed to update cache: {}", err));
@@ -937,7 +929,8 @@ impl UpCommand {
         let config = config(path);
 
         let mut to_clone = HashSet::new();
-        for repo_config in config.suggest_clone.repositories.iter() {
+        let suggest_clone_repositories = config.suggest_clone.repositories_in_context(path);
+        for repo_config in suggest_clone_repositories.iter() {
             let mut repo = None;
 
             for org in ORG_LOADER.orgs.iter() {
