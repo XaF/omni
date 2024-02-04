@@ -1,4 +1,3 @@
-use std::collections::BTreeMap;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::path::Path;
@@ -7,6 +6,7 @@ use serde::Deserialize;
 use serde::Serialize;
 
 use crate::internal::config::parser::PathEntryConfig;
+use crate::internal::config::utils::sort_serde_yaml;
 use crate::internal::env::user_home;
 use crate::internal::user_interface::colors::StringColor;
 use crate::omni_error;
@@ -171,8 +171,13 @@ impl ConfigValue {
     ) -> HashMap<String, ConfigValue> {
         let mut config_mapping = HashMap::new();
         for (key, value) in mapping {
+            let key = match key.as_str() {
+                Some(key) => key,
+                None => continue,
+            };
+
             let new_value = ConfigValue::from_value(source.clone(), scope.clone(), value);
-            config_mapping.insert(key.as_str().unwrap().to_string(), new_value);
+            config_mapping.insert(key.to_string(), new_value);
         }
         config_mapping
     }
@@ -996,26 +1001,5 @@ impl ConfigValue {
     #[allow(dead_code)]
     pub fn set_value(&mut self, value: Option<Box<ConfigData>>) {
         self.value = value;
-    }
-}
-
-fn sort_serde_yaml(value: &serde_yaml::Value) -> serde_yaml::Value {
-    match value {
-        serde_yaml::Value::Sequence(seq) => {
-            let sorted_seq: Vec<serde_yaml::Value> = seq.iter().map(sort_serde_yaml).collect();
-            serde_yaml::Value::Sequence(sorted_seq)
-        }
-        serde_yaml::Value::Mapping(mapping) => {
-            let sorted_mapping: BTreeMap<String, serde_yaml::Value> = mapping
-                .iter()
-                .map(|(k, v)| (k.as_str().unwrap().to_owned(), sort_serde_yaml(v)))
-                .collect();
-            let sorted_mapping: serde_yaml::Mapping = sorted_mapping
-                .into_iter()
-                .map(|(k, v)| (serde_yaml::Value::String(k), v))
-                .collect();
-            serde_yaml::Value::Mapping(sorted_mapping)
-        }
-        _ => value.clone(),
     }
 }

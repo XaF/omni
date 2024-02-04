@@ -8,6 +8,7 @@ use crate::internal::commands::builtin::HelpCommand;
 use crate::internal::commands::path::omnipath_entries;
 use crate::internal::config::config;
 use crate::internal::config::config_loader;
+use crate::internal::config::utils::sort_serde_yaml;
 use crate::internal::config::CommandSyntax;
 use crate::internal::config::SyntaxOptArg;
 use crate::internal::env::shell_integration_is_loaded;
@@ -283,8 +284,12 @@ impl StatusCommand {
         }
 
         let config = config(".");
-        match serde_yaml::to_string(&config) {
-            Ok(yaml_code) => println!("{}", self.color_yaml(&yaml_code)),
+        match serde_yaml::to_value(&config) {
+            Ok(value) => {
+                let sorted_value = sort_serde_yaml(&value);
+                let yaml_code = serde_yaml::to_string(&sorted_value).unwrap();
+                println!("{}", self.color_yaml(&yaml_code));
+            }
             Err(err) => {
                 omni_error!(format!("failed to serialize configuration: {}", err));
                 exit(1);

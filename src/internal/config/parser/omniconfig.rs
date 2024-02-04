@@ -15,6 +15,7 @@ use crate::internal::config::parser::MakefileCommandsConfig;
 use crate::internal::config::parser::MatchSkipPromptIfConfig;
 use crate::internal::config::parser::PathConfig;
 use crate::internal::config::parser::PathRepoUpdatesConfig;
+use crate::internal::config::parser::PromptsConfig;
 use crate::internal::config::parser::ShellAliasesConfig;
 use crate::internal::config::parser::SuggestCloneConfig;
 use crate::internal::config::parser::SuggestConfig;
@@ -61,7 +62,8 @@ pub struct OmniConfig {
     pub org: Vec<OrgConfig>,
     pub path: PathConfig,
     pub path_repo_updates: PathRepoUpdatesConfig,
-    // pub prompts: PromptsConfig,
+    #[serde(skip_serializing_if = "PromptsConfig::is_empty")]
+    pub prompts: PromptsConfig,
     #[serde(skip_serializing_if = "String::is_empty")]
     pub repo_path_format: String,
     #[serde(skip_serializing_if = "ShellAliasesConfig::is_empty")]
@@ -100,20 +102,20 @@ impl OmniConfig {
         }
 
         Self {
-            worktree: config_value
-                .get_as_str("worktree")
-                .unwrap_or_else(|| (*DEFAULT_WORKTREE).to_string()),
             cache: CacheConfig::from_config_value(config_value.get("cache")),
-            commands: commands_config,
+            cd: CdConfig::from_config_value(config_value.get("cd")),
+            clone: CloneConfig::from_config_value(config_value.get("clone")),
             command_match_min_score: config_value
                 .get_as_float("command_match_min_score")
                 .unwrap_or(Self::DEFAULT_COMMAND_MATCH_MIN_SCORE),
             command_match_skip_prompt_if: MatchSkipPromptIfConfig::from_config_value(
                 config_value.get("command_match_skip_prompt_if"),
             ),
+            commands: commands_config,
             config_commands: ConfigCommandsConfig::from_config_value(
                 config_value.get("config_commands"),
             ),
+            env: EnvConfig::from_config_value(config_value.get("env")),
             makefile_commands: MakefileCommandsConfig::from_config_value(
                 config_value.get("makefile_commands"),
             ),
@@ -122,18 +124,19 @@ impl OmniConfig {
             path_repo_updates: PathRepoUpdatesConfig::from_config_value(
                 config_value.get("path_repo_updates"),
             ),
+            prompts: PromptsConfig::from_config_value(config_value.get("prompts")),
             repo_path_format: config_value
                 .get_as_str("repo_path_format")
                 .unwrap_or(Self::DEFAULT_REPO_PATH_FORMAT.to_string())
                 .to_string(),
-            env: EnvConfig::from_config_value(config_value.get("env")),
-            cd: CdConfig::from_config_value(config_value.get("cd")),
-            clone: CloneConfig::from_config_value(config_value.get("clone")),
-            up: UpConfig::from_config_value(config_value.get("up")),
+            shell_aliases: ShellAliasesConfig::from_config_value(config_value.get("shell_aliases")),
             suggest_clone: SuggestCloneConfig::from_config_value(config_value.get("suggest_clone")),
             suggest_config: SuggestConfig::from_config_value(config_value.get("suggest_config")),
+            up: UpConfig::from_config_value(config_value.get("up")),
             up_command: UpCommandConfig::from_config_value(config_value.get("up_command")),
-            shell_aliases: ShellAliasesConfig::from_config_value(config_value.get("shell_aliases")),
+            worktree: config_value
+                .get_as_str("worktree")
+                .unwrap_or_else(|| (*DEFAULT_WORKTREE).to_string()),
         }
     }
 

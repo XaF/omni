@@ -398,8 +398,8 @@ impl UpCommand {
             exit(0);
         }
 
-        let config = config(".");
-        let up_config = config.up.clone();
+        let cfg = config(".");
+        let up_config = cfg.up.clone();
         if let Some(up_config) = up_config.clone() {
             if up_config.has_errors() {
                 for error in up_config.errors() {
@@ -408,9 +408,39 @@ impl UpCommand {
             }
         }
 
+        // TODO: DEVELOPMENT, PROBABLY MOVE THAT TO prompt_all ?
+        let prompts = cfg.prompts.clone();
+        if !prompts.is_empty() {
+            for prompt in prompts.iter() {
+                omni_info!(format!("Prompt: {:?}", prompt.clone()));
+
+                let prompt = match prompt.in_context() {
+                    Ok(prompt) => prompt,
+                    Err(err) => {
+                        omni_warning!(format!("prompt.{}: {}", prompt.id, err));
+                        omni_warning!(format!("skipping prompt.{}", prompt.id));
+                        continue;
+                    }
+                };
+
+                omni_info!(format!("Prompt in context: {:?}", prompt));
+
+                if !prompt.should_prompt() {
+                    eprintln!("SKIPPING PROMPT");
+                    continue;
+                }
+
+                eprintln!("PROMPTING");
+                prompt.prompt();
+            }
+            // prompts.prompt_all();
+            omni_info!("Prompts answered");
+            exit(0);
+        }
+
         let mut suggest_config = None;
         let mut suggest_config_updated = false;
-        let suggest_config_value = config.suggest_config.config();
+        let suggest_config_value = cfg.suggest_config.config();
         if self.is_up() && !suggest_config_value.is_null() {
             if self.should_suggest_config() {
                 suggest_config = Some(suggest_config_value);
@@ -432,7 +462,7 @@ impl UpCommand {
 
         let mut suggest_clone = false;
         let mut suggest_clone_updated = false;
-        let suggest_clone_repositories = config.suggest_clone.repositories();
+        let suggest_clone_repositories = cfg.suggest_clone.repositories();
         if self.is_up() {
             if self.should_suggest_clone() {
                 suggest_clone = true;
@@ -456,8 +486,8 @@ impl UpCommand {
         }
 
         let mut env_vars = None;
-        if self.is_up() && !config.env.is_empty() {
-            env_vars = Some(config.env.clone());
+        if self.is_up() && !cfg.env.is_empty() {
+            env_vars = Some(cfg.env.clone());
         }
 
         if self.is_down() && (!wd.in_workdir() || !wd.has_id()) {

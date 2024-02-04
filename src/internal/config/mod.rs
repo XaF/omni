@@ -26,4 +26,6 @@ pub(crate) mod up;
 pub(crate) mod bootstrap;
 pub(crate) use bootstrap::ensure_bootstrap;
 
+pub(crate) mod template;
+
 pub(crate) mod utils;

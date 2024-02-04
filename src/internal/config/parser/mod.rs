@@ -45,6 +45,7 @@ mod path_repo_updates;
 pub(crate) use path_repo_updates::PathRepoUpdatesConfig;
 
 mod prompts;
+pub(crate) use prompts::PromptsConfig;
 
 mod shell_aliases;
 

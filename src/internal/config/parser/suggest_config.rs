@@ -6,9 +6,9 @@ use tera::Context;
 use tera::Tera;
 
 use crate::internal::cache::utils::Empty;
-use crate::internal::config::utils::config_template_context;
-use crate::internal::config::utils::render_config_template;
-use crate::internal::config::utils::tera_render_error_message;
+use crate::internal::config::template::config_template_context;
+use crate::internal::config::template::render_config_template;
+use crate::internal::config::template::tera_render_error_message;
 use crate::internal::config::ConfigScope;
 use crate::internal::config::ConfigValue;
 use crate::internal::user_interface::colors::StringColor;
