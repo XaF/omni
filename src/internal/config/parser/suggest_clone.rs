@@ -114,18 +114,23 @@ impl SuggestCloneConfig {
         Self::default()
     }
 
-    pub fn repositories(&self) -> Vec<SuggestCloneRepositoryConfig> {
-        self.repositories_in_context(".")
+    pub fn repositories(&self, quiet: bool) -> Vec<SuggestCloneRepositoryConfig> {
+        self.repositories_in_context(".", quiet)
     }
 
-    pub fn repositories_in_context(&self, path: &str) -> Vec<SuggestCloneRepositoryConfig> {
+    pub fn repositories_in_context(
+        &self,
+        path: &str,
+        quiet: bool,
+    ) -> Vec<SuggestCloneRepositoryConfig> {
         let context = config_template_context(path);
-        self.repositories_with_context(&context)
+        self.repositories_with_context(&context, quiet)
     }
 
     fn repositories_with_context(
         &self,
         template_context: &Context,
+        quiet: bool,
     ) -> Vec<SuggestCloneRepositoryConfig> {
         if !self.repositories.is_empty() {
             return self.repositories.clone();
@@ -134,14 +139,18 @@ impl SuggestCloneConfig {
         let mut template = Tera::default();
         if !self.template.is_empty() {
             if let Err(err) = template.add_raw_template("suggest_clone", &self.template) {
-                omni_warning!(tera_render_error_message(err));
-                omni_warning!("suggest_clone will be ignored");
+                if !quiet {
+                    omni_warning!(tera_render_error_message(err));
+                    omni_warning!("suggest_clone will be ignored");
+                }
                 return vec![];
             }
         } else if !self.template_file.is_empty() {
             if let Err(err) = template.add_template_file(&self.template_file, None) {
-                omni_warning!(tera_render_error_message(err));
-                omni_warning!("suggest_clone will be ignored");
+                if !quiet {
+                    omni_warning!(tera_render_error_message(err));
+                    omni_warning!("suggest_clone will be ignored");
+                }
                 return vec![];
             }
         }
@@ -154,11 +163,13 @@ impl SuggestCloneConfig {
                     // Parse the config value into an object of this type
                     let suggest_clone = Self::parse_config_value(config_value);
                     // In case this is recursive for some reason...
-                    return suggest_clone.repositories_with_context(template_context);
+                    return suggest_clone.repositories_with_context(template_context, quiet);
                 }
                 Err(err) => {
-                    omni_warning!(tera_render_error_message(err));
-                    omni_warning!("suggest_clone will be ignored");
+                    if !quiet {
+                        omni_warning!(tera_render_error_message(err));
+                        omni_warning!("suggest_clone will be ignored");
+                    }
                 }
             }
         }

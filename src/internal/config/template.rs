@@ -7,6 +7,8 @@ use git_url_parse::GitUrl;
 use serde::Deserialize;
 use serde::Serialize;
 
+use crate::internal::cache::utils::CacheObject;
+use crate::internal::cache::PromptsCache;
 use crate::internal::git::Repo;
 use crate::internal::git_env;
 use crate::internal::workdir;
@@ -51,6 +53,8 @@ pub fn config_template_context<T: AsRef<str>>(path: T) -> tera::Context {
     }
 
     // Load context for the user prompts
+    let prompts = PromptsCache::get().answers(path);
+    context.insert("prompts", &prompts);
     // TODO implement this
 
     context
@@ -112,12 +116,20 @@ pub fn make_partial_resolve_fn(
             // Get the context from the arc pointer
             let context = arc_context.read().unwrap();
 
-            let repo_handle = match context.get("repo_handle") {
+            let repo_object = match context.get("repo") {
+                Some(value) => match value.as_object() {
+                    Some(value) => value,
+                    None => return Err("partial_resolve: no repo in context".into()),
+                },
+                None => return Err("partial_resolve: no repo in context".into()),
+            };
+
+            let repo_handle = match repo_object.get("handle") {
                 Some(value) => match value.as_str() {
                     Some(value) => value,
-                    None => return Err("partial_resolve: no repo_handle in context".into()),
+                    None => return Err("partial_resolve: no handle in repo".into()),
                 },
-                None => return Err("partial_resolve: no repo_handle in context".into()),
+                None => return Err("partial_resolve: no handle in repo".into()),
             };
 
             let repo = match Repo::parse(repo_handle) {

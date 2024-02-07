@@ -17,6 +17,7 @@ use tokio::process::Command as TokioCommand;
 
 use crate::internal::cache::utils::Empty;
 use crate::internal::cache::CacheObject;
+use crate::internal::cache::PromptsCache;
 use crate::internal::cache::RepositoriesCache;
 use crate::internal::cache::UpEnvironmentsCache;
 use crate::internal::commands::builtin::HelpCommand;
@@ -59,6 +60,9 @@ struct UpCommandArgs {
     trust: UpCommandArgsTrustOptions,
     update_repository: bool,
     update_user_config: UpCommandArgsUpdateUserConfigOptions,
+    prompt: bool,
+    prompt_all: bool,
+    prompt_ids: HashSet<String>,
 }
 
 impl UpCommandArgs {
@@ -90,6 +94,17 @@ impl UpCommandArgs {
                     ])),
             )
             .arg(
+                clap::Arg::new("prompt")
+                    .long("prompt")
+                    .action(clap::ArgAction::Set)
+                    .default_missing_value(""),
+            )
+            .arg(
+                clap::Arg::new("prompt-all")
+                    .long("prompt-all")
+                    .action(clap::ArgAction::SetTrue),
+            )
+            .arg(
                 clap::Arg::new("trust")
                     .long("trust")
                     .num_args(0..=1)
@@ -116,30 +131,31 @@ impl UpCommandArgs {
             )
             .try_get_matches_from(&parse_argv);
 
-        if let Err(err) = matches {
-            match err.kind() {
-                clap::error::ErrorKind::DisplayHelp
-                | clap::error::ErrorKind::DisplayHelpOnMissingArgumentOrSubcommand => {
-                    HelpCommand::new().exec(vec!["up".to_string()]);
+        let matches = match matches {
+            Ok(matches) => matches,
+            Err(err) => {
+                match err.kind() {
+                    clap::error::ErrorKind::DisplayHelp
+                    | clap::error::ErrorKind::DisplayHelpOnMissingArgumentOrSubcommand => {
+                        HelpCommand::new().exec(vec!["up".to_string()]);
+                    }
+                    clap::error::ErrorKind::DisplayVersion => {
+                        unreachable!("version flag is disabled");
+                    }
+                    _ => {
+                        let err_str = format!("{}", err);
+                        let err_str = err_str
+                            .split('\n')
+                            .take_while(|line| !line.is_empty())
+                            .collect::<Vec<_>>()
+                            .join(" ");
+                        let err_str = err_str.trim_start_matches("error: ");
+                        omni_error!(err_str);
+                    }
                 }
-                clap::error::ErrorKind::DisplayVersion => {
-                    unreachable!("version flag is disabled");
-                }
-                _ => {
-                    let err_str = format!("{}", err);
-                    let err_str = err_str
-                        .split('\n')
-                        .take_while(|line| !line.is_empty())
-                        .collect::<Vec<_>>()
-                        .join(" ");
-                    let err_str = err_str.trim_start_matches("error: ");
-                    omni_error!(err_str);
-                }
+                exit(1);
             }
-            exit(1);
-        }
-
-        let matches = matches.unwrap();
+        };
 
         let bootstrap = *matches.get_one::<bool>("bootstrap").unwrap_or(&false);
 
@@ -164,6 +180,27 @@ impl UpCommandArgs {
             UpCommandArgsTrustOptions::Check
         };
 
+        let mut prompt = bootstrap;
+        let mut prompt_ids = HashSet::new();
+        let prompt_all = *matches.get_one::<bool>("prompt-all").unwrap_or(&false);
+        if prompt_all {
+            prompt = true;
+        } else if let Some(prompts) = matches.get_occurrences("prompt") {
+            prompt_ids = prompts
+                .flat_map(|prompt| prompt.map(|prompt: &String| prompt.to_string()))
+                .filter_map(|prompt| {
+                    let p = prompt.trim();
+                    if p.is_empty() {
+                        None
+                    } else {
+                        Some(p.to_string())
+                    }
+                })
+                .collect();
+
+            prompt = !prompt_ids.is_empty();
+        }
+
         let update_user_config =
             if let Some(update_user_config) = matches.get_one::<String>("update-user-config") {
                 update_user_config
@@ -180,6 +217,9 @@ impl UpCommandArgs {
             cache_enabled: !*matches.get_one::<bool>("no-cache").unwrap_or(&false),
             clone_suggested,
             trust,
+            prompt,
+            prompt_all,
+            prompt_ids,
             update_repository: *matches
                 .get_one::<bool>("update-repository")
                 .unwrap_or(&false),
@@ -253,12 +293,14 @@ impl FromStr for UpCommandArgsUpdateUserConfigOptions {
 #[derive(Debug, Clone)]
 pub struct UpCommand {
     cli_args: OnceCell<UpCommandArgs>,
+    trust: OnceCell<bool>,
 }
 
 impl UpCommand {
     pub fn new() -> Self {
         Self {
             cli_args: OnceCell::new(),
+            trust: OnceCell::new(),
         }
     }
 
@@ -408,33 +450,7 @@ impl UpCommand {
             }
         }
 
-        // TODO: DEVELOPMENT, PROBABLY MOVE THAT TO prompt_all ?
-        let prompts = cfg.prompts.clone();
-        if !prompts.is_empty() {
-            for prompt in prompts.iter() {
-                omni_info!(format!("Prompt: {:?}", prompt.clone()));
-
-                let prompt = match prompt.in_context() {
-                    Ok(prompt) => prompt,
-                    Err(err) => {
-                        omni_warning!(format!("prompt.{}: {}", prompt.id, err));
-                        omni_warning!(format!("skipping prompt.{}", prompt.id));
-                        continue;
-                    }
-                };
-
-                omni_info!(format!("Prompt in context: {:?}", prompt));
-
-                if !prompt.should_prompt() {
-                    eprintln!("SKIPPING PROMPT");
-                    continue;
-                }
-
-                eprintln!("PROMPTING");
-                prompt.prompt();
-            }
-            // prompts.prompt_all();
-            omni_info!("Prompts answered");
+        if !self.handle_prompts() {
             exit(0);
         }
 
@@ -462,7 +478,7 @@ impl UpCommand {
 
         let mut suggest_clone = false;
         let mut suggest_clone_updated = false;
-        let suggest_clone_repositories = cfg.suggest_clone.repositories();
+        let suggest_clone_repositories = cfg.suggest_clone.repositories(false);
         if self.is_up() {
             if self.should_suggest_clone() {
                 suggest_clone = true;
@@ -599,6 +615,8 @@ impl UpCommand {
     pub fn autocomplete(&self, _comp_cword: usize, _argv: Vec<String>) -> Result<(), ()> {
         println!("--bootstrap");
         println!("--clone-suggested");
+        println!("--prompt");
+        println!("--prompt-all");
         println!("--trust");
         println!("--update-repository");
         println!("--update-user-config");
@@ -619,20 +637,61 @@ impl UpCommand {
     }
 
     fn trust(&self) -> bool {
-        match self.cli_args().trust {
-            UpCommandArgsTrustOptions::Always => return add_trust("."),
-            UpCommandArgsTrustOptions::Yes => return true,
-            UpCommandArgsTrustOptions::No => return false,
-            UpCommandArgsTrustOptions::Check => {}
+        *self.trust.get_or_init(|| {
+            match self.cli_args().trust {
+                UpCommandArgsTrustOptions::Always => return add_trust("."),
+                UpCommandArgsTrustOptions::Yes => return true,
+                UpCommandArgsTrustOptions::No => return false,
+                UpCommandArgsTrustOptions::Check => {}
+            }
+
+            is_trusted_or_ask(
+                ".",
+                format!(
+                    "Do you want to run {} for this directory?",
+                    format!("omni {}", self.subcommand()).light_yellow(),
+                ),
+            )
+        })
+    }
+
+    fn handle_prompts(&self) -> bool {
+        // Skip prompts if the user has disabled them
+        if !self.cli_args().prompt {
+            return true;
         }
 
-        is_trusted_or_ask(
-            ".",
-            format!(
-                "Do you want to run {} for this directory?",
-                format!("omni {}", self.subcommand()).light_yellow(),
-            ),
-        )
+        // Check that there are prompts to handle
+        let prompts = config(".").prompts.clone();
+        if prompts.is_empty() {
+            return true;
+        }
+
+        let answers = PromptsCache::get().answers(".");
+        for prompt in prompts.iter() {
+            let prompt = match prompt.in_context() {
+                Ok(prompt) => prompt,
+                Err(_err) => continue,
+            };
+
+            if !prompt.should_prompt() {
+                continue;
+            }
+
+            // TODO: How do we detect if the answer is obsolete?
+            let should_prompt = self.cli_args().prompt_all
+                || self.cli_args().prompt_ids.contains(&prompt.id)
+                || !answers.contains_key(&prompt.id);
+            if !should_prompt {
+                continue;
+            }
+
+            if !self.trust() || !prompt.prompt() {
+                return false;
+            }
+        }
+
+        true
     }
 
     fn auto_bootstrap(&self) -> bool {
@@ -855,7 +914,7 @@ impl UpCommand {
         let wd = workdir(".");
         if let Some(wd_id) = wd.id() {
             let config = config(".");
-            let suggest_clone_repositories = config.suggest_clone.repositories();
+            let suggest_clone_repositories = config.suggest_clone.repositories(true);
             if !suggest_clone_repositories.is_empty() {
                 if let Err(err) = RepositoriesCache::exclusive(|repos| {
                     repos.update_fingerprint(
@@ -959,7 +1018,7 @@ impl UpCommand {
         let config = config(path);
 
         let mut to_clone = HashSet::new();
-        let suggest_clone_repositories = config.suggest_clone.repositories_in_context(path);
+        let suggest_clone_repositories = config.suggest_clone.repositories_in_context(path, true);
         for repo_config in suggest_clone_repositories.iter() {
             let mut repo = None;
 

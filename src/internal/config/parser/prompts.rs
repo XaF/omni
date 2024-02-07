@@ -3,12 +3,16 @@ use serde::Serialize;
 
 use tera::Tera;
 
+use crate::internal::cache::utils::CacheObject;
 use crate::internal::cache::utils::Empty;
+use crate::internal::cache::PromptsCache;
 use crate::internal::config::template::config_template_context;
 use crate::internal::config::template::render_config_template;
 use crate::internal::config::template::tera_render_error_message;
 use crate::internal::config::ConfigValue;
+use crate::internal::git_env;
 use crate::internal::user_interface::colors::StringColor;
+use crate::omni_warning;
 
 #[derive(Default, Debug, Deserialize, Clone)]
 pub struct PromptsConfig {
@@ -45,16 +49,6 @@ impl PromptsConfig {
         }
 
         Self::default()
-    }
-
-    pub fn prompt_all(&self) -> bool {
-        for prompt in &self.prompts {
-            let continue_prompting = prompt.prompt();
-            if !continue_prompting {
-                return false;
-            }
-        }
-        true
     }
 
     pub fn iter(&self) -> impl Iterator<Item = &PromptConfig> {
@@ -158,7 +152,6 @@ impl PromptConfig {
 
     pub fn in_context(&self) -> Result<Self, String> {
         let template_context = config_template_context(".");
-        eprintln!("template_context: {:?}", template_context); // DEBUG
 
         // Dump self as yaml string using serde_yaml
         let yaml = match serde_yaml::to_string(self) {
@@ -181,7 +174,6 @@ impl PromptConfig {
             Ok(value) => {
                 // Load the template as config value
                 let config_value = ConfigValue::from_str(&value);
-                eprintln!("config_value: {:?}", config_value.as_yaml()); // DEBUG
                 match Self::from_config_value(&config_value) {
                     Ok(prompt) => Ok(prompt),
                     Err(err) => Err(format!(
@@ -195,12 +187,16 @@ impl PromptConfig {
     }
 
     pub fn prompt(&self) -> bool {
-        self.prompt_type
-            .prompt(self.id.as_str(), self.prompt.as_str(), self.default.clone())
+        self.prompt_type.prompt(
+            self.id.as_str(),
+            self.prompt.as_str(),
+            self.default.clone(),
+            self.scope,
+        )
     }
 }
 
-#[derive(Default, Debug, Serialize, Deserialize, Clone)]
+#[derive(Default, Debug, Serialize, Deserialize, Clone, Copy)]
 pub enum PromptScope {
     #[default]
     #[serde(rename = "repo", alias = "repository")]
@@ -319,7 +315,20 @@ impl PromptType {
         matches!(self, Self::Text)
     }
 
-    pub fn prompt(&self, id: &str, prompt: &str, default: serde_yaml::Value) -> bool {
+    pub fn prompt(
+        &self,
+        id: &str,
+        prompt: &str,
+        default: serde_yaml::Value,
+        scope: PromptScope,
+    ) -> bool {
+        // Override the default value with the cached answer if there is one
+        // for the current scope; otherwise, use the default value.
+        let default = match PromptsCache::get().answers(".").get(id) {
+            Some(answer) => answer.clone(),
+            None => default,
+        };
+
         let question = match self {
             Self::Text => {
                 let mut question = requestty::Question::input(id)
@@ -359,7 +368,7 @@ impl PromptType {
                     .ask_if_answered(true)
                     .on_esc(requestty::OnEsc::Terminate)
                     .message(prompt)
-                    .choices(choices.iter().map(|choice| choice.choice.as_str()));
+                    .choices(choices);
 
                 if !default.is_null() {
                     if let Some(default) = default.as_i64() {
@@ -514,18 +523,97 @@ impl PromptType {
             }
         };
 
-        match requestty::prompt_one(question) {
+        let git = git_env(".");
+        let (scope_org, scope_repo) = match git.url() {
+            Some(url) => (
+                url.owner,
+                match scope {
+                    PromptScope::Repository => Some(url.name),
+                    PromptScope::Organization => None,
+                },
+            ),
+            None => {
+                // TODO: make it work for any workdir by storing for the workdir id
+                //       instead of the org and repo
+                omni_warning!("prompts are not available outside of a git repository");
+                return false;
+            }
+        };
+
+        let scope_org = match scope_org {
+            Some(org) => org,
+            None => {
+                omni_warning!("unable to determine the organization of the repository");
+                return false;
+            }
+        };
+
+        let serde_yaml_answer = match requestty::prompt_one(question) {
             Ok(answer) => match answer {
-                // TODO: password, add default if not provided
-                _ => {
-                    eprintln!("Unhandled answer type: {:?}", answer);
-                    true
+                requestty::Answer::String(answer) => serde_yaml::to_value(answer),
+                requestty::Answer::Bool(answer) => serde_yaml::to_value(answer),
+                requestty::Answer::Int(answer) => serde_yaml::to_value(answer),
+                requestty::Answer::Float(answer) => serde_yaml::to_value(answer),
+                requestty::Answer::ListItem(answer) => {
+                    let choices = match self {
+                        Self::Choice { choices } => choices,
+                        _ => {
+                            omni_warning!("invalid prompt type");
+                            return false;
+                        }
+                    };
+
+                    let selected_choice = match choices.get(answer.index) {
+                        Some(choice) => choice.id.to_string(),
+                        None => {
+                            omni_warning!("invalid choice index");
+                            return false;
+                        }
+                    };
+
+                    serde_yaml::to_value(selected_choice)
                 }
+                requestty::Answer::ListItems(answers) => {
+                    let choices = match self {
+                        Self::MultiChoice { choices } => choices,
+                        _ => {
+                            omni_warning!("invalid prompt type");
+                            return false;
+                        }
+                    };
+
+                    let selected_choices = answers
+                        .iter()
+                        .filter_map(|answer| choices.get(answer.index))
+                        .map(|choice| choice.id.to_string())
+                        .collect::<Vec<_>>();
+
+                    serde_yaml::to_value(selected_choices)
+                }
+                _ => unimplemented!(),
             },
             Err(err) => {
                 println!("{}", format!("[✘] {:?}", err).red());
-                false
+                return false;
             }
+        };
+
+        let serde_yaml_answer = match serde_yaml_answer {
+            Ok(serde_yaml_answer) => serde_yaml_answer,
+            Err(err) => {
+                omni_warning!(format!("failed to serialize answer: {}", err));
+                return false;
+            }
+        };
+
+        if let Err(err) = PromptsCache::exclusive(|cache| {
+            cache.add_answer(id, scope_org, scope_repo, serde_yaml_answer);
+            true
+        }) {
+            omni_warning!(format!("failed to update cache: {}", err));
+            false
+        } else {
+            true
         }
     }
 }
