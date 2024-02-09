@@ -42,7 +42,7 @@ machine-uid = "0.5.1"
 node-semver = "2.1.0"
 normalize-path = "0.2.1"
 num-bigint = "0.4.4"
-num-integer = "0.1.45"
+num-integer = "0.1.46"
 num-traits = "0.2.18"
 once_cell = "1.19.0"
 openssl = { version = "0.10", features = ["vendored"] }
