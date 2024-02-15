@@ -373,6 +373,28 @@ impl UpCommand {
                     required: false,
                 },
                 SyntaxOptArg {
+                    name: "--prompt".to_string(),
+                    desc: Some(
+                        concat!(
+                            "Trigger prompts for the given prompt ids, specified as arguments, as ",
+                            "well as the currently unanswered prompts",
+                        )
+                        .to_string(),
+                    ),
+                    required: false,
+                },
+                SyntaxOptArg {
+                    name: "--prompt-all".to_string(),
+                    desc: Some(
+                        concat!(
+                            "Trigger all prompts for the current work directory, even if they have ",
+                            "already been answered",
+                        )
+                        .to_string(),
+                    ),
+                    required: false,
+                },
+                SyntaxOptArg {
                     name: "--trust".to_string(),
                     desc: Some(
                         "Define how to trust the repository (always/yes/no) to run the command"
