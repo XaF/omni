@@ -19,22 +19,22 @@ name = "omni"
 path = "src/main.rs"
 
 [build-dependencies]
-time = { version = "0.3.31", features = ["serde-well-known"] }
+time = { version = "0.3.34", features = ["serde-well-known"] }
 
 [dependencies]
 blake3 = "1.5.0"
-clap = "4.4.17"
+clap = "4.5.0"
 duct = "0.13.6"
 flate2 = "1.0.28"
 fs4 = "0.7.0"
 gethostname = "0.4.3"
 git-url-parse = "0.4.4"
-git2 = "0.18.1"
+git2 = "0.18.2"
 glob = "0.3.1"
 humantime = "2.1.0"
 imara-diff = "0.1.5"
-indicatif = "0.17.7"
-is-terminal = "0.4.10"
+indicatif = "0.17.8"
+is-terminal = "0.4.12"
 itertools = "0.12.1"
 lazy_static = "1.4.0"
 libz-sys = { version = "1.1.15", features = ["static"] }
@@ -42,8 +42,8 @@ machine-uid = "0.5.1"
 node-semver = "2.1.0"
 normalize-path = "0.2.1"
 num-bigint = "0.4.4"
-num-integer = "0.1.45"
-num-traits = "0.2.17"
+num-integer = "0.1.46"
+num-traits = "0.2.18"
 once_cell = "1.19.0"
 openssl = { version = "0.10", features = ["vendored"] }
 package-json = "0.4.0"
@@ -52,7 +52,7 @@ pathdiff = "0.2.1"
 petname = "1.1.3"
 regex = "1.10.3"
 requestty = "0.5.0"
-reqwest = { version = "0.11.23", features = ["blocking"] }
+reqwest = { version = "0.11.24", features = ["blocking"] }
 self-replace = "1.3.7"
 semver = "1.0.21"
 serde = { version = "1.0", features = ["derive"] }
@@ -63,12 +63,12 @@ shell-escape = "0.1.5"
 shell-words = "1.1.0"
 strsim = "0.11.0"
 tar = "0.4.40"
-tempfile = "3.9.0"
+tempfile = "3.10.0"
 tera = "1.19.1"
 term_cursor = "0.2.1"
 term_size = "0.3.2"
-time = { version = "0.3.31", features = ["serde-well-known"] }
-tokio = { version = "1.35.1", features = ["full"] }
+time = { version = "0.3.34", features = ["serde-well-known"] }
+tokio = { version = "1.36.0", features = ["full"] }
 url = "2.5.0"
 uuid = { version = "1.7.0", features = ["v4", "fast-rng"] }
 walkdir = "2.4.0"

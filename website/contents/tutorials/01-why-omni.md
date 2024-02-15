@@ -4,7 +4,12 @@ description: Why omni?
 
 # Why omni?
 
-Welcome to omni, the versatile dev tool where power, knowledge, and presence converge to elevate your command-line experience.
+Have you ever fumbled through running tests on your nth project, or found yourself wrestling with incompatible dependencies while setting up your development environment?
+Perhaps you’re using a collection of disparate tools that easily get out of date, and it’s an ordeal to keep your toolset in a healthy state?
+It is even more challenging to do that in a growing organization, with every individual having their own way to do things.
+
+Omni addresses these pain points by simplifying dependency definitions, enabling single-command repository setups, and facilitating command discoverability across cloned repositories.
+It standardizes command access, automates global command updates, and streamlines onboarding with a single repository serving as a centralized entry point.
 
 ## Omnipotent: power at your fingertips
 
