@@ -213,6 +213,18 @@ jobs:
         id: deployment
         uses: actions/deploy-pages@v4
 
+      - name: Trigger Algolia crawler
+        if: github.event_name != 'pull_request'
+        uses: algolia/algoliasearch-crawler-github-actions@v1.0.10
+        with:
+          crawler-name: omnicli
+          crawler-user-id: ${{ secrets.ALGOLIA_CRAWLER_USER_ID }}
+          crawler-api-key: ${{ secrets.ALGOLIA_CRAWLER_API_KEY }}
+          algolia-app-id: ${{ secrets.ALGOLIA_APP_ID }}
+          algolia-api-key: ${{ secrets.ALGOLIA_API_KEY }}
+          site-url: ${{ steps.deployment.outputs.page_url }}
+          override-config: false
+
 
   check-results:
     name: Check tests results
