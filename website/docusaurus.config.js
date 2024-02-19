@@ -120,6 +120,15 @@ const config = {
           },
         ],
       },
+      algolia: {
+        appId: '42CGPL0NK3',
+        apiKey: 'dd9a0cfdc1189094accbfbacb6c7046a',
+        indexName: 'omnicli',
+        insights: true,
+        contextualSearch: true,
+        searchParameters: {},
+        searchPagePath: 'search',
+      },
       footer: {
         style: 'dark',
         // links: [
