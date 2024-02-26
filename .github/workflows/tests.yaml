@@ -215,7 +215,7 @@ jobs:
 
       - name: Trigger Algolia crawler
         if: github.event_name != 'pull_request'
-        uses: algolia/algoliasearch-crawler-github-actions@v1.0.10
+        uses: algolia/algoliasearch-crawler-github-actions@v1.1.10
         with:
           crawler-name: omnicli
           crawler-user-id: ${{ secrets.ALGOLIA_CRAWLER_USER_ID }}
