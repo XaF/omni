@@ -842,7 +842,7 @@ impl ConfigValue {
         ConfigExtendStrategy::Default
     }
 
-    fn keypath_transform(keypath: &Vec<String>) -> bool {
+    fn keypath_transform(keypath: &[String]) -> bool {
         if keypath.is_empty() {
             return false;
         }
@@ -860,7 +860,7 @@ impl ConfigValue {
         }
     }
 
-    fn transform(&mut self, keypath: &Vec<String>) {
+    fn transform(&mut self, keypath: &[String]) {
         if !ConfigValue::keypath_transform(keypath) {
             return;
         }
