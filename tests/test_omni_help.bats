@@ -8,7 +8,7 @@ setup() {
   setup_omni_config 3>&-
 
   # Depending on the 'cat' command, check if '-A' is supported
-  if cat "-$CAT_OPTS" </dev/null 2>/dev/null; then
+  if cat -A </dev/null 2>/dev/null; then
     export CAT_OPTS='A'
   else
     export CAT_OPTS='vET'
