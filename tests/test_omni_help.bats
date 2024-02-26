@@ -17,7 +17,7 @@ setup() {
 @test "omni help shows the help message with default omni commands" {
   version=$(omni --version | cut -d' ' -f3)
 
-  read -r -d '' expected <<EOF
+  read -r -d '' expected <<EOF || true
 omni - omnipotent tool (v$version)
 
 Usage: omni <command> [options] ARG...
@@ -54,7 +54,7 @@ EOF
 @test "omni help shows the help message wrapped for smaller screens" {
   version=$(omni --version | cut -d' ' -f3)
 
-  read -r -d '' expected <<EOF
+  read -r -d '' expected <<EOF || true
 omni - omnipotent tool (v$version)
 
 Usage: omni <command> [options] ARG...
@@ -95,7 +95,7 @@ EOF
 @test "omni help help shows the help message for the command" {
   version=$(omni --version | cut -d' ' -f3)
 
-  read -r -d '' expected <<EOF
+  read -r -d '' expected <<EOF || true
 omni - omnipotent tool (v$version)
 
 Show help for omni commands
@@ -127,7 +127,7 @@ EOF
 @test "omni help status shows the help message for the command" {
   version=$(omni --version | cut -d' ' -f3)
 
-  read -r -d '' expected <<EOF
+  read -r -d '' expected <<EOF || true
 omni - omnipotent tool (v$version)
 
 Show the status of omni
@@ -170,7 +170,7 @@ EOF
 @test "omni help cd shows the help message for the command" {
   version=$(omni --version | cut -d' ' -f3)
 
-  read -r -d '' expected <<EOF
+  read -r -d '' expected <<EOF || true
 omni - omnipotent tool (v$version)
 
 Change directory to the git directory of the specified repository
@@ -214,7 +214,7 @@ EOF
 @test "omni help clone shows the help message for the command" {
   version=$(omni --version | cut -d' ' -f3)
 
-  read -r -d '' expected <<EOF
+  read -r -d '' expected <<EOF || true
 omni - omnipotent tool (v$version)
 
 Clone the specified repository
@@ -252,7 +252,7 @@ EOF
 @test "omni help down shows the help message for the command" {
   version=$(omni --version | cut -d' ' -f3)
 
-  read -r -d '' expected <<EOF
+  read -r -d '' expected <<EOF || true
 omni - omnipotent tool (v$version)
 
 Sets up or tear down a repository depending on its up configuration
@@ -299,7 +299,7 @@ EOF
 @test "omni help scope shows the help message for the command" {
   version=$(omni --version | cut -d' ' -f3)
 
-  read -r -d '' expected <<EOF
+  read -r -d '' expected <<EOF || true
 omni - omnipotent tool (v$version)
 
 Runs an omni command in the context of the specified repository
@@ -337,7 +337,7 @@ EOF
 @test "omni help tidy shows the help message for the command" {
   version=$(omni --version | cut -d' ' -f3)
 
-  read -r -d '' expected <<EOF
+  read -r -d '' expected <<EOF || true
 omni - omnipotent tool (v$version)
 
 Organize your git repositories using the configured format
@@ -377,7 +377,7 @@ EOF
 @test "omni help up shows the help message for the command" {
   version=$(omni --version | cut -d' ' -f3)
 
-  read -r -d '' expected <<EOF
+  read -r -d '' expected <<EOF || true
 omni - omnipotent tool (v$version)
 
 Sets up or tear down a repository depending on its up configuration
