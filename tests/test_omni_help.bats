@@ -7,6 +7,13 @@ setup() {
 
   setup_omni_config 3>&-
 
+  # Depending on the 'cat' command, check if '-A' is supported
+  if cat "-$CAT_OPTS" </dev/null 2>/dev/null; then
+    export CAT_OPTS='A'
+  else
+    export CAT_OPTS='vET'
+  fi
+
   # Override the default columns to 100 so we have a controlled
   # environment for testing the output of the help command
   export COLUMNS=100
@@ -45,7 +52,7 @@ EOF
   [ "$status" -eq 0 ]
 
   set -o pipefail
-  diff -u <(echo "$expected") <(echo "$output") 3>&- | cat -A 3>&-
+  diff -u <(echo "$expected") <(echo "$output") 3>&- | cat "-$CAT_OPTS" 3>&-
   [ "$?" -eq 0 ]
   [[ "$output" == "$expected" ]]
 }
@@ -86,7 +93,7 @@ EOF
   [ "$status" -eq 0 ]
 
   set -o pipefail
-  diff -u <(echo "$expected") <(echo "$output") 3>&- | cat -A 3>&-
+  diff -u <(echo "$expected") <(echo "$output") 3>&- | cat "-$CAT_OPTS" 3>&-
   [ "$?" -eq 0 ]
   [[ "$output" == "$expected" ]]
 }
@@ -118,7 +125,7 @@ EOF
   [ "$status" -eq 0 ]
 
   set -o pipefail
-  diff -u <(echo "$expected") <(echo "$output") 3>&- | cat -A 3>&-
+  diff -u <(echo "$expected") <(echo "$output") 3>&- | cat "-$CAT_OPTS" 3>&-
   [ "$?" -eq 0 ]
   [[ "$output" == "$expected" ]]
 }
@@ -161,7 +168,7 @@ EOF
   [ "$status" -eq 0 ]
 
   set -o pipefail
-  diff -u <(echo "$expected") <(echo "$output") 3>&- | cat -A 3>&-
+  diff -u <(echo "$expected") <(echo "$output") 3>&- | cat "-$CAT_OPTS" 3>&-
   [ "$?" -eq 0 ]
   [[ "$output" == "$expected" ]]
 }
@@ -205,7 +212,7 @@ EOF
   [ "$status" -eq 0 ]
 
   set -o pipefail
-  diff -u <(echo "$expected") <(echo "$output") 3>&- | cat -A 3>&-
+  diff -u <(echo "$expected") <(echo "$output") 3>&- | cat "-$CAT_OPTS" 3>&-
   [ "$?" -eq 0 ]
   [[ "$output" == "$expected" ]]
 }
@@ -243,7 +250,7 @@ EOF
   [ "$status" -eq 0 ]
 
   set -o pipefail
-  diff -u <(echo "$expected") <(echo "$output") 3>&- | cat -A 3>&-
+  diff -u <(echo "$expected") <(echo "$output") 3>&- | cat "-$CAT_OPTS" 3>&-
   [ "$?" -eq 0 ]
   [[ "$output" == "$expected" ]]
 }
@@ -290,7 +297,7 @@ EOF
   [ "$status" -eq 0 ]
 
   set -o pipefail
-  diff -u <(echo "$expected") <(echo "$output") 3>&- | cat -A 3>&-
+  diff -u <(echo "$expected") <(echo "$output") 3>&- | cat "-$CAT_OPTS" 3>&-
   [ "$?" -eq 0 ]
   [[ "$output" == "$expected" ]]
 }
@@ -328,7 +335,7 @@ EOF
   [ "$status" -eq 0 ]
 
   set -o pipefail
-  diff -u <(echo "$expected") <(echo "$output") 3>&- | cat -A 3>&-
+  diff -u <(echo "$expected") <(echo "$output") 3>&- | cat "-$CAT_OPTS" 3>&-
   [ "$?" -eq 0 ]
   [[ "$output" == "$expected" ]]
 }
@@ -368,7 +375,7 @@ EOF
   [ "$status" -eq 0 ]
 
   set -o pipefail
-  diff -u <(echo "$expected") <(echo "$output") 3>&- | cat -A 3>&-
+  diff -u <(echo "$expected") <(echo "$output") 3>&- | cat "-$CAT_OPTS" 3>&-
   [ "$?" -eq 0 ]
   [[ "$output" == "$expected" ]]
 }
@@ -415,7 +422,7 @@ EOF
   [ "$status" -eq 0 ]
 
   set -o pipefail
-  diff -u <(echo "$expected") <(echo "$output") 3>&- | cat -A 3>&-
+  diff -u <(echo "$expected") <(echo "$output") 3>&- | cat "-$CAT_OPTS" 3>&-
   [ "$?" -eq 0 ]
   [[ "$output" == "$expected" ]]
 }
