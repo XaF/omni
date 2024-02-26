@@ -17,7 +17,7 @@ setup() {
 @test "omni help shows the help message with default omni commands" {
   version=$(omni --version | cut -d' ' -f3)
 
-  expected=$(cat <<EOF
+  read -r -d '' expected <<EOF
 omni - omnipotent tool (v$version)
 
 Usage: omni <command> [options] ARG...
@@ -35,7 +35,6 @@ Git commands
   scope          Runs an omni command in the context of the specified repository
   tidy           Organize your git repositories using the configured format
 EOF
-)
 
   # Avoiding any shorter-than-expected wrapping
   export COLUMNS=1000
@@ -55,7 +54,7 @@ EOF
 @test "omni help shows the help message wrapped for smaller screens" {
   version=$(omni --version | cut -d' ' -f3)
 
-  expected=$(cat <<EOF
+  read -r -d '' expected <<EOF
 omni - omnipotent tool (v$version)
 
 Usage: omni <command> [options] ARG...
@@ -78,7 +77,6 @@ Git commands
   tidy           Organize your git repositories using
                  the configured format
 EOF
-)
 
   export COLUMNS=60
   run omni help 3>&-
@@ -97,7 +95,7 @@ EOF
 @test "omni help help shows the help message for the command" {
   version=$(omni --version | cut -d' ' -f3)
 
-  expected=$(cat <<EOF
+  read -r -d '' expected <<EOF
 omni - omnipotent tool (v$version)
 
 Show help for omni commands
@@ -112,7 +110,6 @@ Usage: omni help [unfold] [command]
 
 Source: builtin
 EOF
-)
 
   run omni help help 3>&-
 
@@ -130,7 +127,7 @@ EOF
 @test "omni help status shows the help message for the command" {
   version=$(omni --version | cut -d' ' -f3)
 
-  expected=$(cat <<EOF
+  read -r -d '' expected <<EOF
 omni - omnipotent tool (v$version)
 
 Show the status of omni
@@ -156,7 +153,6 @@ Usage: omni status [--shell-integration] [--config] [--config-files] [--worktree
 
 Source: builtin
 EOF
-)
 
   run omni help status 3>&-
 
@@ -174,7 +170,7 @@ EOF
 @test "omni help cd shows the help message for the command" {
   version=$(omni --version | cut -d' ' -f3)
 
-  expected=$(cat <<EOF
+  read -r -d '' expected <<EOF
 omni - omnipotent tool (v$version)
 
 Change directory to the git directory of the specified repository
@@ -201,7 +197,6 @@ Usage: omni cd [--locate] [--[no-]include-packages] [repo]
 
 Source: builtin
 EOF
-)
 
   run omni help cd 3>&-
 
@@ -219,7 +214,7 @@ EOF
 @test "omni help clone shows the help message for the command" {
   version=$(omni --version | cut -d' ' -f3)
 
-  expected=$(cat <<EOF
+  read -r -d '' expected <<EOF
 omni - omnipotent tool (v$version)
 
 Clone the specified repository
@@ -240,7 +235,6 @@ Usage: omni clone [--package] <repo> [options...]
 
 Source: builtin
 EOF
-)
 
   run omni help clone 3>&-
 
@@ -258,7 +252,7 @@ EOF
 @test "omni help down shows the help message for the command" {
   version=$(omni --version | cut -d' ' -f3)
 
-  expected=$(cat <<EOF
+  read -r -d '' expected <<EOF
 omni - omnipotent tool (v$version)
 
 Sets up or tear down a repository depending on its up configuration
@@ -288,7 +282,6 @@ Usage: omni down [--no-cache] [--bootstrap] [--clone-suggested] [--trust] [--upd
 
 Source: builtin
 EOF
-)
 
   run omni help down 3>&-
 
@@ -306,7 +299,7 @@ EOF
 @test "omni help scope shows the help message for the command" {
   version=$(omni --version | cut -d' ' -f3)
 
-  expected=$(cat <<EOF
+  read -r -d '' expected <<EOF
 omni - omnipotent tool (v$version)
 
 Runs an omni command in the context of the specified repository
@@ -327,7 +320,6 @@ Usage: omni scope <repo> <command> [options...]
 
 Source: builtin
 EOF
-)
 
   run omni help scope 3>&-
 
@@ -345,7 +337,7 @@ EOF
 @test "omni help tidy shows the help message for the command" {
   version=$(omni --version | cut -d' ' -f3)
 
-  expected=$(cat <<EOF
+  read -r -d '' expected <<EOF
 omni - omnipotent tool (v$version)
 
 Organize your git repositories using the configured format
@@ -368,7 +360,6 @@ Usage: omni tidy [--yes] [--search-path] [--up-all]
 
 Source: builtin
 EOF
-)
 
   run omni help tidy 3>&-
 
@@ -386,7 +377,7 @@ EOF
 @test "omni help up shows the help message for the command" {
   version=$(omni --version | cut -d' ' -f3)
 
-  expected=$(cat <<EOF
+  read -r -d '' expected <<EOF
 omni - omnipotent tool (v$version)
 
 Sets up or tear down a repository depending on its up configuration
@@ -416,7 +407,6 @@ Usage: omni up [--no-cache] [--bootstrap] [--clone-suggested] [--trust] [--updat
 
 Source: builtin
 EOF
-)
 
   run omni help up 3>&-
 
