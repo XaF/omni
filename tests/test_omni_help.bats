@@ -11,7 +11,7 @@ setup() {
   if cat -A </dev/null 2>/dev/null; then
     export CAT_OPTS='A'
   else
-    export CAT_OPTS='vET'
+    export CAT_OPTS='e'
   fi
 
   # Override the default columns to 100 so we have a controlled
