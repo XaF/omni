@@ -7,6 +7,13 @@ setup() {
 
   setup_omni_config 3>&-
 
+  # Depending on the 'cat' command, check if '-A' is supported
+  if cat -A </dev/null 2>/dev/null; then
+    export CAT_OPTS='A'
+  else
+    export CAT_OPTS='e'
+  fi
+
   # Override the default columns to 100 so we have a controlled
   # environment for testing the output of the help command
   export COLUMNS=100
@@ -17,7 +24,7 @@ setup() {
 @test "omni help shows the help message with default omni commands" {
   version=$(omni --version | cut -d' ' -f3)
 
-  expected=$(cat <<EOF
+  read -r -d '' expected <<EOF || true
 omni - omnipotent tool (v$version)
 
 Usage: omni <command> [options] ARG...
@@ -35,7 +42,6 @@ Git commands
   scope          Runs an omni command in the context of the specified repository
   tidy           Organize your git repositories using the configured format
 EOF
-)
 
   # Avoiding any shorter-than-expected wrapping
   export COLUMNS=1000
@@ -46,7 +52,7 @@ EOF
   [ "$status" -eq 0 ]
 
   set -o pipefail
-  diff -u <(echo "$expected") <(echo "$output") 3>&- | cat -A 3>&-
+  diff -u <(echo "$expected") <(echo "$output") 3>&- | cat "-$CAT_OPTS" 3>&-
   [ "$?" -eq 0 ]
   [[ "$output" == "$expected" ]]
 }
@@ -55,7 +61,7 @@ EOF
 @test "omni help shows the help message wrapped for smaller screens" {
   version=$(omni --version | cut -d' ' -f3)
 
-  expected=$(cat <<EOF
+  read -r -d '' expected <<EOF || true
 omni - omnipotent tool (v$version)
 
 Usage: omni <command> [options] ARG...
@@ -78,7 +84,6 @@ Git commands
   tidy           Organize your git repositories using
                  the configured format
 EOF
-)
 
   export COLUMNS=60
   run omni help 3>&-
@@ -88,7 +93,7 @@ EOF
   [ "$status" -eq 0 ]
 
   set -o pipefail
-  diff -u <(echo "$expected") <(echo "$output") 3>&- | cat -A 3>&-
+  diff -u <(echo "$expected") <(echo "$output") 3>&- | cat "-$CAT_OPTS" 3>&-
   [ "$?" -eq 0 ]
   [[ "$output" == "$expected" ]]
 }
@@ -97,7 +102,7 @@ EOF
 @test "omni help help shows the help message for the command" {
   version=$(omni --version | cut -d' ' -f3)
 
-  expected=$(cat <<EOF
+  read -r -d '' expected <<EOF || true
 omni - omnipotent tool (v$version)
 
 Show help for omni commands
@@ -112,7 +117,6 @@ Usage: omni help [unfold] [command]
 
 Source: builtin
 EOF
-)
 
   run omni help help 3>&-
 
@@ -121,7 +125,7 @@ EOF
   [ "$status" -eq 0 ]
 
   set -o pipefail
-  diff -u <(echo "$expected") <(echo "$output") 3>&- | cat -A 3>&-
+  diff -u <(echo "$expected") <(echo "$output") 3>&- | cat "-$CAT_OPTS" 3>&-
   [ "$?" -eq 0 ]
   [[ "$output" == "$expected" ]]
 }
@@ -130,7 +134,7 @@ EOF
 @test "omni help status shows the help message for the command" {
   version=$(omni --version | cut -d' ' -f3)
 
-  expected=$(cat <<EOF
+  read -r -d '' expected <<EOF || true
 omni - omnipotent tool (v$version)
 
 Show the status of omni
@@ -156,7 +160,6 @@ Usage: omni status [--shell-integration] [--config] [--config-files] [--worktree
 
 Source: builtin
 EOF
-)
 
   run omni help status 3>&-
 
@@ -165,7 +168,7 @@ EOF
   [ "$status" -eq 0 ]
 
   set -o pipefail
-  diff -u <(echo "$expected") <(echo "$output") 3>&- | cat -A 3>&-
+  diff -u <(echo "$expected") <(echo "$output") 3>&- | cat "-$CAT_OPTS" 3>&-
   [ "$?" -eq 0 ]
   [[ "$output" == "$expected" ]]
 }
@@ -174,7 +177,7 @@ EOF
 @test "omni help cd shows the help message for the command" {
   version=$(omni --version | cut -d' ' -f3)
 
-  expected=$(cat <<EOF
+  read -r -d '' expected <<EOF || true
 omni - omnipotent tool (v$version)
 
 Change directory to the git directory of the specified repository
@@ -201,7 +204,6 @@ Usage: omni cd [--locate] [--[no-]include-packages] [repo]
 
 Source: builtin
 EOF
-)
 
   run omni help cd 3>&-
 
@@ -210,7 +212,7 @@ EOF
   [ "$status" -eq 0 ]
 
   set -o pipefail
-  diff -u <(echo "$expected") <(echo "$output") 3>&- | cat -A 3>&-
+  diff -u <(echo "$expected") <(echo "$output") 3>&- | cat "-$CAT_OPTS" 3>&-
   [ "$?" -eq 0 ]
   [[ "$output" == "$expected" ]]
 }
@@ -219,7 +221,7 @@ EOF
 @test "omni help clone shows the help message for the command" {
   version=$(omni --version | cut -d' ' -f3)
 
-  expected=$(cat <<EOF
+  read -r -d '' expected <<EOF || true
 omni - omnipotent tool (v$version)
 
 Clone the specified repository
@@ -240,7 +242,6 @@ Usage: omni clone [--package] <repo> [options...]
 
 Source: builtin
 EOF
-)
 
   run omni help clone 3>&-
 
@@ -249,7 +250,7 @@ EOF
   [ "$status" -eq 0 ]
 
   set -o pipefail
-  diff -u <(echo "$expected") <(echo "$output") 3>&- | cat -A 3>&-
+  diff -u <(echo "$expected") <(echo "$output") 3>&- | cat "-$CAT_OPTS" 3>&-
   [ "$?" -eq 0 ]
   [[ "$output" == "$expected" ]]
 }
@@ -258,7 +259,7 @@ EOF
 @test "omni help down shows the help message for the command" {
   version=$(omni --version | cut -d' ' -f3)
 
-  expected=$(cat <<EOF
+  read -r -d '' expected <<EOF || true
 omni - omnipotent tool (v$version)
 
 Sets up or tear down a repository depending on its up configuration
@@ -288,7 +289,6 @@ Usage: omni down [--no-cache] [--bootstrap] [--clone-suggested] [--trust] [--upd
 
 Source: builtin
 EOF
-)
 
   run omni help down 3>&-
 
@@ -297,7 +297,7 @@ EOF
   [ "$status" -eq 0 ]
 
   set -o pipefail
-  diff -u <(echo "$expected") <(echo "$output") 3>&- | cat -A 3>&-
+  diff -u <(echo "$expected") <(echo "$output") 3>&- | cat "-$CAT_OPTS" 3>&-
   [ "$?" -eq 0 ]
   [[ "$output" == "$expected" ]]
 }
@@ -306,7 +306,7 @@ EOF
 @test "omni help scope shows the help message for the command" {
   version=$(omni --version | cut -d' ' -f3)
 
-  expected=$(cat <<EOF
+  read -r -d '' expected <<EOF || true
 omni - omnipotent tool (v$version)
 
 Runs an omni command in the context of the specified repository
@@ -327,7 +327,6 @@ Usage: omni scope <repo> <command> [options...]
 
 Source: builtin
 EOF
-)
 
   run omni help scope 3>&-
 
@@ -336,7 +335,7 @@ EOF
   [ "$status" -eq 0 ]
 
   set -o pipefail
-  diff -u <(echo "$expected") <(echo "$output") 3>&- | cat -A 3>&-
+  diff -u <(echo "$expected") <(echo "$output") 3>&- | cat "-$CAT_OPTS" 3>&-
   [ "$?" -eq 0 ]
   [[ "$output" == "$expected" ]]
 }
@@ -345,7 +344,7 @@ EOF
 @test "omni help tidy shows the help message for the command" {
   version=$(omni --version | cut -d' ' -f3)
 
-  expected=$(cat <<EOF
+  read -r -d '' expected <<EOF || true
 omni - omnipotent tool (v$version)
 
 Organize your git repositories using the configured format
@@ -368,7 +367,6 @@ Usage: omni tidy [--yes] [--search-path] [--up-all]
 
 Source: builtin
 EOF
-)
 
   run omni help tidy 3>&-
 
@@ -377,7 +375,7 @@ EOF
   [ "$status" -eq 0 ]
 
   set -o pipefail
-  diff -u <(echo "$expected") <(echo "$output") 3>&- | cat -A 3>&-
+  diff -u <(echo "$expected") <(echo "$output") 3>&- | cat "-$CAT_OPTS" 3>&-
   [ "$?" -eq 0 ]
   [[ "$output" == "$expected" ]]
 }
@@ -386,7 +384,7 @@ EOF
 @test "omni help up shows the help message for the command" {
   version=$(omni --version | cut -d' ' -f3)
 
-  expected=$(cat <<EOF
+  read -r -d '' expected <<EOF || true
 omni - omnipotent tool (v$version)
 
 Sets up or tear down a repository depending on its up configuration
@@ -416,7 +414,6 @@ Usage: omni up [--no-cache] [--bootstrap] [--clone-suggested] [--trust] [--updat
 
 Source: builtin
 EOF
-)
 
   run omni help up 3>&-
 
@@ -425,7 +422,7 @@ EOF
   [ "$status" -eq 0 ]
 
   set -o pipefail
-  diff -u <(echo "$expected") <(echo "$output") 3>&- | cat -A 3>&-
+  diff -u <(echo "$expected") <(echo "$output") 3>&- | cat "-$CAT_OPTS" 3>&-
   [ "$?" -eq 0 ]
   [[ "$output" == "$expected" ]]
 }
