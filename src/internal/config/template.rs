@@ -25,8 +25,8 @@ impl TemplateRepo {
     pub fn new(url: &GitUrl) -> Self {
         Self {
             handle: url.to_string(),
-            host: url.host.clone().unwrap_or_else(|| "".to_string()),
-            org: url.owner.clone().unwrap_or_else(|| "".to_string()),
+            host: url.host.clone().unwrap_or_default(),
+            org: url.owner.clone().unwrap_or_default(),
             name: url.name.clone(),
         }
     }

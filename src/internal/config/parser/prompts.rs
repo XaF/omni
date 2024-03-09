@@ -115,10 +115,7 @@ impl PromptConfig {
         };
 
         // if is used to conditionally prompt the user.
-        let if_condition = match config_value.get_as_str_forced("if") {
-            Some(if_condition) => Some(if_condition),
-            None => None,
-        };
+        let if_condition = config_value.get_as_str_forced("if");
 
         // We keep the default value as a serde_yaml::Value so that we can
         // serialize it as a string if it's a string, or as a boolean if it's a
@@ -693,14 +690,12 @@ impl PromptChoicesConfig {
                         .collect::<Vec<PromptChoiceConfig>>();
 
                     if choices.is_empty() {
-                        return Err("choices template must be a non-empty array".to_string());
+                        Err("choices template must be a non-empty array".to_string())
+                    } else {
+                        Ok(choices)
                     }
-
-                    Ok(choices)
                 }
-                Err(err) => {
-                    return Err(format!("failed to parse choices template as yaml: {}", err))
-                }
+                Err(err) => Err(format!("failed to parse choices template as yaml: {}", err)),
             },
         }
     }
@@ -742,25 +737,23 @@ impl PromptChoiceConfig {
                 }),
                 _ => None,
             }
-        } else if let Some(choice) = config_value.as_str_forced() {
-            Some(Self {
+        } else {
+            config_value.as_str_forced().map(|choice| Self {
                 id: choice.to_string(),
                 choice: choice.to_string(),
             })
-        } else {
-            None
         }
     }
 }
 
-impl Into<String> for PromptChoiceConfig {
-    fn into(self) -> String {
-        self.choice.clone()
+impl From<PromptChoiceConfig> for String {
+    fn from(choice: PromptChoiceConfig) -> String {
+        choice.choice
     }
 }
 
-impl Into<String> for &PromptChoiceConfig {
-    fn into(self) -> String {
-        self.choice.clone()
+impl From<&PromptChoiceConfig> for String {
+    fn from(choice: &PromptChoiceConfig) -> String {
+        choice.choice.clone()
     }
 }
