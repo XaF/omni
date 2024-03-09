@@ -21,6 +21,8 @@ use crate::internal::config::up::utils::PrintProgressHandler;
 use crate::internal::config::up::utils::ProgressHandler;
 use crate::internal::config::up::utils::RunConfig;
 use crate::internal::config::up::utils::SpinnerProgressHandler;
+use crate::internal::env::current_exe;
+use crate::internal::env::homebrew_prefix;
 use crate::internal::env::shell_is_interactive;
 use crate::internal::user_interface::colors::StringColor;
 use crate::internal::ConfigLoader;
@@ -63,22 +65,8 @@ lazy_static! {
 
     static ref INSTALLED_WITH_BREW: bool = {
         // Get the path of the current binary
-        let current_exe = std::env::current_exe().expect("Failed to get current exe path");
-
-        // Get the homebrew prefix, either through the HOMEBREW_PREFIX env var
-        // if available, or by calling `brew --prefix`; if both fail, we're not
-        // installed with homebrew since... probably no homebrew.
-        let homebrew_prefix = std::env::var("HOMEBREW_PREFIX")
-            .ok()
-            .or_else(|| {
-                let output = std::process::Command::new("brew")
-                    .arg("--prefix")
-                    .output()
-                    .ok()?;
-                String::from_utf8(output.stdout).ok()
-            });
-
-        if let Some(homebrew_prefix) = homebrew_prefix {
+        let current_exe = current_exe();
+        if let Some(homebrew_prefix) = homebrew_prefix() {
             // Check if the current binary is in the homebrew prefix
             current_exe.starts_with(format!("{}/", homebrew_prefix))
         } else {

@@ -118,28 +118,28 @@ impl HomebrewOperationCache {
             ))
     }
 
-    pub fn homebrew_install_bin_path(
+    pub fn homebrew_install_bin_paths(
         &self,
         install_name: &str,
         install_version: Option<String>,
         is_cask: bool,
-    ) -> Option<String> {
+    ) -> Option<Vec<String>> {
         self.update_cache
-            .homebrew_install_bin_path(install_name, install_version, is_cask)
+            .homebrew_install_bin_paths(install_name, install_version, is_cask)
     }
 
-    pub fn set_homebrew_install_bin_path(
+    pub fn set_homebrew_install_bin_paths(
         &mut self,
         install_name: &str,
         install_version: Option<String>,
         is_cask: bool,
-        bin_path: String,
+        bin_paths: Vec<String>,
     ) {
-        self.update_cache.set_homebrew_install_bin_path(
+        self.update_cache.set_homebrew_install_bin_paths(
             install_name,
             install_version,
             is_cask,
-            bin_path.to_string(),
+            bin_paths,
         );
         self.updated();
     }
@@ -306,33 +306,33 @@ impl HomebrewOperationUpdateCache {
         self.homebrew.bin_path = Some(bin_path);
     }
 
-    pub fn homebrew_install_bin_path(
+    pub fn homebrew_install_bin_paths(
         &self,
         install_name: &str,
         install_version: Option<String>,
         is_cask: bool,
-    ) -> Option<String> {
+    ) -> Option<Vec<String>> {
         let key = self.install_key(install_name, install_version, is_cask);
         if let Some(install) = self.install.get(&key) {
-            install.bin_path.clone()
+            install.bin_paths.clone()
         } else {
             None
         }
     }
 
-    pub fn set_homebrew_install_bin_path(
+    pub fn set_homebrew_install_bin_paths(
         &mut self,
         install_name: &str,
         install_version: Option<String>,
         is_cask: bool,
-        bin_path: String,
+        bin_paths: Vec<String>,
     ) {
         let key = self.install_key(install_name, install_version, is_cask);
         if let Some(install) = self.install.get_mut(&key) {
-            install.bin_path = Some(bin_path);
+            install.bin_paths = Some(bin_paths);
         } else {
             let mut install = HomebrewOperationUpdateCacheInstall::new();
-            install.bin_path = Some(bin_path);
+            install.bin_paths = Some(bin_paths);
             self.install.insert(key, install);
         }
     }
@@ -458,7 +458,7 @@ pub struct HomebrewOperationUpdateCacheInstall {
     )]
     pub checked_at: OffsetDateTime,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub bin_path: Option<String>,
+    pub bin_paths: Option<Vec<String>>,
 }
 
 impl HomebrewOperationUpdateCacheInstall {
@@ -466,7 +466,7 @@ impl HomebrewOperationUpdateCacheInstall {
         Self {
             updated_at: utils::origin_of_time(),
             checked_at: utils::origin_of_time(),
-            bin_path: None,
+            bin_paths: None,
         }
     }
 }
@@ -475,6 +475,6 @@ impl Empty for HomebrewOperationUpdateCacheInstall {
     fn is_empty(&self) -> bool {
         self.updated_at == utils::origin_of_time()
             && self.checked_at == utils::origin_of_time()
-            && self.bin_path.is_none()
+            && self.bin_paths.is_none()
     }
 }

@@ -1,4 +1,6 @@
 use std::collections::BTreeMap;
+use std::fs;
+use std::os::unix::fs::PermissionsExt;
 
 use humantime::parse_duration;
 
@@ -36,4 +38,10 @@ pub fn parse_duration_or_default(value: Option<&ConfigValue>, default: u64) -> u
         }
     }
     default
+}
+
+pub fn is_executable(path: &std::path::Path) -> bool {
+    fs::metadata(path)
+        .map(|metadata| metadata.is_file() && metadata.permissions().mode() & 0o111 != 0)
+        .unwrap_or(false)
 }

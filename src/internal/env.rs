@@ -183,6 +183,31 @@ lazy_static! {
         }
         current_exe.unwrap()
     };
+
+    #[derive(Debug)]
+    static ref HOMEBREW_PREFIX: Option<String> = {
+        // Get the homebrew prefix, either through the HOMEBREW_PREFIX env var
+        // if available, or by calling `brew --prefix`; if both fail, we're not
+        // installed with homebrew since... probably no homebrew.
+        if let Ok(prefix) = std::env::var("HOMEBREW_PREFIX") {
+            if !prefix.is_empty() {
+                return Some(prefix);
+            }
+        }
+        let output = std::process::Command::new("brew")
+            .arg("--prefix")
+            .output();
+        if let Ok(output) = output {
+            if output.status.success() {
+                if let Ok(prefix) = String::from_utf8(output.stdout) {
+                    if !prefix.is_empty() {
+                        return Some(prefix);
+                    }
+                }
+            }
+        }
+        None
+    };
 }
 
 pub fn git_env<T: AsRef<str>>(path: T) -> GitRepoEnv {
@@ -354,6 +379,10 @@ pub fn current_exe() -> PathBuf {
 
 pub fn current_dir() -> PathBuf {
     std::env::current_dir().expect("failed to get current dir")
+}
+
+pub fn homebrew_prefix() -> Option<String> {
+    (*HOMEBREW_PREFIX).clone()
 }
 
 #[derive(Debug, Clone)]

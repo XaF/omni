@@ -1,10 +1,8 @@
 use std::collections::BTreeMap;
 use std::collections::HashMap;
-use std::fs;
 use std::fs::File;
 use std::io::BufRead;
 use std::io::BufReader;
-use std::os::unix::fs::PermissionsExt;
 use std::os::unix::process::CommandExt;
 use std::path::Path;
 use std::process::Command as ProcessCommand;
@@ -15,6 +13,7 @@ use serde::Serialize;
 use walkdir::WalkDir;
 
 use crate::internal::commands::path::omnipath;
+use crate::internal::config::utils::is_executable;
 use crate::internal::config::CommandSyntax;
 use crate::internal::config::SyntaxOptArg;
 
@@ -38,7 +37,7 @@ impl PathCommand {
                 let filetype = entry.file_type();
                 let filepath = entry.path();
 
-                if !filetype.is_file() || !Self::is_executable(filepath) {
+                if !filetype.is_file() || !is_executable(filepath) {
                     continue;
                 }
 
@@ -94,12 +93,6 @@ impl PathCommand {
         }
 
         all_commands
-    }
-
-    fn is_executable(path: &std::path::Path) -> bool {
-        fs::metadata(path)
-            .map(|metadata| metadata.is_file() && metadata.permissions().mode() & 0o111 != 0)
-            .unwrap_or(false)
     }
 
     pub fn new(name: Vec<String>, source: String) -> Self {

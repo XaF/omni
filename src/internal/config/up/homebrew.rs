@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::collections::HashSet;
 use std::path::PathBuf;
 
 use duct::cmd;
@@ -18,7 +19,9 @@ use crate::internal::config::up::utils::RunConfig;
 use crate::internal::config::up::utils::SpinnerProgressHandler;
 use crate::internal::config::up::UpError;
 use crate::internal::config::up::UpOptions;
+use crate::internal::config::utils::is_executable;
 use crate::internal::config::ConfigValue;
+use crate::internal::env::homebrew_prefix;
 use crate::internal::env::shell_is_interactive;
 use crate::internal::user_interface::StringColor;
 use crate::internal::workdir;
@@ -653,15 +656,15 @@ impl HomebrewInstall {
             return;
         }
 
-        let bin_path = self.bin_path(options);
-        let brew_bin_path = self.brew_bin_path(options);
-        if bin_path.is_some() || brew_bin_path.is_some() {
+        let mut bin_paths = self.bin_paths(options);
+        if let Some(bin_path) = self.brew_bin_path(options) {
+            bin_paths.push(bin_path);
+        }
+
+        if !bin_paths.is_empty() {
             if let Err(err) = UpEnvironmentsCache::exclusive(|up_env| {
-                if let Some(bin_path) = bin_path {
+                for bin_path in bin_paths {
                     up_env.add_path(&workdir_id, bin_path);
-                }
-                if let Some(brew_bin_path) = brew_bin_path {
-                    up_env.add_path(&workdir_id, brew_bin_path);
                 }
                 true
             }) {
@@ -926,22 +929,113 @@ impl HomebrewInstall {
         None
     }
 
-    fn bin_path(&self, options: &UpOptions) -> Option<PathBuf> {
-        if self.is_cask() {
-            // brew --prefix doesn't work for casks
-            return None;
+    fn bin_paths_from_cask(&self) -> Vec<PathBuf> {
+        if !self.is_cask() {
+            return vec![];
         }
 
-        if options.read_cache {
-            if let Some(bin_path) = HomebrewOperationCache::get().homebrew_install_bin_path(
-                &self.name,
-                self.version.clone(),
-                self.is_cask(),
-            ) {
-                if !bin_path.is_empty() {
-                    return Some(bin_path.into());
+        // brew --prefix doesn't work for casks, so we can try to
+        // check if there is any bin/ directory in the cask path
+        let brew_prefix = match homebrew_prefix() {
+            Some(prefix) => prefix,
+            None => return vec![],
+        };
+
+        // Prepare the prefix path for the cask
+        let bin_lookup_prefix = PathBuf::from(brew_prefix)
+            .join("Caskroom")
+            .join(self.package_id());
+
+        // Generate the glob path we can use to search for the bin directory
+        let glob_path = bin_lookup_prefix.join("**").join("bin");
+        let glob_path = match glob_path.to_str() {
+            Some(glob_path) => glob_path,
+            None => return vec![],
+        };
+
+        // Search for the bin directory
+        let entries = if let Ok(entries) = glob::glob(glob_path) {
+            entries
+        } else {
+            return vec![];
+        };
+
+        let mut bin_paths = HashSet::new();
+        for path in entries.into_iter().flatten() {
+            if !path.is_dir() {
+                continue;
+            }
+
+            // Get the relative path to the bin directory
+            let prefix = format!("{}/", bin_lookup_prefix.to_string_lossy());
+            let relpath = match path.strip_prefix(&prefix) {
+                Ok(relpath) => relpath,
+                Err(_) => continue,
+            };
+
+            // Check if any directories are starting with dot,
+            // and if so, skip the directory
+            if relpath
+                .components()
+                .any(|comp| comp.as_os_str().to_string_lossy().starts_with('.'))
+            {
+                continue;
+            }
+
+            // Get the canonical path to the bin directory
+            let path = match path.canonicalize() {
+                Ok(path) => path,
+                Err(_) => continue,
+            };
+
+            // If the path is already in the set, skip it
+            if bin_paths.contains(&path) {
+                continue;
+            }
+
+            // Check if the directory contains any executable
+            // files, i.e. files with the +x flag, and if not,
+            // skip the directory
+            let mut has_executables = false;
+            if let Ok(files) = std::fs::read_dir(&path) {
+                for entry in files.flatten() {
+                    let filepath = entry.path();
+                    let filetype = match entry.file_type() {
+                        Ok(filetype) => filetype,
+                        Err(_) => continue,
+                    };
+
+                    if !filetype.is_file() || !is_executable(&filepath) {
+                        continue;
+                    }
+
+                    // We want to make sure it's binaries without dots
+                    // in the filename, as those are usually not meant to
+                    // be in the path
+                    let filename = match filepath.file_name() {
+                        Some(filename) => filename,
+                        None => continue,
+                    };
+                    if filename.to_string_lossy().contains('.') {
+                        continue;
+                    }
+
+                    has_executables = true;
                 }
             }
+            if !has_executables {
+                continue;
+            }
+
+            bin_paths.insert(path);
+        }
+
+        bin_paths.into_iter().collect()
+    }
+
+    fn bin_paths_from_formula(&self) -> Vec<PathBuf> {
+        if self.is_cask() {
+            return vec![];
         }
 
         let mut brew_list = std::process::Command::new("brew");
@@ -961,25 +1055,48 @@ impl HomebrewInstall {
                     PathBuf::from("")
                 };
 
-                if options.write_cache {
-                    _ = HomebrewOperationCache::exclusive(|cache| {
-                        cache.set_homebrew_install_bin_path(
-                            &self.name,
-                            self.version.clone(),
-                            self.is_cask(),
-                            bin_path.to_string_lossy().to_string(),
-                        );
-                        true
-                    });
-                }
-
                 if !bin_path.to_string_lossy().is_empty() {
-                    return Some(bin_path);
+                    return vec![bin_path];
                 }
             }
         }
 
-        None
+        vec![]
+    }
+
+    fn bin_paths(&self, options: &UpOptions) -> Vec<PathBuf> {
+        if options.read_cache {
+            if let Some(bin_paths) = HomebrewOperationCache::get().homebrew_install_bin_paths(
+                &self.name,
+                self.version.clone(),
+                self.is_cask(),
+            ) {
+                return bin_paths.iter().map(PathBuf::from).collect();
+            }
+        }
+
+        let bin_paths = if self.is_cask() {
+            self.bin_paths_from_cask()
+        } else {
+            self.bin_paths_from_formula()
+        };
+
+        if options.write_cache {
+            _ = HomebrewOperationCache::exclusive(|cache| {
+                cache.set_homebrew_install_bin_paths(
+                    &self.name,
+                    self.version.clone(),
+                    self.is_cask(),
+                    bin_paths
+                        .iter()
+                        .map(|path| path.to_string_lossy().to_string())
+                        .collect(),
+                );
+                true
+            });
+        }
+
+        bin_paths
     }
 
     fn is_in_local_tap(&self) -> bool {
