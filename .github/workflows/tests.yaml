@@ -152,6 +152,7 @@ jobs:
         run: cargo install clippy-sarif sarif-fmt
 
       - name: Run clippy
+        id: clippy
         run: |
           cargo clippy --all-features --message-format=json | \
             clippy-sarif | \
@@ -164,6 +165,10 @@ jobs:
         with:
           sarif_file: rust-clippy-results.sarif
           wait-for-processing: true
+
+      - name: Fail if clippy failed
+        if: steps.clippy.outcome == 'failure'
+        run: exit 1
 
 
   deploy-website:
