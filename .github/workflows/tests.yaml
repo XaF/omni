@@ -182,7 +182,7 @@ jobs:
               rust-clippy-results.sarif)
 
           # Fail if there are any warnings or errors
-          if [ "$results" -gt 0 ]; then
+          if [[ "$results" != "0" ]]; then
             echo >&2 "Clippy found $results warnings or errors"
             exit 1
           fi
