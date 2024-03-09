@@ -159,7 +159,19 @@ impl SuggestCloneConfig {
             match render_config_template(&template, template_context) {
                 Ok(value) => {
                     // Load the template as config value
-                    let config_value = ConfigValue::from_str(&value);
+                    let config_value = match ConfigValue::from_str(&value) {
+                        Ok(value) => value,
+                        Err(err) => {
+                            if !quiet {
+                                omni_warning!(format!(
+                                    "Failed to parse suggest_clone template: {}",
+                                    err
+                                ));
+                                omni_warning!("suggest_clone will be ignored");
+                            }
+                            return vec![];
+                        }
+                    };
                     // Parse the config value into an object of this type
                     let suggest_clone = Self::parse_config_value(config_value);
                     // In case this is recursive for some reason...

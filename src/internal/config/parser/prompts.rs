@@ -41,7 +41,17 @@ impl PromptsConfig {
             if let Some(array) = config_value.as_array() {
                 let prompts = array
                     .iter()
-                    .filter_map(|config_value| PromptConfig::from_config_value(config_value).ok())
+                    // Convert into prompt config and print any errors
+                    .filter_map(|config_value| {
+                        match PromptConfig::from_config_value(config_value) {
+                            Ok(prompt_config) => Some(prompt_config),
+                            Err(err) => {
+                                omni_warning!(format!("failed to parse prompt: {}", err));
+                                None
+                            }
+                        }
+                    })
+                    // .filter_map(|config_value| PromptConfig::from_config_value(config_value).ok())
                     .collect();
 
                 return Self { prompts };
@@ -100,8 +110,8 @@ impl PromptConfig {
         }
 
         let prompt_type = match PromptType::from_config_value(config_value) {
-            Some(prompt_type) => prompt_type,
-            None => return Err("prompt type is required".to_string()),
+            Ok(prompt_type) => prompt_type,
+            Err(err) => return Err(err),
         };
 
         // if is used to conditionally prompt the user.
@@ -173,7 +183,15 @@ impl PromptConfig {
         match render_config_template(&template, &template_context) {
             Ok(value) => {
                 // Load the template as config value
-                let config_value = ConfigValue::from_str(&value);
+                let config_value = match ConfigValue::from_str(&value) {
+                    Ok(value) => value,
+                    Err(err) => {
+                        return Err(format!(
+                            "failed to parse prompt {} as yaml: {}",
+                            &self.id, err
+                        ))
+                    }
+                };
                 match Self::from_config_value(&config_value) {
                     Ok(prompt) => Ok(prompt),
                     Err(err) => Err(format!(
@@ -235,15 +253,9 @@ pub enum PromptType {
     #[serde(rename = "confirm", alias = "boolean")]
     Confirm,
     #[serde(rename = "choice", alias = "select")]
-    Choice {
-        #[serde(skip_serializing_if = "Vec::is_empty")]
-        choices: Vec<PromptChoiceConfig>,
-    },
+    Choice { choices: PromptChoicesConfig },
     #[serde(rename = "multichoice", alias = "choices", alias = "multiselect")]
-    MultiChoice {
-        #[serde(skip_serializing_if = "Vec::is_empty")]
-        choices: Vec<PromptChoiceConfig>,
-    },
+    MultiChoice { choices: PromptChoicesConfig },
     #[serde(rename = "int")]
     Int {
         #[serde(skip_serializing_if = "Option::is_none")]
@@ -261,53 +273,44 @@ pub enum PromptType {
 }
 
 impl PromptType {
-    pub fn from_config_value(config_value: &ConfigValue) -> Option<Self> {
+    pub fn from_config_value(config_value: &ConfigValue) -> Result<Self, String> {
         let prompt_type = match config_value.get_as_str_forced("type") {
             Some(prompt_type) => prompt_type.trim().to_lowercase(),
-            None => return Some(Self::default()),
+            None => return Ok(Self::default()),
         };
 
         match prompt_type.as_str() {
-            "text" => Some(Self::Text),
-            "password" => Some(Self::Password),
-            "confirm" | "boolean" => Some(Self::Confirm),
+            "text" => Ok(Self::Text),
+            "password" => Ok(Self::Password),
+            "confirm" | "boolean" => Ok(Self::Confirm),
             "choice" | "select" | "choices" | "multichoice" | "multiselect" => {
                 if let Some(choices) = config_value.get("choices") {
-                    if let Some(choices) = choices.as_array() {
-                        let choices = choices
-                            .iter()
-                            .filter_map(PromptChoiceConfig::from_config_value)
-                            .collect::<Vec<_>>();
+                    let choices = PromptChoicesConfig::from_config_value(&choices)?;
 
-                        if choices.is_empty() {
-                            return None;
+                    return match prompt_type.as_str() {
+                        "choice" | "select" => Ok(Self::Choice { choices }),
+                        "choices" | "multichoice" | "multiselect" => {
+                            Ok(Self::MultiChoice { choices })
                         }
-
-                        return match prompt_type.as_str() {
-                            "choice" | "select" => Some(Self::Choice { choices }),
-                            "choices" | "multichoice" | "multiselect" => {
-                                Some(Self::MultiChoice { choices })
-                            }
-                            _ => None,
-                        };
-                    }
+                        _ => unreachable!("invalid prompt type for choices"),
+                    };
                 }
 
-                None
+                Err("choices is required for choice and multichoice prompts".to_string())
             }
             "int" => {
                 let min = config_value.get_as_integer("min");
                 let max = config_value.get_as_integer("max");
 
-                Some(Self::Int { min, max })
+                Ok(Self::Int { min, max })
             }
             "float" => {
                 let min = config_value.get_as_float("min");
                 let max = config_value.get_as_float("max");
 
-                Some(Self::Float { min, max })
+                Ok(Self::Float { min, max })
             }
-            _ => None,
+            _ => Err(format!("invalid prompt type: {}", prompt_type)),
         }
     }
 
@@ -364,11 +367,22 @@ impl PromptType {
                 question.build()
             }
             Self::Choice { choices } => {
+                let choices = match choices.choices() {
+                    Ok(choices) => choices,
+                    Err(err) => {
+                        omni_warning!(format!(
+                            "failed to parse choices for prompt {}: {}",
+                            id, err
+                        ));
+                        return false;
+                    }
+                };
+
                 let mut question = requestty::Question::select(id)
                     .ask_if_answered(true)
                     .on_esc(requestty::OnEsc::Terminate)
                     .message(prompt)
-                    .choices(choices);
+                    .choices(choices.clone());
 
                 if !default.is_null() {
                     if let Some(default) = default.as_i64() {
@@ -390,6 +404,17 @@ impl PromptType {
                 question.build()
             }
             Self::MultiChoice { choices } => {
+                let choices = match choices.choices() {
+                    Ok(choices) => choices,
+                    Err(err) => {
+                        omni_warning!(format!(
+                            "failed to parse choices for prompt {}: {}",
+                            id, err
+                        ));
+                        return false;
+                    }
+                };
+
                 let mut choices_with_default = choices
                     .iter()
                     .map(|choice| (choice, false))
@@ -556,7 +581,10 @@ impl PromptType {
                 requestty::Answer::Float(answer) => serde_yaml::to_value(answer),
                 requestty::Answer::ListItem(answer) => {
                     let choices = match self {
-                        Self::Choice { choices } => choices,
+                        Self::Choice { choices } => match choices.choices() {
+                            Ok(choices) => choices,
+                            Err(_err) => return false,
+                        },
                         _ => {
                             omni_warning!("invalid prompt type");
                             return false;
@@ -575,7 +603,10 @@ impl PromptType {
                 }
                 requestty::Answer::ListItems(answers) => {
                     let choices = match self {
-                        Self::MultiChoice { choices } => choices,
+                        Self::MultiChoice { choices } => match choices.choices() {
+                            Ok(choices) => choices,
+                            Err(_err) => return false,
+                        },
                         _ => {
                             omni_warning!("invalid prompt type");
                             return false;
@@ -618,6 +649,75 @@ impl PromptType {
     }
 }
 
+#[derive(Debug, Deserialize, Clone)]
+pub enum PromptChoicesConfig {
+    ChoicesAsArray(Vec<PromptChoiceConfig>),
+    ChoicesAsString(String),
+}
+
+impl PromptChoicesConfig {
+    pub fn from_config_value(config_value: &ConfigValue) -> Result<Self, String> {
+        if let Some(array) = config_value.as_array() {
+            let choices = array
+                .iter()
+                .filter_map(PromptChoiceConfig::from_config_value)
+                .collect::<Vec<PromptChoiceConfig>>();
+
+            if choices.is_empty() {
+                Err("choices must be a non-empty array".to_string())
+            } else {
+                Ok(Self::ChoicesAsArray(choices))
+            }
+        } else if let Some(string) = config_value.as_str_forced() {
+            Ok(Self::ChoicesAsString(string.to_string()))
+        } else {
+            Err("choices must be an array or a template of an array".to_string())
+        }
+    }
+
+    pub fn choices(&self) -> Result<Vec<PromptChoiceConfig>, String> {
+        match self {
+            Self::ChoicesAsArray(choices) => Ok(choices.clone()),
+            Self::ChoicesAsString(template) => match ConfigValue::from_str(template) {
+                Ok(config_value) => {
+                    let choices = match config_value.as_array() {
+                        Some(choices) => choices,
+                        None => {
+                            return Err("choices template must be an array".to_string());
+                        }
+                    };
+
+                    let choices = choices
+                        .iter()
+                        .filter_map(PromptChoiceConfig::from_config_value)
+                        .collect::<Vec<PromptChoiceConfig>>();
+
+                    if choices.is_empty() {
+                        return Err("choices template must be a non-empty array".to_string());
+                    }
+
+                    Ok(choices)
+                }
+                Err(err) => {
+                    return Err(format!("failed to parse choices template as yaml: {}", err))
+                }
+            },
+        }
+    }
+}
+
+impl Serialize for PromptChoicesConfig {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::ser::Serializer,
+    {
+        match self {
+            Self::ChoicesAsArray(choices) => choices.serialize(serializer),
+            Self::ChoicesAsString(template) => template.serialize(serializer),
+        }
+    }
+}
+
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct PromptChoiceConfig {
     pub id: String,
@@ -650,6 +750,12 @@ impl PromptChoiceConfig {
         } else {
             None
         }
+    }
+}
+
+impl Into<String> for PromptChoiceConfig {
+    fn into(self) -> String {
+        self.choice.clone()
     }
 }
 

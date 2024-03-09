@@ -111,15 +111,21 @@ impl PathEntryConfig {
     pub fn as_config_value(&self) -> ConfigValue {
         if let Some(package) = &self.package {
             let mut map = HashMap::new();
-            map.insert("path".to_string(), ConfigValue::from_str(&self.path));
-            map.insert("package".to_string(), ConfigValue::from_str(package));
+            map.insert(
+                "path".to_string(),
+                ConfigValue::from_str(&self.path).expect("path should be a string"),
+            );
+            map.insert(
+                "package".to_string(),
+                ConfigValue::from_str(package).expect("package should be a string"),
+            );
             ConfigValue::new(
                 ConfigSource::Null,
                 ConfigScope::Null,
                 Some(Box::new(ConfigData::Mapping(map))),
             )
         } else {
-            ConfigValue::from_str(&self.full_path)
+            ConfigValue::from_str(&self.full_path).expect("full_path should be a string")
         }
     }
 

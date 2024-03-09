@@ -129,7 +129,7 @@ impl HelpCommand {
             usage: None,
             parameters: vec![
                 SyntaxOptArg {
-                    name: "unfold".to_string(),
+                    name: "--unfold".to_string(),
                     desc: Some("Show all subcommands".to_string()),
                     required: false,
                 },

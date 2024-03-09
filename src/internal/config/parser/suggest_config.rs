@@ -133,11 +133,21 @@ impl SuggestConfig {
             match render_config_template(&template, template_context) {
                 Ok(value) => {
                     // Load the template as config value
-                    let config_value = ConfigValue::from_str(&value);
-                    // Parse the config value into an object of this type
-                    let suggest = Self::parse_config_value(config_value);
-                    // In case this is recursive for some reason...
-                    return suggest.config_with_context(template_context);
+                    match ConfigValue::from_str(&value) {
+                        Ok(value) => {
+                            // Parse the config value into an object of this type
+                            let suggest = Self::parse_config_value(value);
+                            // In case this is recursive for some reason...
+                            return suggest.config_with_context(template_context);
+                        }
+                        Err(err) => {
+                            omni_warning!(format!(
+                                "Failed to parse suggest_config template: {}",
+                                err
+                            ));
+                            omni_warning!("suggest_config will be ignored");
+                        }
+                    }
                 }
                 Err(err) => {
                     omni_warning!(tera_render_error_message(err));

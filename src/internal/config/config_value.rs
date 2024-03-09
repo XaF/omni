@@ -195,9 +195,13 @@ impl ConfigValue {
         config_mapping
     }
 
-    pub fn from_str(value: &str) -> Self {
-        let value: serde_yaml::Value = serde_yaml::from_str(value).unwrap();
-        Self::from_value(ConfigSource::Null, ConfigScope::Null, value)
+    pub fn from_str(value: &str) -> Result<Self, serde_yaml::Error> {
+        let value: serde_yaml::Value = serde_yaml::from_str(value)?;
+        Ok(Self::from_value(
+            ConfigSource::Null,
+            ConfigScope::Null,
+            value,
+        ))
     }
 
     pub fn reject_scope(&self, scope: &ConfigScope) -> Option<ConfigValue> {
