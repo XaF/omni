@@ -175,10 +175,10 @@ jobs:
 
           # Count the number of warnings and errors
           results=$(jq \
-            '.runs[] | select(
-                .tool.driver.name == "clippy" and
-                (.results | length > 0)
-              ) | .results | length' \
+            '.runs[]
+                | select(.tool.driver.name == "clippy")
+                | .results
+                | length' \
               rust-clippy-results.sarif)
 
           # Fail if there are any warnings or errors
