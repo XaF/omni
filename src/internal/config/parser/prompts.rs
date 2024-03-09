@@ -467,7 +467,14 @@ impl PromptType {
 
                 if min.is_some() || max.is_some() {
                     question = question.validate(|answer, _previous_answers| {
-                        let errmsg = match (min.clone(), max.clone()) {
+                        // Make sure that min and max are cloned since the
+                        // closure will outlive the current block
+                        #[allow(clippy::clone_on_copy)]
+                        let min = min.clone();
+                        #[allow(clippy::clone_on_copy)]
+                        let max = max.clone();
+
+                        let errmsg = match (min, max) {
                             (Some(min), Some(max)) => {
                                 format!("Answer must be between {} and {}", min, max)
                             }
@@ -480,13 +487,13 @@ impl PromptType {
                             _ => unreachable!(),
                         };
 
-                        if let Some(min) = min.clone() {
+                        if let Some(min) = min {
                             if answer < min {
                                 return Err(errmsg.clone());
                             }
                         }
 
-                        if let Some(max) = max.clone() {
+                        if let Some(max) = max {
                             if answer > max {
                                 return Err(errmsg.clone());
                             }
@@ -512,7 +519,14 @@ impl PromptType {
 
                 if min.is_some() || max.is_some() {
                     question = question.validate(|answer, _previous_answers| {
-                        let errmsg = match (min.clone(), max.clone()) {
+                        // Make sure that min and max are cloned since the
+                        // closure will outlive the current block
+                        #[allow(clippy::clone_on_copy)]
+                        let min = min.clone();
+                        #[allow(clippy::clone_on_copy)]
+                        let max = max.clone();
+
+                        let errmsg = match (min, max) {
                             (Some(min), Some(max)) => {
                                 format!("Answer must be between {} and {}", min, max)
                             }
@@ -525,13 +539,13 @@ impl PromptType {
                             _ => unreachable!(),
                         };
 
-                        if let Some(min) = min.clone() {
+                        if let Some(min) = min {
                             if answer < min {
                                 return Err(errmsg.clone());
                             }
                         }
 
-                        if let Some(max) = max.clone() {
+                        if let Some(max) = max {
                             if answer > max {
                                 return Err(errmsg.clone());
                             }
