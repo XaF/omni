@@ -97,15 +97,28 @@ else
 			COMP_CWORD=$((COMP_CWORD + alias_skip)) \
 			COMP_TYPE=$COMP_TYPE \
 			{{OMNI_BIN}} --complete ${words[@]})
-		COMPREPLY=( $(compgen -W "${opts}" -- ${cur}) )
 
-		# For each completion, override them by adding a space
-		# at the end UNLESS they end with a slash (dir completion)
-		for i in "${!COMPREPLY[@]}"; do
-			if [[ "${COMPREPLY[$i]}" != */ ]]; then
-				COMPREPLY[$i]="${COMPREPLY[$i]} "
+		while read -r opt; do
+			if [[ "${opt}" != "${cur}"* ]]; then
+				continue
 			fi
-		done
+
+			local val="${opt}"
+			if [[ "${opt}" == '~/'* ]] || [[ "${opt}" == '~' ]]; then
+				val="${opt:0:1}$(printf "%q" "${opt:1}")"
+			fi
+
+			# For each completion, add a space at the end UNLESS
+			# they end with a slash (dir completion)
+			if [[ "${val}" != */ ]]; then
+				val="${val} "
+			fi
+
+			COMPREPLY+=("${val}")
+		done <<< "${opts}"
+
+		# Do not add a space after the completion, as we add it
+		# ourselves unless the completion is a directory
 		compopt -o nospace
 
 		return 0

@@ -1,3 +1,4 @@
+use std::path::PathBuf;
 use std::process::exit;
 
 use once_cell::sync::OnceCell;
@@ -9,6 +10,7 @@ use crate::internal::config::config;
 use crate::internal::config::CommandSyntax;
 use crate::internal::config::SyntaxOptArg;
 use crate::internal::env::omni_cmd_file;
+use crate::internal::env::user_home;
 use crate::internal::env::Shell;
 use crate::internal::git::ORG_LOADER;
 use crate::internal::user_interface::StringColor;
@@ -228,17 +230,37 @@ impl CdCommand {
             || repo == "-";
 
         // Print all the completion related to path completion
-        let (list_dir, strip_path_prefix) = if let Some(slash) = repo.rfind('/') {
-            (repo[..slash].to_string(), false)
+        let (list_dir, strip_path_prefix, replace_home_prefix) = if repo == "~" {
+            (user_home(), false, true)
+        } else if repo.starts_with("~/") {
+            if let Some(slash) = repo[2..].rfind('/') {
+                (
+                    format!("{}/{}", user_home(), &repo[2..(slash + 2)]),
+                    false,
+                    true,
+                )
+            } else {
+                (user_home(), false, true)
+            }
+        } else if let Some(slash) = repo.rfind('/') {
+            (repo[..(slash + 1)].to_string(), false, false)
         } else {
-            (".".to_string(), true)
+            (".".to_string(), true, false)
         };
         if let Ok(files) = std::fs::read_dir(&list_dir) {
             for path in files.flatten() {
                 if path.path().is_dir() {
+                    let path_buf;
                     let path_obj = path.path();
                     let path = if strip_path_prefix {
                         path_obj.strip_prefix(&list_dir).unwrap()
+                    } else if replace_home_prefix {
+                        if let Ok(path_obj) = path_obj.strip_prefix(user_home()) {
+                            path_buf = PathBuf::from("~").join(path_obj);
+                            path_buf.as_path()
+                        } else {
+                            path_obj.as_path()
+                        }
                     } else {
                         path_obj.as_path()
                     };
