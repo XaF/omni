@@ -232,13 +232,10 @@ impl CdCommand {
         // Print all the completion related to path completion
         let (list_dir, strip_path_prefix, replace_home_prefix) = if repo == "~" {
             (user_home(), false, true)
-        } else if repo.starts_with("~/") {
-            if let Some(slash) = repo[2..].rfind('/') {
-                (
-                    format!("{}/{}", user_home(), &repo[2..(slash + 2)]),
-                    false,
-                    true,
-                )
+        } else if let Some(repo) = repo.strip_prefix("~/") {
+            if let Some(slash) = repo.rfind('/') {
+                let abspath = format!("{}/{}", user_home(), &repo[..(slash + 1)]);
+                (abspath, false, true)
             } else {
                 (user_home(), false, true)
             }
