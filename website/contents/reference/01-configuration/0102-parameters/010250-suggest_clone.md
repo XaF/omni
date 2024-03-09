@@ -21,6 +21,14 @@ Contains a list of objects with the following parameters:
 | `args` | string | The optional arguments to pass to the `git clone` command |
 | `clone_type` | enum | Suggests how the repository should be cloned. Can be one of `package` or `worktree`, and generally defaults to cloning as packages when following suggestions. |
 
+### Template
+
+The `suggest_clone` parameter can be templated. The template needs to resolve to a list of objects with the parameters described above. You can template this parameter by using the following parameters:
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `template_file` | string | The path to the file containing the template to use. The path is relative to the root of the work directory. |
+| `template` | string | The template to use. |
 
 ## Examples
 
@@ -39,8 +47,20 @@ suggest_clone:
   - handle: git@github.com:XaF/omni
     args: --depth 1
 
-# We can to suggest cloning the omni repository in the worktree
+# We can suggest cloning the omni repository in the worktree
 suggest_clone:
   - handle: git@github.com:XaF/omni
     clone_type: worktree
+
+# We can also template the suggest_clone parameter using a template file
+suggest_clone:
+  template_file: .omni/suggest_clone.tmpl
+
+# Or template the suggest_clone parameter using a template string
+suggest_clone:
+  template: |
+    - {{ partial_resolve(handle="omni-example") }}
+    {% if prompts.team == "team1" %}
+    - {{ partial_resolve(handle="team1-tools") }}
+    {% endif %}
 ```

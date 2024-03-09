@@ -1,4 +1,3 @@
-use std::collections::BTreeMap;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::path::Path;
@@ -7,6 +6,7 @@ use serde::Deserialize;
 use serde::Serialize;
 
 use crate::internal::config::parser::PathEntryConfig;
+use crate::internal::config::utils::sort_serde_yaml;
 use crate::internal::env::user_home;
 use crate::internal::user_interface::colors::StringColor;
 use crate::omni_error;
@@ -116,6 +116,12 @@ impl Serialize for ConfigValue {
     }
 }
 
+impl Default for ConfigValue {
+    fn default() -> Self {
+        Self::new(ConfigSource::Null, ConfigScope::Null, None)
+    }
+}
+
 impl ConfigValue {
     pub fn new(source: ConfigSource, scope: ConfigScope, value: Option<Box<ConfigData>>) -> Self {
         Self {
@@ -133,12 +139,16 @@ impl ConfigValue {
         )
     }
 
-    pub fn default() -> Self {
+    pub fn empty() -> Self {
         Self::from_value(
             ConfigSource::Default,
             ConfigScope::Default,
             serde_yaml::Value::Mapping(serde_yaml::Mapping::new()),
         )
+    }
+
+    pub fn is_null(&self) -> bool {
+        self.value.is_none() || self.as_serde_yaml().is_null()
     }
 
     pub fn from_value(source: ConfigSource, scope: ConfigScope, value: serde_yaml::Value) -> Self {
@@ -161,8 +171,13 @@ impl ConfigValue {
     ) -> HashMap<String, ConfigValue> {
         let mut config_mapping = HashMap::new();
         for (key, value) in mapping {
+            let key = match key.as_str() {
+                Some(key) => key,
+                None => continue,
+            };
+
             let new_value = ConfigValue::from_value(source.clone(), scope.clone(), value);
-            config_mapping.insert(key.as_str().unwrap().to_string(), new_value);
+            config_mapping.insert(key.to_string(), new_value);
         }
         config_mapping
     }
@@ -180,9 +195,13 @@ impl ConfigValue {
         config_mapping
     }
 
-    pub fn from_str(value: &str) -> Self {
-        let value: serde_yaml::Value = serde_yaml::from_str(value).unwrap();
-        Self::from_value(ConfigSource::Null, ConfigScope::Null, value)
+    pub fn from_str(value: &str) -> Result<Self, serde_yaml::Error> {
+        let value: serde_yaml::Value = serde_yaml::from_str(value)?;
+        Ok(Self::from_value(
+            ConfigSource::Null,
+            ConfigScope::Null,
+            value,
+        ))
     }
 
     pub fn reject_scope(&self, scope: &ConfigScope) -> Option<ConfigValue> {
@@ -854,6 +873,10 @@ impl ConfigValue {
             (3, "org") => matches!(keypath[2].as_str(), "worktree"),
             // cache => path
             (2, "cache") => matches!(keypath[1].as_str(), "path"),
+            // suggest_clone => template_file
+            (2, "suggest_clone") => matches!(keypath[1].as_str(), "template_file"),
+            // suggest_config => template_file
+            (2, "suggest_config") => matches!(keypath[1].as_str(), "template_file"),
             // worktree
             (1, "worktree") => true,
             _ => false,
@@ -982,26 +1005,5 @@ impl ConfigValue {
     #[allow(dead_code)]
     pub fn set_value(&mut self, value: Option<Box<ConfigData>>) {
         self.value = value;
-    }
-}
-
-fn sort_serde_yaml(value: &serde_yaml::Value) -> serde_yaml::Value {
-    match value {
-        serde_yaml::Value::Sequence(seq) => {
-            let sorted_seq: Vec<serde_yaml::Value> = seq.iter().map(sort_serde_yaml).collect();
-            serde_yaml::Value::Sequence(sorted_seq)
-        }
-        serde_yaml::Value::Mapping(mapping) => {
-            let sorted_mapping: BTreeMap<String, serde_yaml::Value> = mapping
-                .iter()
-                .map(|(k, v)| (k.as_str().unwrap().to_owned(), sort_serde_yaml(v)))
-                .collect();
-            let sorted_mapping: serde_yaml::Mapping = sorted_mapping
-                .into_iter()
-                .map(|(k, v)| (serde_yaml::Value::String(k), v))
-                .collect();
-            serde_yaml::Value::Mapping(sorted_mapping)
-        }
-        _ => value.clone(),
     }
 }

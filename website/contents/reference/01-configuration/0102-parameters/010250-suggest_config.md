@@ -14,6 +14,15 @@ Configuration that a git repository suggests should be added to the user configu
 
 This can contain any value otherwise available in the configuration.
 
+### Template
+
+The `suggest_config` parameter can be templated. The template needs to resolve to a valid `suggest_config` value. You can template this parameter by using the following parameters:
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `template_file` | string | The path to the file containing the template to use. The path is relative to the root of the work directory. |
+| `template` | string | The template to use. |
+
 ## Configuration merging strategies
 
 You can use merging strategies to better suggest configuration changes, by appending `__<strategy>` at the end of the key for which you are making a suggestion.
@@ -41,4 +50,20 @@ suggest_config:
   org__toprepend:
     - handle: git@github.com:XaF/omni
       trusted: true
+
+# We can also template the suggest_config parameter using a template file
+suggest_config:
+  template_file: .omni/suggest_config.tmpl
+
+# Or template the suggest_config parameter using a template string
+suggest_config:
+  template: |
+    path:
+      append__toappend:
+        - special/commands/{{ prompts.team }}
+    {% if prompts.team == "team1" %}
+    org_toprepend:
+    - handle: {{ partial_resolve(handle="team1-private") }}
+      trusted: true
+    {% endif %}
 ```

@@ -1,5 +1,6 @@
 mod org;
 pub(crate) use org::Org;
+pub(crate) use org::Repo;
 pub(crate) use org::ORG_LOADER;
 
 mod utils;

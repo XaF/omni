@@ -341,7 +341,13 @@ pub fn config_bootstrap(options: Option<ConfigBootstrapOptions>) -> Result<bool,
 
             // Now get a ConfigValue object from the yaml
             let new_config_value = match yaml {
-                Ok(yaml) => ConfigValue::from_str(&yaml),
+                Ok(yaml) => match ConfigValue::from_str(&yaml) {
+                    Ok(config_value) => config_value,
+                    Err(err) => {
+                        omni_error!(format!("failed to parse configuration: {}", err));
+                        return false;
+                    }
+                },
                 Err(err) => {
                     omni_error!(format!("failed to serialize configuration: {}", err));
                     return false;
