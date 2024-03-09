@@ -109,9 +109,9 @@ Show help for omni commands
 
 If no command is given, show a list of all available commands.
 
-Usage: omni help [unfold] [command]
+Usage: omni help [--unfold] [command]
 
-  unfold         Show all subcommands
+  --unfold       Show all subcommands
 
   command        The command to get help for
 
@@ -264,7 +264,7 @@ omni - omnipotent tool (v$version)
 
 Sets up or tear down a repository depending on its up configuration
 
-Usage: omni down [--no-cache] [--bootstrap] [--clone-suggested] [--trust] [--update-repository] [--update-user-config]
+Usage: omni down [--no-cache] [--bootstrap] [--clone-suggested] [--prompt] [--prompt-all] [--trust] [--update-repository] [--update-user-config]
 
   --no-cache            Whether we should disable the cache while running the command
                         (default: no)
@@ -275,6 +275,12 @@ Usage: omni down [--no-cache] [--bootstrap] [--clone-suggested] [--trust] [--upd
 
   --clone-suggested     Whether we should clone suggested repositories found in the
                         configuration of the repository if any (yes/ask/no) (default: no)
+
+  --prompt              Trigger prompts for the given prompt ids, specified as arguments, as
+                        well as the currently unanswered prompts
+
+  --prompt-all          Trigger all prompts for the current work directory, even if they have
+                        already been answered
 
   --trust               Define how to trust the repository (always/yes/no) to run the command
 
@@ -389,7 +395,7 @@ omni - omnipotent tool (v$version)
 
 Sets up or tear down a repository depending on its up configuration
 
-Usage: omni up [--no-cache] [--bootstrap] [--clone-suggested] [--trust] [--update-repository] [--update-user-config]
+Usage: omni up [--no-cache] [--bootstrap] [--clone-suggested] [--prompt] [--prompt-all] [--trust] [--update-repository] [--update-user-config]
 
   --no-cache            Whether we should disable the cache while running the command
                         (default: no)
@@ -400,6 +406,12 @@ Usage: omni up [--no-cache] [--bootstrap] [--clone-suggested] [--trust] [--updat
 
   --clone-suggested     Whether we should clone suggested repositories found in the
                         configuration of the repository if any (yes/ask/no) (default: no)
+
+  --prompt              Trigger prompts for the given prompt ids, specified as arguments, as
+                        well as the currently unanswered prompts
+
+  --prompt-all          Trigger all prompts for the current work directory, even if they have
+                        already been answered
 
   --trust               Define how to trust the repository (always/yes/no) to run the command
 
