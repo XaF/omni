@@ -1030,7 +1030,7 @@ impl HomebrewInstall {
             bin_paths.insert(path);
         }
 
-        return bin_paths.into_iter().collect();
+        bin_paths.into_iter().collect()
     }
 
     fn bin_paths_from_formula(&self) -> Vec<PathBuf> {
