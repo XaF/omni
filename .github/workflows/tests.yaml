@@ -167,8 +167,25 @@ jobs:
           wait-for-processing: true
 
       - name: Fail if clippy failed
-        if: steps.clippy.outcome == 'failure'
-        run: exit 1
+        run: |
+          # Fail if the SARIF file is empty
+          if [ ! -s rust-clippy-results.sarif ]; then
+            exit 1
+          fi
+
+          # Count the number of warnings and errors
+          results=$(jq \
+            '.runs[]
+                | select(.tool.driver.name == "clippy")
+                | .results
+                | length' \
+              rust-clippy-results.sarif)
+
+          # Fail if there are any warnings or errors
+          if [[ "$results" != "0" ]]; then
+            echo >&2 "Clippy found $results warnings or errors"
+            exit 1
+          fi
 
 
   deploy-website:

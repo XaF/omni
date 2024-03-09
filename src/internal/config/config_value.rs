@@ -53,12 +53,18 @@ pub struct ConfigExtendOptions {
     transform: bool,
 }
 
-impl ConfigExtendOptions {
-    pub fn new() -> Self {
+impl Default for ConfigExtendOptions {
+    fn default() -> Self {
         Self {
             strategy: ConfigExtendStrategy::Default,
             transform: true,
         }
+    }
+}
+
+impl ConfigExtendOptions {
+    pub fn new() -> Self {
+        Self::default()
     }
 
     pub fn with_strategy(&self, strategy: ConfigExtendStrategy) -> Self {

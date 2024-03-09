@@ -10,7 +10,6 @@ use std::path::PathBuf;
 use fs4::FileExt;
 use serde::Deserialize;
 use serde::Serialize;
-use serde_json;
 
 use crate::internal::cache::CacheObject;
 use crate::internal::config::global_config;
