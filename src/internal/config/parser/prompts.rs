@@ -469,7 +469,9 @@ impl PromptType {
                     question = question.validate(|answer, _previous_answers| {
                         // Make sure that min and max are cloned since the
                         // closure will outlive the current block
+                        #[allow(clippy::clone_on_copy)]
                         let min = min.clone();
+                        #[allow(clippy::clone_on_copy)]
                         let max = max.clone();
 
                         let errmsg = match (min, max) {
@@ -519,7 +521,9 @@ impl PromptType {
                     question = question.validate(|answer, _previous_answers| {
                         // Make sure that min and max are cloned since the
                         // closure will outlive the current block
+                        #[allow(clippy::clone_on_copy)]
                         let min = min.clone();
+                        #[allow(clippy::clone_on_copy)]
                         let max = max.clone();
 
                         let errmsg = match (min, max) {
