@@ -16,6 +16,9 @@ pub(crate) use custom::UpConfigCustom;
 pub(crate) mod golang;
 pub(crate) use golang::UpConfigGolang;
 
+pub(crate) mod nix;
+pub(crate) use nix::UpConfigNix;
+
 pub(crate) mod nodejs;
 pub(crate) use nodejs::UpConfigNodejs;
 

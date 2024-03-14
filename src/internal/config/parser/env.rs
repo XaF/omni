@@ -244,6 +244,24 @@ impl EnvOperationConfig {
                 ))
             }
 
+            if let Some(config_value) = table.get("prefix") {
+                matched_any = true;
+                operations.extend(Self::from_config_value_multi(
+                    name,
+                    config_value,
+                    EnvOperationEnum::Prefix,
+                ))
+            }
+
+            if let Some(config_value) = table.get("suffix") {
+                matched_any = true;
+                operations.extend(Self::from_config_value_multi(
+                    name,
+                    config_value,
+                    EnvOperationEnum::Suffix,
+                ))
+            }
+
             if matched_any {
                 return operations;
             }
@@ -274,7 +292,11 @@ impl Serialize for EnvOperationConfig {
                 env_var.insert(self.name.clone(), self.value.clone());
                 env_var.serialize(serializer)
             }
-            EnvOperationEnum::Prepend | EnvOperationEnum::Append | EnvOperationEnum::Remove => {
+            EnvOperationEnum::Prepend
+            | EnvOperationEnum::Append
+            | EnvOperationEnum::Remove
+            | EnvOperationEnum::Prefix
+            | EnvOperationEnum::Suffix => {
                 let mut env_var_wrapped = HashMap::new();
                 env_var_wrapped.insert(self.operation.to_string(), self.value.clone());
 
@@ -288,14 +310,24 @@ impl Serialize for EnvOperationConfig {
 
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Copy)]
 pub enum EnvOperationEnum {
-    #[serde(rename = "set")]
+    #[serde(rename = "s", alias = "set")]
     Set,
-    #[serde(rename = "prepend")]
+    #[serde(rename = "p", alias = "prepend")]
     Prepend,
-    #[serde(rename = "append")]
+    #[serde(rename = "a", alias = "append")]
     Append,
-    #[serde(rename = "remove")]
+    #[serde(rename = "r", alias = "remove")]
     Remove,
+    #[serde(rename = "pf", alias = "prefix")]
+    Prefix,
+    #[serde(rename = "sf", alias = "suffix")]
+    Suffix,
+}
+
+impl Default for EnvOperationEnum {
+    fn default() -> Self {
+        EnvOperationEnum::Set
+    }
 }
 
 impl ToString for EnvOperationEnum {
@@ -305,6 +337,8 @@ impl ToString for EnvOperationEnum {
             EnvOperationEnum::Prepend => "prepend".to_string(),
             EnvOperationEnum::Append => "append".to_string(),
             EnvOperationEnum::Remove => "remove".to_string(),
+            EnvOperationEnum::Prefix => "prefix".to_string(),
+            EnvOperationEnum::Suffix => "suffix".to_string(),
         }
     }
 }
@@ -316,6 +350,12 @@ impl EnvOperationEnum {
             EnvOperationEnum::Prepend => b"prepend",
             EnvOperationEnum::Append => b"append",
             EnvOperationEnum::Remove => b"remove",
+            EnvOperationEnum::Prefix => b"prefix",
+            EnvOperationEnum::Suffix => b"suffix",
         }
+    }
+
+    pub fn is_default(other: &EnvOperationEnum) -> bool {
+        *other == EnvOperationEnum::default()
     }
 }

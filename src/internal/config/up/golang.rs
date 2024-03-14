@@ -119,6 +119,16 @@ impl UpConfigGolang {
         self.asdf_base()?.down(progress)
     }
 
+    pub fn was_upped(&self) -> bool {
+        self.asdf_base()
+            .map_or(false, |asdf_base| asdf_base.was_upped())
+    }
+
+    pub fn data_paths(&self) -> Vec<PathBuf> {
+        self.asdf_base()
+            .map_or(vec![], |asdf_base| asdf_base.data_paths())
+    }
+
     pub fn asdf_base(&self) -> Result<&UpConfigAsdfBase, UpError> {
         self.asdf_base.get_or_try_init(|| {
             let version = if let Some(version) = &self.version {
