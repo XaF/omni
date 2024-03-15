@@ -246,9 +246,8 @@ impl UpConfig {
             .steps
             .iter()
             .filter(|step| step.is_available() && step.was_upped())
-            .map(|step| step.data_paths())
-            .flatten()
-            .filter(|data_path| data_path.starts_with(&wd_data_path))
+            .flat_map(|step| step.data_paths())
+            .filter(|data_path| data_path.starts_with(wd_data_path))
             .sorted()
             .dedup()
             .collect::<Vec<_>>();
@@ -273,7 +272,7 @@ impl UpConfig {
         // means that any deeper path is also expected)
         let mut known_unknown_paths = vec![];
         let mut num_removed = 0;
-        for entry in walkdir::WalkDir::new(&wd_data_path)
+        for entry in walkdir::WalkDir::new(wd_data_path)
             .into_iter()
             .filter_entry(|e| {
                 // If the path is the root, we want to keep it
@@ -312,7 +311,7 @@ impl UpConfig {
                 // If we're here, the path is not known and is not the beginning
                 // of a known path, so we want to keep it as it will need to get
                 known_unknown_paths.push(e.path().to_path_buf());
-                return true;
+                true
             })
             .filter_map(|e| e.ok())
             // Filter the parents of known paths since we don't want to remove them
@@ -327,7 +326,7 @@ impl UpConfig {
             progress_handler.progress(format!("removing {}", path.display()));
 
             if path.is_file() {
-                if let Err(error) = std::fs::remove_file(&path) {
+                if let Err(error) = std::fs::remove_file(path) {
                     return Err(UpError::Exec(format!(
                         "failed to remove {}: {}",
                         path.display(),

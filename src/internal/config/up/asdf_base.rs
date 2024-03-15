@@ -821,7 +821,7 @@ impl UpConfigAsdfBase {
             Err(_) => return vec![],
         };
 
-        let tool_data_path = wd_data_path.join(&self.tool).join(&version);
+        let tool_data_path = wd_data_path.join(&self.tool).join(version);
 
         let mut dirs = self.dirs.clone();
         if dirs.is_empty() {

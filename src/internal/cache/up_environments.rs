@@ -87,7 +87,7 @@ impl UpEnvironmentsCache {
         let up_env_var = UpEnvVar {
             name: key.to_string(),
             value: Some(value.to_string()),
-            operation: operation,
+            operation,
         };
 
         if let Some(env) = self.env.get_mut(workdir_id) {

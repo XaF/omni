@@ -124,11 +124,7 @@ impl UpConfigNix {
         UpConfigNix::default()
     }
 
-    pub fn up(
-        &self,
-        _options: &UpOptions,
-        progress: Option<(usize, usize)>,
-    ) -> Result<(), UpError> {
+    pub fn up(&self, options: &UpOptions, progress: Option<(usize, usize)>) -> Result<(), UpError> {
         let wd = workdir(".");
         let wd_root = match wd.root() {
             Some(wd_root) => PathBuf::from(wd_root),
@@ -159,7 +155,7 @@ impl UpConfigNix {
             // If no nix file was found, we fail, since if there is a `nix` step
             // we expect to have to install some dependencies.
             match nixfile {
-                Some(nixfile) => Some(abs_path(&nixfile)),
+                Some(nixfile) => Some(abs_path(nixfile)),
                 None => {
                     return Err(UpError::Exec(format!(
                         "no nix file found in {}",
@@ -237,11 +233,10 @@ impl UpConfigNix {
             }
         };
         let nix_path = data_path.join("nix");
-        let profile_path = nix_path.join(&profile_id);
+        let profile_path = nix_path.join(profile_id);
 
         // If the profile already exists, we don't need to do anything
-        // NOTE: should this be skipped when using --no-cache?
-        if profile_path.exists() {
+        if profile_path.exists() && options.read_cache {
             if let Err(e) = self.profile_path.set(profile_path) {
                 omni_warning!(format!("failed to save nix profile path: {:?}", e));
             }
@@ -301,11 +296,18 @@ impl UpConfigNix {
         nix_print_dev_env.arg(&tmp_profile);
         nix_print_dev_env.arg("--impure");
 
-        let mut packages_message = String::new();
-        if let Some(nixfile) = &self.nixfile {
+        let packages_message;
+        if let Some(nixfile) = &nixfile {
             nix_print_dev_env.arg("--file");
-            nix_print_dev_env.arg(&nixfile);
-            packages_message = format!("packages from {}", nixfile.light_yellow());
+            nix_print_dev_env.arg(nixfile);
+            packages_message = format!(
+                "packages from {}",
+                nixfile
+                    .strip_prefix(&wd_root)
+                    .unwrap_or(nixfile)
+                    .display()
+                    .light_yellow()
+            );
         } else if !self.packages.is_empty() {
             let mut context = tera::Context::new();
             context.insert("packages", &self.packages.join(" "));
@@ -327,29 +329,7 @@ impl UpConfigNix {
                 if self.packages.len() > 1 { "s" } else { "" },
             );
         } else {
-            // Look for default nix files 'shell.nix' and 'default.nix'
-            // We want to behave similarly as nix-shell, which looks for 'shell.nix'
-            // first but if not found will default to 'default.nix'
-            let mut found = false;
-            for file in &["shell.nix", "default.nix"] {
-                let nixfile = wd_root.join(file);
-                // Check if exists and is file
-                if nixfile.exists() && nixfile.is_file() {
-                    nix_print_dev_env.arg("--file");
-                    nix_print_dev_env.arg(&nixfile);
-                    packages_message = format!("packages from {}", file.light_yellow());
-                    found = true;
-                    break;
-                }
-            }
-
-            // If no nix file was found, we fail, since if there is a `nix` step
-            // we expect to have to install some dependencies.
-            if !found {
-                let msg = format!("no nix file found in {}", wd_root.display());
-                progress_handler.error_with_message(msg.clone());
-                return Err(UpError::Exec(msg));
-            }
+            unreachable!();
         }
         progress_handler.progress(format!("installing {}", packages_message));
 
@@ -476,7 +456,7 @@ impl UpConfigNix {
                 up_env.add_env_var_operation(
                     &wd_id,
                     "PKG_CONFIG_PATH",
-                    &pkg_config_path,
+                    pkg_config_path,
                     EnvOperationEnum::Prepend,
                 );
             }
@@ -504,7 +484,7 @@ impl UpConfigNix {
     }
 
     pub fn was_upped(&self) -> bool {
-        matches!(self.profile_path.get(), Some(_))
+        self.profile_path.get().is_some()
     }
 
     pub fn data_paths(&self) -> Vec<PathBuf> {
@@ -576,11 +556,8 @@ impl NixProfile {
 
     fn get_var(&self, key: &str) -> Option<String> {
         match self.variables.get(key) {
-            Some(var) => match var {
-                NixProfileVariable::Var { value, .. } => Some(value.to_string()),
-                _ => None,
-            },
-            None => None,
+            Some(NixProfileVariable::Var { value, .. }) => Some(value.to_string()),
+            Some(_) | None => None,
         }
     }
 }
