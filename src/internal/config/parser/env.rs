@@ -308,8 +308,9 @@ impl Serialize for EnvOperationConfig {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Copy)]
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Copy, Default)]
 pub enum EnvOperationEnum {
+    #[default]
     #[serde(rename = "s", alias = "set")]
     Set,
     #[serde(rename = "p", alias = "prepend")]
@@ -322,12 +323,6 @@ pub enum EnvOperationEnum {
     Prefix,
     #[serde(rename = "sf", alias = "suffix")]
     Suffix,
-}
-
-impl Default for EnvOperationEnum {
-    fn default() -> Self {
-        EnvOperationEnum::Set
-    }
 }
 
 impl ToString for EnvOperationEnum {
