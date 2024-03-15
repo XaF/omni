@@ -14,6 +14,7 @@ use crate::internal::cache::utils::CacheObject;
 use crate::internal::cache::UpEnvironmentsCache;
 use crate::internal::commands::utils::abs_path;
 use crate::internal::config::up::utils::data_path_dir_hash;
+use crate::internal::config::up::utils::UpProgressHandler;
 use crate::internal::config::up::AsdfToolUpVersion;
 use crate::internal::config::up::ProgressHandler;
 use crate::internal::config::up::UpConfigAsdfBase;
@@ -111,12 +112,16 @@ impl UpConfigGolang {
         }
     }
 
-    pub fn up(&self, options: &UpOptions, progress: Option<(usize, usize)>) -> Result<(), UpError> {
-        self.asdf_base()?.up(options, progress)
+    pub fn up(
+        &self,
+        options: &UpOptions,
+        progress_handler: &UpProgressHandler,
+    ) -> Result<(), UpError> {
+        self.asdf_base()?.up(options, progress_handler)
     }
 
-    pub fn down(&self, progress: Option<(usize, usize)>) -> Result<(), UpError> {
-        self.asdf_base()?.down(progress)
+    pub fn down(&self, progress_handler: &UpProgressHandler) -> Result<(), UpError> {
+        self.asdf_base()?.down(progress_handler)
     }
 
     pub fn was_upped(&self) -> bool {

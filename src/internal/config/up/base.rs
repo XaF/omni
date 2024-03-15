@@ -10,6 +10,7 @@ use crate::internal::config::up::utils::force_remove_dir_all;
 use crate::internal::config::up::utils::PrintProgressHandler;
 use crate::internal::config::up::utils::ProgressHandler;
 use crate::internal::config::up::utils::SpinnerProgressHandler;
+use crate::internal::config::up::utils::UpProgressHandler;
 use crate::internal::config::up::UpConfigAsdfBase;
 use crate::internal::config::up::UpConfigTool;
 use crate::internal::config::up::UpError;
@@ -47,14 +48,19 @@ impl UpConfig {
     pub fn from_config_value(config_value: Option<ConfigValue>) -> Option<Self> {
         config_value.as_ref()?;
 
-        let config_value = config_value.unwrap();
-        if !config_value.is_array() {
-            return None;
-        }
+        let config_value = match config_value {
+            Some(config_value) => config_value,
+            None => return None,
+        };
+
+        let config_array = match config_value.as_array() {
+            Some(config_array) => config_array,
+            None => return None,
+        };
 
         let mut errors = Vec::new();
         let mut steps = Vec::new();
-        for (value, index) in config_value.as_array().unwrap().iter().zip(0..) {
+        for (value, index) in config_array.iter().zip(0..) {
             if value.is_str() {
                 let up_name = value.as_str().unwrap();
                 if let Some(up_config) = UpConfigTool::from_config_value(&up_name, None) {
@@ -155,11 +161,8 @@ impl UpConfig {
                 )));
             }
 
-            // Update the dynamic environment so that if anything has changed
-            // the command can consider it right away
-            update_dynamic_env_for_command(".");
-
-            step.up(options, Some((idx + 1, num_steps)))?
+            let progress_handler = UpProgressHandler::new(Some((idx + 1, num_steps)));
+            step.up(options, &progress_handler)?
         }
 
         // Cleanup anything that's not needed
@@ -183,7 +186,8 @@ impl UpConfig {
             // the command can consider it right away
             update_dynamic_env_for_command(".");
 
-            step.down(Some((idx + 1, num_steps)))?
+            let progress_handler = UpProgressHandler::new(Some((idx + 1, num_steps)));
+            step.down(&progress_handler)?
         }
 
         // Cleanup anything that's not needed

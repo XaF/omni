@@ -14,6 +14,7 @@ use crate::internal::config::up::asdf_tool_path;
 use crate::internal::config::up::run_progress;
 use crate::internal::config::up::utils::data_path_dir_hash;
 use crate::internal::config::up::utils::RunConfig;
+use crate::internal::config::up::utils::UpProgressHandler;
 use crate::internal::config::up::AsdfToolUpVersion;
 use crate::internal::config::up::ProgressHandler;
 use crate::internal::config::up::UpConfigAsdfBase;
@@ -79,12 +80,16 @@ impl UpConfigPython {
         Self { asdf_base, pip }
     }
 
-    pub fn up(&self, options: &UpOptions, progress: Option<(usize, usize)>) -> Result<(), UpError> {
-        self.asdf_base.up(options, progress)
+    pub fn up(
+        &self,
+        options: &UpOptions,
+        progress_handler: &UpProgressHandler,
+    ) -> Result<(), UpError> {
+        self.asdf_base.up(options, progress_handler)
     }
 
-    pub fn down(&self, progress: Option<(usize, usize)>) -> Result<(), UpError> {
-        self.asdf_base.down(progress)
+    pub fn down(&self, progress_handler: &UpProgressHandler) -> Result<(), UpError> {
+        self.asdf_base.down(progress_handler)
     }
 }
 

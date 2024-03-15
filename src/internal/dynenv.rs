@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::collections::HashSet;
 
 use blake3::Hasher;
 use itertools::Itertools;
@@ -517,6 +518,13 @@ impl DynamicEnv {
             }
         }
 
+        // If any FLAGS variable is set, we can clean it up by removing the duplicate
+        // flags; this is particularly useful when using nix, since we will just be appending all
+        // flags to variables like CFLAGS, CPPFLAGS, LDFLAGS, etc.
+        envsetter.set_value_by_fn("CFLAGS", dedup_flags);
+        envsetter.set_value_by_fn("CPPFLAGS", dedup_flags);
+        envsetter.set_value_by_fn("LDFLAGS", dedup_flags);
+
         // Set the OMNI_LOADED_FEATURES variable so that it can easily be used in
         // the shell to keep showing up loaded features in the prompt or anywhere
         // else users wish.
@@ -563,13 +571,25 @@ impl DynamicEnv {
 }
 
 enum DynamicEnvOperation {
+    /// Set a value for a variable
     SetValue(String, String),
+    /// Set a value for a variable by a function; if the function returns None,
+    /// the variable will not be touched
+    SetValueByFn(String, Box<dyn Fn(Option<String>) -> Option<String>>),
+    /// Unset a variable
     UnsetValue(String),
+    /// Prefix a value to a variable
     PrefixValue(String, String),
+    /// Suffix a value to a variable
     SuffixValue(String, String),
+    /// Prepend a value to a list, using ':' as separator
     PrependToList(String, String),
+    /// Append a value to a list, using ':' as separator
     AppendToList(String, String),
+    /// Remove a value from a list, using ':' as separator
     RemoveFromList(String, String),
+    /// Remove values from a list by a function, using ':' as separator;
+    /// the function should return a list of values to remove
     RemoveFromListByFn(String, Box<dyn Fn() -> Vec<String>>),
 }
 
@@ -588,6 +608,16 @@ impl DynamicEnvSetter {
         self.operations.push(DynamicEnvOperation::SetValue(
             key.to_string(),
             value.to_string(),
+        ));
+    }
+
+    fn set_value_by_fn<F>(&mut self, key: &str, f: F)
+    where
+        F: Fn(Option<String>) -> Option<String> + 'static,
+    {
+        self.operations.push(DynamicEnvOperation::SetValueByFn(
+            key.to_string(),
+            Box::new(f),
         ));
     }
 
@@ -651,6 +681,11 @@ impl DynamicEnvSetter {
             match operation {
                 DynamicEnvOperation::SetValue(key, value) => {
                     data.set_value(key, value);
+                }
+                DynamicEnvOperation::SetValueByFn(key, f) => {
+                    if let Some(value) = f(data.env_get_var(key)) {
+                        data.set_value(key, &value);
+                    }
                 }
                 DynamicEnvOperation::UnsetValue(key) => {
                     data.unset_value(key);
@@ -1043,9 +1078,9 @@ impl DynamicEnvData {
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 struct DynamicEnvValue {
-    #[serde(rename = "p", default = "set_none", skip_serializing_if = "is_none")]
+    #[serde(rename = "p", default, skip_serializing_if = "Option::is_none")]
     prev: Option<String>,
-    #[serde(rename = "c", default = "set_none", skip_serializing_if = "is_none")]
+    #[serde(rename = "c", default, skip_serializing_if = "Option::is_none")]
     curr: Option<String>,
 }
 
@@ -1067,14 +1102,6 @@ struct DynamicEnvListValue {
     value: String,
     #[serde(rename = "i")]
     index: usize,
-}
-
-fn set_none() -> Option<String> {
-    None
-}
-
-fn is_none(value: &Option<String>) -> bool {
-    value.is_none()
 }
 
 fn current_env() -> (u64, Option<String>) {
@@ -1112,4 +1139,24 @@ fn hex_to_id(hex: &str) -> Option<u64> {
         return None;
     }
     Some(cur_id.unwrap())
+}
+
+/// This allows to dedup flags in environment variables
+/// such as CFLAGS, CPPFLAGS, LDFLAGS, etc.
+/// NOTE: this is not handling escaped spaces properly,
+/// which means that if a path contains ` -` it will be
+/// split into two different "flags". This is however a
+/// very rare case, and it's not worth the effort to handle
+/// for now.
+fn dedup_flags(flags: Option<String>) -> Option<String> {
+    if let Some(flags) = flags {
+        let mut seen = HashSet::new();
+        return Some(
+            flags
+                .split(" -")
+                .filter(|f| seen.insert(f.to_string()))
+                .join(" -"),
+        );
+    }
+    None
 }
