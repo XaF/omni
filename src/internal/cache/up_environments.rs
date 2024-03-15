@@ -74,19 +74,27 @@ impl UpEnvironmentsCache {
     }
 
     pub fn add_env_var(&mut self, workdir_id: &str, key: &str, value: &str) -> bool {
+        self.add_env_var_operation(workdir_id, key, value, EnvOperationEnum::Set)
+    }
+
+    pub fn add_env_var_operation(
+        &mut self,
+        workdir_id: &str,
+        key: &str,
+        value: &str,
+        operation: EnvOperationEnum,
+    ) -> bool {
+        let up_env_var = UpEnvVar {
+            name: key.to_string(),
+            value: Some(value.to_string()),
+            operation,
+        };
+
         if let Some(env) = self.env.get_mut(workdir_id) {
-            env.env_vars.push(UpEnvVars {
-                name: key.to_string(),
-                value: Some(value.to_string()),
-                operation: EnvOperationEnum::Set,
-            });
+            env.env_vars.push(up_env_var);
         } else {
             let mut env = UpEnvironment::new();
-            env.env_vars.push(UpEnvVars {
-                name: key.to_string(),
-                value: Some(value.to_string()),
-                operation: EnvOperationEnum::Set,
-            });
+            env.env_vars.push(up_env_var);
             self.env.insert(workdir_id.to_string(), env);
         }
         self.updated();
@@ -103,6 +111,13 @@ impl UpEnvironmentsCache {
             self.env.insert(workdir_id.to_string(), env);
         }
         self.updated();
+        true
+    }
+
+    pub fn add_paths(&mut self, workdir_id: &str, paths: Vec<PathBuf>) -> bool {
+        for path in paths {
+            self.add_path(workdir_id, path);
+        }
         true
     }
 
@@ -229,7 +244,7 @@ pub struct UpEnvironment {
     #[serde(default = "Vec::new", skip_serializing_if = "Vec::is_empty")]
     pub paths: Vec<PathBuf>,
     #[serde(default = "Vec::new", skip_serializing_if = "Vec::is_empty")]
-    pub env_vars: Vec<UpEnvVars>,
+    pub env_vars: Vec<UpEnvVar>,
     #[serde(default = "HashMap::new", skip_serializing_if = "HashMap::is_empty")]
     pub config_modtimes: HashMap<String, u64>,
     #[serde(default = "String::new", skip_serializing_if = "String::is_empty")]
@@ -295,13 +310,20 @@ impl UpVersion {
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct UpEnvVars {
+pub struct UpEnvVar {
+    #[serde(rename = "n", alias = "name", skip_serializing_if = "String::is_empty")]
     pub name: String,
+    #[serde(rename = "v", alias = "value", skip_serializing_if = "Option::is_none")]
     pub value: Option<String>,
+    #[serde(
+        rename = "o",
+        alias = "operation",
+        skip_serializing_if = "EnvOperationEnum::is_default"
+    )]
     pub operation: EnvOperationEnum,
 }
 
-impl From<EnvOperationConfig> for UpEnvVars {
+impl From<EnvOperationConfig> for UpEnvVar {
     fn from(env_op: EnvOperationConfig) -> Self {
         Self {
             name: env_op.name,

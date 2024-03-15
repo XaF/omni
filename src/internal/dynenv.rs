@@ -394,6 +394,12 @@ impl DynamicEnv {
                     (EnvOperationEnum::Remove, Some(value)) => {
                         envsetter.remove_from_list(&env_var.name, &value);
                     }
+                    (EnvOperationEnum::Prefix, Some(value)) => {
+                        envsetter.prefix_value(&env_var.name, &value);
+                    }
+                    (EnvOperationEnum::Suffix, Some(value)) => {
+                        envsetter.suffix_value(&env_var.name, &value);
+                    }
                     (_, None) => {}
                 }
             }
@@ -559,6 +565,8 @@ impl DynamicEnv {
 enum DynamicEnvOperation {
     SetValue(String, String),
     UnsetValue(String),
+    PrefixValue(String, String),
+    SuffixValue(String, String),
     PrependToList(String, String),
     AppendToList(String, String),
     RemoveFromList(String, String),
@@ -586,6 +594,21 @@ impl DynamicEnvSetter {
     fn unset_value(&mut self, key: &str) {
         self.operations
             .push(DynamicEnvOperation::UnsetValue(key.to_string()));
+    }
+
+    #[allow(dead_code)]
+    fn prefix_value(&mut self, key: &str, value: &str) {
+        self.operations.push(DynamicEnvOperation::PrefixValue(
+            key.to_string(),
+            value.to_string(),
+        ));
+    }
+
+    fn suffix_value(&mut self, key: &str, value: &str) {
+        self.operations.push(DynamicEnvOperation::SuffixValue(
+            key.to_string(),
+            value.to_string(),
+        ));
     }
 
     fn prepend_to_list(&mut self, key: &str, value: &str) {
@@ -631,6 +654,12 @@ impl DynamicEnvSetter {
                 }
                 DynamicEnvOperation::UnsetValue(key) => {
                     data.unset_value(key);
+                }
+                DynamicEnvOperation::PrefixValue(key, value) => {
+                    data.prefix_value(key, value);
+                }
+                DynamicEnvOperation::SuffixValue(key, value) => {
+                    data.suffix_value(key, value);
                 }
                 DynamicEnvOperation::PrependToList(key, value) => {
                     data.prepend_to_list(key, value);
@@ -740,6 +769,68 @@ impl DynamicEnvData {
         }
 
         self.env_unset_var(key);
+    }
+
+    fn prefix_value(&mut self, key: &str, value: &str) {
+        let curr = match self.values.get_mut(key) {
+            Some(envvalue) => {
+                let curr = format!(
+                    "{}{}",
+                    value,
+                    envvalue.curr.clone().unwrap_or("".to_string())
+                );
+                envvalue.curr = Some(curr.clone());
+
+                curr
+            }
+            None => {
+                let prev = self.env_get_var(key);
+                let curr = format!("{}{}", value, prev.clone().unwrap_or("".to_string()));
+
+                self.values.insert(
+                    key.to_string(),
+                    DynamicEnvValue {
+                        prev,
+                        curr: Some(curr.clone()),
+                    },
+                );
+
+                curr
+            }
+        };
+
+        self.env_set_var(key, &curr);
+    }
+
+    fn suffix_value(&mut self, key: &str, value: &str) {
+        let curr = match self.values.get_mut(key) {
+            Some(envvalue) => {
+                let curr = format!(
+                    "{}{}",
+                    envvalue.curr.clone().unwrap_or("".to_string()),
+                    value
+                );
+                envvalue.curr = Some(curr.clone());
+
+                curr
+            }
+            None => {
+                let prev = self.env_get_var(key);
+                let curr = format!("{}{}", prev.clone().unwrap_or("".to_string()), value);
+
+                self.values.insert(
+                    key.to_string(),
+                    DynamicEnvValue {
+                        prev,
+                        curr: Some(curr.clone()),
+                    },
+                );
+
+                curr
+            }
+        };
+
+        self.env_set_var(key, &curr);
     }
 
     fn prepend_to_list(&mut self, key: &str, value: &str) {

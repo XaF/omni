@@ -5,7 +5,6 @@ use std::os::unix::fs::PermissionsExt;
 use std::path::PathBuf;
 use std::str::FromStr;
 
-use itertools::any;
 use lazy_static::lazy_static;
 use node_semver::Range as semverRange;
 use node_semver::Version as semverVersion;
@@ -19,7 +18,7 @@ use walkdir::WalkDir;
 use crate::internal::cache::AsdfOperationCache;
 use crate::internal::cache::CacheObject;
 use crate::internal::cache::UpEnvironmentsCache;
-use crate::internal::config::up::utils::force_remove_dir_all;
+use crate::internal::config::up::utils::data_path_dir_hash;
 use crate::internal::config::up::utils::run_progress;
 use crate::internal::config::up::utils::PrintProgressHandler;
 use crate::internal::config::up::utils::ProgressHandler;
@@ -33,6 +32,7 @@ use crate::internal::env::shell_is_interactive;
 use crate::internal::user_interface::StringColor;
 use crate::internal::workdir;
 use crate::omni_error;
+use crate::omni_warning;
 
 lazy_static! {
     static ref ASDF_PATH: String = format!("{}/asdf", data_home());
@@ -200,8 +200,14 @@ pub struct UpConfigAsdfBase {
     #[serde(skip)]
     actual_versions: OnceCell<BTreeSet<String>>,
 
+    /// The configuration value that was used to create this object.
     #[serde(skip)]
     config_value: Option<ConfigValue>,
+
+    /// Whether the up operation succeeded. If unset, the operation has not
+    /// been attempted yet.
+    #[serde(skip)]
+    up_succeeded: OnceCell<bool>,
 }
 
 impl UpConfigAsdfBase {
@@ -216,6 +222,7 @@ impl UpConfigAsdfBase {
             actual_version: OnceCell::new(),
             actual_versions: OnceCell::new(),
             config_value: None,
+            up_succeeded: OnceCell::new(),
         }
     }
 
@@ -233,6 +240,8 @@ impl UpConfigAsdfBase {
             tool_url: self.tool_url.clone(),
             version: version.to_string(),
             dirs: dirs.clone(),
+
+            up_succeeded: OnceCell::new(),
 
             // We can ignore all those fields, as they won't be used,
             // since the version passed to that call is a specific version
@@ -310,6 +319,7 @@ impl UpConfigAsdfBase {
             actual_version: OnceCell::new(),
             actual_versions: OnceCell::new(),
             config_value: config_value.cloned(),
+            up_succeeded: OnceCell::new(),
         }
     }
 
@@ -352,7 +362,24 @@ impl UpConfigAsdfBase {
         progress_handler.progress("updated cache".to_string());
     }
 
-    pub fn up(
+    pub fn up(&self, options: &UpOptions, progress: Option<(usize, usize)>) -> Result<(), UpError> {
+        if self.up_succeeded.get().is_some() {
+            return Err(UpError::Exec("up operation already attempted".to_string()));
+        }
+
+        let result = self.run_up(options, progress);
+        if let Err(err) = self.up_succeeded.set(result.is_ok()) {
+            omni_warning!(format!("failed to record status of up operation: {}", err));
+        }
+
+        result
+    }
+
+    pub fn was_upped(&self) -> bool {
+        matches!(self.up_succeeded.get(), Some(true))
+    }
+
+    fn run_up(
         &self,
         _options: &UpOptions,
         progress: Option<(usize, usize)>,
@@ -781,20 +808,40 @@ impl UpConfigAsdfBase {
         Ok(true)
     }
 
-    pub fn cleanup_unused(progress: Option<(usize, usize)>) -> Result<(), UpError> {
-        let desc = "resources cleanup:".light_blue();
-        let progress_handler: Box<dyn ProgressHandler> = if shell_is_interactive() {
-            Box::new(SpinnerProgressHandler::new(desc, progress))
-        } else {
-            Box::new(PrintProgressHandler::new(desc, progress))
-        };
-        let progress_handler: Option<&dyn ProgressHandler> = Some(progress_handler.as_ref());
-
+    pub fn data_paths(&self) -> Vec<PathBuf> {
         let workdir = workdir(".");
-        let workdir_id = if let Some(workdir_id) = workdir.id() {
-            workdir_id
-        } else {
-            return Err(UpError::Exec("failed to get workdir id".to_string()));
+
+        let wd_data_path = match workdir.data_path() {
+            Some(wd_data_path) => wd_data_path,
+            None => return vec![],
+        };
+
+        let version = match self.version(None) {
+            Ok(version) => version,
+            Err(_) => return vec![],
+        };
+
+        let tool_data_path = wd_data_path.join(&self.tool).join(version);
+
+        let mut dirs = self.dirs.clone();
+        if dirs.is_empty() {
+            dirs.insert("".to_string());
+        }
+
+        let mut data_paths = BTreeSet::new();
+        for dir in dirs {
+            let hashed_dir = data_path_dir_hash(&dir);
+            data_paths.insert(tool_data_path.join(&hashed_dir));
+        }
+
+        data_paths.into_iter().collect()
+    }
+
+    pub fn cleanup(progress_handler: &dyn ProgressHandler) -> Result<Option<String>, UpError> {
+        let workdir = workdir(".");
+        let workdir_id = match workdir.id() {
+            Some(workdir_id) => workdir_id,
+            None => return Err(UpError::Exec("failed to get workdir id".to_string())),
         };
 
         // Get the expected installed versions of the tool from
@@ -804,145 +851,13 @@ impl UpConfigAsdfBase {
             env_tools.extend(env.versions.iter().cloned());
         }
 
-        if let Some(wd_data_path) = workdir.data_path() {
-            if wd_data_path.exists() {
-                if let Some(ph) = progress_handler {
-                    ph.progress("removing unused data paths".to_string());
-                }
-
-                // If any data path in the versions
-                if !any(&env_tools, |tool| tool.data_path.is_some()) {
-                    force_remove_dir_all(wd_data_path).map_err(|err| {
-                        UpError::Exec(format!(
-                            "failed to remove workdir data path {}: {}",
-                            wd_data_path.display(),
-                            err
-                        ))
-                    })?;
-                } else {
-                    let expected_tools = env_tools
-                        .iter()
-                        .map(|tool| tool.tool.clone())
-                        .collect::<BTreeSet<_>>();
-
-                    let tool_dirs = std::fs::read_dir(wd_data_path.clone()).map_err(|err| {
-                        UpError::Exec(format!(
-                            "failed to read data path directory for {}: {}",
-                            workdir_id, err,
-                        ))
-                    })?;
-                    for tool_dir in tool_dirs {
-                        let tool_dir = tool_dir.map_err(|err| {
-                            UpError::Exec(format!(
-                                "failed to read data path directory for {}: {}",
-                                workdir_id, err,
-                            ))
-                        })?;
-
-                        let tool_dir_name = tool_dir.file_name().to_string_lossy().to_string();
-
-                        // Remove the tool directory if the tool is not expected
-                        if !expected_tools.contains(&tool_dir_name) {
-                            force_remove_dir_all(tool_dir.path()).map_err(|err| {
-                                UpError::Exec(format!(
-                                    "failed to remove workdir data path for tool {}: {}",
-                                    tool_dir_name, err
-                                ))
-                            })?;
-                            continue;
-                        }
-
-                        // Check the versions for that tool
-                        let expected_versions = env_tools
-                            .iter()
-                            .filter(|tool| tool.tool == tool_dir_name)
-                            .map(|tool| tool.version.clone())
-                            .collect::<BTreeSet<_>>();
-
-                        let version_dirs = std::fs::read_dir(tool_dir.path()).map_err(|err| {
-                            UpError::Exec(format!(
-                                "failed to read data path directory for workdir {} and tool {}: {}",
-                                workdir_id, tool_dir_name, err,
-                            ))
-                        })?;
-
-                        for version_dir in version_dirs {
-                            let version_dir = version_dir.map_err(|err| {
-                                UpError::Exec(format!(
-                                    "failed to read data path directory for workdir {} and tool {}: {}",
-                                    workdir_id, tool_dir_name, err,
-                                ))
-                            })?;
-
-                            let version_dir_name =
-                                version_dir.file_name().to_string_lossy().to_string();
-
-                            // Remove the version directory if the version is not expected
-                            if !expected_versions.contains(&version_dir_name) {
-                                force_remove_dir_all(version_dir.path()).map_err(|err| {
-                                    UpError::Exec(format!(
-                                        "failed to remove workdir data path for workdir {}, tool {} and version {}: {}",
-                                        workdir_id, tool_dir_name, version_dir_name, err
-                                    ))
-                                })?;
-                                continue;
-                            }
-
-                            // Check the paths for that version
-                            let expected_paths = env_tools
-                                .iter()
-                                .filter(|tool| tool.tool == tool_dir_name)
-                                .filter(|tool| tool.version == version_dir_name)
-                                .filter_map(|tool| tool.data_path.clone())
-                                .filter_map(|path| {
-                                    PathBuf::from(&path)
-                                        .strip_prefix(&version_dir.path())
-                                        .map(|path| path.to_string_lossy().to_string())
-                                        .ok()
-                                })
-                                .collect::<BTreeSet<_>>();
-
-                            let path_dirs = std::fs::read_dir(version_dir.path()).map_err(|err| {
-                                UpError::Exec(format!(
-                                    "failed to read data path directory for workdir {}, tool {} and version {}: {}",
-                                    workdir_id, tool_dir_name, version_dir_name, err,
-                                ))
-                            })?;
-
-                            for path_dir in path_dirs {
-                                let path_dir = path_dir.map_err(|err| {
-                                    UpError::Exec(format!(
-                                        "failed to read data path directory for workdir {}, tool {} and version {}: {}",
-                                        workdir_id, tool_dir_name, version_dir_name, err,
-                                    ))
-                                })?;
-
-                                let path_dir_name =
-                                    path_dir.file_name().to_string_lossy().to_string();
-
-                                // Remove the path directory if the path is not expected
-                                if !expected_paths.contains(&path_dir_name) {
-                                    force_remove_dir_all(path_dir.path()).map_err(|err| {
-                                        UpError::Exec(format!(
-                                            "failed to remove workdir data path for workdir {}, tool {}, version {} and path {}: {}",
-                                            workdir_id, tool_dir_name, version_dir_name, path_dir_name, err
-                                        ))
-                                    })?;
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
         let expected_tools = env_tools
             .iter()
             .map(|tool| (tool.tool.clone(), tool.version.clone()))
             .collect::<HashSet<_>>();
 
         let mut uninstalled = Vec::new();
-        let write_cache = AsdfOperationCache::exclusive(|asdf_cache| {
+        if let Err(err) = AsdfOperationCache::exclusive(|asdf_cache| {
             // Update the asdf versions cache
             let mut updated = false;
             let mut to_remove = Vec::new();
@@ -960,22 +875,17 @@ impl UpConfigAsdfBase {
             }
 
             if to_remove.is_empty() {
-                if let Some(handler) = progress_handler {
-                    handler.success_with_message("nothing to do".to_string().light_black());
-                }
                 return updated;
             }
 
             for (idx, to_remove) in to_remove.iter().rev() {
                 if is_asdf_tool_version_installed(&to_remove.tool, &to_remove.version) {
-                    if let Some(handler) = progress_handler {
-                        handler.progress(format!(
-                            "uninstalling {} {}",
-                            to_remove.tool, to_remove.version,
-                        ));
-                    }
+                    progress_handler.progress(format!(
+                        "uninstalling {} {}",
+                        to_remove.tool, to_remove.version,
+                    ));
 
-                    let mut asdf_uninstall = tokio::process::Command::new(asdf_bin());
+                    let mut asdf_uninstall = TokioCommand::new(asdf_bin());
                     asdf_uninstall.arg("uninstall");
                     asdf_uninstall.arg(to_remove.tool.clone());
                     asdf_uninstall.arg(to_remove.version.clone());
@@ -984,15 +894,15 @@ impl UpConfigAsdfBase {
                     asdf_uninstall.stdout(std::process::Stdio::piped());
                     asdf_uninstall.stderr(std::process::Stdio::piped());
 
-                    if let Err(_err) =
-                        run_progress(&mut asdf_uninstall, progress_handler, RunConfig::default())
-                    {
-                        if let Some(handler) = progress_handler {
-                            handler.error_with_message(format!(
-                                "failed to uninstall {} {}",
-                                to_remove.tool, to_remove.version,
-                            ));
-                        }
+                    if let Err(_err) = run_progress(
+                        &mut asdf_uninstall,
+                        Some(progress_handler),
+                        RunConfig::default(),
+                    ) {
+                        progress_handler.error_with_message(format!(
+                            "failed to uninstall {} {}",
+                            to_remove.tool, to_remove.version,
+                        ));
                         return updated;
                     }
 
@@ -1004,28 +914,20 @@ impl UpConfigAsdfBase {
             }
 
             updated
-        });
-
-        if let Err(err) = write_cache {
-            if let Some(handler) = progress_handler {
-                handler.error_with_message(format!("failed to update cache: {}", err));
-            }
+        }) {
+            progress_handler.progress(format!("failed to update cache: {}", err));
             return Err(UpError::Exec("failed to update cache".to_string()));
         }
 
-        if let Some(handler) = progress_handler {
-            if !uninstalled.is_empty() {
-                let uninstalled = uninstalled
-                    .iter()
-                    .map(|tool| tool.light_blue().to_string())
-                    .collect::<Vec<_>>();
-                handler.success_with_message(format!("uninstalled {}", uninstalled.join(", ")));
-            } else {
-                handler.success_with_message("nothing to do".light_black());
-            }
+        if uninstalled.is_empty() {
+            Ok(None)
+        } else {
+            let uninstalled = uninstalled
+                .iter()
+                .map(|tool| tool.light_blue().to_string())
+                .collect::<Vec<_>>();
+            Ok(Some(format!("uninstalled {}", uninstalled.join(", "))))
         }
-
-        Ok(())
     }
 }
 

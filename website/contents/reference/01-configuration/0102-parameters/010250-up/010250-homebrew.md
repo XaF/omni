@@ -90,3 +90,11 @@ up:
       install:
         - omni
 ```
+
+## Dynamic environment
+
+The following variables will be set as part of the [dynamic environment](/reference/dynamic-environment).
+
+| Environment variable | Operation | Description |
+|----------------------|-----------|-------------|
+| `PATH` | prepend | For formulas, uses `$(brew --prefix --installed <formula>)/bin`; for casks, adds any `bin` directory containing at least one executable in the `$(brew --prefix)/Caskroom/<cask>` directory; in both cases, also injects the `$(brew --prefix)/bin` directory |
