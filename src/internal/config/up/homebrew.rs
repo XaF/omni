@@ -64,9 +64,7 @@ impl UpConfigHomebrew {
                 )
                 .light_yellow(),
             );
-            if let Err(err) = tap.up(&subhandler) {
-                return Err(err);
-            }
+            tap.up(&subhandler)?;
         }
 
         let num_installs = self.install.len();
@@ -80,9 +78,7 @@ impl UpConfigHomebrew {
                 )
                 .light_yellow(),
             );
-            if let Err(err) = install.up(options, &subhandler) {
-                return Err(err);
-            }
+            install.up(options, &subhandler)?;
         }
 
         progress_handler.success_with_message(self.get_up_message());
