@@ -848,7 +848,7 @@ impl UpConfigAsdfBase {
         }
 
         // Add also all data paths from dependencies
-        data_paths.extend(self.deps().data_paths().into_iter());
+        data_paths.extend(self.deps().data_paths());
 
         data_paths.into_iter().collect()
     }

@@ -577,10 +577,7 @@ impl HomebrewTap {
     }
 
     fn was_handled(&self) -> bool {
-        match self.was_handled.get() {
-            Some(HomebrewHandled::Handled) => true,
-            _ => false,
-        }
+        matches!(self.was_handled.get(), Some(HomebrewHandled::Handled))
     }
 
     fn handling(&self) -> HomebrewHandled {
@@ -1442,10 +1439,7 @@ impl HomebrewInstall {
     }
 
     fn was_handled(&self) -> bool {
-        match self.was_handled.get() {
-            Some(HomebrewHandled::Handled) => true,
-            _ => false,
-        }
+        matches!(self.was_handled.get(), Some(HomebrewHandled::Handled))
     }
 
     fn handling(&self) -> HomebrewHandled {
