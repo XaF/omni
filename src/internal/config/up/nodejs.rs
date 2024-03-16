@@ -6,6 +6,7 @@ use package_json::PackageJsonManager;
 use serde::Deserialize;
 use serde::Serialize;
 
+use crate::internal::config::up::utils::UpProgressHandler;
 use crate::internal::config::up::UpConfigAsdfBase;
 use crate::internal::config::up::UpError;
 use crate::internal::config::up::UpOptions;
@@ -33,12 +34,16 @@ impl UpConfigNodejs {
         Self { asdf_base }
     }
 
-    pub fn up(&self, options: &UpOptions, progress: Option<(usize, usize)>) -> Result<(), UpError> {
-        self.asdf_base.up(options, progress)
+    pub fn up(
+        &self,
+        options: &UpOptions,
+        progress_handler: &UpProgressHandler,
+    ) -> Result<(), UpError> {
+        self.asdf_base.up(options, progress_handler)
     }
 
-    pub fn down(&self, progress: Option<(usize, usize)>) -> Result<(), UpError> {
-        self.asdf_base.down(progress)
+    pub fn down(&self, progress_handler: &UpProgressHandler) -> Result<(), UpError> {
+        self.asdf_base.down(progress_handler)
     }
 }
 

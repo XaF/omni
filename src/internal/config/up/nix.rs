@@ -14,15 +14,13 @@ use crate::internal::cache::UpEnvironmentsCache;
 use crate::internal::commands::utils::abs_path;
 use crate::internal::config::parser::EnvOperationEnum;
 use crate::internal::config::up::utils::run_progress;
-use crate::internal::config::up::utils::PrintProgressHandler;
 use crate::internal::config::up::utils::ProgressHandler;
 use crate::internal::config::up::utils::RunConfig;
-use crate::internal::config::up::utils::SpinnerProgressHandler;
+use crate::internal::config::up::utils::UpProgressHandler;
 use crate::internal::config::up::UpError;
 use crate::internal::config::up::UpOptions;
 use crate::internal::config::ConfigValue;
 use crate::internal::env::current_dir;
-use crate::internal::env::shell_is_interactive;
 use crate::internal::user_interface::StringColor;
 use crate::internal::workdir;
 use crate::omni_warning;
@@ -43,6 +41,14 @@ pub struct UpConfigNix {
 }
 
 impl UpConfigNix {
+    pub fn new_from_packages(packages: Vec<String>) -> Self {
+        UpConfigNix {
+            packages,
+            nixfile: None,
+            profile_path: OnceCell::new(),
+        }
+    }
+
     /// Parse the configuration value into a `UpConfigNix` struct.
     ///
     /// The following are all valid ways to specify nix dependencies:
@@ -124,7 +130,11 @@ impl UpConfigNix {
         UpConfigNix::default()
     }
 
-    pub fn up(&self, options: &UpOptions, progress: Option<(usize, usize)>) -> Result<(), UpError> {
+    pub fn up(
+        &self,
+        options: &UpOptions,
+        progress_handler: &UpProgressHandler,
+    ) -> Result<(), UpError> {
         let wd = workdir(".");
         let wd_root = match wd.root() {
             Some(wd_root) => PathBuf::from(wd_root),
@@ -176,23 +186,15 @@ impl UpConfigNix {
         }
 
         // Prepare the progress handler
-        let desc = format!(
+        progress_handler.init(format!(
             "nix ({}):",
-            match &nixfile {
-                Some(nixfile) => match nixfile.file_name() {
+            nixfile.as_ref().map_or("packages".to_string(), |nixfile| {
+                match nixfile.file_name() {
                     Some(file_name) => file_name.to_string_lossy().to_string(),
                     None => "nixfile".to_string(),
-                },
-                None => "packages".to_string(),
-            }
-        )
-        .light_blue();
-        let progress_handler: Box<dyn ProgressHandler> = if shell_is_interactive() {
-            Box::new(SpinnerProgressHandler::new(desc, progress))
-        } else {
-            Box::new(PrintProgressHandler::new(desc, progress))
-        };
-        let progress_handler: &dyn ProgressHandler = progress_handler.as_ref();
+                }
+            })
+        ));
 
         // Generate a profile id either by hashing the list of packages
         // or the contents of the nix file.
@@ -389,7 +391,7 @@ impl UpConfigNix {
         Ok(())
     }
 
-    pub fn down(&self, _progress: Option<(usize, usize)>) -> Result<(), UpError> {
+    pub fn down(&self, _progress_handler: &UpProgressHandler) -> Result<(), UpError> {
         // At the end of the 'down' operation, the work directory cache will be
         // wiped. Cleaning dependencies for nix just means removing the gcroots
         // file, so we don't need to do anything here since it will be removed
@@ -537,15 +539,15 @@ impl NixProfile {
     }
 
     fn get_cflags(&self) -> Option<String> {
-        self.get_var("NIX_CFLAGS_COMPILE_FOR_TARGET")
+        self.get_first_var(&["NIX_CFLAGS_COMPILE_FOR_TARGET", "NIX_CFLAGS_COMPILE"])
     }
 
     fn get_ldflags(&self) -> Option<String> {
-        self.get_var("NIX_LDFLAGS_FOR_TARGET")
+        self.get_first_var(&["NIX_LDFLAGS_FOR_TARGET", "NIX_LDFLAGS"])
     }
 
     fn get_pkg_config_paths(&self) -> Vec<String> {
-        match self.get_var("PKG_CONFIG_PATH_FOR_TARGET") {
+        match self.get_first_var(&["PKG_CONFIG_PATH_FOR_TARGET", "PKG_CONFIG_PATH"]) {
             Some(pkg_config_path) => pkg_config_path
                 .split(':')
                 .map(|path| path.to_string())
@@ -559,6 +561,15 @@ impl NixProfile {
             Some(NixProfileVariable::Var { value, .. }) => Some(value.to_string()),
             Some(_) | None => None,
         }
+    }
+
+    fn get_first_var(&self, keys: &[&str]) -> Option<String> {
+        for key in keys {
+            if let Some(value) = self.get_var(key) {
+                return Some(value);
+            }
+        }
+        None
     }
 }
 

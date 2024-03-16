@@ -18,17 +18,20 @@ use walkdir::WalkDir;
 use crate::internal::cache::AsdfOperationCache;
 use crate::internal::cache::CacheObject;
 use crate::internal::cache::UpEnvironmentsCache;
+use crate::internal::config::up::homebrew::HomebrewInstall;
 use crate::internal::config::up::utils::data_path_dir_hash;
 use crate::internal::config::up::utils::run_progress;
-use crate::internal::config::up::utils::PrintProgressHandler;
 use crate::internal::config::up::utils::ProgressHandler;
 use crate::internal::config::up::utils::RunConfig;
-use crate::internal::config::up::utils::SpinnerProgressHandler;
+use crate::internal::config::up::utils::UpProgressHandler;
+use crate::internal::config::up::UpConfigHomebrew;
+use crate::internal::config::up::UpConfigNix;
+use crate::internal::config::up::UpConfigTool;
 use crate::internal::config::up::UpError;
 use crate::internal::config::up::UpOptions;
 use crate::internal::config::ConfigValue;
+use crate::internal::dynenv::update_dynamic_env_for_command;
 use crate::internal::env::data_home;
-use crate::internal::env::shell_is_interactive;
 use crate::internal::user_interface::StringColor;
 use crate::internal::workdir;
 use crate::omni_error;
@@ -208,6 +211,10 @@ pub struct UpConfigAsdfBase {
     /// been attempted yet.
     #[serde(skip)]
     up_succeeded: OnceCell<bool>,
+
+    /// The tool object representing the dependencies for this asdf tool.
+    #[serde(skip)]
+    deps: OnceCell<Box<UpConfigTool>>,
 }
 
 impl UpConfigAsdfBase {
@@ -223,6 +230,7 @@ impl UpConfigAsdfBase {
             actual_versions: OnceCell::new(),
             config_value: None,
             up_succeeded: OnceCell::new(),
+            deps: OnceCell::new(),
         }
     }
 
@@ -242,6 +250,7 @@ impl UpConfigAsdfBase {
             dirs: dirs.clone(),
 
             up_succeeded: OnceCell::new(),
+            deps: OnceCell::new(),
 
             // We can ignore all those fields, as they won't be used,
             // since the version passed to that call is a specific version
@@ -320,6 +329,7 @@ impl UpConfigAsdfBase {
             actual_versions: OnceCell::new(),
             config_value: config_value.cloned(),
             up_succeeded: OnceCell::new(),
+            deps: OnceCell::new(),
         }
     }
 
@@ -362,12 +372,16 @@ impl UpConfigAsdfBase {
         progress_handler.progress("updated cache".to_string());
     }
 
-    pub fn up(&self, options: &UpOptions, progress: Option<(usize, usize)>) -> Result<(), UpError> {
+    pub fn up(
+        &self,
+        options: &UpOptions,
+        progress_handler: &UpProgressHandler,
+    ) -> Result<(), UpError> {
         if self.up_succeeded.get().is_some() {
             return Err(UpError::Exec("up operation already attempted".to_string()));
         }
 
-        let result = self.run_up(options, progress);
+        let result = self.run_up(options, progress_handler);
         if let Err(err) = self.up_succeeded.set(result.is_ok()) {
             omni_warning!(format!("failed to record status of up operation: {}", err));
         }
@@ -381,16 +395,15 @@ impl UpConfigAsdfBase {
 
     fn run_up(
         &self,
-        _options: &UpOptions,
-        progress: Option<(usize, usize)>,
+        options: &UpOptions,
+        progress_handler: &UpProgressHandler,
     ) -> Result<(), UpError> {
-        let desc = format!("{} ({}):", self.tool, self.version).light_blue();
-        let progress_handler: Box<dyn ProgressHandler> = if shell_is_interactive() {
-            Box::new(SpinnerProgressHandler::new(desc, progress))
-        } else {
-            Box::new(PrintProgressHandler::new(desc, progress))
-        };
-        let progress_handler: &dyn ProgressHandler = progress_handler.as_ref();
+        progress_handler.init(format!("{} ({}):", self.tool, self.version).light_blue());
+
+        // Make sure that dependencies are installed
+        let subhandler = progress_handler.subhandler(&"deps: ".light_black());
+        self.deps().up(options, &subhandler)?;
+        update_dynamic_env_for_command(".");
 
         if let Err(err) = install_asdf(progress_handler) {
             progress_handler.error_with_message(format!("error: {}", err));
@@ -612,8 +625,8 @@ impl UpConfigAsdfBase {
         }
     }
 
-    pub fn down(&self, _progress: Option<(usize, usize)>) -> Result<(), UpError> {
-        Ok(())
+    pub fn down(&self, progress_handler: &UpProgressHandler) -> Result<(), UpError> {
+        self.deps().down(progress_handler)
     }
 
     fn version(&self, progress_handler: Option<&dyn ProgressHandler>) -> Result<&String, UpError> {
@@ -834,6 +847,9 @@ impl UpConfigAsdfBase {
             data_paths.insert(tool_data_path.join(&hashed_dir));
         }
 
+        // Add also all data paths from dependencies
+        data_paths.extend(self.deps().data_paths());
+
         data_paths.into_iter().collect()
     }
 
@@ -928,6 +944,87 @@ impl UpConfigAsdfBase {
                 .collect::<Vec<_>>();
             Ok(Some(format!("uninstalled {}", uninstalled.join(", "))))
         }
+    }
+
+    fn deps(&self) -> &UpConfigTool {
+        self.deps
+            .get_or_init(|| {
+                let deps: Vec<UpConfigTool> = vec![
+                    // TODO: Add a way to specify the preferred package manager, so
+                    // we can order the dependencies handling based on that
+                    self.deps_using_homebrew(),
+                    self.deps_using_nix(),
+                ];
+
+                Box::new(UpConfigTool::Or(deps))
+            })
+            .as_ref()
+    }
+
+    fn deps_using_homebrew(&self) -> UpConfigTool {
+        let mut homebrew_install = vec![
+            HomebrewInstall::new_formula("autoconf"),
+            // HomebrewInstall::new_formula("automake"),
+            HomebrewInstall::new_formula("coreutils"),
+            HomebrewInstall::new_formula("curl"),
+            // HomebrewInstall::new_formula("libtool"),
+            HomebrewInstall::new_formula("libyaml"),
+            HomebrewInstall::new_formula("openssl@3"),
+            HomebrewInstall::new_formula("readline"),
+            // HomebrewInstall::new_formula("unixodbc"),
+        ];
+
+        match self.tool.as_str() {
+            "python" => {
+                homebrew_install.extend(vec![
+                    HomebrewInstall::new_formula("pkg-config"),
+                    // HomebrewInstall::new_formula("sqlite"),
+                    // HomebrewInstall::new_formula("xz"),
+                ]);
+            }
+            "rust" => {
+                homebrew_install.extend(vec![
+                    HomebrewInstall::new_formula("libgit2"),
+                    HomebrewInstall::new_formula("libssh2"),
+                    HomebrewInstall::new_formula("llvm"),
+                    HomebrewInstall::new_formula("pkg-config"),
+                ]);
+            }
+            _ => {}
+        }
+
+        UpConfigTool::Homebrew(UpConfigHomebrew {
+            install: homebrew_install,
+            tap: vec![],
+        })
+    }
+
+    fn deps_using_nix(&self) -> UpConfigTool {
+        let mut nix_packages = vec!["gawk", "gnused", "openssl", "readline"];
+
+        match self.tool.as_str() {
+            "python" => {
+                nix_packages.extend(vec![
+                    "bzip2",
+                    "gcc",
+                    "gnumake",
+                    "libffi",
+                    "lzma",
+                    "ncurses",
+                    "pkg-config",
+                    "sqlite",
+                    "zlib",
+                ]);
+            }
+            "ruby" => {
+                nix_packages.extend(vec!["libyaml"]);
+            }
+            _ => {}
+        }
+
+        UpConfigTool::Nix(UpConfigNix::new_from_packages(
+            nix_packages.into_iter().map(|p| p.to_string()).collect(),
+        ))
     }
 }
 
