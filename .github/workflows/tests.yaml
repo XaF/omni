@@ -42,6 +42,7 @@ jobs:
 
     outputs:
       deploy_website: ${{ steps.changed-files.outputs.website_any_modified }}
+      trigger_algolia: ${{ steps.changed-files.outputs.website_contents_any_modified }}
       run_tests: ${{ steps.changed-files.outputs.core_any_modified }}
       pages_environment: ${{ env.PAGES_ENVIRONMENT }}
 
@@ -58,6 +59,8 @@ jobs:
             website:
               - '.github/workflows/tests.yaml'
               - 'website/**'
+            website_contents:
+              - 'website/contents/**'
             core:
               - '.github/workflows/build.yaml'
               - '.github/workflows/tests.yaml'
@@ -236,7 +239,7 @@ jobs:
         uses: actions/deploy-pages@v4
 
       - name: Trigger Algolia crawler
-        if: github.event_name != 'pull_request'
+        if: github.event_name != 'pull_request' &&  needs.check-changed-files.outputs.trigger_algolia == 'true'
         uses: algolia/algoliasearch-crawler-github-actions@v1.1.10
         with:
           crawler-name: omnicli

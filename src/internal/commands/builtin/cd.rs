@@ -14,6 +14,7 @@ use crate::internal::env::user_home;
 use crate::internal::env::Shell;
 use crate::internal::git::ORG_LOADER;
 use crate::internal::user_interface::StringColor;
+use crate::internal::workdir;
 use crate::omni_error;
 
 #[derive(Debug, Clone)]
@@ -336,6 +337,12 @@ impl CdCommand {
     }
 
     fn cd_repo_find(&self, repo: &str) -> Option<String> {
+        // Handle the special case of `...` to go to the work directory root
+        if repo == "..." {
+            let wd = workdir(".");
+            return wd.root().map(|wd_root| wd_root.to_string());
+        }
+
         // Delegate to the shell if this is a path
         if repo.starts_with('/')
             || repo.starts_with('.')
