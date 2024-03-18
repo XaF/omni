@@ -11,6 +11,7 @@ use std::process::exit;
 use std::sync::Mutex;
 
 use fs4::FileExt;
+use itertools::Itertools;
 use lazy_static::lazy_static;
 
 use crate::internal::config::ConfigExtendOptions;
@@ -128,13 +129,44 @@ impl ConfigLoader {
         .collect::<Vec<String>>()
     }
 
+    fn system_config_files(prefix: &str) -> Vec<String> {
+        let mut config_files = vec![];
+
+        // We can just check for a single file /etc/omni/(pre/post).yaml
+        let file = format!("/etc/omni/{}.yaml", prefix);
+        if PathBuf::from(&file).is_file() {
+            config_files.push(file);
+        }
+
+        // Use a glob pattern to check in /etc/omni/(pre/post).d/<file>.yaml
+        // and apply the files in lexicographical order
+        let glob_pattern = format!("/etc/omni/{}.d/*.yaml", prefix);
+        if let Ok(entries) = glob::glob(&glob_pattern) {
+            for path in entries.into_iter().flatten().sorted() {
+                if !path.is_file() {
+                    continue;
+                }
+
+                config_files.push(path.to_string_lossy().to_string());
+            }
+        }
+
+        config_files
+    }
+
     fn new_global() -> Self {
         let mut new_config_loader = Self {
             loaded_config_files: vec![],
             raw_config: ConfigValue::empty(),
         };
 
+        new_config_loader
+            .import_config_files(Self::system_config_files("pre"), ConfigScope::System);
+
         new_config_loader.import_config_files(Self::user_config_files(), ConfigScope::User);
+
+        new_config_loader
+            .import_config_files(Self::system_config_files("post"), ConfigScope::System);
 
         new_config_loader
     }

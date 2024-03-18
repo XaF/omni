@@ -21,6 +21,7 @@ use crate::internal::config::parser::SuggestCloneConfig;
 use crate::internal::config::parser::SuggestConfig;
 use crate::internal::config::parser::UpCommandConfig;
 use crate::internal::config::up::UpConfig;
+use crate::internal::config::ConfigScope;
 use crate::internal::config::ConfigValue;
 use crate::internal::config::OrgConfig;
 use crate::internal::env::omni_git_env;
@@ -96,8 +97,15 @@ impl OmniConfig {
 
         let mut org_config = Vec::new();
         if let Some(value) = config_value.get("org") {
-            for value in value.as_array().unwrap() {
-                org_config.push(OrgConfig::from_config_value(&value));
+            // TODO: instead of rejecting scope, we should support protected parameters
+            // in the config_value object so that those parameters would never be overwritten
+            // by any work directory specific configuration.
+            if let Some(value) = value.reject_scope(&ConfigScope::Workdir) {
+                if let Some(array) = value.as_array() {
+                    for value in array {
+                        org_config.push(OrgConfig::from_config_value(&value));
+                    }
+                }
             }
         }
 
