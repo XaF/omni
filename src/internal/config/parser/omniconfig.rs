@@ -168,6 +168,14 @@ impl OmniConfig {
         self.repo_path_format.contains("%{repo}")
     }
 
+    /// Returns a hash of the configuration used for setting up a repository,
+    /// so that we can inform the user if they should call `omni up` again.
+    ///
+    /// This includes the following configuration parameters:
+    /// - up
+    /// - suggest_config
+    /// - suggest_clone
+    /// - env
     pub fn up_hash(&self) -> String {
         let mut config_hasher = blake3::Hasher::new();
 
@@ -183,6 +191,10 @@ impl OmniConfig {
 
         if let Ok(suggest_clone_str) = serde_yaml::to_string(&self.suggest_clone) {
             config_hasher.update(suggest_clone_str.as_bytes());
+        }
+
+        if let Ok(env_str) = serde_yaml::to_string(&self.env) {
+            config_hasher.update(env_str.as_bytes());
         }
 
         config_hasher.finalize().to_hex()[..16].to_string()
