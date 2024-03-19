@@ -416,7 +416,7 @@ impl UpConfigHomebrew {
                 Err(UpError::Exec(format!(
                     "{}; {}",
                     messages.join(" and "),
-                    err.to_string()
+                    err,
                 )))
             }
         } else if messages.is_empty() {
