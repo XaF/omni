@@ -7,17 +7,15 @@ use crate::internal::cache::utils::Empty;
 use crate::internal::cache::CacheObject;
 use crate::internal::cache::UpEnvironmentsCache;
 use crate::internal::config::up::utils::force_remove_dir_all;
-use crate::internal::config::up::utils::PrintProgressHandler;
 use crate::internal::config::up::utils::ProgressHandler;
-use crate::internal::config::up::utils::SpinnerProgressHandler;
 use crate::internal::config::up::utils::UpProgressHandler;
 use crate::internal::config::up::UpConfigAsdfBase;
+use crate::internal::config::up::UpConfigHomebrew;
 use crate::internal::config::up::UpConfigTool;
 use crate::internal::config::up::UpError;
 use crate::internal::config::up::UpOptions;
 use crate::internal::config::ConfigValue;
 use crate::internal::dynenv::update_dynamic_env_for_command;
-use crate::internal::env::shell_is_interactive;
 use crate::internal::user_interface::colors::StringColor;
 use crate::internal::workdir;
 use crate::omni_warning;
@@ -201,24 +199,21 @@ impl UpConfig {
     /// steps that do not exist anymore on top of previous versions of recently
     /// upgraded tools.
     pub fn cleanup(&self, progress: Option<(usize, usize)>) -> Result<(), UpError> {
-        let desc = "resources cleanup:".light_blue();
-        let progress_handler: Box<dyn ProgressHandler> = if shell_is_interactive() {
-            Box::new(SpinnerProgressHandler::new(desc, progress))
-        } else {
-            Box::new(PrintProgressHandler::new(desc, progress))
-        };
-        let progress_handler: &dyn ProgressHandler = progress_handler.as_ref();
+        let progress_handler = UpProgressHandler::new(progress);
+        progress_handler.init("resources cleanup".light_blue());
 
         let mut cleanups = vec![];
 
         // Call cleanup on the different operation types
-        if let Some(cleanup) = UpConfigAsdfBase::cleanup(progress_handler)? {
+        if let Some(cleanup) = UpConfigAsdfBase::cleanup(&progress_handler)? {
             cleanups.push(cleanup);
         }
-        // TODO: call cleanup on homebrew
+        if let Some(cleanup) = UpConfigHomebrew::cleanup(&progress_handler)? {
+            cleanups.push(cleanup);
+        }
 
         // Then cleanup the data path
-        if let Some(cleanup) = self.cleanup_data_path(progress_handler)? {
+        if let Some(cleanup) = self.cleanup_data_path(&progress_handler)? {
             cleanups.push(cleanup);
         }
 
