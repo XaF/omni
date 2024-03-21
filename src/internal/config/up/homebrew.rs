@@ -823,14 +823,6 @@ impl HomebrewInstall {
 
         progress_handler.progress("updating cache".to_string());
 
-        eprintln!(
-            "update_cache: {}, {}, cask: {}, handled: {}",
-            self.name,
-            self.version.clone().unwrap_or("latest".to_string()),
-            self.is_cask(),
-            self.was_handled()
-        );
-
         if let Err(err) = HomebrewOperationCache::exclusive(|brew_cache| {
             brew_cache.add_install(
                 &workdir_id,
