@@ -3,14 +3,12 @@ use std::collections::HashSet;
 use std::path::PathBuf;
 
 use duct::cmd;
-use itertools::any;
 use itertools::Itertools;
 use once_cell::sync::OnceCell;
 use serde::Deserialize;
 use serde::Serialize;
 use tokio::process::Command as TokioCommand;
 
-use crate::internal::cache::homebrew_operation::HomebrewTapped;
 use crate::internal::cache::CacheObject;
 use crate::internal::cache::HomebrewInstalled;
 use crate::internal::cache::HomebrewOperationCache;
@@ -52,12 +50,6 @@ impl UpConfigHomebrew {
         options: &UpOptions,
         progress_handler: &UpProgressHandler,
     ) -> Result<(), UpError> {
-        let wd = workdir(".");
-        let wd_id = match wd.id() {
-            Some(wd_id) => wd_id,
-            None => return Err(UpError::Exec("failed to get workdir id".to_string())),
-        };
-
         progress_handler.init("homebrew:".light_blue());
         progress_handler.progress("installing homebrew dependencies".to_string());
 
@@ -87,32 +79,6 @@ impl UpConfigHomebrew {
                 .light_yellow(),
             );
             install.up(options, &subhandler)?;
-        }
-
-        // Remove all homebrew dependencies that are not in the configuration
-        // anymore, which allows to handle cases where we required something
-        // and decide to not require it anymore
-        if let Err(err) = HomebrewOperationCache::exclusive(|brew_cache| {
-            let mut updated = false;
-
-            for install in brew_cache.installed.iter_mut().filter(|install| {
-                install.required_by.contains(&wd_id)
-                    && !any(&self.install, |i| i.is_cache_entry(install))
-            }) {
-                install.required_by.retain(|id| id != &wd_id);
-                updated = true;
-            }
-
-            for tap in brew_cache.tapped.iter_mut().filter(|tap| {
-                tap.required_by.contains(&wd_id) && !any(&self.tap, |t| t.is_cache_entry(tap))
-            }) {
-                tap.required_by.retain(|id| id != &wd_id);
-                updated = true;
-            }
-
-            updated
-        }) {
-            progress_handler.progress(format!("failed to update cache: {}", err).light_yellow());
         }
 
         progress_handler.success_with_message(self.get_up_message());
@@ -248,6 +214,12 @@ impl UpConfigHomebrew {
     }
 
     pub fn cleanup(progress_handler: &UpProgressHandler) -> Result<Option<String>, UpError> {
+        let wd = workdir(".");
+        let wd_id = match wd.id() {
+            Some(wd_id) => wd_id,
+            None => return Err(UpError::Exec("failed to get workdir id".to_string())),
+        };
+
         let mut return_value: Result<Option<String>, UpError> = Ok(None);
         let mut updated = false;
         let mut to_untap = vec![];
@@ -257,6 +229,33 @@ impl UpConfigHomebrew {
             progress_handler.init("homebrew:".light_blue());
             progress_handler.progress("checking for unused homebrew dependencies".to_string());
 
+            // Cleanup the references to this repository for
+            // any installed formulae or casks that is not currently
+            // listed in the up configuration
+            for install in brew_cache
+                .installed
+                .iter_mut()
+                .filter(|install| install.required_by.contains(&wd_id) && install.stale())
+            {
+                install.required_by.retain(|id| id != &wd_id);
+                updated = true;
+            }
+
+            // Cleanup the references to this repository for
+            // any tap that is not currently listed in the up
+            // configuration
+            for tap in brew_cache
+                .tapped
+                .iter_mut()
+                .filter(|tap| tap.required_by.contains(&wd_id) && tap.stale())
+            {
+                tap.required_by.retain(|id| id != &wd_id);
+                updated = true;
+            }
+
+            // Get the list of formulae and casks that are not
+            // required by any other repository but that have
+            // been installed by omni
             to_uninstall = brew_cache
                 .installed
                 .iter_mut()
@@ -306,6 +305,8 @@ impl UpConfigHomebrew {
                 updated = true;
             }
 
+            // Get the list of taps that are not required by any
+            // other repository but that have been tapped by omni
             to_untap = brew_cache
                 .tapped
                 .iter_mut()
@@ -550,11 +551,10 @@ impl HomebrewTap {
 
     fn update_cache(&self, progress_handler: &dyn ProgressHandler) {
         let workdir = workdir(".");
-        let workdir_id = workdir.id();
-        if workdir_id.is_none() {
-            return;
-        }
-        let workdir_id = workdir_id.unwrap();
+        let workdir_id = match workdir.id() {
+            Some(wd_id) => wd_id,
+            None => return,
+        };
 
         progress_handler.progress("updating cache".to_string());
 
@@ -668,10 +668,6 @@ impl HomebrewTap {
             Some(handled) => handled.clone(),
             None => HomebrewHandled::Unhandled,
         }
-    }
-
-    fn is_cache_entry(&self, cache_entry: &HomebrewTapped) -> bool {
-        self.name == cache_entry.name
     }
 }
 
@@ -827,6 +823,14 @@ impl HomebrewInstall {
 
         progress_handler.progress("updating cache".to_string());
 
+        eprintln!(
+            "update_cache: {}, {}, cask: {}, handled: {}",
+            self.name,
+            self.version.clone().unwrap_or("latest".to_string()),
+            self.is_cask(),
+            self.was_handled()
+        );
+
         if let Err(err) = HomebrewOperationCache::exclusive(|brew_cache| {
             brew_cache.add_install(
                 &workdir_id,
@@ -875,17 +879,16 @@ impl HomebrewInstall {
 
         let installed = self.is_installed(options);
         if installed && self.version.is_some() {
-            self.update_cache(options, &progress_handler);
             if self.was_handled.set(HomebrewHandled::Noop).is_err() {
                 unreachable!("failed to set was_handled (install: {})", self.name);
             }
+            self.update_cache(options, &progress_handler);
             progress_handler.success_with_message("already installed".light_black());
             return Ok(());
         }
 
         match self.install(options, Some(&progress_handler), installed) {
             Ok(did_something) => {
-                self.update_cache(options, &progress_handler);
                 let (was_handled, message) = match (installed, did_something) {
                     (true, true) => (HomebrewHandled::Updated, "updated".light_green()),
                     (true, false) => (HomebrewHandled::Noop, "up to date (cached)".light_black()),
@@ -894,6 +897,7 @@ impl HomebrewInstall {
                 if self.was_handled.set(was_handled).is_err() {
                     unreachable!("failed to set was_handled (install: {})", self.name);
                 }
+                self.update_cache(options, &progress_handler);
                 progress_handler.success_with_message(message);
                 Ok(())
             }
@@ -988,12 +992,6 @@ impl HomebrewInstall {
 
     fn is_cask(&self) -> bool {
         self.install_type == HomebrewInstallType::Cask
-    }
-
-    fn is_cache_entry(&self, cache_entry: &HomebrewInstalled) -> bool {
-        self.name() == cache_entry.name
-            && self.version() == cache_entry.version
-            && self.is_cask() == cache_entry.cask
     }
 
     fn is_installed(&self, options: &UpOptions) -> bool {

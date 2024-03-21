@@ -186,15 +186,18 @@ impl UpConfigNix {
         }
 
         // Prepare the progress handler
-        progress_handler.init(format!(
-            "nix ({}):",
-            nixfile.as_ref().map_or("packages".to_string(), |nixfile| {
-                match nixfile.file_name() {
-                    Some(file_name) => file_name.to_string_lossy().to_string(),
-                    None => "nixfile".to_string(),
-                }
-            })
-        ));
+        progress_handler.init(
+            format!(
+                "nix ({}):",
+                nixfile.as_ref().map_or("packages".to_string(), |nixfile| {
+                    match nixfile.file_name() {
+                        Some(file_name) => file_name.to_string_lossy().to_string(),
+                        None => "nixfile".to_string(),
+                    }
+                })
+            )
+            .light_blue(),
+        );
 
         // Generate a profile id either by hashing the list of packages
         // or the contents of the nix file.
