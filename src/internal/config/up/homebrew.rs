@@ -174,29 +174,101 @@ impl UpConfigHomebrew {
 
     pub fn down(&self, progress_handler: &UpProgressHandler) -> Result<(), UpError> {
         let workdir = workdir(".");
-        let repo_id = match workdir.id() {
-            Some(repo_id) => repo_id,
+        let wd_id = match workdir.id() {
+            Some(wd_id) => wd_id,
             None => return Ok(()),
         };
 
-        let mut return_value = Ok(());
-
         if let Err(err) = HomebrewOperationCache::exclusive(|brew_cache| {
             progress_handler.init("homebrew:".light_blue());
-            progress_handler.progress("uninstalling (unused) homebrew dependencies".to_string());
+            progress_handler.progress("updating homebrew dependencies".to_string());
 
             let mut updated = false;
 
-            let mut to_uninstall = Vec::new();
-            for (idx, install) in brew_cache.installed.iter_mut().enumerate().rev() {
-                if install.required_by.contains(&repo_id) {
-                    install.required_by.retain(|id| id != &repo_id);
-                    updated = true;
-                }
-                if install.required_by.is_empty() && install.installed {
-                    to_uninstall.push((idx, HomebrewInstall::from_cache(install)));
-                }
+            for install in brew_cache
+                .installed
+                .iter_mut()
+                .filter(|install| install.required_by.contains(&wd_id))
+            {
+                install.required_by.retain(|id| id != &wd_id);
+                updated = true;
             }
+
+            for tap in brew_cache
+                .tapped
+                .iter_mut()
+                .filter(|tap| tap.required_by.contains(&wd_id))
+            {
+                tap.required_by.retain(|id| id != &wd_id);
+                updated = true;
+            }
+
+            updated
+        }) {
+            progress_handler.progress(format!("failed to update cache: {}", err).light_yellow());
+        }
+
+        progress_handler.success_with_message("homebrew dependencies cleaned".light_green());
+
+        Ok(())
+    }
+
+    pub fn cleanup(progress_handler: &UpProgressHandler) -> Result<Option<String>, UpError> {
+        let wd = workdir(".");
+        let wd_id = match wd.id() {
+            Some(wd_id) => wd_id,
+            None => return Err(UpError::Exec("failed to get workdir id".to_string())),
+        };
+
+        let mut return_value: Result<Option<String>, UpError> = Ok(None);
+        let mut updated = false;
+        let mut to_untap = vec![];
+        let mut to_uninstall = vec![];
+
+        if let Err(err) = HomebrewOperationCache::exclusive(|brew_cache| {
+            progress_handler.init("homebrew:".light_blue());
+            progress_handler.progress("checking for unused homebrew dependencies".to_string());
+
+            // Cleanup the references to this repository for
+            // any installed formulae or casks that is not currently
+            // listed in the up configuration
+            for install in brew_cache
+                .installed
+                .iter_mut()
+                .filter(|install| install.required_by.contains(&wd_id) && install.stale())
+            {
+                install.required_by.retain(|id| id != &wd_id);
+                updated = true;
+            }
+
+            // Cleanup the references to this repository for
+            // any tap that is not currently listed in the up
+            // configuration
+            for tap in brew_cache
+                .tapped
+                .iter_mut()
+                .filter(|tap| tap.required_by.contains(&wd_id) && tap.stale())
+            {
+                tap.required_by.retain(|id| id != &wd_id);
+                updated = true;
+            }
+
+            // Get the list of formulae and casks that are not
+            // required by any other repository but that have
+            // been installed by omni
+            to_uninstall = brew_cache
+                .installed
+                .iter_mut()
+                .enumerate()
+                .rev() // reverse so we can remove from the end
+                .filter_map(|(idx, install)| {
+                    if install.required_by.is_empty() && install.installed {
+                        Some((idx, HomebrewInstall::from_cache(install)))
+                    } else {
+                        None
+                    }
+                })
+                .collect::<Vec<_>>();
 
             let num_uninstalls = to_uninstall.len();
             for (idx, (rmidx, install)) in to_uninstall.iter().enumerate() {
@@ -215,6 +287,7 @@ impl UpConfigHomebrew {
                     return_value = Err(err);
                     return updated;
                 }
+
                 brew_cache.installed.remove(*rmidx);
                 brew_cache.update_cache.removed_homebrew_install(
                     &install.name(),
@@ -227,21 +300,26 @@ impl UpConfigHomebrew {
             let current_installed = brew_cache.installed.len();
             brew_cache
                 .installed
-                .retain(|install| !install.required_by.is_empty());
+                .retain(|install| !install.required_by.is_empty() || install.installed);
             if current_installed != brew_cache.installed.len() {
                 updated = true;
             }
 
-            let mut to_untap = Vec::new();
-            for (idx, tap) in brew_cache.tapped.iter_mut().enumerate().rev() {
-                if tap.required_by.contains(&repo_id) {
-                    tap.required_by.retain(|id| id != &repo_id);
-                    updated = true;
-                }
-                if tap.required_by.is_empty() && tap.tapped {
-                    to_untap.push((idx, HomebrewTap::from_name(&tap.name)));
-                }
-            }
+            // Get the list of taps that are not required by any
+            // other repository but that have been tapped by omni
+            to_untap = brew_cache
+                .tapped
+                .iter_mut()
+                .enumerate()
+                .rev() // reverse so we can remove from the end
+                .filter_map(|(idx, tap)| {
+                    if tap.required_by.is_empty() && tap.tapped {
+                        Some((idx, HomebrewTap::from_name(&tap.name)))
+                    } else {
+                        None
+                    }
+                })
+                .collect::<Vec<_>>();
 
             let num_untaps = to_untap.len();
             for (idx, (rmidx, tap)) in to_untap.iter().enumerate() {
@@ -254,16 +332,19 @@ impl UpConfigHomebrew {
                     )
                     .light_yellow(),
                 );
+
                 if let Err(err) = tap.down(&subhandler) {
+                    // If the error is that the tap is still in use, we'll consider this a success
+                    // and make it so omni does not own the tap installation anymore
                     if err != UpError::HomebrewTapInUse {
                         progress_handler.error();
                         return_value = Err(err);
                         return updated;
                     }
-                } else {
-                    brew_cache.tapped.remove(*rmidx);
-                    updated = true;
                 }
+
+                brew_cache.tapped.remove(*rmidx);
+                updated = true;
             }
 
             let current_tapped = brew_cache.tapped.len();
@@ -274,69 +355,76 @@ impl UpConfigHomebrew {
                 updated = true;
             }
 
-            if updated {
-                let mut messages = Vec::new();
-
-                let handled_taps = to_untap
-                    .iter()
-                    .filter(|(_idx, tap)| tap.was_handled())
-                    .collect::<Vec<_>>();
-                let handled_taps_count = handled_taps.len();
-                if handled_taps_count > 0 {
-                    messages.push(format!(
-                        "{} tap{} {}",
-                        format!("-{}", handled_taps_count).red(),
-                        if handled_taps_count > 1 { "s" } else { "" },
-                        format!(
-                            "({})",
-                            handled_taps
-                                .iter()
-                                .map(|(_idx, tap)| tap.name.clone())
-                                .sorted()
-                                .join(", ")
-                        )
-                        .light_black()
-                        .italic(),
-                    ));
-                }
-
-                let handled_installs = to_uninstall
-                    .iter()
-                    .filter(|(_idx, install)| install.was_handled())
-                    .collect::<Vec<_>>();
-                let handled_installs_count = handled_installs.len();
-                if handled_installs_count > 0 {
-                    messages.push(format!(
-                        "{} formula{} {}",
-                        format!("-{}", handled_installs_count).red(),
-                        if handled_installs_count > 1 { "s" } else { "" },
-                        format!(
-                            "({})",
-                            handled_installs
-                                .iter()
-                                .map(|(_idx, install)| install.name())
-                                .sorted()
-                                .join(", ")
-                        )
-                        .light_black()
-                        .italic(),
-                    ));
-                }
-
-                progress_handler.success_with_message(messages.join(" and "));
-
-                true
-            } else {
-                progress_handler
-                    .success_with_message("no homebrew dependencies to uninstall".to_string());
-
-                false
-            }
+            updated
         }) {
-            omni_warning!(format!("failed to update cache: {}", err));
+            progress_handler.progress(format!("failed to update cache: {}", err).light_yellow());
         }
 
-        return_value
+        let mut messages = Vec::new();
+
+        if updated {
+            let handled_taps = to_untap
+                .iter()
+                .filter(|(_idx, tap)| tap.was_handled())
+                .collect::<Vec<_>>();
+            let handled_taps_count = handled_taps.len();
+            if handled_taps_count > 0 {
+                messages.push(format!(
+                    "{} tap{} {}",
+                    format!("-{}", handled_taps_count).red(),
+                    if handled_taps_count > 1 { "s" } else { "" },
+                    format!(
+                        "({})",
+                        handled_taps
+                            .iter()
+                            .map(|(_idx, tap)| tap.name.clone())
+                            .sorted()
+                            .join(", ")
+                    )
+                    .light_black()
+                    .italic(),
+                ));
+            }
+
+            let handled_installs = to_uninstall
+                .iter()
+                .filter(|(_idx, install)| install.was_handled())
+                .collect::<Vec<_>>();
+            let handled_installs_count = handled_installs.len();
+            if handled_installs_count > 0 {
+                messages.push(format!(
+                    "{} formula{} {}",
+                    format!("-{}", handled_installs_count).red(),
+                    if handled_installs_count > 1 { "s" } else { "" },
+                    format!(
+                        "({})",
+                        handled_installs
+                            .iter()
+                            .map(|(_idx, install)| install.name())
+                            .sorted()
+                            .join(", ")
+                    )
+                    .light_black()
+                    .italic(),
+                ));
+            }
+        }
+
+        if let Err(err) = return_value {
+            if messages.is_empty() {
+                Err(err)
+            } else {
+                Err(UpError::Exec(format!(
+                    "{}; {}",
+                    messages.join(" and "),
+                    err,
+                )))
+            }
+        } else if messages.is_empty() {
+            Ok(None)
+        } else {
+            Ok(Some(messages.join(" and ")))
+        }
     }
 
     pub fn is_available(&self) -> bool {
@@ -463,11 +551,10 @@ impl HomebrewTap {
 
     fn update_cache(&self, progress_handler: &dyn ProgressHandler) {
         let workdir = workdir(".");
-        let workdir_id = workdir.id();
-        if workdir_id.is_none() {
-            return;
-        }
-        let workdir_id = workdir_id.unwrap();
+        let workdir_id = match workdir.id() {
+            Some(wd_id) => wd_id,
+            None => return,
+        };
 
         progress_handler.progress("updating cache".to_string());
 
@@ -487,7 +574,7 @@ impl HomebrewTap {
         if self.is_tapped() {
             self.update_cache(&progress_handler);
             if self.was_handled.set(HomebrewHandled::Noop).is_err() {
-                unreachable!();
+                unreachable!("failed to set was_handled (tap: {})", self.name);
             }
             progress_handler.success_with_message("already tapped".light_black());
             return Ok(());
@@ -567,7 +654,7 @@ impl HomebrewTap {
 
         let result = run_progress(&mut brew_tap, Some(progress_handler), RunConfig::default());
         if result.is_ok() && self.was_handled.set(HomebrewHandled::Handled).is_err() {
-            unreachable!();
+            unreachable!("failed to set was_handled (tap: {})", self.name);
         }
         result
     }
@@ -729,11 +816,10 @@ impl HomebrewInstall {
 
     fn update_cache(&self, options: &UpOptions, progress_handler: &dyn ProgressHandler) {
         let workdir = workdir(".");
-        let workdir_id = workdir.id();
-        if workdir_id.is_none() {
-            return;
-        }
-        let workdir_id = workdir_id.unwrap();
+        let workdir_id = match workdir.id() {
+            Some(wd_id) => wd_id,
+            None => return,
+        };
 
         progress_handler.progress("updating cache".to_string());
 
@@ -770,33 +856,7 @@ impl HomebrewInstall {
         progress_handler.progress("updated cache".to_string());
     }
 
-    fn up(
-        &self,
-        options: &UpOptions,
-        // main_progress: Option<(usize, usize)>,
-        progress_handler: &UpProgressHandler,
-        // sub_progress: Option<(usize, usize)>,
-    ) -> Result<(), UpError> {
-        // let progress_str = if let Some((current, total)) = sub_progress {
-        // let padding = format!("{}", total).len();
-        // format!(
-        // "[{:padding$}/{:padding$}] ",
-        // current,
-        // total,
-        // padding = padding,
-        // )
-        // } else {
-        // "".to_string()
-        // };
-
-        // let version_hint = if let Some(version) = &self.version {
-        // format!(" ({})", version)
-        // } else {
-        // "".to_string()
-        // };
-        // let desc =
-        // format!("  {}install {}{}:", progress_str, self.name, version_hint).light_yellow();
-
+    fn up(&self, options: &UpOptions, progress_handler: &UpProgressHandler) -> Result<(), UpError> {
         let progress_handler = progress_handler.subhandler(
             &format!(
                 "install {}{}: ",
@@ -809,38 +869,27 @@ impl HomebrewInstall {
             .light_yellow(),
         );
 
-        // let progress_handler: Box<dyn ProgressHandler> = if shell_is_interactive() {
-        // // Box::new(SpinnerProgressHandler::new(desc, main_progress))
-        // Box::new(SpinnerProgressHandler::new(desc, sub_progress))
-        // } else {
-        // // Box::new(PrintProgressHandler::new(desc, main_progress))
-        // Box::new(PrintProgressHandler::new(desc, sub_progress))
-        // };
-        // let progress_handler: Option<&dyn ProgressHandler> = Some(progress_handler.as_ref());
-
         let installed = self.is_installed(options);
         if installed && self.version.is_some() {
-            self.update_cache(options, &progress_handler);
             if self.was_handled.set(HomebrewHandled::Noop).is_err() {
-                unreachable!();
+                unreachable!("failed to set was_handled (install: {})", self.name);
             }
-            // if let Some(progress_handler) = progress_handler {
+            self.update_cache(options, &progress_handler);
             progress_handler.success_with_message("already installed".light_black());
-            // }
             return Ok(());
         }
 
         match self.install(options, Some(&progress_handler), installed) {
             Ok(did_something) => {
-                self.update_cache(options, &progress_handler);
                 let (was_handled, message) = match (installed, did_something) {
                     (true, true) => (HomebrewHandled::Updated, "updated".light_green()),
                     (true, false) => (HomebrewHandled::Noop, "up to date (cached)".light_black()),
                     (false, _) => (HomebrewHandled::Handled, "installed".light_green()),
                 };
                 if self.was_handled.set(was_handled).is_err() {
-                    unreachable!();
+                    unreachable!("failed to set was_handled (install: {})", self.name);
                 }
+                self.update_cache(options, &progress_handler);
                 progress_handler.success_with_message(message);
                 Ok(())
             }
@@ -1264,10 +1313,6 @@ impl HomebrewInstall {
 
         match run_progress(&mut brew_install, progress_handler, RunConfig::default()) {
             Ok(_) => {
-                if !installed && self.was_handled.set(HomebrewHandled::Handled).is_err() {
-                    unreachable!();
-                }
-
                 if options.write_cache {
                     // Update the cache
                     if let Err(err) = HomebrewOperationCache::exclusive(|cache| {
@@ -1305,7 +1350,7 @@ impl HomebrewInstall {
             RunConfig::default(),
         );
         if result.is_ok() && self.was_handled.set(HomebrewHandled::Handled).is_err() {
-            unreachable!();
+            unreachable!("failed to set was_handled (install: {})", self.name);
         }
         result
     }

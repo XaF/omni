@@ -3,6 +3,7 @@ use std::collections::HashMap;
 use std::io;
 use std::time::Duration;
 
+use lazy_static::lazy_static;
 use serde::Deserialize;
 use serde::Serialize;
 use time::OffsetDateTime;
@@ -17,6 +18,14 @@ use crate::internal::cache::CacheObject;
 use crate::internal::config::global_config;
 
 const HOMEBREW_OPERATION_CACHE_NAME: &str = "homebrew_operation";
+
+lazy_static! {
+    static ref HOMEBREW_OPERATION_NOW: OffsetDateTime = OffsetDateTime::now_utc();
+}
+
+fn homebrew_operation_now() -> OffsetDateTime {
+    *HOMEBREW_OPERATION_NOW
+}
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct HomebrewOperationCache {
@@ -45,12 +54,20 @@ impl HomebrewOperationCache {
     pub fn add_tap(&mut self, workdir_id: &str, tap_name: &str, tapped: bool) -> bool {
         let inserted = if let Some(tap) = self.tapped.iter_mut().find(|t| t.name == tap_name) {
             tap.tapped = tap.tapped || tapped;
-            tap.required_by.insert(workdir_id.to_string())
+            if tap.required_by.insert(workdir_id.to_string())
+                || tap.last_required_at < homebrew_operation_now()
+            {
+                tap.last_required_at = homebrew_operation_now();
+                true
+            } else {
+                false
+            }
         } else {
             let tap = HomebrewTapped {
                 name: tap_name.to_string(),
                 tapped,
                 required_by: [workdir_id.to_string()].iter().cloned().collect(),
+                last_required_at: homebrew_operation_now(),
             };
             self.tapped.push(tap);
             true
@@ -76,7 +93,14 @@ impl HomebrewOperationCache {
                 i.name == install_name && i.cask == is_cask && i.version == install_version
             }) {
                 install.installed = install.installed || installed;
-                install.required_by.insert(workdir_id.to_string())
+                if install.required_by.insert(workdir_id.to_string())
+                    || install.last_required_at < homebrew_operation_now()
+                {
+                    install.last_required_at = homebrew_operation_now();
+                    true
+                } else {
+                    false
+                }
             } else {
                 let install = HomebrewInstalled {
                     name: install_name.to_string(),
@@ -84,6 +108,7 @@ impl HomebrewOperationCache {
                     cask: is_cask,
                     installed,
                     required_by: [workdir_id.to_string()].iter().cloned().collect(),
+                    last_required_at: homebrew_operation_now(),
                 };
                 self.installed.push(install);
                 true
@@ -242,6 +267,14 @@ pub struct HomebrewInstalled {
     pub installed: bool,
     #[serde(default = "BTreeSet::new", skip_serializing_if = "BTreeSet::is_empty")]
     pub required_by: BTreeSet<String>,
+    #[serde(default = "utils::origin_of_time", with = "time::serde::rfc3339")]
+    pub last_required_at: OffsetDateTime,
+}
+
+impl HomebrewInstalled {
+    pub fn stale(&self) -> bool {
+        self.last_required_at < homebrew_operation_now()
+    }
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -251,6 +284,14 @@ pub struct HomebrewTapped {
     pub tapped: bool,
     #[serde(default = "BTreeSet::new", skip_serializing_if = "BTreeSet::is_empty")]
     pub required_by: BTreeSet<String>,
+    #[serde(default = "utils::origin_of_time", with = "time::serde::rfc3339")]
+    pub last_required_at: OffsetDateTime,
+}
+
+impl HomebrewTapped {
+    pub fn stale(&self) -> bool {
+        self.last_required_at < homebrew_operation_now()
+    }
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
