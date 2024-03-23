@@ -239,15 +239,15 @@ impl CacheObject for UpEnvironmentsCache {
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct UpEnvironment {
-    #[serde(default = "Vec::new", skip_serializing_if = "Vec::is_empty")]
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub versions: Vec<UpVersion>,
-    #[serde(default = "Vec::new", skip_serializing_if = "Vec::is_empty")]
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub paths: Vec<PathBuf>,
-    #[serde(default = "Vec::new", skip_serializing_if = "Vec::is_empty")]
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub env_vars: Vec<UpEnvVar>,
-    #[serde(default = "HashMap::new", skip_serializing_if = "HashMap::is_empty")]
+    #[serde(default, skip_serializing_if = "HashMap::is_empty")]
     pub config_modtimes: HashMap<String, u64>,
-    #[serde(default = "String::new", skip_serializing_if = "String::is_empty")]
+    #[serde(default, skip_serializing_if = "String::is_empty")]
     pub config_hash: String,
 }
 
@@ -311,14 +311,15 @@ impl UpVersion {
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct UpEnvVar {
-    #[serde(rename = "n", alias = "name", skip_serializing_if = "String::is_empty")]
+    #[serde(rename = "n", alias = "name", default, skip_serializing_if = "String::is_empty")]
     pub name: String,
-    #[serde(rename = "v", alias = "value", skip_serializing_if = "Option::is_none")]
+    #[serde(rename = "v", alias = "value", default, skip_serializing_if = "Option::is_none")]
     pub value: Option<String>,
     #[serde(
         rename = "o",
         alias = "operation",
-        skip_serializing_if = "EnvOperationEnum::is_default"
+        default,
+        skip_serializing_if = "EnvOperationEnum::is_default",
     )]
     pub operation: EnvOperationEnum,
 }
