@@ -268,6 +268,7 @@ impl ConfigLoader {
             .read(true)
             .write(true)
             .create(true)
+            .truncate(false)
             .open(file_path.clone())?;
 
         // Take the exclusive lock on the file, it will be release when `_file_lock` goes out of scope

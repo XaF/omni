@@ -153,6 +153,7 @@ where
         .read(true)
         .write(true)
         .create(true)
+        .truncate(false)
         .open(cache_path)?;
 
     // Take the exclusive lock on the file, it will be release when `_file_lock` goes out of scope
