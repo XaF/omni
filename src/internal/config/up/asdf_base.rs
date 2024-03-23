@@ -59,6 +59,28 @@ fn asdf_bin() -> &'static str {
     ASDF_BIN.as_str()
 }
 
+fn asdf_async_command() -> TokioCommand {
+    let mut asdf = TokioCommand::new(asdf_bin());
+    asdf.env("ASDF_DIR", asdf_path());
+    asdf.env("ASDF_DATA_DIR", asdf_path());
+    asdf.env_remove("INSTALL_PREFIX");
+    asdf.env_remove("DESTDIR");
+    asdf.stdout(std::process::Stdio::piped());
+    asdf.stderr(std::process::Stdio::piped());
+    asdf
+}
+
+fn asdf_sync_command() -> std::process::Command {
+    let mut asdf = std::process::Command::new(asdf_bin());
+    asdf.env("ASDF_DIR", asdf_path());
+    asdf.env("ASDF_DATA_DIR", asdf_path());
+    asdf.env_remove("INSTALL_PREFIX");
+    asdf.env_remove("DESTDIR");
+    asdf.stdout(std::process::Stdio::piped());
+    asdf.stderr(std::process::Stdio::piped());
+    asdf
+}
+
 pub fn asdf_tool_path(tool: &str, version: &str) -> String {
     format!("{}/installs/{}/{}", asdf_path(), tool, version)
 }
@@ -108,12 +130,8 @@ fn update_asdf(progress_handler: &dyn ProgressHandler) -> Result<(), UpError> {
 
     progress_handler.progress("updating asdf".to_string());
 
-    let mut asdf_update = TokioCommand::new(asdf_bin());
+    let mut asdf_update = asdf_async_command();
     asdf_update.arg("update");
-    asdf_update.env("ASDF_DIR", asdf_path());
-    asdf_update.env("ASDF_DATA_DIR", asdf_path());
-    asdf_update.stdout(std::process::Stdio::piped());
-    asdf_update.stderr(std::process::Stdio::piped());
 
     run_progress(
         &mut asdf_update,
@@ -132,12 +150,10 @@ fn update_asdf(progress_handler: &dyn ProgressHandler) -> Result<(), UpError> {
 }
 
 fn is_asdf_tool_version_installed(tool: &str, version: &str) -> bool {
-    let mut asdf_list = std::process::Command::new(asdf_bin());
+    let mut asdf_list = asdf_sync_command();
     asdf_list.arg("list");
     asdf_list.arg(tool);
     asdf_list.arg(version);
-    asdf_list.env("ASDF_DIR", asdf_path());
-    asdf_list.env("ASDF_DATA_DIR", asdf_path());
     asdf_list.stdout(std::process::Stdio::null());
     asdf_list.stderr(std::process::Stdio::null());
 
@@ -644,14 +660,10 @@ impl UpConfigAsdfBase {
             {
                 versions
             } else {
-                let mut asdf_list_all = std::process::Command::new(asdf_bin());
+                let mut asdf_list_all = asdf_sync_command();
                 asdf_list_all.arg("list");
                 asdf_list_all.arg("all");
                 asdf_list_all.arg(self.tool.clone());
-                asdf_list_all.env("ASDF_DIR", asdf_path());
-                asdf_list_all.env("ASDF_DATA_DIR", asdf_path());
-                asdf_list_all.stdout(std::process::Stdio::piped());
-                asdf_list_all.stderr(std::process::Stdio::piped());
 
                 if let Ok(output) = asdf_list_all.output() {
                     if output.status.success() {
@@ -705,12 +717,9 @@ impl UpConfigAsdfBase {
     }
 
     fn is_plugin_installed(&self) -> bool {
-        let mut asdf_plugin_list = std::process::Command::new(asdf_bin());
+        let mut asdf_plugin_list = asdf_sync_command();
         asdf_plugin_list.arg("plugin");
         asdf_plugin_list.arg("list");
-        asdf_plugin_list.env("ASDF_DIR", asdf_path());
-        asdf_plugin_list.env("ASDF_DATA_DIR", asdf_path());
-        asdf_plugin_list.stdout(std::process::Stdio::piped());
         asdf_plugin_list.stderr(std::process::Stdio::null());
 
         if let Ok(output) = asdf_plugin_list.output() {
@@ -730,17 +739,13 @@ impl UpConfigAsdfBase {
 
         progress_handler.progress(format!("installing {} plugin", self.tool));
 
-        let mut asdf_plugin_add = TokioCommand::new(asdf_bin());
+        let mut asdf_plugin_add = asdf_async_command();
         asdf_plugin_add.arg("plugin");
         asdf_plugin_add.arg("add");
         asdf_plugin_add.arg(self.tool.clone());
         if let Some(tool_url) = &self.tool_url {
             asdf_plugin_add.arg(tool_url.clone());
         }
-        asdf_plugin_add.env("ASDF_DIR", asdf_path());
-        asdf_plugin_add.env("ASDF_DATA_DIR", asdf_path());
-        asdf_plugin_add.stdout(std::process::Stdio::piped());
-        asdf_plugin_add.stderr(std::process::Stdio::piped());
 
         run_progress(
             &mut asdf_plugin_add,
@@ -758,14 +763,10 @@ impl UpConfigAsdfBase {
             ph.progress(format!("updating {} plugin", self.tool));
         }
 
-        let mut asdf_plugin_update = TokioCommand::new(asdf_bin());
+        let mut asdf_plugin_update = asdf_async_command();
         asdf_plugin_update.arg("plugin");
         asdf_plugin_update.arg("update");
         asdf_plugin_update.arg(self.tool.clone());
-        asdf_plugin_update.env("ASDF_DIR", asdf_path());
-        asdf_plugin_update.env("ASDF_DATA_DIR", asdf_path());
-        asdf_plugin_update.stdout(std::process::Stdio::piped());
-        asdf_plugin_update.stderr(std::process::Stdio::piped());
 
         run_progress(
             &mut asdf_plugin_update,
@@ -803,14 +804,10 @@ impl UpConfigAsdfBase {
 
         progress_handler.progress(format!("installing {} {}", self.tool, version));
 
-        let mut asdf_install = tokio::process::Command::new(asdf_bin());
+        let mut asdf_install = asdf_async_command();
         asdf_install.arg("install");
         asdf_install.arg(self.tool.clone());
         asdf_install.arg(version);
-        asdf_install.env("ASDF_DIR", asdf_path());
-        asdf_install.env("ASDF_DATA_DIR", asdf_path());
-        asdf_install.stdout(std::process::Stdio::piped());
-        asdf_install.stderr(std::process::Stdio::piped());
 
         run_progress(
             &mut asdf_install,
@@ -901,14 +898,10 @@ impl UpConfigAsdfBase {
                         to_remove.tool, to_remove.version,
                     ));
 
-                    let mut asdf_uninstall = TokioCommand::new(asdf_bin());
+                    let mut asdf_uninstall = asdf_async_command();
                     asdf_uninstall.arg("uninstall");
                     asdf_uninstall.arg(to_remove.tool.clone());
                     asdf_uninstall.arg(to_remove.version.clone());
-                    asdf_uninstall.env("ASDF_DIR", asdf_path());
-                    asdf_uninstall.env("ASDF_DATA_DIR", asdf_path());
-                    asdf_uninstall.stdout(std::process::Stdio::piped());
-                    asdf_uninstall.stderr(std::process::Stdio::piped());
 
                     if let Err(_err) = run_progress(
                         &mut asdf_uninstall,
@@ -1007,6 +1000,7 @@ impl UpConfigAsdfBase {
                 nix_packages.extend(vec![
                     "bzip2",
                     "gcc",
+                    "gdbm",
                     "gnumake",
                     "libffi",
                     "lzma",
