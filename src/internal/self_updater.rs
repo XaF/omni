@@ -338,6 +338,7 @@ impl OmniRelease {
         let mut file = OpenOptions::new()
             .write(true)
             .create(true)
+            .truncate(true)
             .open(tarball_path.as_path())?;
         io::copy(&mut response, &mut file)?;
 
