@@ -245,15 +245,15 @@ impl HookInitCommand {
         match args.shell.as_str() {
             "bash" => dump_integration(
                 args,
-                include_bytes!("../../../../../shell_integration/omni.bash.tmpl"),
+                include_bytes!("../../../../../templates/shell_integration.bash.tmpl"),
             ),
             "zsh" => dump_integration(
                 args,
-                include_bytes!("../../../../../shell_integration/omni.zsh.tmpl"),
+                include_bytes!("../../../../../templates/shell_integration.zsh.tmpl"),
             ),
             "fish" => dump_integration(
                 args,
-                include_bytes!("../../../../../shell_integration/omni.fish.tmpl"),
+                include_bytes!("../../../../../templates/shell_integration.fish.tmpl"),
             ),
             _ => {
                 omni_error!(

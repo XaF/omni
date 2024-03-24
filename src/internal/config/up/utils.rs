@@ -22,6 +22,7 @@ use tokio::runtime::Runtime;
 use tokio::time::Duration;
 
 use crate::internal::config::loader::WORKDIR_CONFIG_FILES;
+use crate::internal::config::up::AskPassListener;
 use crate::internal::config::up::UpError;
 use crate::internal::env::shell_is_interactive;
 use crate::internal::user_interface::ensure_newline;
@@ -31,23 +32,24 @@ use crate::internal::workdir;
 
 #[derive(Debug, Clone)]
 pub struct RunConfig {
-    pub timeout: Option<Duration>,
-    pub strip_ctrl_chars: bool,
+    timeout: Option<Duration>,
+    strip_ctrl_chars: bool,
+    askpass: bool,
+}
+
+impl Default for RunConfig {
+    fn default() -> Self {
+        RunConfig {
+            timeout: None,
+            strip_ctrl_chars: true,
+            askpass: false,
+        }
+    }
 }
 
 impl RunConfig {
     pub fn new() -> Self {
-        RunConfig {
-            timeout: None,
-            strip_ctrl_chars: false,
-        }
-    }
-
-    pub fn default() -> Self {
-        RunConfig {
-            timeout: None,
-            strip_ctrl_chars: true,
-        }
+        Self::default().without_ctrl_chars()
     }
 
     pub fn with_timeout(&mut self, timeout: u64) -> Self {
@@ -63,6 +65,15 @@ impl RunConfig {
     pub fn without_ctrl_chars(&mut self) -> Self {
         self.strip_ctrl_chars = true;
         self.clone()
+    }
+
+    pub fn with_askpass(&mut self) -> Self {
+        self.askpass = true;
+        self.clone()
+    }
+
+    pub fn askpass(&self) -> bool {
+        self.askpass
     }
 
     pub fn timeout(&self) -> Option<Duration> {
@@ -184,15 +195,11 @@ impl ProgressHandler for UpProgressHandler<'_> {
     }
 
     fn hide(&self) {
-        if self.allow_ending {
-            self.handler().hide();
-        }
+        self.handler().hide();
     }
 
     fn show(&self) {
-        if self.allow_ending {
-            self.handler().show();
-        }
+        self.handler().show();
     }
 
     fn println(&self, message: String) {
@@ -206,11 +213,16 @@ pub fn run_progress(
     progress_handler: Option<&dyn ProgressHandler>,
     run_config: RunConfig,
 ) -> Result<(), UpError> {
-    let rt = Runtime::new().unwrap();
+    let rt = Runtime::new().map_err(|err| UpError::Exec(err.to_string()))?;
     rt.block_on(async_run_progress_readblocks(
         process_command,
-        |stdout, stderr| {
+        |stdout, stderr, hide| {
             if let Some(progress_handler) = &progress_handler {
+                match hide {
+                    Some(true) => progress_handler.hide(),
+                    Some(false) => progress_handler.show(),
+                    None => {}
+                }
                 if let Some(stdout) = stdout {
                     progress_handler.progress(stdout);
                 } else if let Some(stderr) = stderr {
@@ -236,28 +248,17 @@ where
     ))
 }
 
-// pub fn run_command_with_handler_blocks<F>(
-// command: &mut TokioCommand,
-// handler_fn: F,
-// run_config: RunConfig,
-// ) -> Result<(), UpError>
-// where
-// F: Fn(Option<String>, Option<String>) -> (),
-// {
-// let rt = Runtime::new().unwrap();
-// rt.block_on(async_run_progress_readblocks(
-// command, handler_fn, run_config,
-// ))
-// }
-
 async fn async_run_progress_readblocks<F>(
     process_command: &mut TokioCommand,
     handler_fn: F,
     run_config: RunConfig,
 ) -> Result<(), UpError>
 where
-    F: Fn(Option<String>, Option<String>),
+    F: Fn(Option<String>, Option<String>, Option<bool>),
 {
+    let mut listener = AskPassListener::new(&run_config).await?;
+    listener.set_process_env(process_command).await;
+
     if let Ok(mut command) = process_command.spawn() {
         // Create a temporary file to store the output
         let log_file_prefix = format!(
@@ -301,7 +302,7 @@ where
 
                                     handler_fn(Some(if run_config.strip_ctrl_chars {
                                         filter_control_characters(stdout_str)
-                                    } else { stdout_str.to_string() }), None);
+                                    } else { stdout_str.to_string() }), None, None);
                                 }
                             }
                             Err(_err) => break,
@@ -323,10 +324,27 @@ where
                                     };
                                     handler_fn(None, Some(if run_config.strip_ctrl_chars {
                                         filter_control_characters(stderr_str)
-                                    } else { stderr_str.to_string() }));
+                                    } else { stderr_str.to_string() }), None);
                                 }
                             }
                             Err(_err) => break,
+                        }
+                    }
+                    Some(connection) = listener.accept() => {
+                        // We received a connection on the askpass socket,
+                        // which means that the user will need to provide
+                        // a password to the process.
+                        match connection {
+                            Ok((mut stream, _addr)) => {
+                                handler_fn(None, None, Some(true));
+                                if let Err(err) = AskPassListener::handle_request(&mut stream).await {
+                                    handler_fn(None, Some(err.to_string()), None);
+                                }
+                                handler_fn(None, None, Some(false));
+                            }
+                            Err(err) => {
+                                handler_fn(None, Some(err.to_string()), None);
+                            }
                         }
                     }
                     _ = tokio::time::sleep(Duration::from_secs(1)) => {
@@ -343,10 +361,17 @@ where
             }
         }
 
+        // Close the listener
+        if let Err(err) = listener.close().await {
+            handler_fn(None, Some(err.to_string()), None);
+        }
+
         match command.wait().await {
             Err(err) => Err(UpError::Exec(err.to_string())),
             Ok(exit_status) if !exit_status.success() => {
                 let exit_code = exit_status.code().unwrap_or(-42);
+                // TODO: the log file should be prefixed by the tmpdir_cleanup_prefix
+                // by default and renamed when deciding to keep it
                 match log_file.keep() {
                     Ok((_file, path)) => Err(UpError::Exec(format!(
                         "process exited with status {}; log is available at {}",

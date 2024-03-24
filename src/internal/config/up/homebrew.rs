@@ -1287,6 +1287,8 @@ impl HomebrewInstall {
             return Ok(false);
         }
 
+        let mut run_config = RunConfig::default();
+
         let mut brew_install = TokioCommand::new("brew");
         if installed {
             brew_install.arg("upgrade");
@@ -1295,6 +1297,7 @@ impl HomebrewInstall {
         }
         if self.install_type == HomebrewInstallType::Cask {
             brew_install.arg("--cask");
+            run_config.with_askpass();
         } else {
             brew_install.arg("--formula");
         }
@@ -1311,7 +1314,7 @@ impl HomebrewInstall {
             })
         }
 
-        match run_progress(&mut brew_install, progress_handler, RunConfig::default()) {
+        match run_progress(&mut brew_install, progress_handler, run_config) {
             Ok(_) => {
                 if options.write_cache {
                     // Update the cache
