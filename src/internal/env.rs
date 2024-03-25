@@ -229,7 +229,7 @@ lazy_static! {
 /// this function.
 pub fn tmpdir_cleanup() {
     let tmp_dir_prefix = (*TMPDIR_CLEANUP_PREFIX).to_string();
-    let tmp_dir = std::env::temp_dir().join(&tmp_dir_prefix);
+    let tmp_dir = std::env::temp_dir().join(tmp_dir_prefix);
     let tmp_dir_str = tmp_dir.to_string_lossy().to_string();
     let glob_pattern = format!("{}*", tmp_dir_str);
 

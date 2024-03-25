@@ -92,28 +92,25 @@ impl AskPassRequest {
 
             // Read data from the socket
             let mut buf = String::new();
-            loop {
-                match reader.read_line(&mut buf).await {
-                    Ok(n) if n == 0 => {
-                        // End of stream (connection closed by the other end)
-                        break;
-                    }
-                    Ok(_) => {
-                        // We received some data, we can print it and exit
-                        drop(stream);
-                        return Ok(buf.trim().to_string());
-                    }
-                    Err(err) => {
-                        // Error reading from the socket
-                        return Err(format!("error reading from socket: {}", err));
-                    }
+            let result = match reader.read_line(&mut buf).await {
+                Ok(0) => {
+                    // End of stream (connection closed by the other end)
+                    Ok("".to_string())
                 }
-            }
+                Ok(_) => {
+                    // We received some data, we can print it and exit
+                    Ok(buf.trim().to_string())
+                }
+                Err(err) => {
+                    // Error reading from the socket
+                    Err(format!("error reading from socket: {}", err))
+                }
+            };
 
             // Close the socket
             drop(stream);
 
-            Ok("".to_string())
+            result
         })
     }
 
@@ -134,7 +131,11 @@ pub struct AskPassListener {
 
 impl Drop for AskPassListener {
     fn drop(&mut self) {
-        let _ = self.close();
+        if let Ok(rt) = tokio::runtime::Runtime::new() {
+            let _ = rt.block_on(async {
+                let _ = self.close().await;
+            });
+        }
     }
 }
 
@@ -212,7 +213,7 @@ impl AskPassListener {
             context.insert("TOOL", tool);
 
             // Render the script
-            let script = Tera::one_off(&template, &context, false).map_err(|err| {
+            let script = Tera::one_off(template, &context, false).map_err(|err| {
                 UpError::Exec(format!("failed to render askpass script: {:?}", err))
             })?;
 
@@ -285,7 +286,7 @@ impl AskPassListener {
                 }
                 read = stream.read(&mut bytes) => {
                     match read {
-                        Ok(n) if n == 0 => {
+                        Ok(0) => {
                             break;
                         }
                         Ok(_) => {
@@ -345,7 +346,7 @@ impl AskPassListener {
         if let Some(tmp_dir) = self.tmp_dir.take() {
             let tmp_dir_path = tmp_dir.path().to_path_buf();
             if let Err(_err) = tmp_dir.close() {
-                if let Err(err) = force_remove_dir_all(&tmp_dir_path) {
+                if let Err(err) = force_remove_dir_all(tmp_dir_path) {
                     return Err(err.to_string());
                 }
             }

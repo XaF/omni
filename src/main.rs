@@ -71,7 +71,7 @@ impl MainArgs {
                     .long("askpass")
                     .short('A')
                     .num_args(2)
-                    .value_names(&["prompt", "socket path"])
+                    .value_names(["prompt", "socket path"])
                     .conflicts_with("args")
                     .conflicts_with("exists")
                     .conflicts_with("help")
