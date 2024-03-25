@@ -9,7 +9,7 @@
 PROMPT="${*:-"{{ TOOL }} password:"}"
 {%     set prompt = "$PROMPT" -%}
 {%   else -%}
-{%     set prompt = "{{ TOOL }} password:" -%}
+{%     set prompt = TOOL ~ " password:" -%}
 {%   endif -%}
 {{ OMNI_BIN }} --askpass "{{ prompt }}" "{{ SOCKET_PATH }}"
 exit $?
@@ -18,7 +18,7 @@ exit $?
 PROMPT="${*:-"Omni needs your {{ TOOL }} password to continue"}"
 {%     set prompt = "$PROMPT" -%}
 {%   else -%}
-{%     set prompt = "Omni needs your {{ TOOL }} password to continue" -%}
+{%     set prompt = "Omni needs your " ~ TOOL ~ " password to continue" -%}
 {%   endif -%}
 if command -v osascript >/dev/null; then
     osascript='display dialog "'"{{ prompt }}"'" '

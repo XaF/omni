@@ -1,4 +1,3 @@
-use std::fmt;
 use std::fs::set_permissions;
 use std::fs::Permissions;
 use std::os::unix::fs::FileTypeExt;
@@ -29,7 +28,7 @@ use crate::internal::env::tmpdir_cleanup_prefix;
 use crate::internal::user_interface::colors::StringColor;
 use crate::internal::user_interface::ensure_newline;
 
-const ASKPASS_TOOLS: [&str; 3] = ["sudo", "git", "ssh"];
+const ASKPASS_TOOLS: [&str; 2] = ["sudo", "ssh"];
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct AskPassRequest {
@@ -38,8 +37,10 @@ pub struct AskPassRequest {
 }
 
 impl AskPassRequest {
-    pub fn new(prompt: String) -> Self {
-        Self { prompt }
+    pub fn new(prompt: impl ToString) -> Self {
+        Self {
+            prompt: prompt.to_string(),
+        }
     }
 
     pub fn send(&self, socket_path_str: &str) -> Result<String, String> {
@@ -263,6 +264,7 @@ impl AskPassListener {
                 process.env(format!("{}_ASKPASS", tool.to_uppercase()), &askpass_path);
             }
 
+            process.env("SSH_ASKPASS_REQUIRE", "force");
             process.env_remove("DISPLAY");
         }
     }

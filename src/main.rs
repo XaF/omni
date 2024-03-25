@@ -118,10 +118,7 @@ impl MainArgs {
             }
 
             let prompt = askpass[0].as_str();
-            let request = match AskPassRequest::from_str(prompt) {
-                Some(request) => request,
-                None => exit(1),
-            };
+            let request = AskPassRequest::new(prompt);
 
             let socket_path = askpass[1].as_str();
             match request.send(socket_path) {
