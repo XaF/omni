@@ -7,6 +7,8 @@ use internal::commands::HookEnvCommand;
 use internal::commands::HookInitCommand;
 use internal::commands::HookUuidCommand;
 use internal::config::ensure_bootstrap;
+use internal::config::up::askpass::AskPassRequest;
+use internal::env::tmpdir_cleanup;
 use internal::git::auto_update_async;
 use internal::git::auto_update_sync;
 use internal::git::exec_update;
@@ -58,7 +60,24 @@ impl MainArgs {
                 clap::Arg::new("exists")
                     .long("exists")
                     .short('e')
+                    .conflicts_with("help")
+                    .conflicts_with("update")
+                    .conflicts_with("update-and-log-on-error")
+                    .conflicts_with("version")
                     .action(clap::ArgAction::SetTrue),
+            )
+            .arg(
+                clap::Arg::new("askpass")
+                    .long("askpass")
+                    .short('A')
+                    .num_args(2)
+                    .value_names(["prompt", "socket path"])
+                    .conflicts_with("args")
+                    .conflicts_with("exists")
+                    .conflicts_with("help")
+                    .conflicts_with("update")
+                    .conflicts_with("update-and-log-on-error")
+                    .conflicts_with("version"),
             )
             .arg(
                 clap::Arg::new("args")
@@ -91,6 +110,25 @@ impl MainArgs {
                 }
             },
         };
+
+        if let Some(askpass) = matches.get_many::<String>("askpass") {
+            let askpass = askpass.collect::<Vec<_>>();
+            if askpass.len() != 2 {
+                exit(1);
+            }
+
+            let prompt = askpass[0].as_str();
+            let request = AskPassRequest::new(prompt);
+
+            let socket_path = askpass[1].as_str();
+            match request.send(socket_path) {
+                Ok(password) => {
+                    print!("{}", password);
+                    exit(0);
+                }
+                Err(_err) => exit(1),
+            }
+        }
 
         if *matches.get_one::<bool>("update").unwrap_or(&false) {
             exec_update();
@@ -189,6 +227,7 @@ fn run_omni_subcommand(parsed: &MainArgs) {
             None
         });
 
+        set_cleanup_handler();
         omni_cmd.exec(argv, Some(called_as));
         panic!("exec returned");
     }
@@ -201,6 +240,7 @@ fn run_omni_subcommand(parsed: &MainArgs) {
     if auto_update_sync() {
         // If any updates were done, let's check again if we can serve the command
         if let Some((omni_cmd, called_as, argv)) = command_loader.to_serve(&parsed.args) {
+            set_cleanup_handler();
             omni_cmd.exec(argv, Some(called_as));
             panic!("exec returned");
         }
@@ -214,11 +254,22 @@ fn run_omni_subcommand(parsed: &MainArgs) {
     );
 
     if let Some((omni_cmd, called_as, argv)) = command_loader.find_command(&parsed.args) {
+        set_cleanup_handler();
         omni_cmd.exec(argv, Some(called_as));
         panic!("exec returned");
     }
 
     exit(1);
+}
+
+fn set_cleanup_handler() {
+    ctrlc::set_handler(move || {
+        tmpdir_cleanup();
+
+        // Exit the process with a non-zero status code
+        exit(130);
+    })
+    .expect("Error setting Ctrl-C handler");
 }
 
 fn main() {

@@ -153,7 +153,11 @@ impl UpConfigCustom {
             command.stdout(std::process::Stdio::piped());
             command.stderr(std::process::Stdio::piped());
 
-            run_progress(&mut command, Some(progress_handler), RunConfig::default())?;
+            run_progress(
+                &mut command,
+                Some(progress_handler),
+                RunConfig::default().with_askpass(),
+            )?;
         }
 
         Ok(())

@@ -16,6 +16,7 @@ use lazy_static::lazy_static;
 use once_cell::sync::OnceCell;
 
 use crate::internal::config::parser::PathEntryConfig;
+use crate::internal::config::up::utils::force_remove_dir_all;
 use crate::internal::config::OrgConfig;
 use crate::internal::dynenv::DynamicEnvExportMode;
 use crate::internal::git::id_from_git_url;
@@ -208,6 +209,39 @@ lazy_static! {
         }
         None
     };
+
+    #[derive(Debug)]
+    static ref TMPDIR_CLEANUP_PREFIX: String = {
+        // Generate a uuid
+        let uuid = uuid::Uuid::new_v4();
+
+        // Keep only the first section
+        let short_uuid = uuid.to_string()[..8].to_string();
+
+        format!("omnitmp-{}", short_uuid)
+    };
+}
+
+/// Cleanup temporary directories created by omni in the system's
+/// temporary directory. This only cleanup the directories created
+/// with the specific prefix used for this instance of omni.
+/// Any other temporary directory won't be force-cleaned-up by
+/// this function.
+pub fn tmpdir_cleanup() {
+    let tmp_dir_prefix = (*TMPDIR_CLEANUP_PREFIX).to_string();
+    let tmp_dir = std::env::temp_dir().join(tmp_dir_prefix);
+    let tmp_dir_str = tmp_dir.to_string_lossy().to_string();
+    let glob_pattern = format!("{}*", tmp_dir_str);
+
+    if let Ok(entries) = glob::glob(&glob_pattern) {
+        for entry in entries.into_iter().flatten() {
+            let _ = force_remove_dir_all(&entry);
+        }
+    }
+}
+
+pub fn tmpdir_cleanup_prefix(prefix: &str) -> String {
+    format!("{}_{}.", *TMPDIR_CLEANUP_PREFIX, prefix)
 }
 
 pub fn git_env<T: AsRef<str>>(path: T) -> GitRepoEnv {

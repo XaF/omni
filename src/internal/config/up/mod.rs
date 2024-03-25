@@ -40,3 +40,6 @@ pub(crate) mod utils;
 pub(crate) use utils::run_progress;
 pub(crate) use utils::ProgressHandler;
 pub(crate) use utils::SpinnerProgressHandler;
+
+pub(crate) mod askpass;
+pub(crate) use askpass::AskPassListener;
