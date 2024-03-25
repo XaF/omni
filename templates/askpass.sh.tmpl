@@ -5,11 +5,23 @@
 # run directly by the user.
 
 {% if INTERACTIVE -%}
-{{ OMNI_BIN }} --askpass "{{ TOOL }}" "{{ SOCKET_PATH }}"
+{%   if TOOL == "ssh" -%}
+PROMPT="${*:-"{{ TOOL }} password:"}"
+{%     set prompt = "$PROMPT" -%}
+{%   else -%}
+{%     set prompt = "{{ TOOL }} password:" -%}
+{%   endif -%}
+{{ OMNI_BIN }} --askpass "{{ prompt }}" "{{ SOCKET_PATH }}"
 exit $?
 {% else -%}
+{%   if TOOL == "ssh" -%}
+PROMPT="${*:-"Omni needs your {{ TOOL }} password to continue"}"
+{%     set prompt = "$PROMPT" -%}
+{%   else -%}
+{%     set prompt = "Omni needs your {{ TOOL }} password to continue" -%}
+{%   endif -%}
 if command -v osascript >/dev/null; then
-    osascript='display dialog "Omni needs your {{ TOOL }} password to continue" '
+    osascript='display dialog "'"{{ prompt }}"'" '
     osascript="$osascript"'with title "Omni Password Request ({{ TOOL }})" '
     osascript="$osascript"'buttons {"Cancel", "Ok"} '
     osascript="$osascript"'default button "Ok" '

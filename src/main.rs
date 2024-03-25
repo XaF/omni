@@ -71,7 +71,7 @@ impl MainArgs {
                     .long("askpass")
                     .short('A')
                     .num_args(2)
-                    .value_names(&["password type", "socket path"])
+                    .value_names(&["prompt", "socket path"])
                     .conflicts_with("args")
                     .conflicts_with("exists")
                     .conflicts_with("help")
@@ -117,8 +117,8 @@ impl MainArgs {
                 exit(1);
             }
 
-            let password_type = askpass[0].as_str();
-            let request = match AskPassRequest::from_str(password_type) {
+            let prompt = askpass[0].as_str();
+            let request = match AskPassRequest::from_str(prompt) {
                 Some(request) => request,
                 None => exit(1),
             };

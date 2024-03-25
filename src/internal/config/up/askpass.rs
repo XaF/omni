@@ -32,49 +32,14 @@ use crate::internal::user_interface::ensure_newline;
 const ASKPASS_TOOLS: [&str; 3] = ["sudo", "git", "ssh"];
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
-pub enum AskPassRequestType {
-    #[serde(rename = "sudo")]
-    Sudo,
-    #[serde(rename = "git")]
-    Git,
-    #[serde(rename = "ssh")]
-    Ssh,
-}
-
-impl AskPassRequestType {
-    pub fn from_str(s: &str) -> Option<Self> {
-        match s {
-            "sudo" => Some(AskPassRequestType::Sudo),
-            "git" => Some(AskPassRequestType::Git),
-            "ssh" => Some(AskPassRequestType::Ssh),
-            _ => None,
-        }
-    }
-}
-
-impl fmt::Display for AskPassRequestType {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match self {
-            AskPassRequestType::Sudo => write!(f, "sudo"),
-            AskPassRequestType::Git => write!(f, "git"),
-            AskPassRequestType::Ssh => write!(f, "ssh"),
-        }
-    }
-}
-
-#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct AskPassRequest {
-    #[serde(rename = "t", alias = "type")]
-    request_type: AskPassRequestType,
+    #[serde(rename = "p", alias = "prompt")]
+    prompt: String,
 }
 
 impl AskPassRequest {
-    pub fn new(request_type: AskPassRequestType) -> Self {
-        Self { request_type }
-    }
-
-    pub fn from_str(s: &str) -> Option<Self> {
-        AskPassRequestType::from_str(s).map(Self::new)
+    pub fn new(prompt: String) -> Self {
+        Self { prompt }
     }
 
     pub fn send(&self, socket_path_str: &str) -> Result<String, String> {
@@ -151,8 +116,12 @@ impl AskPassRequest {
         })
     }
 
-    pub fn question(&self) -> String {
-        format!("{} password:", self.request_type)
+    pub fn prompt(&self) -> String {
+        if self.prompt.is_empty() {
+            "Password:".to_string()
+        } else {
+            self.prompt.clone()
+        }
     }
 }
 
@@ -337,10 +306,10 @@ impl AskPassListener {
             .map_err(|err| format!("failed to parse request: {:?}", err))?;
 
         // Handle the request
-        let question = requestty::Question::password("sudo_password")
+        let question = requestty::Question::password("askpass_request")
             .ask_if_answered(true)
             .on_esc(requestty::OnEsc::Terminate)
-            .message(request.question())
+            .message(request.prompt())
             .build();
 
         let password = match requestty::prompt_one(question) {
