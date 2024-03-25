@@ -311,15 +311,25 @@ impl UpVersion {
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct UpEnvVar {
-    #[serde(rename = "n", alias = "name", default, skip_serializing_if = "String::is_empty")]
+    #[serde(
+        rename = "n",
+        alias = "name",
+        default,
+        skip_serializing_if = "String::is_empty"
+    )]
     pub name: String,
-    #[serde(rename = "v", alias = "value", default, skip_serializing_if = "Option::is_none")]
+    #[serde(
+        rename = "v",
+        alias = "value",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
     pub value: Option<String>,
     #[serde(
         rename = "o",
         alias = "operation",
         default,
-        skip_serializing_if = "EnvOperationEnum::is_default",
+        skip_serializing_if = "EnvOperationEnum::is_default"
     )]
     pub operation: EnvOperationEnum,
 }
