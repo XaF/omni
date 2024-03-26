@@ -131,10 +131,12 @@ pub struct AskPassListener {
 
 impl Drop for AskPassListener {
     fn drop(&mut self) {
-        if let Ok(rt) = tokio::runtime::Runtime::new() {
-            rt.block_on(async {
-                let _ = self.close().await;
-            });
+        if let Err(_err) = tokio::runtime::Handle::try_current() {
+            if let Ok(rt) = tokio::runtime::Runtime::new() {
+                rt.block_on(async {
+                    let _ = self.close().await;
+                });
+            }
         }
     }
 }

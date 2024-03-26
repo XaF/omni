@@ -24,7 +24,7 @@ omni_setup() {
       NEEDS_BUILD=true
     else
       # Check if the binary is older than the source files
-      local newer_files="$(for dir in "${git_dir}/src" "${git_dir}/shell_integration"; do
+      local newer_files="$(for dir in "${git_dir}/src" "${git_dir}/templates"; do
 	find "$dir" -type f -newer "${test_bin_dir}/omni" -print0
       done)"
       if [[ -n "$newer_files" ]]; then
@@ -53,6 +53,9 @@ omni_setup() {
   # Override home directory for the test
   export HOME="${BATS_TEST_TMPDIR}"
 
+  # Make sure that ${HOME} does not have any symlinks or some tests can be flaky
+  export HOME="$(cd "${HOME}" && pwd -P)"
+
   # Let's unset the XDG variables to make sure that omni
   # does not use them for the tests
   unset XDG_CONFIG_HOME
@@ -69,7 +72,7 @@ omni_setup() {
   export OMNI_SKIP_UPDATE=true
 
   # Update the PATH to be only the system's binaries
-  export PATH="/opt/homebrew/bin:/opt/homebrew/opt/coreutils/libexec/gnubin/:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+  export PATH="$HOME/bin:/opt/homebrew/bin:/opt/homebrew/opt/coreutils/libexec/gnubin/:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
 
   # Add omni's shell integration to the temporary directory
   echo "eval \"\$(\"${OMNI_TEST_BIN}\" hook init bash)\"" >> "${BATS_TEST_TMPDIR}/.bashrc" || echo "ERROR ?" >&2
@@ -80,8 +83,15 @@ omni_setup() {
   # Confirm omni's shell integration in case of error
   type omni >&2 || echo "ERROR: omni not found" >&2
 
+  # Setup the fake binaries
+  export PROJECT_GIT_DIR="${git_dir}"
+  add_fakebin "${HOME}/bin/brew"
+  add_fakebin "${HOME}/bin/nix"
+  add_fakebin "${HOME}/.local/share/omni/asdf/bin/asdf"
+  add_fakebin "${HOME}/bin/python"
+
   # Switch current directory to that new temp one
-  cd "${BATS_TEST_TMPDIR}"
+  cd "${HOME}"
 }
 
 setup_git_dir() {
@@ -153,3 +163,78 @@ EOF
   echo "==== OMNI CONFIG === END   ====" >&2
 }
 
+add_fakebin() {
+  local fakebin="$1"
+
+  # Make sure the directory exists
+  mkdir -p "$(dirname "${fakebin}")"
+
+  # Create the symlink
+  ln -s "${PROJECT_GIT_DIR}/tests/fixtures/bin/generic.sh" "${fakebin}"
+}
+
+# Add an allowed command to the test
+# Usage: add_command "command" "expected exit code" <<< "expected output"
+# Example: add_command "brew install" exit=0 <<< "==> Installing"
+add_command() {
+  # Get the command
+  cmd=("$@")
+
+  # Get the exit code
+  if [[ "${cmd[-1]}" =~ ^exit=([0-9]+)$ ]]; then
+    unset cmd[-1]
+    exit_code="${BASH_REMATCH[1]}"
+  else
+    exit_code=0
+  fi
+
+  # Get the binary
+  binary="${cmd[0]}"
+
+  # Get the args
+  args=("${cmd[@]:1}")
+
+  # Get the output from stdin but do not hang if there is no input,
+  output=()
+  if read -t 0; then
+    # Read input but maintain line returns
+    while read -r line; do
+      output+=("${line}")
+    done
+  fi
+
+  # Prepare the commands directory
+  commands="${HOME}/.commands"
+  mkdir -p "${commands}"
+
+  # Get the position, looking at the files that currently exist
+  position=0
+  while [ -f "${commands}/${binary}_${position}" ]; do
+    position=$((position + 1))
+  done
+
+  # Get the command file
+  file="${commands}/${binary}_${position}"
+
+  # Add the arguments to the command file
+  for arg in "${args[@]}"; do
+    echo -n "\"${arg}\" " >> "${file}"
+  done
+  echo >> "${file}"
+
+  # Add the exit code to the command file
+  echo "${exit_code}" >> "${file}"
+
+  # Add the output to the command file
+  if [[ "${#output[@]}" -gt 0 ]]; then
+    echo >> "${file}"
+    for line in "${output[@]}"; do
+      echo "${line}" >> "${file}"
+    done
+  fi
+
+  # Check the written file
+  echo "==== COMMAND FILE === BEGIN ===" >&2
+  cat "${file}" >&2
+  echo "==== COMMAND FILE === END   ===" >&2
+}

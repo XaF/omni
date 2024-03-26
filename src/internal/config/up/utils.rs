@@ -293,16 +293,12 @@ where
                                 let stdout_output = &stdout_buffer[..n];
                                 log_file.write_all(stdout_output).unwrap();
                                 if let Ok(stdout_str) = std::str::from_utf8(stdout_output) {
-                                    let stdout_str = stdout_str.trim_end();
-                                    let stdout_str = if let Some(index) = stdout_str.rfind('\n') {
-                                        &stdout_str[index+1..]
-                                    } else {
-                                        stdout_str
-                                    };
-
-                                    handler_fn(Some(if run_config.strip_ctrl_chars {
-                                        filter_control_characters(stdout_str)
-                                    } else { stdout_str.to_string() }), None, None);
+                                    // let stdout_str = stdout_str.trim_end();
+                                    for line in stdout_str.lines() {
+                                        handler_fn(Some(if run_config.strip_ctrl_chars {
+                                            filter_control_characters(line)
+                                        } else { line.to_string() }), None, None);
+                                    }
                                 }
                             }
                             Err(_err) => break,
@@ -316,15 +312,12 @@ where
                                 let stderr_output = &stderr_buffer[..n];
                                 log_file.write_all(stderr_output).unwrap();
                                 if let Ok(stderr_str) = std::str::from_utf8(stderr_output) {
-                                    let stderr_str = stderr_str.trim_end();
-                                    let stderr_str = if let Some(index) = stderr_str.rfind('\n') {
-                                        &stderr_str[index+1..]
-                                    } else {
-                                        stderr_str
-                                    };
-                                    handler_fn(None, Some(if run_config.strip_ctrl_chars {
-                                        filter_control_characters(stderr_str)
-                                    } else { stderr_str.to_string() }), None);
+                                    // let stderr_str = stderr_str.trim_end();
+                                    for line in stderr_str.lines() {
+                                        handler_fn(None, Some(if run_config.strip_ctrl_chars {
+                                            filter_control_characters(line)
+                                        } else { line.to_string() }), None);
+                                    }
                                 }
                             }
                             Err(_err) => break,
