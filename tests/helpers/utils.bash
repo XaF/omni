@@ -180,13 +180,23 @@ add_command() {
   # Get the command
   cmd=("$@")
 
-  # Get the exit code
-  if [[ "${cmd[-1]}" =~ ^exit=([0-9]+)$ ]]; then
-    unset cmd[-1]
-    exit_code="${BASH_REMATCH[1]}"
-  else
-    exit_code=0
-  fi
+  # Get the special parameters
+  exit_code=0
+  required=1
+  while [ 1 ]; do
+    if [[ "${cmd[-1]}" == "--" ]]; then
+      unset cmd[-1]
+      break
+    elif [[ "${cmd[-1]}" =~ ^exit=([0-9]+)$ ]]; then
+      unset cmd[-1]
+      exit_code="${BASH_REMATCH[1]}"
+    elif [[ "${cmd[-1]}" =~ ^required=([0-1]+)$ ]]; then
+      unset cmd[-1]
+      required="${BASH_REMATCH[1]}"
+    else
+      break
+    fi
+  done
 
   # Get the binary
   binary="${cmd[0]}"
@@ -215,6 +225,7 @@ add_command() {
 
   # Get the command file
   file="${commands}/${binary}_${position}"
+  echo -n > "${file}"
 
   # Add the arguments to the command file
   for arg in "${args[@]}"; do
@@ -233,8 +244,63 @@ add_command() {
     done
   fi
 
+  # Create a required file if necessary
+  if [[ "${required}" -gt 0 ]]; then
+    echo "${required}" > "${file}_required"
+  fi
+
   # Check the written file
-  echo "==== COMMAND FILE === BEGIN ===" >&2
+  echo "==== COMMAND FILE === BEGIN === ${binary}" >&2
   cat "${file}" >&2
-  echo "==== COMMAND FILE === END   ===" >&2
+  echo "==== COMMAND FILE === END   === ${binary}" >&2
+}
+
+# Check that all required commands have been called
+check_commands() {
+  local commands="${HOME}/.commands"
+  if [ -d "$commands" ]; then
+    # Print the called log
+    local log="${commands}/called.log"
+    if [ -f "$log" ]; then
+      echo "==== CALLED LOG === BEGIN ===" >&2
+      cat "$log" >&2
+      echo "==== CALLED LOG === END   ===" >&2
+    fi
+
+    # Check for any unexpected commands
+    unexpected=0
+    if [ -f "${commands}/unexpected.log" ]; then
+      echo "==== UNEXPECTED LOG === BEGIN ===" >&2
+      cat "${commands}/unexpected.log" >&2
+      echo "==== UNEXPECTED LOG === END   ===" >&2
+      unexpected=$(wc -l < "${commands}/unexpected.log")
+      echo "Unexpected commands: $unexpected (should be 0)" >&2
+    fi
+
+    # Check that all required commands have been called
+    local missing_required=0
+    while read -r file; do
+      missing_required=$((missing_required + 1))
+
+      local dir=$(dirname "$file")
+      local command_file=$(basename "$file" _required)
+      local binary=${command_file%_*}
+      local args=$(cat "${dir}/${command_file}" | head -n 1)
+
+      echo "Missing required command call: $binary $args"
+    done < <(find "$commands" -type f -name '*_required')
+
+    # Return the status
+    [ "$unexpected" -eq 0 ] && [ "$missing_required" -eq 0 ]
+  fi
+}
+
+print_called_log() {
+  local commands="${HOME}/.commands"
+  local log="${commands}/called.log"
+  if [ -f "$log" ]; then
+    echo "==== CALLED LOG === BEGIN ===" >&2
+    cat "$log" >&2
+    echo "==== CALLED LOG === END   ===" >&2
+  fi
 }

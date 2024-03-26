@@ -293,8 +293,10 @@ where
                                 let stdout_output = &stdout_buffer[..n];
                                 log_file.write_all(stdout_output).unwrap();
                                 if let Ok(stdout_str) = std::str::from_utf8(stdout_output) {
-                                    // let stdout_str = stdout_str.trim_end();
                                     for line in stdout_str.lines() {
+                                        if line.is_empty() {
+                                            continue;
+                                        }
                                         handler_fn(Some(if run_config.strip_ctrl_chars {
                                             filter_control_characters(line)
                                         } else { line.to_string() }), None, None);
@@ -312,8 +314,10 @@ where
                                 let stderr_output = &stderr_buffer[..n];
                                 log_file.write_all(stderr_output).unwrap();
                                 if let Ok(stderr_str) = std::str::from_utf8(stderr_output) {
-                                    // let stderr_str = stderr_str.trim_end();
                                     for line in stderr_str.lines() {
+                                        if line.is_empty() {
+                                            continue;
+                                        }
                                         handler_fn(None, Some(if run_config.strip_ctrl_chars {
                                             filter_control_characters(line)
                                         } else { line.to_string() }), None);
