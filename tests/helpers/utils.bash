@@ -169,13 +169,17 @@ EOF
 }
 
 add_fakebin() {
+  local target="${PROJECT_DIR}/tests/fixtures/bin/generic.sh"
+  echo "fakebin target: ${target}" >&2
+  ls -l "${target}" >&2
+
   local fakebin="$1"
 
   # Make sure the directory exists
   mkdir -p "$(dirname "${fakebin}")"
 
   # Create the symlink
-  ln -s "${PROJECT_DIR}/tests/fixtures/bin/generic.sh" "${fakebin}"
+  ln -s "${target}" "${fakebin}"
 
   echo "Created fake binary: ${fakebin}" >&2
   ls -l "${fakebin}" >&2
