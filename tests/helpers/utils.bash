@@ -73,6 +73,7 @@ omni_setup() {
 
   # Update the PATH to be only the system's binaries
   export PATH="$HOME/bin:/opt/homebrew/bin:/opt/homebrew/opt/coreutils/libexec/gnubin/:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+  echo "PATH is $PATH" >&2
 
   # Add omni's shell integration to the temporary directory
   echo "eval \"\$(\"${OMNI_TEST_BIN}\" hook init bash)\"" >> "${BATS_TEST_TMPDIR}/.bashrc" || echo "ERROR ?" >&2
@@ -171,6 +172,9 @@ add_fakebin() {
 
   # Create the symlink
   ln -s "${PROJECT_GIT_DIR}/tests/fixtures/bin/generic.sh" "${fakebin}"
+
+  echo "Created fake binary: ${fakebin}" >&2
+  ls -l "${fakebin}" >&2
 }
 
 # Add an allowed command to the test
