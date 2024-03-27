@@ -8,6 +8,10 @@ use crate::omni_error;
 use crate::omni_print;
 
 pub fn ensure_bootstrap() {
+    if !shell_is_interactive() {
+        return;
+    }
+
     // Get the global configuration
     let config_loader = global_config_loader();
     if !config_loader.loaded_config_files.is_empty() {
