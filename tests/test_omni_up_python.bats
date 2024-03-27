@@ -105,12 +105,16 @@ EOF
 }
 
 add_brew_python_calls() {
+  local checked_prefix=false
   formulas=(autoconf coreutils curl libyaml openssl@3 readline pkg-config)
   for formula in "${formulas[@]}"; do
     add_command brew list --formula "${formula}" exit=1
     add_command brew install --formula "${formula}"
     add_command brew --prefix --installed "${formula}"
-    add_command brew --prefix
+    if [ "$checked_prefix" = false ]; then
+      checked_prefix=true
+      add_command brew --prefix
+    fi
   done
 }
 
