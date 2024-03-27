@@ -175,7 +175,7 @@ add_fakebin() {
   mkdir -p "$(dirname "${fakebin}")"
 
   # Create the symlink
-  ln -s "${PROJECT_GIT_DIR}/tests/fixtures/bin/generic.sh" "${fakebin}"
+  ln -s "${PROJECT_DIR}/tests/fixtures/bin/generic.sh" "${fakebin}"
 
   echo "Created fake binary: ${fakebin}" >&2
   ls -l "${fakebin}" >&2
