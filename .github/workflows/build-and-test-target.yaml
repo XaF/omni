@@ -233,7 +233,7 @@ jobs:
           "${HOME}/.local/bin/bats" --version
 
       - name: Run bats tests
-        shell: ${{ contains(matrix.os, 'macos') && '/opt/homebrew/bin/bash' || 'bash' }}
+        shell: bash
         env:
           OMNI_TEST_BIN: ./omni
           PROJECT_DIR: ${{ github.workspace }}
