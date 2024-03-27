@@ -171,7 +171,7 @@ jobs:
       - name: Install os/container dependencies
         run: |
           if command -v brew >/dev/null; then
-            brew install parallel
+            brew install parallel bash
           elif command -v apt-get >/dev/null; then
             sudo apt-get update --yes
             sudo apt-get install --yes parallel
@@ -232,7 +232,7 @@ jobs:
           "${HOME}/.local/bin/bats" --version
 
       - name: Run bats tests
-        shell: bash
+        shell: ${{ contains(matrix.os, 'macos') && '/opt/homebrew/bin/bash' || 'bash' }}
         env:
           OMNI_TEST_BIN: ./omni
           PROJECT_DIR: ${{ github.workspace }}
