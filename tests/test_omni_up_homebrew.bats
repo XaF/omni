@@ -6,6 +6,8 @@ setup() {
   # Setup the environment for the test; this should override $HOME too
   omni_setup 3>&-
 
+  setup_omni_config 3>&-
+
   # Add one repository
   setup_git_dir "git/github.com/test1org/test1repo" "git@github.com:test1org/test1repo.git"
 
