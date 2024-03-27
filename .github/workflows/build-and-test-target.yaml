@@ -230,5 +230,6 @@ jobs:
         shell: bash
         env:
           OMNI_TEST_BIN: ./omni
+          PROJECT_DIR: ${{ github.workspace }}
         run: |
           "${HOME}/.local/bin/bats" --no-tempdir-cleanup tests/

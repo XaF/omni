@@ -9,6 +9,11 @@ omni_setup() {
 
   # Get the git directory
   local git_dir="$(git rev-parse --show-toplevel 2>/dev/null)"
+  export PROJECT_DIR="${PROJECT_DIR:-${git_dir}}"
+  if [ -z "$PROJECT_DIR" ]; then
+    echo "Could not find the project directory" >&2
+    return 1
+  fi
 
   if [[ -n "$OMNI_TEST_BIN" ]]; then
     echo "Using OMNI_TEST_BIN: ${OMNI_TEST_BIN}" >&2
@@ -85,7 +90,6 @@ omni_setup() {
   type omni >&2 || echo "ERROR: omni not found" >&2
 
   # Setup the fake binaries
-  export PROJECT_GIT_DIR="${git_dir}"
   add_fakebin "${HOME}/bin/brew"
   add_fakebin "${HOME}/bin/nix"
   add_fakebin "${HOME}/.local/share/omni/asdf/bin/asdf"
