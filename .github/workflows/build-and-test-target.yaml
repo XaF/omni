@@ -232,4 +232,4 @@ jobs:
           OMNI_TEST_BIN: ./omni
           PROJECT_DIR: ${{ github.workspace }}
         run: |
-          "${HOME}/.local/bin/bats" --no-tempdir-cleanup tests/
+          "${HOME}/.local/bin/bats" --no-tempdir-cleanup --jobs 8 tests/
