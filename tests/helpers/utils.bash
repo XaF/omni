@@ -68,6 +68,9 @@ omni_setup() {
   unset XDG_CACHE_HOME
   unset XDG_RUNTIME_DIR
 
+  # Let's unset other variables that could influence the tests
+  unset HOMEBREW_PREFIX
+
   # Override global git configuration
   git config --global user.email "omni@potent.tool"
   git config --global user.name "omni"
