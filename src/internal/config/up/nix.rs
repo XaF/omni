@@ -2,7 +2,6 @@ use std::collections::BTreeSet;
 use std::collections::HashMap;
 use std::path::PathBuf;
 
-use duct::cmd;
 use itertools::Itertools;
 use once_cell::sync::OnceCell;
 use serde::Deserialize;
@@ -477,15 +476,7 @@ impl UpConfigNix {
     }
 
     pub fn is_available(&self) -> bool {
-        if cmd!("command", "-v", "nix")
-            .stdout_null()
-            .stderr_null()
-            .run()
-            .is_ok()
-        {
-            return true;
-        }
-        false
+        which::which("nix").is_ok()
     }
 
     pub fn was_upped(&self) -> bool {

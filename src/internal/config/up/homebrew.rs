@@ -428,15 +428,7 @@ impl UpConfigHomebrew {
     }
 
     pub fn is_available(&self) -> bool {
-        if cmd!("command", "-v", "brew")
-            .stdout_null()
-            .stderr_null()
-            .run()
-            .is_ok()
-        {
-            return true;
-        }
-        false
+        which::which("brew").is_ok()
     }
 }
 
