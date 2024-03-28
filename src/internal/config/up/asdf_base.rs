@@ -942,14 +942,10 @@ impl UpConfigAsdfBase {
     fn deps(&self) -> &UpConfigTool {
         self.deps
             .get_or_init(|| {
-                let deps: Vec<UpConfigTool> = vec![
-                    // TODO: Add a way to specify the preferred package manager, so
-                    // we can order the dependencies handling based on that
+                Box::new(UpConfigTool::Any(vec![
                     self.deps_using_homebrew(),
                     self.deps_using_nix(),
-                ];
-
-                Box::new(UpConfigTool::Or(deps))
+                ]))
             })
             .as_ref()
     }
