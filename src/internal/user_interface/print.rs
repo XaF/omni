@@ -144,11 +144,15 @@ fn term_columns() -> usize {
 pub fn term_width() -> usize {
     let width = term_columns();
 
-    let max = 120;
-    if width < max + 4 {
-        width - 4
+    const MAX_WIDTH: usize = 120;
+    if width < MAX_WIDTH + 4 {
+        if width > 4 {
+            width - 4
+        } else {
+            0
+        }
     } else {
-        max
+        MAX_WIDTH
     }
 }
 
@@ -177,12 +181,16 @@ lazy_static! {
     static ref COLOR_PATTERN: Regex = Regex::new(r"\x1B(?:\[(?:\d+)(?:;\d+)*m)").unwrap();
 }
 
+pub fn strip_ansi_codes(text: &str) -> String {
+    COLOR_PATTERN.replace_all(text, "").to_string()
+}
+
 pub fn wrap_text(text: &str, width: usize) -> Vec<String> {
     let mut lines = vec![];
     let mut line = String::new();
     let mut line_width = 0;
     for word in SPLIT_PATTERN.split(text) {
-        let word_width = COLOR_PATTERN.replace_all(word, "").len();
+        let word_width = strip_ansi_codes(word).len();
         if line_width + word_width > width {
             lines.push(line);
             line = String::new();
