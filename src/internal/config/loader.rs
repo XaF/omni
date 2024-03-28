@@ -129,6 +129,16 @@ impl ConfigLoader {
         .collect::<Vec<String>>()
     }
 
+    pub fn has_user_config(&self) -> bool {
+        let user_config_files = Self::user_config_files();
+        for user_config_file in user_config_files {
+            if self.loaded_config_files.contains(&user_config_file) {
+                return true;
+            }
+        }
+        false
+    }
+
     fn system_config_files(prefix: &str) -> Vec<String> {
         let mut config_files = vec![];
 

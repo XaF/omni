@@ -428,15 +428,7 @@ impl UpConfigHomebrew {
     }
 
     pub fn is_available(&self) -> bool {
-        if cmd!("command", "-v", "brew")
-            .stdout_null()
-            .stderr_null()
-            .run()
-            .is_ok()
-        {
-            return true;
-        }
-        false
+        which::which("brew").is_ok()
     }
 }
 
@@ -1035,26 +1027,18 @@ impl HomebrewInstall {
             }
         }
 
-        let mut brew_list = std::process::Command::new("brew");
-        brew_list.arg("--prefix");
-        brew_list.stdout(std::process::Stdio::piped());
-        brew_list.stderr(std::process::Stdio::null());
-
-        if let Ok(output) = brew_list.output() {
-            if output.status.success() {
-                let bin_path =
-                    PathBuf::from(String::from_utf8(output.stdout).unwrap().trim()).join("bin");
-                if bin_path.exists() {
-                    if options.write_cache {
-                        // Update the cache
-                        _ = HomebrewOperationCache::exclusive(|cache| {
-                            cache.set_homebrew_bin_path(bin_path.to_string_lossy().to_string());
-                            true
-                        });
-                    }
-
-                    return Some(bin_path);
+        if let Some(brew_prefix) = homebrew_prefix() {
+            let bin_path = PathBuf::from(brew_prefix).join("bin");
+            if bin_path.exists() {
+                if options.write_cache {
+                    // Update the cache
+                    _ = HomebrewOperationCache::exclusive(|cache| {
+                        cache.set_homebrew_bin_path(bin_path.to_string_lossy().to_string());
+                        true
+                    });
                 }
+
+                return Some(bin_path);
             }
         }
 

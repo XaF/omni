@@ -9,6 +9,11 @@ omni_setup() {
 
   # Get the git directory
   local git_dir="$(git rev-parse --show-toplevel 2>/dev/null)"
+  export PROJECT_DIR="${PROJECT_DIR:-${git_dir}}"
+  if [ -z "$PROJECT_DIR" ]; then
+    echo "Could not find the project directory" >&2
+    return 1
+  fi
 
   if [[ -n "$OMNI_TEST_BIN" ]]; then
     echo "Using OMNI_TEST_BIN: ${OMNI_TEST_BIN}" >&2
@@ -24,7 +29,7 @@ omni_setup() {
       NEEDS_BUILD=true
     else
       # Check if the binary is older than the source files
-      local newer_files="$(for dir in "${git_dir}/src" "${git_dir}/shell_integration"; do
+      local newer_files="$(for dir in "${git_dir}/src" "${git_dir}/templates"; do
 	find "$dir" -type f -newer "${test_bin_dir}/omni" -print0
       done)"
       if [[ -n "$newer_files" ]]; then
@@ -53,12 +58,18 @@ omni_setup() {
   # Override home directory for the test
   export HOME="${BATS_TEST_TMPDIR}"
 
+  # Make sure that ${HOME} does not have any symlinks or some tests can be flaky
+  export HOME="$(cd "${HOME}" && pwd -P)"
+
   # Let's unset the XDG variables to make sure that omni
   # does not use them for the tests
   unset XDG_CONFIG_HOME
   unset XDG_DATA_HOME
   unset XDG_CACHE_HOME
   unset XDG_RUNTIME_DIR
+
+  # Let's unset other variables that could influence the tests
+  unset HOMEBREW_PREFIX
 
   # Override global git configuration
   git config --global user.email "omni@potent.tool"
@@ -69,7 +80,8 @@ omni_setup() {
   export OMNI_SKIP_UPDATE=true
 
   # Update the PATH to be only the system's binaries
-  export PATH="/opt/homebrew/bin:/opt/homebrew/opt/coreutils/libexec/gnubin/:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+  export PATH="$HOME/bin:/opt/homebrew/bin:/opt/homebrew/opt/coreutils/libexec/gnubin/:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+  echo "PATH is $PATH" >&2
 
   # Add omni's shell integration to the temporary directory
   echo "eval \"\$(\"${OMNI_TEST_BIN}\" hook init bash)\"" >> "${BATS_TEST_TMPDIR}/.bashrc" || echo "ERROR ?" >&2
@@ -80,8 +92,14 @@ omni_setup() {
   # Confirm omni's shell integration in case of error
   type omni >&2 || echo "ERROR: omni not found" >&2
 
+  # Setup the fake binaries
+  add_fakebin "${HOME}/bin/brew"
+  add_fakebin "${HOME}/bin/nix"
+  add_fakebin "${HOME}/.local/share/omni/asdf/bin/asdf"
+  add_fakebin "${HOME}/bin/python"
+
   # Switch current directory to that new temp one
-  cd "${BATS_TEST_TMPDIR}"
+  cd "${HOME}"
 }
 
 setup_git_dir() {
@@ -153,3 +171,151 @@ EOF
   echo "==== OMNI CONFIG === END   ====" >&2
 }
 
+add_fakebin() {
+  local target="${PROJECT_DIR}/tests/fixtures/bin/generic.sh"
+  echo "fakebin target: ${target}" >&2
+  ls -l "${target}" >&2
+
+  local fakebin="$1"
+
+  # Make sure the directory exists
+  mkdir -p "$(dirname "${fakebin}")"
+
+  # Create the symlink
+  ln -s "${target}" "${fakebin}"
+
+  echo "Created fake binary: ${fakebin}" >&2
+  ls -l "${fakebin}" >&2
+}
+
+# Add an allowed command to the test
+# Usage: add_command "command" "expected exit code" <<< "expected output"
+# Example: add_command "brew install" exit=0 <<< "==> Installing"
+add_command() {
+  # Get the command
+  cmd=("$@")
+
+  # Get the special parameters
+  exit_code=0
+  required=1
+  while [ 1 ]; do
+    if [[ "${cmd[-1]}" == "--" ]]; then
+      unset cmd[-1]
+      break
+    elif [[ "${cmd[-1]}" =~ ^exit=([0-9]+)$ ]]; then
+      unset cmd[-1]
+      exit_code="${BASH_REMATCH[1]}"
+    elif [[ "${cmd[-1]}" =~ ^required=([0-1]+)$ ]]; then
+      unset cmd[-1]
+      required="${BASH_REMATCH[1]}"
+    else
+      break
+    fi
+  done
+
+  # Get the binary
+  binary="${cmd[0]}"
+
+  # Get the args
+  args=("${cmd[@]:1}")
+
+  # Get the output from stdin but do not hang if there is no input,
+  output=()
+  if read -t 0; then
+    # Read input but maintain line returns
+    while read -r line; do
+      output+=("${line}")
+    done
+  fi
+
+  # Prepare the commands directory
+  commands="${HOME}/.commands"
+  mkdir -p "${commands}"
+
+  # Get the position, looking at the files that currently exist
+  position=0
+  while [ -f "${commands}/${binary}_${position}" ]; do
+    position=$((position + 1))
+  done
+
+  # Get the command file
+  file="${commands}/${binary}_${position}"
+  echo -n > "${file}"
+
+  # Add the arguments to the command file
+  for arg in "${args[@]}"; do
+    echo -n "\"${arg}\" " >> "${file}"
+  done
+  echo >> "${file}"
+
+  # Add the exit code to the command file
+  echo "${exit_code}" >> "${file}"
+
+  # Add the output to the command file
+  if [[ "${#output[@]}" -gt 0 ]]; then
+    echo >> "${file}"
+    for line in "${output[@]}"; do
+      echo "${line}" >> "${file}"
+    done
+  fi
+
+  # Create a required file if necessary
+  if [[ "${required}" -gt 0 ]]; then
+    echo "${required}" > "${file}_required"
+  fi
+
+  # Check the written file
+  echo "==== COMMAND FILE === BEGIN === ${binary}" >&2
+  cat "${file}" >&2
+  echo "==== COMMAND FILE === END   === ${binary}" >&2
+}
+
+# Check that all required commands have been called
+check_commands() {
+  local commands="${HOME}/.commands"
+  if [ -d "$commands" ]; then
+    # Print the called log
+    local log="${commands}/called.log"
+    if [ -f "$log" ]; then
+      echo "==== CALLED LOG === BEGIN ===" >&2
+      cat "$log" >&2
+      echo "==== CALLED LOG === END   ===" >&2
+    fi
+
+    # Check for any unexpected commands
+    unexpected=0
+    if [ -f "${commands}/unexpected.log" ]; then
+      echo "==== UNEXPECTED LOG === BEGIN ===" >&2
+      cat "${commands}/unexpected.log" >&2
+      echo "==== UNEXPECTED LOG === END   ===" >&2
+      unexpected=$(wc -l < "${commands}/unexpected.log")
+      echo "Unexpected commands: $unexpected (should be 0)" >&2
+    fi
+
+    # Check that all required commands have been called
+    local missing_required=0
+    while read -r file; do
+      missing_required=$((missing_required + 1))
+
+      local dir=$(dirname "$file")
+      local command_file=$(basename "$file" _required)
+      local binary=${command_file%_*}
+      local args=$(cat "${dir}/${command_file}" | head -n 1)
+
+      echo "Missing required command call: $binary $args"
+    done < <(find "$commands" -type f -name '*_required')
+
+    # Return the status
+    [ "$unexpected" -eq 0 ] && [ "$missing_required" -eq 0 ]
+  fi
+}
+
+print_called_log() {
+  local commands="${HOME}/.commands"
+  local log="${commands}/called.log"
+  if [ -f "$log" ]; then
+    echo "==== CALLED LOG === BEGIN ===" >&2
+    cat "$log" >&2
+    echo "==== CALLED LOG === END   ===" >&2
+  fi
+}

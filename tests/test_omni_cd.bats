@@ -6,7 +6,7 @@ setup() {
   # Setup the environment for the test; this should override $HOME too
   omni_setup 3>&-
 
-  # Add two repositories
+  # Add three repositories
   setup_git_dir "git/github.com/test1org/test1repo" "git@github.com:test1org/test1repo.git"
   setup_git_dir "git/github.com/test2org/test2repo" "https://github.com/test2org/test2repo.git"
   setup_git_dir "git/bitbucket.org/test3org/test3repo" "https://bitbucket.org/test3org/test3repo.git"
@@ -252,5 +252,42 @@ test_cd_locate() {
   # Check that we've cd'd to the correct directory
   echo "PWD is $(pwd), supposed to be in ${HOME}"
   [ $(pwd) = "${HOME}" ]
+}
+
+# bats test_tags=omni:cd
+@test "omni cd allows to go to the repository root using ..." {
+  setup_omni_config
+
+  # Check that the current directory is home
+  [ $(pwd) = "${HOME}" ]
+
+  # Change directory to a repository root
+  cd "git/github.com/test1org/test1repo" 3>&-
+  [ "$?" -eq 0 ]
+
+  # Check that we are in the expected directory
+  echo "PWD is $(pwd), supposed to be in ${HOME}/git/github.com/test1org/test1repo"
+  [ $(pwd) = "${HOME}/git/github.com/test1org/test1repo" ]
+
+  # Create random subdirectories
+  DIR="$(uuidgen)/$(uuidgen)/$(uuidgen)"
+  mkdir -p "${DIR}"
+
+  # Check that we can cd to that deeper directory
+  cd "${DIR}" 3>&-
+  [ "$?" -eq 0 ]
+
+  # Check that we are in the expected directory
+  echo "PWD is $(pwd), supposed to be in ${HOME}/git/github.com/test1org/test1repo/${DIR}"
+  [ $(pwd) = "${HOME}/git/github.com/test1org/test1repo/${DIR}" ]
+
+  # Check that we can cd back to the repository root
+  # using the `...` syntax
+  omni cd ... 3>&-
+  [ "$?" -eq 0 ]
+
+  # Check that we are in the expected directory
+  echo "PWD is $(pwd), supposed to be in ${HOME}/git/github.com/test1org/test1repo"
+  [ $(pwd) = "${HOME}/git/github.com/test1org/test1repo" ]
 }
 

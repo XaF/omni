@@ -170,11 +170,17 @@ jobs:
     steps:
       - name: Install os/container dependencies
         run: |
-          if command -v pacman >/dev/null; then
-            yes | sudo pacman -Sy --noconfirm perl git
+          if command -v brew >/dev/null; then
+            brew install parallel
+            brew install bash
+          elif command -v apt-get >/dev/null; then
+            sudo apt-get update --yes
+            sudo apt-get install --yes parallel
+          elif command -v pacman >/dev/null; then
+            yes | sudo pacman -Sy --noconfirm perl git parallel
           elif command -v dnf >/dev/null; then
             echo "fastestmirror=1" | sudo tee -a /etc/dnf/dnf.conf
-            sudo dnf -y install perl-Digest-SHA git diffutils
+            sudo dnf -y install perl-Digest-SHA git diffutils parallel
           fi
 
       - name: Checkout current commit
@@ -230,5 +236,6 @@ jobs:
         shell: bash
         env:
           OMNI_TEST_BIN: ./omni
+          PROJECT_DIR: ${{ github.workspace }}
         run: |
-          "${HOME}/.local/bin/bats" --no-tempdir-cleanup tests/
+          "${HOME}/.local/bin/bats" --no-tempdir-cleanup --jobs 8 tests/
