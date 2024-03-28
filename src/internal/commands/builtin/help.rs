@@ -10,6 +10,7 @@ use crate::internal::commands::Command;
 use crate::internal::config::CommandSyntax;
 use crate::internal::config::SyntaxOptArg;
 use crate::internal::user_interface::colors::strip_colors_if_needed;
+use crate::internal::user_interface::print::strip_ansi_codes;
 use crate::internal::user_interface::term_width;
 use crate::internal::user_interface::wrap_blocks;
 use crate::internal::user_interface::wrap_text;
@@ -292,28 +293,17 @@ impl HelpCommand {
         let mut seen = HashSet::new();
 
         // Get the longest command so we know how to justify the help
-        let longest_command = commands
-            .iter()
-            .map(|cmd| {
-                let command = &cmd.command;
-                let all_names = command
-                    .all_names_with_prefix(prefix.clone())
-                    .iter()
-                    .map(|name| name.join(" "))
-                    .collect::<Vec<String>>();
-                let all_names_len = all_names.join(", ").len();
+        const MIN_LJUST: usize = 15;
+        let abs_max_ljust = term_width() / 2;
+        let max_ljust = std::cmp::min(std::cmp::max(term_width() / 3, 40), abs_max_ljust);
+        if max_ljust < MIN_LJUST {
+            omni_error!("terminal width is too small to print help");
+            exit(1);
+        }
 
-                let num_folded = match cmd.num_folded() {
-                    0 => 0,
-                    _ => 2,
-                };
+        let (_, longest_under_threshold) = get_longest_command(&commands, &prefix, max_ljust - 4);
+        let ljust = std::cmp::max(longest_under_threshold + 2, MIN_LJUST);
 
-                all_names_len + num_folded
-            })
-            .max()
-            .unwrap_or(0);
-        let ljust = std::cmp::max(longest_command + 2, 15);
-        let join_str = format!("\n  {}", " ".repeat(ljust));
         let help_just = term_width() - ljust - 4;
 
         // Keep track of the current category so we only print it once
@@ -356,29 +346,108 @@ impl HelpCommand {
                 .iter()
                 .map(|name| name.join(" "))
                 .collect::<Vec<String>>();
-            let all_names_len = all_names.join(", ").len();
-            let all_names = all_names
+            let all_names_str = all_names
                 .iter()
                 .map(|name| name.cyan())
                 .collect::<Vec<String>>()
                 .join(", ");
 
-            let num_folded_len = match cmd.num_folded() {
-                0 => 0,
-                _ => 2,
-            };
-            let num_folded = match cmd.num_folded() {
-                0 => "".to_string(),
-                _ => " ▶".light_black(),
+            let (num_folded, num_folded_len) = match cmd.num_folded() {
+                0 => ("".to_string(), 0),
+                _ => (" ▶".light_black(), 2),
             };
 
-            let missing_just = ljust - all_names_len - num_folded_len;
-            let str_name = format!("  {}{}{}", all_names, num_folded, " ".repeat(missing_just));
+            let (print_name_on_same_line, wrap_threshold) = match get_command_length(cmd, &prefix) {
+                n if n <= longest_under_threshold => (true, longest_under_threshold),
+                _ => (false, term_width() - 4),
+            };
 
-            let help = wrap_text(&strip_colors_if_needed(&command.help_short()), help_just)
-                .join(join_str.as_str());
+            let all_names_str = format!("{}{}", all_names_str, "-".repeat(num_folded_len));
+            let all_names_vec = wrap_text(&all_names_str, wrap_threshold);
+            let all_names_and_len = all_names_vec
+                .iter()
+                .enumerate()
+                .map(|(idx, name)| {
+                    let namelen = strip_ansi_codes(name).len();
+                    let name = if idx == all_names_vec.len() - 1 {
+                        match name.strip_suffix("--") {
+                            Some(name) => format!("{}{}", name, num_folded),
+                            None => name.to_string(),
+                        }
+                    } else {
+                        name.to_string()
+                    };
+                    (name, namelen)
+                })
+                .collect::<Vec<(String, usize)>>();
 
-            eprintln!("{}{}", str_name, help);
+            // Prepare the help contents
+            let help_vec = wrap_text(&strip_colors_if_needed(&command.help_short()), help_just);
+
+            // Prepare the help message to print for this command
+            let empty_str = "".to_string();
+            let mut buf = String::new();
+            if print_name_on_same_line {
+                all_names_and_len
+                    .iter()
+                    .take(all_names_and_len.len() - 1)
+                    .for_each(|(name, _)| {
+                        buf.push_str(&format!("  {}\n", name));
+                    });
+
+                let first_desc_line = help_vec.first().unwrap_or(&empty_str);
+                let last_name_line = all_names_and_len.last().expect("Name should not be empty");
+                buf.push_str(&format!(
+                    "  {}{}{}\n",
+                    last_name_line.0,
+                    " ".repeat(ljust - last_name_line.1),
+                    first_desc_line,
+                ));
+
+                help_vec.iter().skip(1).for_each(|line| {
+                    buf.push_str(&format!("{}{}\n", " ".repeat(ljust + 2), line));
+                });
+            } else {
+                all_names_and_len.iter().for_each(|(name, _)| {
+                    buf.push_str(&format!("  {}\n", name));
+                });
+
+                help_vec.iter().for_each(|line| {
+                    buf.push_str(&format!("{}{}\n", " ".repeat(ljust + 2), line));
+                });
+            }
+
+            eprint!("{}", buf);
+
+            // This makes sure that the help message starts only on the last line of
+            // the command shown on the left
+            // let empty_str = "".to_string();
+            // let help_vec = std::iter::repeat(&empty_str)
+            // .take(all_names_and_len.len() - 1)
+            // .chain(help_vec.iter())
+            // .collect::<Vec<&String>>();
+
+            // // Generate the final help message
+            // let help = all_names_and_len
+            // .into_iter()
+            // .chain(std::iter::repeat(("".to_string(), 0)))
+            // .zip(help_vec.iter())
+            // .map(|((name, namelen), help)| {
+            // format!(
+            // "  {}{}{}",
+            // name,
+            // if help.is_empty() {
+            // "".to_string()
+            // } else {
+            // " ".repeat(ljust - namelen)
+            // },
+            // help,
+            // )
+            // })
+            // .collect::<Vec<String>>()
+            // .join("\n");
+
+            // eprintln!("{}", help);
         }
 
         true
@@ -534,4 +603,80 @@ impl HelpCommandMetadata {
             false => 0,
         }
     }
+}
+
+fn get_longest_command(
+    commands: &[HelpCommandMetadata],
+    prefix: &[String],
+    wrap_threshold: usize,
+) -> (usize, usize) {
+    let mut longest_command = 0;
+    let mut longest_under_threshold = 0;
+
+    for cmd in commands.iter() {
+        let command = &cmd.command;
+        let all_names = command
+            .all_names_with_prefix(prefix.to_vec())
+            .iter()
+            .map(|name| name.join(" "))
+            .collect::<Vec<String>>();
+        let all_names_str = all_names.join(", ");
+        let all_names_wrapped = wrap_text(&all_names_str, wrap_threshold);
+        let all_names_len = all_names_wrapped
+            .iter()
+            .enumerate()
+            .map(|(idx, name)| {
+                if idx == all_names_wrapped.len() - 1 {
+                    name.len()
+                        + match cmd.num_folded() {
+                            0 => 0,
+                            _ => 2,
+                        }
+                } else {
+                    name.len()
+                }
+            })
+            .collect::<Vec<usize>>();
+
+        let max_len = all_names_len.clone().into_iter().max().unwrap_or(0);
+        let max_under_threshold = all_names_len
+            .into_iter()
+            .filter(|len| *len <= wrap_threshold)
+            .max()
+            .unwrap_or(0);
+
+        longest_command = std::cmp::max(longest_command, max_len);
+        longest_under_threshold = std::cmp::max(longest_under_threshold, max_under_threshold);
+    }
+
+    (longest_command, longest_under_threshold)
+}
+
+fn get_command_length(command: &HelpCommandMetadata, prefix: &[String]) -> usize {
+    let all_names = command
+        .command
+        .all_names_with_prefix(prefix.to_vec())
+        .iter()
+        .map(|name| name.join(" "))
+        .collect::<Vec<String>>();
+    let all_names_str = all_names.join(", ");
+    let all_names_wrapped = wrap_text(&all_names_str, 40);
+    let all_names_len = all_names_wrapped
+        .iter()
+        .enumerate()
+        .map(|(idx, name)| {
+            if idx == all_names_wrapped.len() - 1 {
+                name.len()
+                    + match command.num_folded() {
+                        0 => 0,
+                        _ => 2,
+                    }
+            } else {
+                name.len()
+            }
+        })
+        .max()
+        .unwrap_or(0);
+
+    all_names_len
 }

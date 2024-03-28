@@ -20,7 +20,7 @@ setup() {
 }
 
 
-# bats test_tags=omni:help
+# bats test_tags=omni:help,omni:help:self
 @test "omni help shows the help message with default omni commands" {
   version=$(omni --version | cut -d' ' -f3)
 
@@ -386,7 +386,7 @@ EOF
   [[ "$output" == "$expected" ]]
 }
 
-# bats test_tags=omni:help
+# bats test_tags=omni:help,omni:help:up
 @test "omni help up shows the help message for the command" {
   version=$(omni --version | cut -d' ' -f3)
 
@@ -432,6 +432,283 @@ EOF
   echo "STATUS: $status"
   echo "OUTPUT: $output"
   [ "$status" -eq 0 ]
+
+  set -o pipefail
+  diff -u <(echo "$expected") <(echo "$output") 3>&- | cat "-$CAT_OPTS" 3>&-
+  [ "$?" -eq 0 ]
+  [[ "$output" == "$expected" ]]
+}
+
+# bats test_tags=omni:help,omni:help:self
+@test "omni help shows the help message with a very long config command (columns=1000)" {
+  local omni_config="${HOME}/.config/omni/config.yaml"
+  mkdir -p "$(dirname "$omni_config")"
+  cat <<EOF >>"$omni_config"
+commands:
+  supercalifragilisticexpialidocious:
+    aliases:
+      - abracadabra
+      - hocuspocus
+      - open-sesame
+    desc: |
+      lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do
+      eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut
+      enim ad minim veniam, quis nostrud exercitation ullamco laboris
+      nisi ut aliquip ex ea commodo consequat. Duis aute irure dolor
+      in reprehenderit in voluptate velit esse cillum dolore eu fugiat
+      nulla pariatur. Excepteur sint occaecat cupidatat non proident,
+      sunt in culpa qui officia deserunt mollit anim id est laborum.
+    run: |
+      echo "Hello, world!"
+EOF
+
+  version=$(omni --version | cut -d' ' -f3)
+
+  read -r -d '' expected <<EOF || true
+omni - omnipotent tool (v$version)
+
+Usage: omni <command> [options] ARG...
+
+General
+  config ▶                              Provides config commands
+  help                                  Show help for omni commands
+  hook ▶                                Call one of omni's hooks for the shell
+  status                                Show the status of omni
+
+Git commands
+  cd                                    Change directory to the git directory of the specified repository
+  clone                                 Clone the specified repository
+  up, down                              Sets up or tear down a repository depending on its up configuration
+  scope                                 Runs an omni command in the context of the specified repository
+  tidy                                  Organize your git repositories using the configured format
+
+Configuration < .config/omni/config.yaml
+  supercalifragilisticexpialidocious,
+  abracadabra, hocuspocus, open sesame  lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor
+                                        incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis
+                                        nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat.
+                                        Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore
+                                        eu fugiat nulla pariatur. Excepteur sint occaecat cupidatat non proident, sunt
+                                        in culpa qui officia deserunt mollit anim id est laborum.
+EOF
+
+  export COLUMNS=1000
+  run omni help 3>&-
+
+  echo "STATUS: $status"
+  echo "OUTPUT: $output"
+  [ "$status" -eq 0 ]
+
+  set -o pipefail
+  diff -u <(echo "$expected") <(echo "$output") 3>&- | cat "-$CAT_OPTS" 3>&-
+  [ "$?" -eq 0 ]
+  [[ "$output" == "$expected" ]]
+}
+
+# bats test_tags=omni:help,omni:help:self
+@test "omni help shows the help message with a very long config command (columns=100)" {
+  local omni_config="${HOME}/.config/omni/config.yaml"
+  mkdir -p "$(dirname "$omni_config")"
+  cat <<EOF >>"$omni_config"
+commands:
+  supercalifragilisticexpialidocious:
+    aliases:
+      - abracadabra
+      - hocuspocus
+      - open-sesame
+    desc: |
+      lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do
+      eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut
+      enim ad minim veniam, quis nostrud exercitation ullamco laboris
+      nisi ut aliquip ex ea commodo consequat. Duis aute irure dolor
+      in reprehenderit in voluptate velit esse cillum dolore eu fugiat
+      nulla pariatur. Excepteur sint occaecat cupidatat non proident,
+      sunt in culpa qui officia deserunt mollit anim id est laborum.
+    run: |
+      echo "Hello, world!"
+EOF
+
+  version=$(omni --version | cut -d' ' -f3)
+
+  read -r -d '' expected <<EOF || true
+omni - omnipotent tool (v$version)
+
+Usage: omni <command> [options] ARG...
+
+General
+  config ▶                              Provides config commands
+  help                                  Show help for omni commands
+  hook ▶                                Call one of omni's hooks for the shell
+  status                                Show the status of omni
+
+Git commands
+  cd                                    Change directory to the git directory of the specified
+                                        repository
+  clone                                 Clone the specified repository
+  up, down                              Sets up or tear down a repository depending on its up
+                                        configuration
+  scope                                 Runs an omni command in the context of the specified
+                                        repository
+  tidy                                  Organize your git repositories using the configured
+                                        format
+
+Configuration < .config/omni/config.yaml
+  supercalifragilisticexpialidocious,
+  abracadabra, hocuspocus, open sesame  lorem ipsum dolor sit amet, consectetur adipiscing
+                                        elit, sed do eiusmod tempor incididunt ut labore et
+                                        dolore magna aliqua. Ut enim ad minim veniam, quis
+                                        nostrud exercitation ullamco laboris nisi ut aliquip
+                                        ex ea commodo consequat. Duis aute irure dolor in
+                                        reprehenderit in voluptate velit esse cillum dolore eu
+                                        fugiat nulla pariatur. Excepteur sint occaecat
+                                        cupidatat non proident, sunt in culpa qui officia
+                                        deserunt mollit anim id est laborum.
+EOF
+
+  export COLUMNS=100
+  run omni help 3>&-
+
+  echo "STATUS: $status"
+  echo "OUTPUT: $output"
+  [ "$status" -eq 0 ]
+
+  set -o pipefail
+  diff -u <(echo "$expected") <(echo "$output") 3>&- | cat "-$CAT_OPTS" 3>&-
+  [ "$?" -eq 0 ]
+  [[ "$output" == "$expected" ]]
+}
+
+# bats test_tags=omni:help,omni:help:self
+@test "omni help shows the help message with a very long config command (columns=50)" {
+  local omni_config="${HOME}/.config/omni/config.yaml"
+  mkdir -p "$(dirname "$omni_config")"
+  cat <<EOF >>"$omni_config"
+commands:
+  supercalifragilisticexpialidocious:
+    aliases:
+      - abracadabra
+      - hocuspocus
+      - open-sesame
+    desc: |
+      lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do
+      eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut
+      enim ad minim veniam, quis nostrud exercitation ullamco laboris
+      nisi ut aliquip ex ea commodo consequat. Duis aute irure dolor
+      in reprehenderit in voluptate velit esse cillum dolore eu fugiat
+      nulla pariatur. Excepteur sint occaecat cupidatat non proident,
+      sunt in culpa qui officia deserunt mollit anim id est laborum.
+    run: |
+      echo "Hello, world!"
+EOF
+
+  version=$(omni --version | cut -d' ' -f3)
+
+  read -r -d '' expected <<EOF || true
+omni - omnipotent tool (v$version)
+
+Usage: omni <command> [options] ARG...
+
+General
+  config ▶          Provides config commands
+  help              Show help for omni
+                    commands
+  hook ▶            Call one of omni's hooks
+                    for the shell
+  status            Show the status of omni
+
+Git commands
+  cd                Change directory to the
+                    git directory of the
+                    specified repository
+  clone             Clone the specified
+                    repository
+  up, down          Sets up or tear down a
+                    repository depending on
+                    its up configuration
+  scope             Runs an omni command in
+                    the context of the
+                    specified repository
+  tidy              Organize your git
+                    repositories using the
+                    configured format
+
+Configuration < .config/omni/config.yaml
+  supercalifragilisticexpialidocious,
+  abracadabra, hocuspocus, open sesame
+                    lorem ipsum dolor sit
+                    amet, consectetur
+                    adipiscing elit, sed do
+                    eiusmod tempor
+                    incididunt ut labore et
+                    dolore magna aliqua. Ut
+                    enim ad minim veniam,
+                    quis nostrud
+                    exercitation ullamco
+                    laboris nisi ut aliquip
+                    ex ea commodo consequat.
+                    Duis aute irure dolor in
+                    reprehenderit in
+                    voluptate velit esse
+                    cillum dolore eu fugiat
+                    nulla pariatur.
+                    Excepteur sint occaecat
+                    cupidatat non proident,
+                    sunt in culpa qui
+                    officia deserunt mollit
+                    anim id est laborum.
+EOF
+
+  export COLUMNS=50
+  run omni help 3>&-
+
+  echo "STATUS: $status"
+  echo "OUTPUT: $output"
+  [ "$status" -eq 0 ]
+
+  set -o pipefail
+  diff -u <(echo "$expected") <(echo "$output") 3>&- | cat "-$CAT_OPTS" 3>&-
+  [ "$?" -eq 0 ]
+  [[ "$output" == "$expected" ]]
+}
+
+# bats test_tags=omni:help,omni:help:self
+@test "omni help fails to show the help message if terminal width is too low (columns=10)" {
+  local omni_config="${HOME}/.config/omni/config.yaml"
+  mkdir -p "$(dirname "$omni_config")"
+  cat <<EOF >>"$omni_config"
+commands:
+  supercalifragilisticexpialidocious:
+    aliases:
+      - abracadabra
+      - hocuspocus
+      - open-sesame
+    desc: |
+      lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do
+      eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut
+      enim ad minim veniam, quis nostrud exercitation ullamco laboris
+      nisi ut aliquip ex ea commodo consequat. Duis aute irure dolor
+      in reprehenderit in voluptate velit esse cillum dolore eu fugiat
+      nulla pariatur. Excepteur sint occaecat cupidatat non proident,
+      sunt in culpa qui officia deserunt mollit anim id est laborum.
+    run: |
+      echo "Hello, world!"
+EOF
+
+  version=$(omni --version | cut -d' ' -f3)
+
+  read -r -d '' expected <<EOF || true
+omni - omnipotent tool (v$version)
+
+Usage: omni <command> [options] ARG...
+omni: help command failed: terminal width is too small to print help
+EOF
+
+  export COLUMNS=10
+  run omni help 3>&-
+
+  echo "STATUS: $status"
+  echo "OUTPUT: $output"
+  [ "$status" -eq 1 ]
 
   set -o pipefail
   diff -u <(echo "$expected") <(echo "$output") 3>&- | cat "-$CAT_OPTS" 3>&-

@@ -96,7 +96,6 @@ omni_setup() {
   add_fakebin "${HOME}/bin/brew"
   add_fakebin "${HOME}/bin/nix"
   add_fakebin "${HOME}/.local/share/omni/asdf/bin/asdf"
-  add_fakebin "${HOME}/bin/python"
 
   # Switch current directory to that new temp one
   cd "${HOME}"
@@ -275,20 +274,21 @@ check_commands() {
   local commands="${HOME}/.commands"
   if [ -d "$commands" ]; then
     # Print the called log
-    local log="${commands}/called.log"
-    if [ -f "$log" ]; then
+    local called_log="${commands}/called.log"
+    if [ -f "$called_log" ]; then
       echo "==== CALLED LOG === BEGIN ===" >&2
-      cat "$log" >&2
+      cat "$called_log" >&2
       echo "==== CALLED LOG === END   ===" >&2
     fi
 
     # Check for any unexpected commands
-    unexpected=0
-    if [ -f "${commands}/unexpected.log" ]; then
+    local unexpected=0
+    local unexpected_log="${commands}/unexpected.log"
+    if [ -f "$unexpected_log" ]; then
       echo "==== UNEXPECTED LOG === BEGIN ===" >&2
-      cat "${commands}/unexpected.log" >&2
+      cat "$unexpected_log" >&2
       echo "==== UNEXPECTED LOG === END   ===" >&2
-      unexpected=$(wc -l < "${commands}/unexpected.log")
+      unexpected=$(wc -l < "$unexpected_log")
       echo "Unexpected commands: $unexpected (should be 0)" >&2
     fi
 
@@ -307,15 +307,5 @@ check_commands() {
 
     # Return the status
     [ "$unexpected" -eq 0 ] && [ "$missing_required" -eq 0 ]
-  fi
-}
-
-print_called_log() {
-  local commands="${HOME}/.commands"
-  local log="${commands}/called.log"
-  if [ -f "$log" ]; then
-    echo "==== CALLED LOG === BEGIN ===" >&2
-    cat "$log" >&2
-    echo "==== CALLED LOG === END   ===" >&2
   fi
 }
