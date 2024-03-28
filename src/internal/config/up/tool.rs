@@ -386,7 +386,7 @@ impl UpConfigTool {
     }
 }
 
-fn ordered_configs(configs: &Vec<UpConfigTool>) -> Vec<&UpConfigTool> {
+fn ordered_configs(configs: &[UpConfigTool]) -> Vec<&UpConfigTool> {
     configs
         .iter()
         .sorted_by(|a, b| a.sort_value().cmp(&b.sort_value()))
