@@ -357,8 +357,7 @@ impl HelpCommand {
                 _ => (" ▶".light_black(), 2),
             };
 
-            let (print_name_on_same_line, wrap_threshold) = match get_command_length(&cmd, &prefix)
-            {
+            let (print_name_on_same_line, wrap_threshold) = match get_command_length(cmd, &prefix) {
                 n if n <= longest_under_threshold => (true, longest_under_threshold),
                 _ => (false, term_width() - 4),
             };
@@ -607,8 +606,8 @@ impl HelpCommandMetadata {
 }
 
 fn get_longest_command(
-    commands: &Vec<HelpCommandMetadata>,
-    prefix: &Vec<String>,
+    commands: &[HelpCommandMetadata],
+    prefix: &[String],
     wrap_threshold: usize,
 ) -> (usize, usize) {
     let mut longest_command = 0;
@@ -617,7 +616,7 @@ fn get_longest_command(
     for cmd in commands.iter() {
         let command = &cmd.command;
         let all_names = command
-            .all_names_with_prefix(prefix.clone())
+            .all_names_with_prefix(prefix.to_vec())
             .iter()
             .map(|name| name.join(" "))
             .collect::<Vec<String>>();
@@ -653,10 +652,10 @@ fn get_longest_command(
     (longest_command, longest_under_threshold)
 }
 
-fn get_command_length(command: &HelpCommandMetadata, prefix: &Vec<String>) -> usize {
+fn get_command_length(command: &HelpCommandMetadata, prefix: &[String]) -> usize {
     let all_names = command
         .command
-        .all_names_with_prefix(prefix.clone())
+        .all_names_with_prefix(prefix.to_vec())
         .iter()
         .map(|name| name.join(" "))
         .collect::<Vec<String>>();
