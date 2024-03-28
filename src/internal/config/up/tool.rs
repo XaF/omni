@@ -2,9 +2,11 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 
 use itertools::any;
+use itertools::Itertools;
 use serde::Deserialize;
 use serde::Serialize;
 
+use crate::internal::config::global_config;
 use crate::internal::config::up::utils::UpProgressHandler;
 use crate::internal::config::up::UpConfig;
 use crate::internal::config::up::UpConfigAsdfBase;
@@ -20,25 +22,64 @@ use crate::internal::config::up::UpOptions;
 use crate::internal::config::ConfigValue;
 use crate::internal::dynenv::update_dynamic_env_for_command;
 
+/// UpConfigTool represents a tool that can be upped or downed.
+/// It can be a single tool or a combination of tools.
 #[derive(Debug, Deserialize, Clone)]
 pub enum UpConfigTool {
+    /// And represents a combination of tools that must all be upped.
     And(Vec<UpConfigTool>),
+
+    /// Any represents a combination of tools where at least one must
+    /// be upped. It will try to follow user preferences for ordering
+    /// of which tool to handle. If none are available, it will try
+    /// the others in the order they are defined. If the selected tool
+    /// fails to up, it will try the next one until one is successful
+    /// or all have been tried.
+    Any(Vec<UpConfigTool>),
+
     // TODO: Apt(UpConfigApt),
+    /// Bash represents the bash tool.
     Bash(UpConfigAsdfBase),
+
+    /// Bundler represents the bundler tool.
     Bundler(UpConfigBundler),
+
+    /// Custom represents a custom tool, where the user can define
+    /// a custom command to run to up/down the tool.
     Custom(UpConfigCustom),
+
     // TODO: Dnf(UpConfigDnf),
+    /// Go represents the golang tool.
     Go(UpConfigGolang),
+
+    /// Homebrew represents the homebrew tool.
     Homebrew(UpConfigHomebrew),
+
     // TODO: Java(UpConfigAsdfBase), // JAVA_HOME
     // TODO: Kotlin(UpConfigAsdfBase), // KOTLIN_HOME
+    /// Nix represents the nix tool, which can be used to install
+    /// packages from the nix package manager.
     Nix(UpConfigNix),
+
+    /// Nodejs represents the nodejs tool.
     Nodejs(UpConfigNodejs),
+
+    /// Or represents a combination of tools where at least one must
+    /// be upped. It will up the first tool that is available, and
+    /// only try the others if the first one fails.
     Or(Vec<UpConfigTool>),
+
     // TODO: Pacman(UpConfigPacman),
+    /// Python represents the python tool.
     Python(UpConfigPython),
+
+    /// Ruby represents the ruby tool.
     Ruby(UpConfigAsdfBase),
+
+    /// Rust represents the rust tool.
     Rust(UpConfigAsdfBase),
+
+    /// Terraform represents the terraform tool.
     Terraform(UpConfigAsdfBase),
 }
 
@@ -58,6 +99,7 @@ impl Serialize for UpConfigTool {
         // type and the value being the UpConfigTool struct.
         match self {
             UpConfigTool::And(configs) => create_hashmap("and", configs).serialize(serializer),
+            UpConfigTool::Any(configs) => create_hashmap("any", configs).serialize(serializer),
             UpConfigTool::Bash(config) => create_hashmap("bash", config).serialize(serializer),
             UpConfigTool::Bundler(config) => {
                 create_hashmap("bundler", config).serialize(serializer)
@@ -83,7 +125,7 @@ impl Serialize for UpConfigTool {
 impl UpConfigTool {
     pub fn from_config_value(up_name: &str, config_value: Option<&ConfigValue>) -> Option<Self> {
         match up_name {
-            "and" | "or" => {
+            "and" | "any" | "or" => {
                 let upconfig = match UpConfig::from_config_value(config_value.cloned()) {
                     Some(upconfig) => upconfig,
                     None => return None,
@@ -91,10 +133,13 @@ impl UpConfigTool {
 
                 if upconfig.steps.is_empty() {
                     None
-                } else if up_name == "and" {
-                    Some(UpConfigTool::And(upconfig.steps))
                 } else {
-                    Some(UpConfigTool::Or(upconfig.steps))
+                    match up_name {
+                        "and" => Some(UpConfigTool::And(upconfig.steps)),
+                        "any" => Some(UpConfigTool::Any(upconfig.steps)),
+                        "or" => Some(UpConfigTool::Or(upconfig.steps)),
+                        _ => None,
+                    }
                 }
             }
             "bash" => Some(UpConfigTool::Bash(
@@ -146,7 +191,7 @@ impl UpConfigTool {
         progress_handler: &UpProgressHandler,
     ) -> Result<(), UpError> {
         match self {
-            UpConfigTool::And(_) | UpConfigTool::Or(_) => {}
+            UpConfigTool::And(_) | UpConfigTool::Any(_) | UpConfigTool::Or(_) => {}
             _ => {
                 // Update the dynamic environment so that if anything has changed
                 // the command can consider it right away
@@ -160,6 +205,18 @@ impl UpConfigTool {
                     config.up(options, progress_handler)?;
                 }
                 Ok(())
+            }
+            UpConfigTool::Any(configs) => {
+                let mut result = Ok(());
+                for config in ordered_configs(configs) {
+                    if config.is_available() {
+                        result = config.up(options, progress_handler);
+                        if result.is_ok() {
+                            break;
+                        }
+                    }
+                }
+                result
             }
             UpConfigTool::Bash(config) => config.up(options, progress_handler),
             UpConfigTool::Bundler(config) => config.up(progress_handler),
@@ -191,7 +248,7 @@ impl UpConfigTool {
 
     pub fn down(&self, progress_handler: &UpProgressHandler) -> Result<(), UpError> {
         match self {
-            UpConfigTool::And(configs) | UpConfigTool::Or(configs) => {
+            UpConfigTool::And(configs) | UpConfigTool::Any(configs) | UpConfigTool::Or(configs) => {
                 for config in configs {
                     config.down(progress_handler)?;
                 }
@@ -213,7 +270,7 @@ impl UpConfigTool {
 
     pub fn is_available(&self) -> bool {
         match self {
-            UpConfigTool::And(configs) | UpConfigTool::Or(configs) => {
+            UpConfigTool::And(configs) | UpConfigTool::Any(configs) | UpConfigTool::Or(configs) => {
                 any(configs, |config| config.is_available())
             }
             UpConfigTool::Homebrew(config) => config.is_available(),
@@ -231,7 +288,7 @@ impl UpConfigTool {
 
     pub fn was_upped(&self) -> bool {
         match self {
-            UpConfigTool::And(configs) | UpConfigTool::Or(configs) => {
+            UpConfigTool::And(configs) | UpConfigTool::Any(configs) | UpConfigTool::Or(configs) => {
                 any(configs, |config| config.was_upped())
             }
             UpConfigTool::Bash(config) => config.was_upped(),
@@ -277,4 +334,61 @@ impl UpConfigTool {
             _ => vec![],
         }
     }
+
+    pub fn to_name(&self) -> &str {
+        match self {
+            UpConfigTool::And(_) => "and",
+            UpConfigTool::Any(_) => "any",
+            UpConfigTool::Or(_) => "or",
+            UpConfigTool::Bash(_) => "bash",
+            UpConfigTool::Bundler(_) => "bundler",
+            UpConfigTool::Custom(_) => "custom",
+            UpConfigTool::Go(_) => "go",
+            UpConfigTool::Homebrew(_) => "homebrew",
+            UpConfigTool::Nix(_) => "nix",
+            UpConfigTool::Nodejs(_) => "nodejs",
+            UpConfigTool::Python(_) => "python",
+            UpConfigTool::Ruby(_) => "ruby",
+            UpConfigTool::Rust(_) => "rust",
+            UpConfigTool::Terraform(_) => "terraform",
+        }
+    }
+
+    pub fn sort_value(&self) -> i32 {
+        match self {
+            UpConfigTool::And(configs) | UpConfigTool::Any(configs) | UpConfigTool::Or(configs) => {
+                // return the minimum sort value of all the configs
+                // in the list
+                configs
+                    .iter()
+                    .map(|config| config.sort_value())
+                    .min()
+                    .unwrap_or(i32::MAX)
+            }
+            _ => {
+                let config = global_config();
+                let preferred_tools = &config.up_command.preferred_tools;
+
+                // check what is the position for self.to_name() in
+                // preferred_tools and if it is not there, return the
+                // max value possible; the lowest value means the
+                // highest priority
+                let position = preferred_tools
+                    .iter()
+                    .position(|x| x.to_lowercase() == self.to_name());
+
+                match position {
+                    Some(position) => position as i32,
+                    None => i32::MAX,
+                }
+            }
+        }
+    }
+}
+
+fn ordered_configs(configs: &[UpConfigTool]) -> Vec<&UpConfigTool> {
+    configs
+        .iter()
+        .sorted_by(|a, b| a.sort_value().cmp(&b.sort_value()))
+        .collect()
 }

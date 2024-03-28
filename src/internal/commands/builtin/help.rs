@@ -418,36 +418,6 @@ impl HelpCommand {
             }
 
             eprint!("{}", buf);
-
-            // This makes sure that the help message starts only on the last line of
-            // the command shown on the left
-            // let empty_str = "".to_string();
-            // let help_vec = std::iter::repeat(&empty_str)
-            // .take(all_names_and_len.len() - 1)
-            // .chain(help_vec.iter())
-            // .collect::<Vec<&String>>();
-
-            // // Generate the final help message
-            // let help = all_names_and_len
-            // .into_iter()
-            // .chain(std::iter::repeat(("".to_string(), 0)))
-            // .zip(help_vec.iter())
-            // .map(|((name, namelen), help)| {
-            // format!(
-            // "  {}{}{}",
-            // name,
-            // if help.is_empty() {
-            // "".to_string()
-            // } else {
-            // " ".repeat(ljust - namelen)
-            // },
-            // help,
-            // )
-            // })
-            // .collect::<Vec<String>>()
-            // .join("\n");
-
-            // eprintln!("{}", help);
         }
 
         true
