@@ -371,14 +371,16 @@ EOF
 
 # bats test_tags=omni:up,omni:up:python,omni:up:python:nix
 @test "omni up python operation (latest) using nix for dependencies" {
+  cat >> ~/.config/omni/config.yaml <<EOF
+up_command:
+  preferred_tools:
+  - nix
+EOF
+
   cat > .omni.yaml <<EOF
 up:
   - python
 EOF
-
-  # Make brew fail, so nix will be used
-  add_command brew list --formula autoconf exit=1
-  add_command brew install --formula autoconf exit=1
 
   add_nix_python_calls
   add_asdf_python_calls

@@ -29,6 +29,7 @@ use crate::internal::user_interface::ensure_newline;
 use crate::internal::user_interface::StringColor;
 use crate::internal::utils::base62_encode;
 use crate::internal::workdir;
+use crate::omni_warning;
 
 #[derive(Debug, Clone)]
 pub struct RunConfig {
@@ -246,6 +247,143 @@ where
     rt.block_on(async_run_progress_readlines(
         command, handler_fn, run_config,
     ))
+}
+
+pub fn get_command_output(
+    process_command: &mut TokioCommand,
+    run_config: RunConfig,
+) -> std::io::Result<std::process::Output> {
+    let rt = Runtime::new().unwrap();
+    rt.block_on(async_get_output(process_command, run_config))
+}
+
+async fn async_get_output(
+    process_command: &mut TokioCommand,
+    run_config: RunConfig,
+) -> std::io::Result<std::process::Output> {
+    let mut listener = match AskPassListener::new(&run_config).await {
+        Ok(listener) => listener,
+        Err(err) => {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::Other,
+                err.to_string(),
+            ))
+        }
+    };
+    listener.set_process_env(process_command).await;
+
+    // let timeout_sleep = async || -> Option<()> {
+    // if let Some(timeout) = run_config.timeout() {
+    // tokio::time::sleep(timeout).await;
+    // Some(())
+    // } else {
+    // None
+    // }
+    // };
+
+    process_command.kill_on_drop(true);
+    let mut command = match process_command.spawn() {
+        Ok(command) => command,
+        Err(err) => {
+            let _ = listener.close().await;
+            return Err(err);
+        }
+    };
+
+    let mut result = None;
+    let mut stdout_vec = Vec::new();
+    let mut stderr_vec = Vec::new();
+
+    let (mut stdout_reader, mut stderr_reader) =
+        match (command.stdout.take(), command.stderr.take()) {
+            (Some(stdout), Some(stderr)) => (
+                BufReader::new(stdout).lines(),
+                BufReader::new(stderr).lines(),
+            ),
+            _ => {
+                let _ = listener.close().await;
+                return Err(std::io::Error::new(
+                    std::io::ErrorKind::Other,
+                    "stdout or stderr missing",
+                ));
+            }
+        };
+
+    loop {
+        tokio::select! {
+            stdout_line = stdout_reader.next_line() => {
+                match stdout_line {
+                    Ok(Some(line)) => {
+                        stdout_vec.extend_from_slice(line.as_bytes());
+                    }
+                    Ok(None) => break,  // End of stdout stream
+                    Err(err) => {
+                        result = Some(Err(err));
+                        break;
+                    }
+                }
+            }
+            stderr_line = stderr_reader.next_line() => {
+                match stderr_line {
+                    Ok(Some(line)) => {
+                        stderr_vec.extend_from_slice(line.as_bytes());
+                    }
+                    Ok(None) => break,  // End of stderr stream
+                    Err(err) => {
+                        result = Some(Err(err));
+                        break;
+                    }
+                }
+            }
+            Some(connection) = listener.accept() => {
+                // We received a connection on the askpass socket,
+                // which means that the user will need to provide
+                // a password to the process.
+                match connection {
+                    Ok((mut stream, _addr)) => {
+                        if let Err(err) = AskPassListener::handle_request(&mut stream).await {
+                            omni_warning!("{}", err);
+                        }
+                    }
+                    Err(err) => {
+                        omni_warning!("{}", err);
+                    }
+                }
+            }
+            Some(_) = async_timeout(&run_config) => {
+                result = Some(Err(std::io::Error::new(std::io::ErrorKind::TimedOut, "timeout")));
+                break;
+            }
+        }
+    }
+
+    // Close the listener
+    if let Err(err) = listener.close().await {
+        omni_warning!("{}", err);
+    }
+
+    if let Some(result) = result {
+        return result;
+    }
+
+    match command.wait_with_output().await {
+        Ok(output) => {
+            let mut output = output;
+            output.stdout = stdout_vec;
+            output.stderr = stderr_vec;
+            Ok(output)
+        }
+        Err(err) => Err(err),
+    }
+}
+
+pub async fn async_timeout(run_config: &RunConfig) -> Option<()> {
+    if let Some(timeout) = run_config.timeout() {
+        tokio::time::sleep(timeout).await;
+        Some(())
+    } else {
+        None
+    }
 }
 
 async fn async_run_progress_readblocks<F>(
@@ -480,7 +618,7 @@ pub trait ProgressHandler {
 pub struct SpinnerProgressHandler {
     spinner: ProgressBar,
     template: String,
-    newline_on_error: bool,
+    ensure_newline: bool,
 }
 
 impl SpinnerProgressHandler {
@@ -503,7 +641,9 @@ impl SpinnerProgressHandler {
     ) -> Self {
         let template = format!("{{prefix}}{} {} {{msg}}", "{spinner}".yellow(), desc,);
 
+        let mut ensure_newline = true;
         let spinner = if let Some(multiprogress) = multiprogress {
+            ensure_newline = false;
             multiprogress.add(ProgressBar::new_spinner())
         } else {
             ProgressBar::new_spinner()
@@ -533,17 +673,9 @@ impl SpinnerProgressHandler {
         SpinnerProgressHandler {
             spinner,
             template,
-            newline_on_error: true,
+            ensure_newline: ensure_newline,
         }
     }
-
-    pub fn no_newline_on_error(&mut self) {
-        self.newline_on_error = false;
-    }
-
-    // pub fn get_spinner(&self) -> &ProgressBar {
-    // &self.spinner
-    // }
 
     fn replace_spinner(&self, replace_by: String) {
         let template = self.template.replace("{spinner}", replace_by.as_str());
@@ -568,32 +700,34 @@ impl ProgressHandler for SpinnerProgressHandler {
         // self.replace_spinner("✔".green());
         // self.spinner.finish();
         self.success_with_message("done".to_string());
-        ensure_newline();
+        if self.ensure_newline {
+            ensure_newline();
+        }
     }
 
     fn success_with_message(&self, message: String) {
         self.replace_spinner("✔".green());
         self.spinner.finish_with_message(message);
-        ensure_newline();
+        if self.ensure_newline {
+            ensure_newline();
+        }
     }
 
     fn error(&self) {
         self.replace_spinner("✖".red());
         self.spinner
             .finish_with_message(self.spinner.message().red());
-        if self.newline_on_error {
-            println!();
+        if self.ensure_newline {
+            ensure_newline();
         }
-        ensure_newline();
     }
 
     fn error_with_message(&self, message: String) {
         self.replace_spinner("✖".red());
         self.spinner.finish_with_message(message.red());
-        if self.newline_on_error {
-            println!();
+        if self.ensure_newline {
+            ensure_newline();
         }
-        ensure_newline();
     }
 
     fn hide(&self) {
