@@ -17,6 +17,7 @@ use crate::internal::cache::CacheObject;
 use crate::internal::cache::OmniPathCache;
 use crate::internal::commands::path::global_omnipath_entries;
 use crate::internal::config::global_config;
+use crate::internal::config::up::utils::get_command_output;
 use crate::internal::config::up::utils::run_command_with_handler;
 use crate::internal::config::up::utils::PrintProgressHandler;
 use crate::internal::config::up::utils::ProgressHandler;
@@ -411,10 +412,11 @@ pub fn update(
             )
             .light_blue();
             let progress_handler: Box<dyn ProgressHandler + Send> = if shell_is_interactive() {
-                let mut spinner =
-                    SpinnerProgressHandler::new_with_multi(desc, None, multiprogress.clone());
-                spinner.no_newline_on_error();
-                Box::new(spinner)
+                Box::new(SpinnerProgressHandler::new_with_multi(
+                    desc,
+                    None,
+                    multiprogress.clone(),
+                ))
             } else {
                 Box::new(PrintProgressHandler::new(desc, None))
             };
@@ -687,7 +689,7 @@ fn update_git_branch(
 
     progress_handler.progress("pulling latest changes".to_string());
 
-    let mut git_pull_cmd = std::process::Command::new("git");
+    let mut git_pull_cmd = TokioCommand::new("git");
     if let Some(repo_path) = repo_path {
         git_pull_cmd.current_dir(repo_path);
     }
@@ -696,7 +698,9 @@ fn update_git_branch(
     git_pull_cmd.stdout(std::process::Stdio::piped());
     git_pull_cmd.stderr(std::process::Stdio::piped());
 
-    match git_pull_cmd.output() {
+    let output = get_command_output(&mut git_pull_cmd, RunConfig::new().with_askpass());
+
+    match output {
         Err(err) => {
             let msg = format!("git pull failed: {}", err);
             progress_handler.error_with_message(msg.clone());
@@ -810,7 +814,7 @@ fn update_git_tag(
 
     // Fetch all the tags for the repository
     progress_handler.progress("fetching last tags".to_string());
-    let mut git_fetch_tags_cmd = std::process::Command::new("git");
+    let mut git_fetch_tags_cmd = TokioCommand::new("git");
     if let Some(repo_path) = repo_path {
         git_fetch_tags_cmd.current_dir(repo_path);
     }
@@ -819,7 +823,7 @@ fn update_git_tag(
     git_fetch_tags_cmd.stdout(std::process::Stdio::piped());
     git_fetch_tags_cmd.stderr(std::process::Stdio::piped());
 
-    let output = git_fetch_tags_cmd.output();
+    let output = get_command_output(&mut git_fetch_tags_cmd, RunConfig::new().with_askpass());
     if output.is_err() || !output.as_ref().unwrap().status.success() {
         let msg = "git fetch failed".to_string();
         progress_handler.error_with_message(msg.clone());
