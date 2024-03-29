@@ -673,7 +673,7 @@ impl SpinnerProgressHandler {
         SpinnerProgressHandler {
             spinner,
             template,
-            ensure_newline: ensure_newline,
+            ensure_newline,
         }
     }
 
