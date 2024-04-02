@@ -297,5 +297,6 @@ jobs:
       - name: Enable auto-merge if Dependabot
         env:
           GH_TOKEN: ${{ secrets.AUTOMERGE_TOKEN }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
         run: |
-          gh pr merge --squash --auto ${{ github.event.pull_request.number }}
+          gh pr merge --squash --auto --body "" "$PR_NUMBER"
