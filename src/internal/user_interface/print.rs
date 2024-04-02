@@ -220,3 +220,13 @@ pub fn ensure_newline() {
         }
     }
 }
+
+pub fn ensure_newline_from_len(len: usize) {
+    if shell_is_interactive() {
+        if let Ok((x, _y)) = term_cursor::get_pos() {
+            if x > 0 && len > term_columns() {
+                eprintln!();
+            }
+        }
+    }
+}
