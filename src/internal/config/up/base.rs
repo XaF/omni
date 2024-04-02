@@ -1,4 +1,3 @@
-use itertools::any;
 use itertools::Itertools;
 use serde::Deserialize;
 use serde::Serialize;
@@ -6,10 +5,11 @@ use serde::Serialize;
 use crate::internal::cache::utils::Empty;
 use crate::internal::cache::CacheObject;
 use crate::internal::cache::UpEnvironmentsCache;
-use crate::internal::config::up::utils::force_remove_dir_all;
+use crate::internal::config::up::utils::cleanup_path;
 use crate::internal::config::up::utils::ProgressHandler;
 use crate::internal::config::up::utils::UpProgressHandler;
 use crate::internal::config::up::UpConfigAsdfBase;
+use crate::internal::config::up::UpConfigGithubRelease;
 use crate::internal::config::up::UpConfigHomebrew;
 use crate::internal::config::up::UpConfigTool;
 use crate::internal::config::up::UpError;
@@ -200,7 +200,7 @@ impl UpConfig {
     /// upgraded tools.
     pub fn cleanup(&self, progress: Option<(usize, usize)>) -> Result<(), UpError> {
         let progress_handler = UpProgressHandler::new(progress);
-        progress_handler.init("resources cleanup".light_blue());
+        progress_handler.init("resources cleanup:".light_blue());
 
         let mut cleanups = vec![];
 
@@ -209,6 +209,9 @@ impl UpConfig {
             cleanups.push(cleanup);
         }
         if let Some(cleanup) = UpConfigHomebrew::cleanup(&progress_handler)? {
+            cleanups.push(cleanup);
+        }
+        if let Some(cleanup) = UpConfigGithubRelease::cleanup(&progress_handler)? {
             cleanups.push(cleanup);
         }
 
@@ -251,99 +254,14 @@ impl UpConfig {
             .dedup()
             .collect::<Vec<_>>();
 
-        // If there are no expected data paths, we can remove the workdir
-        // data path entirely
-        if expected_data_paths.is_empty() {
-            force_remove_dir_all(wd_data_path).map_err(|err| {
-                UpError::Exec(format!(
-                    "failed to remove workdir data path {}: {}",
-                    wd_data_path.display(),
-                    err
-                ))
-            })?;
+        let (root_removed, num_removed, _) =
+            cleanup_path(wd_data_path, expected_data_paths, progress_handler, true)?;
 
-            return Ok(Some("removed workdir data path".to_string()));
-        }
-
-        // If there are expected paths, we want to do a breadth-first search
-        // so that we can remove paths fast when they are not expected; we
-        // can stop in depth when we find a path that is expected (since it
-        // means that any deeper path is also expected)
-        let mut known_unknown_paths = vec![];
-        let mut num_removed = 0;
-        for entry in walkdir::WalkDir::new(wd_data_path)
-            .into_iter()
-            .filter_entry(|e| {
-                // If the path is the root, we want to keep it
-                if e.path() == wd_data_path {
-                    return true;
-                }
-
-                // Check if the path is known, in which case we can skip it
-                // and its children
-                if any(expected_data_paths.iter(), |expected_data_path| {
-                    e.path() == *expected_data_path
-                }) {
-                    return false;
-                }
-
-                // If we're here, the path is not known, but we want to keep
-                // digging if it is the beginning of a known path; we will need
-                // to filter those paths out after
-                if any(expected_data_paths.iter(), |expected_data_path| {
-                    expected_data_path.starts_with(e.path())
-                }) {
-                    return true;
-                }
-
-                // If we're here, the path is not known and is not the beginning
-                // of a known path, so we want to keep it as it will need to get
-                // removed; however, we don't want to dig indefinitely, so we will
-                // keep track of paths that we already marked as unknown, so we
-                // can skip their children
-                if any(known_unknown_paths.iter(), |unknown_path| {
-                    e.path().starts_with(unknown_path)
-                }) {
-                    return false;
-                }
-
-                // If we're here, the path is not known and is not the beginning
-                // of a known path, so we want to keep it as it will need to get
-                known_unknown_paths.push(e.path().to_path_buf());
-                true
-            })
-            .filter_map(|e| e.ok())
-            // Filter the parents of known paths since we don't want to remove them
-            .filter(|e| {
-                !any(expected_data_paths.iter(), |expected_data_path| {
-                    expected_data_path.starts_with(e.path())
-                })
-            })
-        {
-            let path = entry.path();
-
-            progress_handler.progress(format!("removing {}", path.display()));
-
-            if path.is_file() {
-                if let Err(error) = std::fs::remove_file(path) {
-                    return Err(UpError::Exec(format!(
-                        "failed to remove {}: {}",
-                        path.display(),
-                        error
-                    )));
-                }
-                num_removed += 1;
-            } else if path.is_dir() {
-                force_remove_dir_all(path).map_err(|err| {
-                    UpError::Exec(format!("failed to remove{}: {}", path.display(), err))
-                })?;
-                num_removed += 1;
-            } else {
-                return Err(UpError::Exec(format!(
-                    "unexpected path type: {}",
-                    path.display()
-                )));
-            }
+        if root_removed {
+            return Ok(Some(format!(
+                "removed workdir data path {}",
+                wd_data_path.display().to_string().light_yellow()
+            )));
         }
 
         if num_removed == 0 {

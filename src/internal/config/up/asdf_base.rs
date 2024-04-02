@@ -698,7 +698,7 @@ impl UpConfigAsdfBase {
 
             let mut version = "".to_string();
             for available_version in available_versions {
-                if version_match(&self.version, available_version.as_str()) {
+                if version_match(&self.version, available_version.as_str(), false) {
                     version = available_version;
                 }
             }
@@ -1018,21 +1018,30 @@ impl UpConfigAsdfBase {
     }
 }
 
-fn version_match(expect: &str, version: &str) -> bool {
+pub fn version_match(expect: &str, version: &str, prerelease: bool) -> bool {
     if expect == "latest" {
         let mut prev = '.';
-        for c in version.chars() {
+        let chars = version.chars().collect::<Vec<char>>();
+        let lastidx = chars.len() - 1;
+        for (idx, c) in chars.iter().enumerate() {
+            let c = *c;
             if !c.is_ascii_digit() {
                 if c == '.' {
                     if prev == '.' {
                         return false;
                     }
+                } else if c == '-' {
+                    return prerelease && idx != lastidx && chars[idx + 1].is_alphanumeric();
                 } else {
                     return false;
                 }
             }
             prev = c;
         }
+        return true;
+    }
+
+    if expect == version {
         return true;
     }
 
@@ -1047,12 +1056,13 @@ fn version_match(expect: &str, version: &str) -> bool {
     }
 
     let expect_prefix = format!("{}.", expect);
-    if !version.starts_with(&expect_prefix) {
-        return false;
+    if let Some(rest_of_line) = version.strip_prefix(&expect_prefix) {
+        return rest_of_line
+            .chars()
+            .all(|c| c.is_ascii_digit() || c == '.' || (prerelease && c == '-'));
     }
 
-    let rest_of_line = version.strip_prefix(&expect_prefix).unwrap();
-    rest_of_line.chars().all(|c| c.is_ascii_digit() || c == '.')
+    false
 }
 
 fn detect_version_from_asdf_version_file(tool_name: String, path: PathBuf) -> Option<String> {

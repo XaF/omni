@@ -75,6 +75,24 @@ lazy_static! {
     };
 }
 
+pub fn compatible_release_arch() -> Vec<String> {
+    if *RELEASE_ARCH == "x86_64" {
+        vec!["x86_64".to_string(), "amd64".to_string(), "x64".to_string()]
+    } else if *RELEASE_ARCH == "arm64" {
+        vec!["arm64".to_string(), "aarch64".to_string()]
+    } else {
+        vec![(*RELEASE_ARCH).to_string()]
+    }
+}
+
+pub fn compatible_release_os() -> Vec<String> {
+    if *RELEASE_OS == "darwin" {
+        vec!["darwin".to_string(), "macos".to_string()]
+    } else {
+        vec![(*RELEASE_OS).to_string()]
+    }
+}
+
 pub fn self_update() {
     // Check if OMNI_SKIP_SELF_UPDATE is set
     if let Some(skip_self_update) = std::env::var_os("OMNI_SKIP_SELF_UPDATE") {
