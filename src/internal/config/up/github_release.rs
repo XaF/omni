@@ -60,13 +60,9 @@ impl UpConfigGithubRelease {
         };
 
         if let Some(table) = config_value.as_table() {
-            let repository = if let Some(repo) = table.get("repository") {
-                Some(repo)
-            } else if let Some(repo) = table.get("repo") {
-                Some(repo)
-            } else {
-                None
-            };
+            let repository = ["repository", "repo"]
+                .iter()
+                .find_map(|key| table.get(*key));
 
             let repository = if let Some(repository) = repository {
                 if let Some(repository_details) = repository.as_table() {
@@ -143,7 +139,7 @@ impl UpConfigGithubRelease {
         progress_handler.progress("updating cache".to_string());
 
         if let Err(err) = GithubReleaseOperationCache::exclusive(|ghrelease| {
-            ghrelease.add_installed(&wd_id, &self.repository, &version)
+            ghrelease.add_installed(&wd_id, &self.repository, version)
         }) {
             progress_handler.progress(format!("failed to update github release cache: {}", err));
             return;
@@ -202,7 +198,7 @@ impl UpConfigGithubRelease {
 
         progress_handler.progress(format!("found release {}", release.tag_name.light_yellow()));
 
-        let installed = self.download_release(&options, &release, progress_handler)?;
+        let installed = self.download_release(options, &release, progress_handler)?;
 
         self.update_cache(progress_handler);
 
@@ -342,7 +338,7 @@ impl UpConfigGithubRelease {
             }
         };
 
-        let response = client.get(&releases_url).send().map_err(|err| {
+        let response = client.get(releases_url).send().map_err(|err| {
             let errmsg = format!("failed to get releases: {}", err);
             progress_handler.error_with_message(errmsg.clone());
             UpError::Exec(errmsg)
@@ -469,7 +465,7 @@ impl UpConfigGithubRelease {
             // Strip .zip or .tar.gz from the asset name to get the target dir
             let target_dir = asset_name
                 .strip_suffix(".zip")
-                .map_or_else(|| asset_name.strip_suffix(".tar.gz"), |name| Some(name))
+                .map_or_else(|| asset_name.strip_suffix(".tar.gz"), Some)
                 .ok_or_else(|| {
                     let errmsg = format!("file extension not supported: {}", asset_name);
                     progress_handler.error_with_message(errmsg.clone());
@@ -542,7 +538,7 @@ impl UpConfigGithubRelease {
                 }
 
                 // Copy the binary to the install path
-                std::fs::copy(&source_path, &target_path).map_err(|err| {
+                std::fs::copy(source_path, target_path).map_err(|err| {
                     let errmsg = format!("failed to copy {}: {}", binary_name, err);
                     progress_handler.error_with_message(errmsg.clone());
 

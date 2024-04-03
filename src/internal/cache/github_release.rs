@@ -237,7 +237,7 @@ impl GithubReleases {
 
                         true
                     })
-                    .map(|asset| asset.clone())
+                    .cloned()
                     .collect::<Vec<GithubReleaseAsset>>();
 
                 if assets.is_empty() {
@@ -270,7 +270,7 @@ pub struct GithubReleaseVersion {
 impl GithubReleaseVersion {
     pub fn version(&self) -> Result<semverVersion, String> {
         // Get the version as the tag name but ideally without the first v
-        let version = match self.tag_name.strip_prefix("v") {
+        let version = match self.tag_name.strip_prefix('v') {
             Some(version) => version,
             None => &self.tag_name,
         };
