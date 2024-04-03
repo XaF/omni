@@ -27,7 +27,7 @@ clap = "4.5.4"
 ctrlc = { version = "3.4.4", features = ["termination"] }
 duct = "0.13.6"
 flate2 = "1.0.28"
-fs4 = "0.8.0"
+fs4 = "0.8.2"
 gethostname = "0.4.3"
 git-url-parse = "0.4.4"
 git2 = "0.18.3"
