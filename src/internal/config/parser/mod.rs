@@ -3,6 +3,9 @@ pub(crate) use root::config;
 pub(crate) use root::flush_config;
 pub(crate) use root::global_config;
 
+mod askpass;
+pub(crate) use askpass::AskPassConfig;
+
 mod cache;
 pub(crate) use cache::CacheConfig;
 

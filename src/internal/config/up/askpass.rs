@@ -19,6 +19,7 @@ use tokio::net::UnixListener;
 use tokio::net::UnixStream;
 use tokio::process::Command as TokioCommand;
 
+use crate::internal::config::global_config;
 use crate::internal::config::up::utils::force_remove_dir_all;
 use crate::internal::config::up::utils::RunConfig;
 use crate::internal::config::up::UpError;
@@ -170,6 +171,11 @@ impl AskPassListener {
             return Ok(Self::default());
         }
 
+        let config = global_config();
+        if !config.askpass.enabled {
+            return Ok(Self::default());
+        }
+
         let needs_askpass = Self::needs_askpass();
         if needs_askpass.is_empty() {
             return Ok(Self::default());
@@ -201,6 +207,7 @@ impl AskPassListener {
         );
         context.insert("SOCKET_PATH", socket_path.to_string_lossy().as_ref());
         context.insert("INTERACTIVE", &shell_is_interactive());
+        context.insert("PREFER_GUI", &config.askpass.prefer_gui);
 
         // Prepare the template
         let template = include_str!("../../../../templates/askpass.sh.tmpl");

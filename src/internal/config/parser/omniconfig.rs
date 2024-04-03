@@ -5,6 +5,7 @@ use serde::Deserialize;
 use serde::Serialize;
 
 use crate::internal::cache::utils::Empty;
+use crate::internal::config::parser::AskPassConfig;
 use crate::internal::config::parser::CacheConfig;
 use crate::internal::config::parser::CdConfig;
 use crate::internal::config::parser::CloneConfig;
@@ -48,6 +49,7 @@ lazy_static! {
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct OmniConfig {
+    pub askpass: AskPassConfig,
     pub cache: CacheConfig,
     pub cd: CdConfig,
     pub clone: CloneConfig,
@@ -110,6 +112,7 @@ impl OmniConfig {
         }
 
         Self {
+            askpass: AskPassConfig::from_config_value(config_value.get("askpass")),
             cache: CacheConfig::from_config_value(config_value.get("cache")),
             cd: CdConfig::from_config_value(config_value.get("cd")),
             clone: CloneConfig::from_config_value(config_value.get("clone")),

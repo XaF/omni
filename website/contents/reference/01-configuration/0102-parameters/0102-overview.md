@@ -11,6 +11,7 @@ Omni configuration files accept the following parameters:
 
 | Parameter               | Type | Description                                                            |
 |-------------------------|------|------------------------------------------------------------------------|
+| `askpass` | [askpass](parameters/askpass) | Configuration related to the handling of `*_ASKPASS` environment variables when doing omni operations that might require a password input |
 | `cache` | [cache](parameters/cache) | Configuration related to the cache of omni |
 | `cd` | [cd](parameters/cd) | Configuration related to the `omni cd` command |
 | `clone` | [clone](parameters/clone) | Configuration related to the `omni clone` command |
