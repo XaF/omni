@@ -40,6 +40,12 @@ pub struct UpConfigGithubRelease {
     #[serde(default, skip_serializing_if = "cache_utils::is_false")]
     pub prerelease: bool,
 
+    /// Whether to install a file that is not currently in an
+    /// archive or not. This is useful for tools that are being
+    /// distributed as a single binary file outside of an archive.
+    #[serde(default, skip_serializing_if = "cache_utils::is_false")]
+    pub binary: bool,
+
     /// The URL of the GitHub API; this is only required if downloading
     /// using Github Enterprise. By default, this is set to the public
     /// GitHub API URL (https://api.github.com). If you are using
@@ -95,6 +101,11 @@ impl UpConfigGithubRelease {
                 .map(|v| v.as_bool())
                 .unwrap_or(None)
                 .unwrap_or(false);
+            let binary = table
+                .get("binary")
+                .map(|v| v.as_bool())
+                .unwrap_or(None)
+                .unwrap_or(false);
             let api_url = table
                 .get("api_url")
                 .map(|v| v.as_str_forced())
@@ -104,6 +115,7 @@ impl UpConfigGithubRelease {
                 repository,
                 version,
                 prerelease,
+                binary,
                 api_url,
                 ..UpConfigGithubRelease::default()
             }
@@ -366,11 +378,13 @@ impl UpConfigGithubRelease {
     ) -> Result<GithubReleaseVersion, UpError> {
         let version = self.version.clone().unwrap_or_else(|| "latest".to_string());
 
-        let (version, release) = releases.get(&version, self.prerelease).ok_or_else(|| {
-            let errmsg = "no matching release found".to_string();
-            progress_handler.error_with_message(errmsg.clone());
-            UpError::Exec(errmsg)
-        })?;
+        let (version, release) = releases
+            .get(&version, self.prerelease, self.binary)
+            .ok_or_else(|| {
+                let errmsg = "no matching release found".to_string();
+                progress_handler.error_with_message(errmsg.clone());
+                UpError::Exec(errmsg)
+            })?;
 
         self.actual_version.set(version.to_string()).map_err(|_| {
             let errmsg = "failed to set actual version".to_string();
@@ -421,6 +435,7 @@ impl UpConfigGithubRelease {
 
         // Go over each of the assets that matched the current platform
         // and download them all
+        let mut binary_found = false;
         for asset in &release.assets {
             let asset_name = asset.name.clone();
             let asset_url = asset.browser_download_url.clone();
@@ -453,107 +468,139 @@ impl UpConfigGithubRelease {
                 UpError::Exec(errmsg)
             })?;
 
-            progress_handler.progress(format!("extracting {}", asset_name.light_yellow()));
-
-            // Open the downloaded file
-            let archive_file = std::fs::File::open(&asset_path).map_err(|err| {
-                let errmsg = format!("failed to open {}: {}", asset_name, err);
+            // Get the parsed asset name
+            let (asset_type, target_dir) = asset.file_type().ok_or_else(|| {
+                let errmsg = format!("file type not supported: {}", asset_name);
                 progress_handler.error_with_message(errmsg.clone());
                 UpError::Exec(errmsg)
             })?;
-
-            // Strip .zip or .tar.gz from the asset name to get the target dir
-            let target_dir = asset_name
-                .strip_suffix(".zip")
-                .map_or_else(|| asset_name.strip_suffix(".tar.gz"), Some)
-                .ok_or_else(|| {
-                    let errmsg = format!("file extension not supported: {}", asset_name);
-                    progress_handler.error_with_message(errmsg.clone());
-                    UpError::Exec(errmsg)
-                })?;
             let target_dir = tmp_dir.path().join(target_dir);
 
-            // Perform the extraction
-            let is_tgz = asset.name.ends_with(".tar.gz") || asset.name.ends_with(".tgz");
-            let is_zip = asset.name.ends_with(".zip");
-            if is_zip {
-                zip_extract::extract(&archive_file, &target_dir, true).map_err(|err| {
-                    let errmsg = format!("failed to extract {}: {}", asset_name, err);
+            if asset_type.is_binary() {
+                // Make the binary executable
+                let mut perms = file
+                    .metadata()
+                    .map_err(|err| {
+                        let errmsg = format!("failed to get metadata for {}: {}", asset_name, err);
+                        progress_handler.error_with_message(errmsg.clone());
+                        UpError::Exec(errmsg)
+                    })?
+                    .permissions();
+                perms.set_mode(0o755);
+                file.set_permissions(perms).map_err(|err| {
+                    let errmsg = format!("failed to set permissions for {}: {}", asset_name, err);
                     progress_handler.error_with_message(errmsg.clone());
                     UpError::Exec(errmsg)
                 })?;
-            } else if is_tgz {
-                let tar = flate2::read::GzDecoder::new(archive_file);
-                let mut archive = tar::Archive::new(tar);
-                archive.unpack(&target_dir).map_err(|err| {
-                    let errmsg = format!("failed to extract {}: {}", asset_name, err);
+
+                // Rename the file to get rid of the os, architecture
+                // and version information
+                let new_path = tmp_dir.path().join(asset.clean_name(&version));
+                std::fs::rename(&asset_path, &new_path).map_err(|err| {
+                    let errmsg = format!("failed to rename {}: {}", asset_name, err);
                     progress_handler.error_with_message(errmsg.clone());
                     UpError::Exec(errmsg)
                 })?;
             } else {
-                let errmsg = format!("file extension not supported: {}", asset_name);
-                progress_handler.error_with_message(errmsg.clone());
-                return Err(UpError::Exec(errmsg));
-            }
+                progress_handler.progress(format!("extracting {}", asset_name.light_yellow()));
 
-            // Locate the binary file(s) in the extracted directory, recursively
-            // and move them to the workdir data path
-            for entry in walkdir::WalkDir::new(&target_dir)
-                .into_iter()
-                .filter_map(|entry| {
-                    let entry = entry.ok()?;
-                    let entry_path = entry.path();
-                    if entry_path.is_file() {
-                        let metadata = entry.metadata().ok()?;
-                        let is_executable = metadata.permissions().mode() & 0o111 != 0;
-                        if is_executable {
-                            Some(entry)
-                        } else {
-                            None
-                        }
-                    } else {
-                        None
-                    }
-                })
-            {
-                let source_path = entry.path();
-                let binary_name = source_path
-                    .file_name()
-                    .unwrap_or(source_path.as_os_str())
-                    .to_string_lossy()
-                    .to_string();
+                // Open the downloaded file
+                let archive_file = std::fs::File::open(&asset_path).map_err(|err| {
+                    let errmsg = format!("failed to open {}: {}", asset_name, err);
+                    progress_handler.error_with_message(errmsg.clone());
+                    UpError::Exec(errmsg)
+                })?;
 
-                progress_handler.progress(format!("found binary {}", binary_name.light_yellow()));
-
-                let target_path = install_path.join(&binary_name);
-
-                // Make sure the target directory exists
-                if !install_path.exists() {
-                    std::fs::create_dir_all(&install_path).map_err(|err| {
-                        let errmsg =
-                            format!("failed to create {}: {}", install_path.display(), err);
+                // Perform the extraction
+                if asset_type.is_zip() {
+                    zip_extract::extract(&archive_file, &target_dir, true).map_err(|err| {
+                        let errmsg = format!("failed to extract {}: {}", asset_name, err);
                         progress_handler.error_with_message(errmsg.clone());
                         UpError::Exec(errmsg)
                     })?;
-                }
-
-                // Copy the binary to the install path
-                std::fs::copy(source_path, target_path).map_err(|err| {
-                    let errmsg = format!("failed to copy {}: {}", binary_name, err);
+                } else if asset_type.is_tgz() {
+                    let tar = flate2::read::GzDecoder::new(archive_file);
+                    let mut archive = tar::Archive::new(tar);
+                    archive.unpack(&target_dir).map_err(|err| {
+                        let errmsg = format!("failed to extract {}: {}", asset_name, err);
+                        progress_handler.error_with_message(errmsg.clone());
+                        UpError::Exec(errmsg)
+                    })?;
+                } else {
+                    let errmsg = format!("file extension not supported: {}", asset_name);
                     progress_handler.error_with_message(errmsg.clone());
-
-                    // Force delete the install path if we fail to copy
-                    // the binary to avoid leaving a partial installation
-                    // behind
-                    let _ = force_remove_dir_all(&install_path);
-
-                    UpError::Exec(errmsg)
-                })?;
+                    return Err(UpError::Exec(errmsg));
+                }
             }
         }
 
-        progress_handler.progress(format!("downloaded {} {}", self.repository, version));
+        // Locate the binary file(s) in the extracted directory, recursively
+        // and move them to the workdir data path
+        for entry in walkdir::WalkDir::new(&tmp_dir.path())
+            .into_iter()
+            .filter_map(|entry| {
+                let entry = entry.ok()?;
+                let entry_path = entry.path();
+                if entry_path.is_file() {
+                    let metadata = entry.metadata().ok()?;
+                    let is_executable = metadata.permissions().mode() & 0o111 != 0;
+                    if is_executable {
+                        Some(entry)
+                    } else {
+                        None
+                    }
+                } else {
+                    None
+                }
+            })
+        {
+            let source_path = entry.path();
+            let binary_name = source_path
+                .file_name()
+                .unwrap_or(source_path.as_os_str())
+                .to_string_lossy()
+                .to_string();
 
+            progress_handler.progress(format!("found binary {}", binary_name.light_yellow()));
+
+            let target_path = install_path.join(&binary_name);
+
+            // Make sure the target directory exists
+            if !install_path.exists() {
+                std::fs::create_dir_all(&install_path).map_err(|err| {
+                    let errmsg = format!("failed to create {}: {}", install_path.display(), err);
+                    progress_handler.error_with_message(errmsg.clone());
+                    UpError::Exec(errmsg)
+                })?;
+            }
+
+            // Copy the binary to the install path
+            std::fs::copy(source_path, target_path).map_err(|err| {
+                let errmsg = format!("failed to copy {}: {}", binary_name, err);
+                progress_handler.error_with_message(errmsg.clone());
+
+                // Force delete the install path if we fail to copy
+                // the binary to avoid leaving a partial installation
+                // behind
+                let _ = force_remove_dir_all(&install_path);
+
+                UpError::Exec(errmsg)
+            })?;
+
+            binary_found = true;
+        }
+
+        if !binary_found {
+            progress_handler
+                .error_with_message(format!("no binaries found in {}", self.repository));
+            return Err(UpError::Exec("no binaries found".to_string()));
+        }
+
+        progress_handler.progress(format!(
+            "downloaded {} {}",
+            self.repository.light_yellow(),
+            version.light_yellow()
+        ));
         Ok(true)
     }
 
