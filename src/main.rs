@@ -7,7 +7,7 @@ use internal::commands::HookEnvCommand;
 use internal::commands::HookInitCommand;
 use internal::commands::HookUuidCommand;
 use internal::config::ensure_bootstrap;
-use internal::config::up::askpass::AskPassRequest;
+use internal::config::up::utils::AskPassRequest;
 use internal::env::tmpdir_cleanup;
 use internal::git::auto_update_async;
 use internal::git::auto_update_sync;

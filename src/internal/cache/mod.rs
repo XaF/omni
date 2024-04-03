@@ -3,6 +3,11 @@ pub(crate) mod loaders;
 pub(crate) mod asdf_operation;
 pub(crate) use asdf_operation::AsdfOperationCache;
 
+pub(crate) mod github_release;
+pub(crate) use github_release::GithubReleaseOperationCache;
+pub(crate) use github_release::GithubReleaseVersion;
+pub(crate) use github_release::GithubReleases;
+
 pub(crate) mod handler;
 
 pub(crate) mod homebrew_operation;

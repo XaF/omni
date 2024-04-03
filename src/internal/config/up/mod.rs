@@ -13,6 +13,9 @@ pub(crate) use bundler::UpConfigBundler;
 pub(crate) mod custom;
 pub(crate) use custom::UpConfigCustom;
 
+pub(crate) mod github_release;
+pub(crate) use github_release::UpConfigGithubRelease;
+
 pub(crate) mod golang;
 pub(crate) use golang::UpConfigGolang;
 
@@ -37,9 +40,3 @@ pub(crate) mod error;
 pub(crate) use error::UpError;
 
 pub(crate) mod utils;
-pub(crate) use utils::run_progress;
-pub(crate) use utils::ProgressHandler;
-pub(crate) use utils::SpinnerProgressHandler;
-
-pub(crate) mod askpass;
-pub(crate) use askpass::AskPassListener;

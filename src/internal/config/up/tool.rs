@@ -12,6 +12,7 @@ use crate::internal::config::up::UpConfig;
 use crate::internal::config::up::UpConfigAsdfBase;
 use crate::internal::config::up::UpConfigBundler;
 use crate::internal::config::up::UpConfigCustom;
+use crate::internal::config::up::UpConfigGithubRelease;
 use crate::internal::config::up::UpConfigGolang;
 use crate::internal::config::up::UpConfigHomebrew;
 use crate::internal::config::up::UpConfigNix;
@@ -49,6 +50,10 @@ pub enum UpConfigTool {
     Custom(UpConfigCustom),
 
     // TODO: Dnf(UpConfigDnf),
+    /// GithubRelease represents a tool that can be installed from
+    /// a github release.
+    GithubRelease(UpConfigGithubRelease),
+
     /// Go represents the golang tool.
     Go(UpConfigGolang),
 
@@ -105,6 +110,9 @@ impl Serialize for UpConfigTool {
                 create_hashmap("bundler", config).serialize(serializer)
             }
             UpConfigTool::Custom(config) => create_hashmap("custom", config).serialize(serializer),
+            UpConfigTool::GithubRelease(config) => {
+                create_hashmap("github-release", config).serialize(serializer)
+            }
             UpConfigTool::Go(config) => create_hashmap("go", config).serialize(serializer),
             UpConfigTool::Homebrew(config) => {
                 create_hashmap("homebrew", config).serialize(serializer)
@@ -155,6 +163,9 @@ impl UpConfigTool {
             "custom" => Some(UpConfigTool::Custom(UpConfigCustom::from_config_value(
                 config_value,
             ))),
+            "github-release" | "github_release" | "githubrelease" | "ghrelease" => Some(
+                UpConfigTool::GithubRelease(UpConfigGithubRelease::from_config_value(config_value)),
+            ),
             "go" | "golang" => Some(UpConfigTool::Go(UpConfigGolang::from_config_value(
                 config_value,
             ))),
@@ -221,6 +232,7 @@ impl UpConfigTool {
             UpConfigTool::Bash(config) => config.up(options, progress_handler),
             UpConfigTool::Bundler(config) => config.up(progress_handler),
             UpConfigTool::Custom(config) => config.up(progress_handler),
+            UpConfigTool::GithubRelease(config) => config.up(options, progress_handler),
             UpConfigTool::Go(config) => config.up(options, progress_handler),
             UpConfigTool::Homebrew(config) => config.up(options, progress_handler),
             UpConfigTool::Nix(config) => config.up(options, progress_handler),
@@ -257,6 +269,7 @@ impl UpConfigTool {
             UpConfigTool::Bash(config) => config.down(progress_handler),
             UpConfigTool::Bundler(config) => config.down(progress_handler),
             UpConfigTool::Custom(config) => config.down(progress_handler),
+            UpConfigTool::GithubRelease(config) => config.down(progress_handler),
             UpConfigTool::Go(config) => config.down(progress_handler),
             UpConfigTool::Homebrew(config) => config.down(progress_handler),
             UpConfigTool::Nix(config) => config.down(progress_handler),
@@ -294,6 +307,7 @@ impl UpConfigTool {
             UpConfigTool::Bash(config) => config.was_upped(),
             // UpConfigTool::Bundler(config) => config.was_upped(),
             // UpConfigTool::Custom(config) => config.was_upped(),
+            // UpConfigTool::GithubRelease(config) => config.was_upped(),
             UpConfigTool::Go(config) => config.was_upped(),
             // UpConfigTool::Homebrew(config) => config.was_upped(),
             UpConfigTool::Nix(config) => config.was_upped(),
@@ -312,13 +326,7 @@ impl UpConfigTool {
                 .iter()
                 .flat_map(|config| config.data_paths())
                 .collect(),
-            UpConfigTool::Bash(config) => config.data_paths(),
-            // UpConfigTool::Bundler(config) => config.data_paths(),
-            UpConfigTool::Go(config) => config.data_paths(),
-            // UpConfigTool::Homebrew(config) => config.data_paths(),
-            UpConfigTool::Nix(config) => config.data_paths(),
-            UpConfigTool::Nodejs(config) => config.asdf_base.data_paths(),
-            UpConfigTool::Or(configs) => {
+            UpConfigTool::Any(configs) | UpConfigTool::Or(configs) => {
                 match configs
                     .iter()
                     .find(|config| config.is_available() && config.was_upped())
@@ -327,6 +335,14 @@ impl UpConfigTool {
                     None => vec![],
                 }
             }
+            UpConfigTool::Bash(config) => config.data_paths(),
+            // UpConfigTool::Bundler(config) => config.data_paths(),
+            // UpConfigTool::Custom(config) => config.data_paths(),
+            // UpConfigTool::GithubRelease(config) => config.data_paths(),
+            UpConfigTool::Go(config) => config.data_paths(),
+            // UpConfigTool::Homebrew(config) => config.data_paths(),
+            UpConfigTool::Nix(config) => config.data_paths(),
+            UpConfigTool::Nodejs(config) => config.asdf_base.data_paths(),
             UpConfigTool::Python(config) => config.asdf_base.data_paths(),
             UpConfigTool::Ruby(config) => config.data_paths(),
             UpConfigTool::Rust(config) => config.data_paths(),
@@ -343,6 +359,7 @@ impl UpConfigTool {
             UpConfigTool::Bash(_) => "bash",
             UpConfigTool::Bundler(_) => "bundler",
             UpConfigTool::Custom(_) => "custom",
+            UpConfigTool::GithubRelease(_) => "github-release",
             UpConfigTool::Go(_) => "go",
             UpConfigTool::Homebrew(_) => "homebrew",
             UpConfigTool::Nix(_) => "nix",

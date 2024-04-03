@@ -210,7 +210,7 @@ impl AskPassListener {
         context.insert("PREFER_GUI", &config.askpass.prefer_gui);
 
         // Prepare the template
-        let template = include_str!("../../../../templates/askpass.sh.tmpl");
+        let template = include_str!("../../../../../templates/askpass.sh.tmpl");
 
         // Render the script for all the required askpass tools
         for tool in &needs_askpass {
