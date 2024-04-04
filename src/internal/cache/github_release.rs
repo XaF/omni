@@ -345,11 +345,11 @@ impl GithubReleaseAsset {
             }
         }
 
-        if let Some(prefix) = self.name.strip_suffix(".exe") {
-            return Some((GithubReleaseAssetType::Binary, prefix.to_string()));
+        if self.name.ends_with(".exe") {
+            return Some((GithubReleaseAssetType::Binary, self.name.clone()));
         }
 
-        if !self.name.contains(".") {
+        if !self.name.contains('.') {
             return Some((GithubReleaseAssetType::Binary, self.name.clone()));
         }
 

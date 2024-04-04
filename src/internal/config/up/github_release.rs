@@ -536,7 +536,7 @@ impl UpConfigGithubRelease {
 
         // Locate the binary file(s) in the extracted directory, recursively
         // and move them to the workdir data path
-        for entry in walkdir::WalkDir::new(&tmp_dir.path())
+        for entry in walkdir::WalkDir::new(tmp_dir.path())
             .into_iter()
             .filter_map(|entry| {
                 let entry = entry.ok()?;
