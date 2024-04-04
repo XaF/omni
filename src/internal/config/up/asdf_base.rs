@@ -849,7 +849,7 @@ impl UpConfigAsdfBase {
             let version_data_path = tool_data_path.join(version);
 
             for dir in dirs {
-                let hashed_dir = data_path_dir_hash(&dir);
+                let hashed_dir = data_path_dir_hash(dir);
                 data_paths.insert(version_data_path.join(&hashed_dir));
             }
         }
