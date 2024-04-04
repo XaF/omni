@@ -830,11 +830,9 @@ impl UpConfigAsdfBase {
 
         if let Some(version) = self.actual_version.get() {
             let dirs = match self.dirs.is_empty() {
-                true => vec!["".to_string()],
-                false => self.dirs.iter().cloned().collect(),
-            }
-            .into_iter()
-            .collect::<BTreeSet<_>>();
+                true => vec!["".to_string()].into_iter().collect(),
+                false => self.dirs.clone(),
+            };
 
             dirs_per_version.insert(version.clone(), dirs);
         }
