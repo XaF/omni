@@ -217,7 +217,7 @@ pub struct UpConfigAsdfBase {
     /// The actual versions of the tool that have been installed.
     /// This is only used when the version is "auto".
     #[serde(skip)]
-    actual_versions: OnceCell<BTreeSet<String>>,
+    actual_versions: OnceCell<BTreeMap<String, BTreeSet<String>>>,
 
     /// The configuration value that was used to create this object.
     #[serde(skip)]
@@ -530,7 +530,7 @@ impl UpConfigAsdfBase {
             }
 
             self.actual_versions
-                .set(all_versions.keys().cloned().collect())
+                .set(all_versions.clone())
                 .expect("failed to set installed versions");
 
             if !self.post_install_funcs.is_empty() {
@@ -826,22 +826,34 @@ impl UpConfigAsdfBase {
             None => return vec![],
         };
 
-        let version = match self.version(None) {
-            Ok(version) => version,
-            Err(_) => return vec![],
-        };
+        let mut dirs_per_version = BTreeMap::new();
 
-        let tool_data_path = wd_data_path.join(&self.tool).join(version);
+        if let Some(version) = self.actual_version.get() {
+            let dirs = match self.dirs.is_empty() {
+                true => vec!["".to_string()],
+                false => self.dirs.iter().cloned().collect(),
+            }
+            .into_iter()
+            .collect::<BTreeSet<_>>();
 
-        let mut dirs = self.dirs.clone();
-        if dirs.is_empty() {
-            dirs.insert("".to_string());
+            dirs_per_version.insert(version.clone(), dirs);
+        }
+
+        if let Some(versions) = self.actual_versions.get() {
+            for (version, dirs) in versions.iter() {
+                dirs_per_version.insert(version.clone(), dirs.clone());
+            }
         }
 
         let mut data_paths = BTreeSet::new();
-        for dir in dirs {
-            let hashed_dir = data_path_dir_hash(&dir);
-            data_paths.insert(tool_data_path.join(&hashed_dir));
+        let tool_data_path = wd_data_path.join(&self.tool);
+        for (version, dirs) in dirs_per_version.iter() {
+            let version_data_path = tool_data_path.join(version);
+
+            for dir in dirs {
+                let hashed_dir = data_path_dir_hash(&dir);
+                data_paths.insert(version_data_path.join(&hashed_dir));
+            }
         }
 
         // Add also all data paths from dependencies
