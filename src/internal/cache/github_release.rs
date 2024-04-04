@@ -1,10 +1,9 @@
 use std::collections::BTreeMap;
 use std::collections::BTreeSet;
 use std::io;
-use std::str::FromStr;
 
 use lazy_static::lazy_static;
-use node_semver::Version as semverVersion;
+use regex::Regex;
 use serde::Deserialize;
 use serde::Serialize;
 use time::OffsetDateTime;
@@ -24,6 +23,33 @@ const GITHUB_RELEASE_CACHE_NAME: &str = "github_release_operation";
 
 lazy_static! {
     static ref GITHUB_RELEASE_OPERATION_NOW: OffsetDateTime = OffsetDateTime::now_utc();
+    static ref VERSION_REGEX: Regex = {
+        let pattern = r"^(?P<prefix>[^0-9]*)(?P<version>\d+(?:\.\d+)*(?:\-[\w\d_-]+)?)$";
+        match Regex::new(pattern) {
+            Ok(regex) => regex,
+            Err(err) => panic!("failed to create version regex: {}", err),
+        }
+    };
+    static ref OS_REGEX: regex::Regex =
+        match regex::Regex::new(&format!(r"(?i)\b({})\b", compatible_release_os().join("|"))) {
+            Ok(os_re) => os_re,
+            Err(err) => panic!("failed to create OS regex: {}", err),
+        };
+    static ref ARCH_REGEX: regex::Regex = match regex::Regex::new(&format!(
+        r"(?i)\b({})\b",
+        compatible_release_arch().join("|")
+    )) {
+        Ok(arch_re) => arch_re,
+        Err(err) => panic!("failed to create architecture regex: {}", err),
+    };
+    static ref SEPARATOR_MID_REGEX: regex::Regex = match regex::Regex::new(r"([-_]{2,})") {
+        Ok(separator_re) => separator_re,
+        Err(err) => panic!("failed to create separator regex: {}", err),
+    };
+    static ref SEPARATOR_END_REGEX: regex::Regex = match regex::Regex::new(r"(^[-_]+|[-_]+$)") {
+        Ok(separator_re) => separator_re,
+        Err(err) => panic!("failed to create separator regex: {}", err),
+    };
 }
 
 // TODO: merge this with homebrew_operation_now, maybe up_operation_now?
@@ -176,7 +202,8 @@ impl GithubReleases {
         &self,
         version: &str,
         prerelease: bool,
-    ) -> Option<(semverVersion, GithubReleaseVersion)> {
+        binary: bool,
+    ) -> Option<(String, GithubReleaseVersion)> {
         self.releases
             .iter()
             .filter_map(|release| {
@@ -191,15 +218,10 @@ impl GithubReleases {
                 }
 
                 // Parse the version
-                let release_version = match release.version() {
-                    Ok(release_version) => release_version,
-                    Err(_) => {
-                        return None;
-                    }
-                };
+                let release_version = release.version();
 
                 // Make sure the version fits the requested version
-                if !version_match(version, &release_version.to_string(), prerelease) {
+                if !version_match(version, &release_version, prerelease) {
                     return None;
                 }
 
@@ -209,11 +231,11 @@ impl GithubReleases {
                     .assets
                     .iter()
                     .filter(|asset| {
-                        let is_tgz =
-                            asset.name.ends_with(".tar.gz") || asset.name.ends_with(".tgz");
-                        let is_zip = asset.name.ends_with(".zip");
-
-                        if !is_tgz && !is_zip {
+                        if let Some((asset_type, _)) = asset.file_type() {
+                            if asset_type.is_binary() && !binary {
+                                return false;
+                            }
+                        } else {
                             return false;
                         }
 
@@ -268,14 +290,32 @@ pub struct GithubReleaseVersion {
 }
 
 impl GithubReleaseVersion {
-    pub fn version(&self) -> Result<semverVersion, String> {
-        // Get the version as the tag name but ideally without the first v
-        let version = match self.tag_name.strip_prefix('v') {
-            Some(version) => version,
-            None => &self.tag_name,
+    pub fn version(&self) -> String {
+        // Try and get the version from the tag name, and keep the prefix
+        // if it exists, as we will try and add it as build metadata
+        let captures = match VERSION_REGEX.captures(&self.tag_name) {
+            Some(captures) => captures,
+            None => return self.tag_name.clone(),
         };
 
-        semverVersion::from_str(version).map_err(|err| format!("failed to parse version: {}", err))
+        let version = match captures.name("version") {
+            Some(version) => version.as_str().to_string(),
+            None => return self.tag_name.clone(),
+        };
+
+        // if let Some(prefix) = captures.name("prefix") {
+        // let prefix = prefix.as_str();
+        // if prefix != "v" {
+        // let prefix = match prefix.strip_suffix('-') {
+        // Some(prefix) => prefix,
+        // None => prefix,
+        // };
+
+        // version = format!("{}-{}", version, prefix);
+        // }
+        // }
+
+        version
     }
 }
 
@@ -286,4 +326,64 @@ pub struct GithubReleaseAsset {
     pub state: String,
     pub content_type: String,
     pub size: u64,
+}
+
+impl GithubReleaseAsset {
+    const TAR_GZ_EXTS: [&'static str; 2] = [".tar.gz", ".tgz"];
+    const ZIP_EXTS: [&'static str; 1] = [".zip"];
+
+    pub fn file_type(&self) -> Option<(GithubReleaseAssetType, String)> {
+        for ext in Self::TAR_GZ_EXTS.iter() {
+            if let Some(prefix) = self.name.strip_suffix(ext) {
+                return Some((GithubReleaseAssetType::TarGz, prefix.to_string()));
+            }
+        }
+
+        for ext in Self::ZIP_EXTS.iter() {
+            if let Some(prefix) = self.name.strip_suffix(ext) {
+                return Some((GithubReleaseAssetType::Zip, prefix.to_string()));
+            }
+        }
+
+        if self.name.ends_with(".exe") {
+            return Some((GithubReleaseAssetType::Binary, self.name.clone()));
+        }
+
+        if !self.name.contains('.') {
+            return Some((GithubReleaseAssetType::Binary, self.name.clone()));
+        }
+
+        None
+    }
+
+    pub fn clean_name(&self, version: &str) -> String {
+        let name = self.name.clone();
+        let name = OS_REGEX.replace_all(&name, "");
+        let name = ARCH_REGEX.replace_all(&name, "");
+        let name = name.replace(version, "");
+        let name = SEPARATOR_MID_REGEX.replace_all(&name, "-");
+        let name = SEPARATOR_END_REGEX.replace_all(&name, "");
+        name.to_string()
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub enum GithubReleaseAssetType {
+    TarGz,
+    Zip,
+    Binary,
+}
+
+impl GithubReleaseAssetType {
+    pub fn is_zip(&self) -> bool {
+        matches!(self, Self::Zip)
+    }
+
+    pub fn is_tgz(&self) -> bool {
+        matches!(self, Self::TarGz)
+    }
+
+    pub fn is_binary(&self) -> bool {
+        matches!(self, Self::Binary)
+    }
 }

@@ -29,7 +29,8 @@ This does not support using authentication yet, and thus will only work for publ
 |------------------|-----------|-------------------------------------------------------|
 | `repository` | string | The name of the repository to download the release from, in the `<owner>/<name>` format; can also be provided as an object with the `owner` and `name` keys |
 | `version` | string | The version of the tool to install; see [version handling](#version-handling) below for more details. |
-| `prerelease` | boolean | Whether to download a prerelease version or only match stable releases |
+| `prerelease` | boolean | Whether to download a prerelease version or only match stable releases *(default: `false`)* |
+| `binary` | boolean | Whether to download an asset that is not archived and consider it a binary file *(default: `true`)* |
 | `api_url` | string | The URL of the GitHub API to use, useful to use GitHub Enterprise (e.g. `https://github.example.com/api/v3`); defaults to `https://api.github.com` |
 
 ### Version handling
