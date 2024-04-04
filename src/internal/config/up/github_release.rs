@@ -41,9 +41,12 @@ pub struct UpConfigGithubRelease {
     pub prerelease: bool,
 
     /// Whether to install a file that is not currently in an
-    /// archive or not. This is useful for tools that are being
+    /// archive. This is useful for tools that are being
     /// distributed as a single binary file outside of an archive.
-    #[serde(default, skip_serializing_if = "cache_utils::is_false")]
+    #[serde(
+        default = "cache_utils::set_true",
+        skip_serializing_if = "cache_utils::is_true"
+    )]
     pub binary: bool,
 
     /// The URL of the GitHub API; this is only required if downloading
@@ -105,7 +108,7 @@ impl UpConfigGithubRelease {
                 .get("binary")
                 .map(|v| v.as_bool())
                 .unwrap_or(None)
-                .unwrap_or(false);
+                .unwrap_or(true);
             let api_url = table
                 .get("api_url")
                 .map(|v| v.as_str_forced())
