@@ -4,6 +4,7 @@ use std::process::exit;
 
 use once_cell::sync::OnceCell;
 
+use crate::internal::commands::base::BuiltinCommand;
 use crate::internal::commands::command_loader;
 use crate::internal::commands::void::VoidCommand;
 use crate::internal::commands::Command;
@@ -104,84 +105,6 @@ impl HelpCommand {
             omni_error!("command arguments not initialized");
             exit(1);
         })
-    }
-
-    pub fn name(&self) -> Vec<String> {
-        vec!["help".to_string()]
-    }
-
-    pub fn aliases(&self) -> Vec<Vec<String>> {
-        vec![]
-    }
-
-    pub fn help(&self) -> Option<String> {
-        Some(
-            concat!(
-                "Show help for omni commands\n",
-                "\n",
-                "If no command is given, show a list of all available commands.",
-            )
-            .to_string(),
-        )
-    }
-
-    pub fn syntax(&self) -> Option<CommandSyntax> {
-        Some(CommandSyntax {
-            usage: None,
-            parameters: vec![
-                SyntaxOptArg {
-                    name: "--unfold".to_string(),
-                    desc: Some("Show all subcommands".to_string()),
-                    required: false,
-                },
-                SyntaxOptArg {
-                    name: "command".to_string(),
-                    desc: Some("The command to get help for".to_string()),
-                    required: false,
-                },
-            ],
-        })
-    }
-
-    pub fn category(&self) -> Option<Vec<String>> {
-        Some(vec!["General".to_string()])
-    }
-
-    pub fn exec(&self, argv: Vec<String>) {
-        if self.cli_args.set(HelpCommandArgs::parse(argv)).is_err() {
-            unreachable!();
-        }
-
-        let argv = self.cli_args().unparsed.clone();
-
-        if argv.is_empty() {
-            self.help_global();
-            exit(0);
-        }
-
-        let command_loader = command_loader(".");
-        if let Some((omni_cmd, called_as, argv)) = command_loader.to_serve(&argv) {
-            if argv.is_empty() {
-                self.help_command(omni_cmd, called_as);
-                exit(0);
-            }
-        }
-
-        if command_loader.has_subcommand_of(&argv) {
-            self.help_void(argv.to_vec());
-            exit(0);
-        }
-
-        omni_print!(format!("{} {}", "command not found:".red(), argv.join(" ")));
-        exit(1);
-    }
-
-    pub fn autocompletion(&self) -> bool {
-        true
-    }
-
-    pub fn autocomplete(&self, comp_cword: usize, argv: Vec<String>) -> Result<(), ()> {
-        command_loader(".").complete(comp_cword, argv, false)
     }
 
     fn help_global(&self) {
@@ -421,6 +344,94 @@ impl HelpCommand {
         }
 
         true
+    }
+}
+
+impl BuiltinCommand for HelpCommand {
+    fn new_boxed() -> Box<dyn BuiltinCommand> {
+        Box::new(Self::new())
+    }
+
+    fn clone_boxed(&self) -> Box<dyn BuiltinCommand> {
+        Box::new(self.clone())
+    }
+
+    fn name(&self) -> Vec<String> {
+        vec!["help".to_string()]
+    }
+
+    fn aliases(&self) -> Vec<Vec<String>> {
+        vec![]
+    }
+
+    fn help(&self) -> Option<String> {
+        Some(
+            concat!(
+                "Show help for omni commands\n",
+                "\n",
+                "If no command is given, show a list of all available commands.",
+            )
+            .to_string(),
+        )
+    }
+
+    fn syntax(&self) -> Option<CommandSyntax> {
+        Some(CommandSyntax {
+            usage: None,
+            parameters: vec![
+                SyntaxOptArg {
+                    name: "--unfold".to_string(),
+                    desc: Some("Show all subcommands".to_string()),
+                    required: false,
+                },
+                SyntaxOptArg {
+                    name: "command".to_string(),
+                    desc: Some("The command to get help for".to_string()),
+                    required: false,
+                },
+            ],
+        })
+    }
+
+    fn category(&self) -> Option<Vec<String>> {
+        Some(vec!["General".to_string()])
+    }
+
+    fn exec(&self, argv: Vec<String>) {
+        if self.cli_args.set(HelpCommandArgs::parse(argv)).is_err() {
+            unreachable!();
+        }
+
+        let argv = self.cli_args().unparsed.clone();
+
+        if argv.is_empty() {
+            self.help_global();
+            exit(0);
+        }
+
+        let command_loader = command_loader(".");
+        if let Some((omni_cmd, called_as, argv)) = command_loader.to_serve(&argv) {
+            if argv.is_empty() {
+                self.help_command(omni_cmd, called_as);
+                exit(0);
+            }
+        }
+
+        if command_loader.has_subcommand_of(&argv) {
+            self.help_void(argv.to_vec());
+            exit(0);
+        }
+
+        omni_print!(format!("{} {}", "command not found:".red(), argv.join(" ")));
+        exit(1);
+    }
+
+    fn autocompletion(&self) -> bool {
+        true
+    }
+
+    fn autocomplete(&self, comp_cword: usize, argv: Vec<String>) -> Result<(), ()> {
+        command_loader(".").complete(comp_cword, argv, false)
     }
 }
 

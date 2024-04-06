@@ -1,3 +1,4 @@
+use crate::internal::commands::base::BuiltinCommand;
 use crate::internal::config::CommandSyntax;
 use crate::internal::config::SyntaxOptArg;
 
@@ -8,20 +9,30 @@ impl HookCommand {
     pub fn new() -> Self {
         Self {}
     }
+}
 
-    pub fn name(&self) -> Vec<String> {
+impl BuiltinCommand for HookCommand {
+    fn new_boxed() -> Box<dyn BuiltinCommand> {
+        Box::new(Self::new())
+    }
+
+    fn clone_boxed(&self) -> Box<dyn BuiltinCommand> {
+        Box::new(self.clone())
+    }
+
+    fn name(&self) -> Vec<String> {
         vec!["hook".to_string()]
     }
 
-    pub fn aliases(&self) -> Vec<Vec<String>> {
+    fn aliases(&self) -> Vec<Vec<String>> {
         vec![]
     }
 
-    pub fn help(&self) -> Option<String> {
+    fn help(&self) -> Option<String> {
         Some(concat!("Call one of omni's hooks for the shell\n",).to_string())
     }
 
-    pub fn syntax(&self) -> Option<CommandSyntax> {
+    fn syntax(&self) -> Option<CommandSyntax> {
         Some(CommandSyntax {
             usage: None,
             parameters: vec![
@@ -39,15 +50,17 @@ impl HookCommand {
         })
     }
 
-    pub fn category(&self) -> Option<Vec<String>> {
+    fn category(&self) -> Option<Vec<String>> {
         Some(vec!["General".to_string()])
     }
 
-    pub fn autocompletion(&self) -> bool {
+    fn exec(&self, _argv: Vec<String>) {}
+
+    fn autocompletion(&self) -> bool {
         false
     }
 
-    pub fn autocomplete(&self, comp_cword: usize, _argv: Vec<String>) -> Result<(), ()> {
+    fn autocomplete(&self, comp_cword: usize, _argv: Vec<String>) -> Result<(), ()> {
         if comp_cword == 0 {
             println!("env");
             println!("init");

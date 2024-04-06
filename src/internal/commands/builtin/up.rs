@@ -20,8 +20,8 @@ use crate::internal::cache::CacheObject;
 use crate::internal::cache::PromptsCache;
 use crate::internal::cache::RepositoriesCache;
 use crate::internal::cache::UpEnvironmentsCache;
+use crate::internal::commands::base::BuiltinCommand;
 use crate::internal::commands::builtin::HelpCommand;
-use crate::internal::commands::Command;
 use crate::internal::config::config;
 use crate::internal::config::flush_config;
 use crate::internal::config::global_config;
@@ -304,346 +304,11 @@ impl UpCommand {
         }
     }
 
-    pub fn new_command() -> Command {
-        Command::BuiltinUp(Self::new())
-    }
-
     fn cli_args(&self) -> &UpCommandArgs {
         self.cli_args.get_or_init(|| {
             omni_error!("command arguments not initialized");
             exit(1);
         })
-    }
-
-    pub fn name(&self) -> Vec<String> {
-        vec!["up".to_string()]
-    }
-
-    pub fn aliases(&self) -> Vec<Vec<String>> {
-        vec![vec!["down".to_string()]]
-    }
-
-    pub fn help(&self) -> Option<String> {
-        Some(
-            concat!(
-                "Sets up or tear down a repository depending on its \x1B[3mup\x1B[0m ",
-                "configuration",
-            )
-            .to_string(),
-        )
-    }
-
-    pub fn syntax(&self) -> Option<CommandSyntax> {
-        Some(CommandSyntax {
-            usage: None,
-            parameters: vec![
-                SyntaxOptArg {
-                    name: "--no-cache".to_string(),
-                    desc: Some(
-                        concat!(
-                            "Whether we should disable the cache while running the command ",
-                            "\x1B[90m(default: no)\x1B[0m",
-                        )
-                        .to_string(),
-                    ),
-                    required: false,
-                },
-                SyntaxOptArg {
-                    name: "--bootstrap".to_string(),
-                    desc: Some(
-                        concat!(
-                            "Same as using \x1B[1m--update-user-config --clone-suggested\x1B[0m; if ",
-                            "any of the options are directly provided, they will take precedence over ",
-                            "the default values of the options",
-                        )
-                        .to_string(),
-                    ),
-                    required: false,
-                },
-                SyntaxOptArg {
-                    name: "--clone-suggested".to_string(),
-                    desc: Some(
-                        concat!(
-                            "Whether we should clone suggested repositories found in the configuration ",
-                            "of the repository if any (yes/ask/no) ",
-                            "\x1B[90m(default: no)\x1B[0m",
-                        )
-                        .to_string(),
-                    ),
-                    required: false,
-                },
-                SyntaxOptArg {
-                    name: "--prompt".to_string(),
-                    desc: Some(
-                        concat!(
-                            "Trigger prompts for the given prompt ids, specified as arguments, as ",
-                            "well as the currently unanswered prompts",
-                        )
-                        .to_string(),
-                    ),
-                    required: false,
-                },
-                SyntaxOptArg {
-                    name: "--prompt-all".to_string(),
-                    desc: Some(
-                        concat!(
-                            "Trigger all prompts for the current work directory, even if they have ",
-                            "already been answered",
-                        )
-                        .to_string(),
-                    ),
-                    required: false,
-                },
-                SyntaxOptArg {
-                    name: "--trust".to_string(),
-                    desc: Some(
-                        "Define how to trust the repository (always/yes/no) to run the command"
-                            .to_string(),
-                    ),
-                    required: false,
-                },
-                SyntaxOptArg {
-                    name: "--update-repository".to_string(),
-                    desc: Some(
-                        concat!(
-                            "Whether we should update the repository before running the command; ",
-                            "if the repository is already up to date, the rest of the process will ",
-                            "be skipped \x1B[90m(default: no)\x1B[0m",
-                        )
-                        .to_string(),
-                    ),
-                    required: false,
-                },
-                SyntaxOptArg {
-                    name: "--update-user-config".to_string(),
-                    desc: Some(
-                        concat!(
-                            "Whether we should handle suggestions found in the configuration of ",
-                            "the repository if any (yes/ask/no); When using \x1B[3mup\x1B[0m, the ",
-                            "\x1B[3msuggest_config\x1B[0m configuration will be copied to the home ",
-                            "directory of the user to be loaded on every omni call ",
-                            "\x1B[90m(default: no)\x1B[0m",
-                        )
-                        .to_string(),
-                    ),
-                    required: false,
-                },
-            ],
-        })
-    }
-
-    pub fn category(&self) -> Option<Vec<String>> {
-        Some(vec!["Git commands".to_string()])
-    }
-
-    pub fn exec(&self, argv: Vec<String>) {
-        if self.cli_args.set(UpCommandArgs::parse(argv)).is_err() {
-            unreachable!();
-        }
-
-        let wd = workdir(".");
-        if let Some(wd_root) = wd.root() {
-            // Switch directory to the work directory root so it can
-            // be assumed that all up commands will be ran from there
-            // (e.g. custom commands, bundler commands, etc.)
-            if let Err(err) = std::env::set_current_dir(wd_root) {
-                omni_error!(format!(
-                    "failed to change directory {}: {}",
-                    format!("({})", wd_root).light_black(),
-                    format!("{}", err).red()
-                ));
-                exit(1);
-            }
-        }
-
-        if !self.update_repository() {
-            // Nothing more to do if we tried updating and the
-            // repo was already up to date
-            exit(0);
-        }
-
-        let cfg = config(".");
-        let up_config = cfg.up.clone();
-        if let Some(up_config) = up_config.clone() {
-            if up_config.has_errors() {
-                for error in up_config.errors() {
-                    omni_warning!(error);
-                }
-            }
-        }
-
-        if !self.handle_prompts() {
-            exit(0);
-        }
-
-        let mut suggest_config = None;
-        let mut suggest_config_updated = false;
-        let suggest_config_value = cfg.suggest_config.config();
-        if self.is_up() && !suggest_config_value.is_null() {
-            if self.should_suggest_config() {
-                suggest_config = Some(suggest_config_value);
-            } else if let Some(wd_id) = wd.id() {
-                let suggest_config_fingerprint = fingerprint(&suggest_config_value);
-                if !RepositoriesCache::get().check_fingerprint(
-                    &wd_id,
-                    "suggest_config",
-                    suggest_config_fingerprint,
-                ) {
-                    if self.auto_bootstrap() {
-                        suggest_config = Some(suggest_config_value);
-                    } else {
-                        suggest_config_updated = true;
-                    }
-                }
-            }
-        }
-
-        let mut suggest_clone = false;
-        let mut suggest_clone_updated = false;
-        let suggest_clone_repositories = cfg.suggest_clone.repositories(false);
-        if self.is_up() {
-            if self.should_suggest_clone() {
-                suggest_clone = true;
-            } else if let Some(wd_id) = wd.id() {
-                let suggest_clone_fingerprint = match suggest_clone_repositories.len() {
-                    0 => 0,
-                    _ => fingerprint(&suggest_clone_repositories),
-                };
-                if !RepositoriesCache::get().check_fingerprint(
-                    &wd_id,
-                    "suggest_clone",
-                    suggest_clone_fingerprint,
-                ) {
-                    if self.auto_bootstrap() {
-                        suggest_clone = true;
-                    } else {
-                        suggest_clone_updated = true;
-                    }
-                }
-            }
-        }
-
-        let mut env_vars = None;
-        if self.is_up() && !cfg.env.is_empty() {
-            env_vars = Some(cfg.env.clone());
-        }
-
-        if self.is_down() && (!wd.in_workdir() || !wd.has_id()) {
-            omni_info!(format!("Outside of a work directory, nothing to do."));
-            exit(0);
-        }
-
-        let has_up_config = up_config.is_some() && up_config.clone().unwrap().has_steps();
-        let has_clone_suggested = !suggest_clone_repositories.is_empty();
-        if !has_up_config
-            && suggest_config.is_none()
-            && (!has_clone_suggested || !suggest_clone)
-            && env_vars.is_none()
-        {
-            omni_info!(format!(
-                "No {} configuration found, nothing to do.",
-                "up".italic(),
-            ));
-            // TODO: on top of clearing the cache, do we need to run some resource
-            //       cleanup process too ?
-            UpConfig::clear_cache();
-            exit(0);
-        }
-
-        let trust = self.trust();
-        if !trust {
-            omni_info!(format!(
-                "Skipped running {} for this repository.",
-                format!("omni {}", self.subcommand()).bold(),
-            ));
-            exit(0);
-        }
-
-        // If we get here, we're about to run the command, so make sure we
-        // have a workdir id
-        if let Err(err) = workdir_or_init(".") {
-            omni_error!(format!("{}", err));
-            exit(1);
-        }
-
-        // No matter what's happening after, we want a clean cache for that
-        // repository, as we're rebuilding the up environment from scratch
-        UpConfig::clear_cache();
-
-        // If there are environment variables to set, do it
-        if has_up_config && self.is_up() {
-            if let Err(err) = UpEnvironmentsCache::exclusive(|up_env| {
-                let wd = workdir(".");
-                if let Some(workdir_id) = wd.id() {
-                    if let Some(env_vars) = env_vars.clone() {
-                        up_env.set_env_vars(&workdir_id, env_vars.into());
-                    }
-                    up_env.set_config_hash(&workdir_id);
-                    up_env.set_config_modtimes(&workdir_id);
-                    true
-                } else {
-                    false
-                }
-            }) {
-                omni_warning!(format!("failed to update cache: {}", err));
-            } else if env_vars.is_some() {
-                omni_info!(format!("Repository environment configured"));
-            }
-        }
-
-        // If it has an up configuration, handle it
-        if has_up_config {
-            let up_config = up_config.unwrap();
-            if self.is_up() {
-                let options = UpOptions::new().cache(self.cli_args().cache_enabled);
-                if let Err(err) = up_config.up(&options) {
-                    omni_error!(format!("issue while setting repo up: {}", err));
-                    exit(1);
-                }
-            } else if let Err(err) = up_config.down() {
-                omni_error!(format!("issue while tearing repo down: {}", err));
-                exit(1);
-            }
-        }
-
-        if let Some(suggested) = suggest_config {
-            self.suggest_config(suggested);
-        }
-
-        if suggest_clone {
-            self.suggest_clone();
-        }
-
-        if let Some(wd_id) = wd.id() {
-            if suggest_config_updated || suggest_clone_updated {
-                omni_info!(format!(
-                    "configuration suggestions for {} have an update",
-                    wd_id.light_blue(),
-                ));
-                omni_info!(format!(
-                    "run {} to get the latest suggestions",
-                    "omni up --bootstrap".light_yellow(),
-                ));
-            }
-        }
-
-        exit(0);
-    }
-
-    pub fn autocompletion(&self) -> bool {
-        true
-    }
-
-    pub fn autocomplete(&self, _comp_cword: usize, _argv: Vec<String>) -> Result<(), ()> {
-        println!("--bootstrap");
-        println!("--clone-suggested");
-        println!("--prompt");
-        println!("--prompt-all");
-        println!("--trust");
-        println!("--update-repository");
-        println!("--update-user-config");
-
-        Ok(())
     }
 
     fn subcommand(&self) -> String {
@@ -1468,6 +1133,347 @@ impl UpCommand {
         }
 
         updated
+    }
+}
+
+impl BuiltinCommand for UpCommand {
+    fn new_boxed() -> Box<dyn BuiltinCommand> {
+        Box::new(Self::new())
+    }
+
+    fn clone_boxed(&self) -> Box<dyn BuiltinCommand> {
+        Box::new(self.clone())
+    }
+
+    fn name(&self) -> Vec<String> {
+        vec!["up".to_string()]
+    }
+
+    fn aliases(&self) -> Vec<Vec<String>> {
+        vec![vec!["down".to_string()]]
+    }
+
+    fn help(&self) -> Option<String> {
+        Some(
+            concat!(
+                "Sets up or tear down a repository depending on its \x1B[3mup\x1B[0m ",
+                "configuration",
+            )
+            .to_string(),
+        )
+    }
+
+    fn syntax(&self) -> Option<CommandSyntax> {
+        Some(CommandSyntax {
+            usage: None,
+            parameters: vec![
+                SyntaxOptArg {
+                    name: "--no-cache".to_string(),
+                    desc: Some(
+                        concat!(
+                            "Whether we should disable the cache while running the command ",
+                            "\x1B[90m(default: no)\x1B[0m",
+                        )
+                        .to_string(),
+                    ),
+                    required: false,
+                },
+                SyntaxOptArg {
+                    name: "--bootstrap".to_string(),
+                    desc: Some(
+                        concat!(
+                            "Same as using \x1B[1m--update-user-config --clone-suggested\x1B[0m; if ",
+                            "any of the options are directly provided, they will take precedence over ",
+                            "the default values of the options",
+                        )
+                        .to_string(),
+                    ),
+                    required: false,
+                },
+                SyntaxOptArg {
+                    name: "--clone-suggested".to_string(),
+                    desc: Some(
+                        concat!(
+                            "Whether we should clone suggested repositories found in the configuration ",
+                            "of the repository if any (yes/ask/no) ",
+                            "\x1B[90m(default: no)\x1B[0m",
+                        )
+                        .to_string(),
+                    ),
+                    required: false,
+                },
+                SyntaxOptArg {
+                    name: "--prompt".to_string(),
+                    desc: Some(
+                        concat!(
+                            "Trigger prompts for the given prompt ids, specified as arguments, as ",
+                            "well as the currently unanswered prompts",
+                        )
+                        .to_string(),
+                    ),
+                    required: false,
+                },
+                SyntaxOptArg {
+                    name: "--prompt-all".to_string(),
+                    desc: Some(
+                        concat!(
+                            "Trigger all prompts for the current work directory, even if they have ",
+                            "already been answered",
+                        )
+                        .to_string(),
+                    ),
+                    required: false,
+                },
+                SyntaxOptArg {
+                    name: "--trust".to_string(),
+                    desc: Some(
+                        "Define how to trust the repository (always/yes/no) to run the command"
+                            .to_string(),
+                    ),
+                    required: false,
+                },
+                SyntaxOptArg {
+                    name: "--update-repository".to_string(),
+                    desc: Some(
+                        concat!(
+                            "Whether we should update the repository before running the command; ",
+                            "if the repository is already up to date, the rest of the process will ",
+                            "be skipped \x1B[90m(default: no)\x1B[0m",
+                        )
+                        .to_string(),
+                    ),
+                    required: false,
+                },
+                SyntaxOptArg {
+                    name: "--update-user-config".to_string(),
+                    desc: Some(
+                        concat!(
+                            "Whether we should handle suggestions found in the configuration of ",
+                            "the repository if any (yes/ask/no); When using \x1B[3mup\x1B[0m, the ",
+                            "\x1B[3msuggest_config\x1B[0m configuration will be copied to the home ",
+                            "directory of the user to be loaded on every omni call ",
+                            "\x1B[90m(default: no)\x1B[0m",
+                        )
+                        .to_string(),
+                    ),
+                    required: false,
+                },
+            ],
+        })
+    }
+
+    fn category(&self) -> Option<Vec<String>> {
+        Some(vec!["Git commands".to_string()])
+    }
+
+    fn exec(&self, argv: Vec<String>) {
+        if self.cli_args.set(UpCommandArgs::parse(argv)).is_err() {
+            unreachable!();
+        }
+
+        let wd = workdir(".");
+        if let Some(wd_root) = wd.root() {
+            // Switch directory to the work directory root so it can
+            // be assumed that all up commands will be ran from there
+            // (e.g. custom commands, bundler commands, etc.)
+            if let Err(err) = std::env::set_current_dir(wd_root) {
+                omni_error!(format!(
+                    "failed to change directory {}: {}",
+                    format!("({})", wd_root).light_black(),
+                    format!("{}", err).red()
+                ));
+                exit(1);
+            }
+        }
+
+        if !self.update_repository() {
+            // Nothing more to do if we tried updating and the
+            // repo was already up to date
+            exit(0);
+        }
+
+        let cfg = config(".");
+        let up_config = cfg.up.clone();
+        if let Some(up_config) = up_config.clone() {
+            if up_config.has_errors() {
+                for error in up_config.errors() {
+                    omni_warning!(error);
+                }
+            }
+        }
+
+        if !self.handle_prompts() {
+            exit(0);
+        }
+
+        let mut suggest_config = None;
+        let mut suggest_config_updated = false;
+        let suggest_config_value = cfg.suggest_config.config();
+        if self.is_up() && !suggest_config_value.is_null() {
+            if self.should_suggest_config() {
+                suggest_config = Some(suggest_config_value);
+            } else if let Some(wd_id) = wd.id() {
+                let suggest_config_fingerprint = fingerprint(&suggest_config_value);
+                if !RepositoriesCache::get().check_fingerprint(
+                    &wd_id,
+                    "suggest_config",
+                    suggest_config_fingerprint,
+                ) {
+                    if self.auto_bootstrap() {
+                        suggest_config = Some(suggest_config_value);
+                    } else {
+                        suggest_config_updated = true;
+                    }
+                }
+            }
+        }
+
+        let mut suggest_clone = false;
+        let mut suggest_clone_updated = false;
+        let suggest_clone_repositories = cfg.suggest_clone.repositories(false);
+        if self.is_up() {
+            if self.should_suggest_clone() {
+                suggest_clone = true;
+            } else if let Some(wd_id) = wd.id() {
+                let suggest_clone_fingerprint = match suggest_clone_repositories.len() {
+                    0 => 0,
+                    _ => fingerprint(&suggest_clone_repositories),
+                };
+                if !RepositoriesCache::get().check_fingerprint(
+                    &wd_id,
+                    "suggest_clone",
+                    suggest_clone_fingerprint,
+                ) {
+                    if self.auto_bootstrap() {
+                        suggest_clone = true;
+                    } else {
+                        suggest_clone_updated = true;
+                    }
+                }
+            }
+        }
+
+        let mut env_vars = None;
+        if self.is_up() && !cfg.env.is_empty() {
+            env_vars = Some(cfg.env.clone());
+        }
+
+        if self.is_down() && (!wd.in_workdir() || !wd.has_id()) {
+            omni_info!(format!("Outside of a work directory, nothing to do."));
+            exit(0);
+        }
+
+        let has_up_config = up_config.is_some() && up_config.clone().unwrap().has_steps();
+        let has_clone_suggested = !suggest_clone_repositories.is_empty();
+        if !has_up_config
+            && suggest_config.is_none()
+            && (!has_clone_suggested || !suggest_clone)
+            && env_vars.is_none()
+        {
+            omni_info!(format!(
+                "No {} configuration found, nothing to do.",
+                "up".italic(),
+            ));
+            // TODO: on top of clearing the cache, do we need to run some resource
+            //       cleanup process too ?
+            UpConfig::clear_cache();
+            exit(0);
+        }
+
+        let trust = self.trust();
+        if !trust {
+            omni_info!(format!(
+                "Skipped running {} for this repository.",
+                format!("omni {}", self.subcommand()).bold(),
+            ));
+            exit(0);
+        }
+
+        // If we get here, we're about to run the command, so make sure we
+        // have a workdir id
+        if let Err(err) = workdir_or_init(".") {
+            omni_error!(format!("{}", err));
+            exit(1);
+        }
+
+        // No matter what's happening after, we want a clean cache for that
+        // repository, as we're rebuilding the up environment from scratch
+        UpConfig::clear_cache();
+
+        // If there are environment variables to set, do it
+        if has_up_config && self.is_up() {
+            if let Err(err) = UpEnvironmentsCache::exclusive(|up_env| {
+                let wd = workdir(".");
+                if let Some(workdir_id) = wd.id() {
+                    if let Some(env_vars) = env_vars.clone() {
+                        up_env.set_env_vars(&workdir_id, env_vars.into());
+                    }
+                    up_env.set_config_hash(&workdir_id);
+                    up_env.set_config_modtimes(&workdir_id);
+                    true
+                } else {
+                    false
+                }
+            }) {
+                omni_warning!(format!("failed to update cache: {}", err));
+            } else if env_vars.is_some() {
+                omni_info!(format!("Repository environment configured"));
+            }
+        }
+
+        // If it has an up configuration, handle it
+        if has_up_config {
+            let up_config = up_config.unwrap();
+            if self.is_up() {
+                let options = UpOptions::new().cache(self.cli_args().cache_enabled);
+                if let Err(err) = up_config.up(&options) {
+                    omni_error!(format!("issue while setting repo up: {}", err));
+                    exit(1);
+                }
+            } else if let Err(err) = up_config.down() {
+                omni_error!(format!("issue while tearing repo down: {}", err));
+                exit(1);
+            }
+        }
+
+        if let Some(suggested) = suggest_config {
+            self.suggest_config(suggested);
+        }
+
+        if suggest_clone {
+            self.suggest_clone();
+        }
+
+        if let Some(wd_id) = wd.id() {
+            if suggest_config_updated || suggest_clone_updated {
+                omni_info!(format!(
+                    "configuration suggestions for {} have an update",
+                    wd_id.light_blue(),
+                ));
+                omni_info!(format!(
+                    "run {} to get the latest suggestions",
+                    "omni up --bootstrap".light_yellow(),
+                ));
+            }
+        }
+
+        exit(0);
+    }
+
+    fn autocompletion(&self) -> bool {
+        true
+    }
+
+    fn autocomplete(&self, _comp_cword: usize, _argv: Vec<String>) -> Result<(), ()> {
+        println!("--bootstrap");
+        println!("--clone-suggested");
+        println!("--prompt");
+        println!("--prompt-all");
+        println!("--trust");
+        println!("--update-repository");
+        println!("--update-user-config");
+
+        Ok(())
     }
 }
 

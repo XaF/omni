@@ -1,18 +1,5 @@
 use std::process::exit;
 
-use crate::internal::commands::builtin::CdCommand;
-use crate::internal::commands::builtin::CloneCommand;
-use crate::internal::commands::builtin::ConfigBootstrapCommand;
-use crate::internal::commands::builtin::ConfigPathSwitchCommand;
-use crate::internal::commands::builtin::HelpCommand;
-use crate::internal::commands::builtin::HookCommand;
-use crate::internal::commands::builtin::HookEnvCommand;
-use crate::internal::commands::builtin::HookInitCommand;
-use crate::internal::commands::builtin::HookUuidCommand;
-use crate::internal::commands::builtin::ScopeCommand;
-use crate::internal::commands::builtin::StatusCommand;
-use crate::internal::commands::builtin::TidyCommand;
-use crate::internal::commands::builtin::UpCommand;
 use crate::internal::commands::fromconfig::ConfigCommand;
 use crate::internal::commands::frommakefile::MakefileCommand;
 use crate::internal::commands::frompath::PathCommand;
@@ -25,43 +12,53 @@ use crate::internal::workdir::is_trusted;
 use crate::internal::workdir::is_trusted_or_ask;
 use crate::omni_error;
 
-#[derive(Debug, Clone)]
+pub trait BuiltinCommand: std::fmt::Debug + Send + Sync {
+    fn new_command() -> Command
+    where
+        Self: Sized,
+    {
+        Command::Builtin(Self::new_boxed())
+    }
+    fn new_boxed() -> Box<dyn BuiltinCommand>
+    where
+        Self: Sized;
+    fn clone_boxed(&self) -> Box<dyn BuiltinCommand>;
+    fn name(&self) -> Vec<String>;
+    fn aliases(&self) -> Vec<Vec<String>>;
+    fn help(&self) -> Option<String>;
+    fn syntax(&self) -> Option<CommandSyntax>;
+    fn category(&self) -> Option<Vec<String>>;
+    fn exec(&self, argv: Vec<String>);
+    fn autocompletion(&self) -> bool;
+    fn autocomplete(&self, comp_cword: usize, argv: Vec<String>) -> Result<(), ()>;
+}
+
+#[derive(Debug)]
 pub enum Command {
-    BuiltinCd(CdCommand),
-    BuiltinClone(CloneCommand),
-    BuiltinConfigBootstrap(ConfigBootstrapCommand),
-    BuiltinConfigPathSwitch(ConfigPathSwitchCommand),
-    BuiltinHelp(HelpCommand),
-    BuiltinHook(HookCommand),
-    BuiltinHookEnv(HookEnvCommand),
-    BuiltinHookInit(HookInitCommand),
-    BuiltinHookUuid(HookUuidCommand),
-    BuiltinScope(ScopeCommand),
-    BuiltinStatus(StatusCommand),
-    BuiltinTidy(TidyCommand),
-    BuiltinUp(UpCommand),
+    // Take any BuiltinCommand that's also Debuggable
+    Builtin(Box<dyn BuiltinCommand>),
     FromConfig(ConfigCommand),
     FromMakefile(MakefileCommand),
     FromPath(PathCommand),
     Void(VoidCommand),
 }
 
+impl Clone for Command {
+    fn clone(&self) -> Self {
+        match self {
+            Command::Builtin(command) => Command::Builtin(command.clone_boxed()),
+            Command::FromConfig(command) => Command::FromConfig(command.clone()),
+            Command::FromMakefile(command) => Command::FromMakefile(command.clone()),
+            Command::FromPath(command) => Command::FromPath(command.clone()),
+            Command::Void(command) => Command::Void(command.clone()),
+        }
+    }
+}
+
 impl Command {
     pub fn name(&self) -> Vec<String> {
         match self {
-            Command::BuiltinCd(command) => command.name(),
-            Command::BuiltinClone(command) => command.name(),
-            Command::BuiltinConfigBootstrap(command) => command.name(),
-            Command::BuiltinConfigPathSwitch(command) => command.name(),
-            Command::BuiltinHelp(command) => command.name(),
-            Command::BuiltinHook(command) => command.name(),
-            Command::BuiltinHookEnv(command) => command.name(),
-            Command::BuiltinHookInit(command) => command.name(),
-            Command::BuiltinHookUuid(command) => command.name(),
-            Command::BuiltinScope(command) => command.name(),
-            Command::BuiltinStatus(command) => command.name(),
-            Command::BuiltinTidy(command) => command.name(),
-            Command::BuiltinUp(command) => command.name(),
+            Command::Builtin(command) => command.name(),
             Command::FromPath(command) => command.name(),
             Command::FromConfig(command) => command.name(),
             Command::FromMakefile(command) => command.name(),
@@ -75,19 +72,7 @@ impl Command {
 
     pub fn aliases(&self) -> Vec<Vec<String>> {
         match self {
-            Command::BuiltinCd(command) => command.aliases(),
-            Command::BuiltinClone(command) => command.aliases(),
-            Command::BuiltinConfigBootstrap(command) => command.aliases(),
-            Command::BuiltinConfigPathSwitch(command) => command.aliases(),
-            Command::BuiltinHelp(command) => command.aliases(),
-            Command::BuiltinHook(command) => command.aliases(),
-            Command::BuiltinHookEnv(command) => command.aliases(),
-            Command::BuiltinHookInit(command) => command.aliases(),
-            Command::BuiltinHookUuid(command) => command.aliases(),
-            Command::BuiltinScope(command) => command.aliases(),
-            Command::BuiltinStatus(command) => command.aliases(),
-            Command::BuiltinTidy(command) => command.aliases(),
-            Command::BuiltinUp(command) => command.aliases(),
+            Command::Builtin(command) => command.aliases(),
             Command::FromPath(command) => command.aliases(),
             Command::FromConfig(command) => command.aliases(),
             Command::FromMakefile(command) => command.aliases(),
@@ -133,19 +118,7 @@ impl Command {
 
     pub fn source(&self) -> String {
         match self {
-            Command::BuiltinCd(_) => "builtin".to_string(),
-            Command::BuiltinClone(_) => "builtin".to_string(),
-            Command::BuiltinConfigBootstrap(_) => "builtin".to_string(),
-            Command::BuiltinConfigPathSwitch(_) => "builtin".to_string(),
-            Command::BuiltinHelp(_) => "builtin".to_string(),
-            Command::BuiltinHook(_) => "builtin".to_string(),
-            Command::BuiltinHookEnv(_) => "builtin".to_string(),
-            Command::BuiltinHookInit(_) => "builtin".to_string(),
-            Command::BuiltinHookUuid(_) => "builtin".to_string(),
-            Command::BuiltinScope(_) => "builtin".to_string(),
-            Command::BuiltinStatus(_) => "builtin".to_string(),
-            Command::BuiltinTidy(_) => "builtin".to_string(),
-            Command::BuiltinUp(_) => "builtin".to_string(),
+            Command::Builtin(_) => "builtin".to_string(),
             Command::FromPath(command) => command.source(),
             Command::FromConfig(command) => command.source(),
             Command::FromMakefile(command) => command.source(),
@@ -203,19 +176,7 @@ impl Command {
 
     pub fn syntax(&self) -> Option<CommandSyntax> {
         match self {
-            Command::BuiltinCd(command) => command.syntax(),
-            Command::BuiltinClone(command) => command.syntax(),
-            Command::BuiltinConfigBootstrap(command) => command.syntax(),
-            Command::BuiltinConfigPathSwitch(command) => command.syntax(),
-            Command::BuiltinHelp(command) => command.syntax(),
-            Command::BuiltinHook(command) => command.syntax(),
-            Command::BuiltinHookEnv(command) => command.syntax(),
-            Command::BuiltinHookInit(command) => command.syntax(),
-            Command::BuiltinHookUuid(command) => command.syntax(),
-            Command::BuiltinScope(command) => command.syntax(),
-            Command::BuiltinStatus(command) => command.syntax(),
-            Command::BuiltinTidy(command) => command.syntax(),
-            Command::BuiltinUp(command) => command.syntax(),
+            Command::Builtin(command) => command.syntax(),
             Command::FromPath(command) => command.syntax(),
             Command::FromConfig(command) => command.syntax(),
             Command::FromMakefile(command) => command.syntax(),
@@ -225,19 +186,7 @@ impl Command {
 
     pub fn category(&self) -> Option<Vec<String>> {
         match self {
-            Command::BuiltinCd(command) => command.category(),
-            Command::BuiltinClone(command) => command.category(),
-            Command::BuiltinConfigBootstrap(command) => command.category(),
-            Command::BuiltinConfigPathSwitch(command) => command.category(),
-            Command::BuiltinHelp(command) => command.category(),
-            Command::BuiltinHook(command) => command.category(),
-            Command::BuiltinHookEnv(command) => command.category(),
-            Command::BuiltinHookInit(command) => command.category(),
-            Command::BuiltinHookUuid(command) => command.category(),
-            Command::BuiltinScope(command) => command.category(),
-            Command::BuiltinStatus(command) => command.category(),
-            Command::BuiltinTidy(command) => command.category(),
-            Command::BuiltinUp(command) => command.category(),
+            Command::Builtin(command) => command.category(),
             Command::FromPath(command) => command.category(),
             Command::FromConfig(command) => command.category(),
             Command::FromMakefile(command) => command.category(),
@@ -247,19 +196,7 @@ impl Command {
 
     pub fn help(&self) -> String {
         let help: Option<String> = match self {
-            Command::BuiltinCd(command) => command.help(),
-            Command::BuiltinClone(command) => command.help(),
-            Command::BuiltinConfigBootstrap(command) => command.help(),
-            Command::BuiltinConfigPathSwitch(command) => command.help(),
-            Command::BuiltinHelp(command) => command.help(),
-            Command::BuiltinHook(command) => command.help(),
-            Command::BuiltinHookEnv(command) => command.help(),
-            Command::BuiltinHookInit(command) => command.help(),
-            Command::BuiltinHookUuid(command) => command.help(),
-            Command::BuiltinScope(command) => command.help(),
-            Command::BuiltinStatus(command) => command.help(),
-            Command::BuiltinTidy(command) => command.help(),
-            Command::BuiltinUp(command) => command.help(),
+            Command::Builtin(command) => command.help(),
             Command::FromPath(command) => command.help(),
             Command::FromConfig(command) => command.help(),
             Command::FromMakefile(command) => command.help(),
@@ -397,19 +334,7 @@ impl Command {
         }
 
         match self {
-            Command::BuiltinCd(command) => command.exec(argv),
-            Command::BuiltinClone(command) => command.exec(argv),
-            Command::BuiltinConfigBootstrap(command) => command.exec(argv),
-            Command::BuiltinConfigPathSwitch(command) => command.exec(argv),
-            Command::BuiltinHelp(command) => command.exec(argv),
-            Command::BuiltinHook(_command) => {}
-            Command::BuiltinHookEnv(command) => command.exec(argv),
-            Command::BuiltinHookInit(command) => command.exec(argv),
-            Command::BuiltinHookUuid(command) => command.exec(argv),
-            Command::BuiltinScope(command) => command.exec(argv),
-            Command::BuiltinStatus(command) => command.exec(argv),
-            Command::BuiltinTidy(command) => command.exec(argv),
-            Command::BuiltinUp(command) => command.exec(argv),
+            Command::Builtin(command) => command.exec(argv),
             Command::FromPath(command) => command.exec(argv, called_as),
             Command::FromConfig(command) => command.exec(argv),
             Command::FromMakefile(command) => command.exec(argv),
@@ -420,19 +345,7 @@ impl Command {
 
     pub fn autocompletion(&self) -> bool {
         match self {
-            Command::BuiltinCd(command) => command.autocompletion(),
-            Command::BuiltinClone(command) => command.autocompletion(),
-            Command::BuiltinConfigBootstrap(command) => command.autocompletion(),
-            Command::BuiltinConfigPathSwitch(command) => command.autocompletion(),
-            Command::BuiltinHelp(command) => command.autocompletion(),
-            Command::BuiltinHook(command) => command.autocompletion(),
-            Command::BuiltinHookEnv(command) => command.autocompletion(),
-            Command::BuiltinHookInit(command) => command.autocompletion(),
-            Command::BuiltinHookUuid(command) => command.autocompletion(),
-            Command::BuiltinScope(command) => command.autocompletion(),
-            Command::BuiltinStatus(command) => command.autocompletion(),
-            Command::BuiltinTidy(command) => command.autocompletion(),
-            Command::BuiltinUp(command) => command.autocompletion(),
+            Command::Builtin(command) => command.autocompletion(),
             Command::FromPath(command) => command.autocompletion(),
             Command::FromConfig(_command) => false,
             Command::FromMakefile(_command) => false,
@@ -452,23 +365,7 @@ impl Command {
         }
 
         match self {
-            Command::BuiltinCd(command) => return command.autocomplete(comp_cword, argv),
-            Command::BuiltinClone(command) => return command.autocomplete(comp_cword, argv),
-            Command::BuiltinConfigBootstrap(command) => {
-                return command.autocomplete(comp_cword, argv)
-            }
-            Command::BuiltinConfigPathSwitch(command) => {
-                return command.autocomplete(comp_cword, argv)
-            }
-            Command::BuiltinHelp(command) => return command.autocomplete(comp_cword, argv),
-            Command::BuiltinHook(command) => return command.autocomplete(comp_cword, argv),
-            Command::BuiltinHookEnv(command) => return command.autocomplete(comp_cword, argv),
-            Command::BuiltinHookInit(command) => return command.autocomplete(comp_cword, argv),
-            Command::BuiltinHookUuid(command) => return command.autocomplete(comp_cword, argv),
-            Command::BuiltinScope(command) => return command.autocomplete(comp_cword, argv),
-            Command::BuiltinStatus(command) => return command.autocomplete(comp_cword, argv),
-            Command::BuiltinTidy(command) => return command.autocomplete(comp_cword, argv),
-            Command::BuiltinUp(command) => return command.autocomplete(comp_cword, argv),
+            Command::Builtin(command) => return command.autocomplete(comp_cword, argv),
             Command::FromPath(command) => {
                 // Load the dynamic environment for that command
                 update_dynamic_env_for_command(self.source_dir());

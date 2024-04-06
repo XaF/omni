@@ -4,3 +4,6 @@ pub(crate) use bootstrap::ConfigBootstrapCommand;
 
 pub(crate) mod path;
 pub(crate) use path::ConfigPathSwitchCommand;
+
+pub(crate) mod reshim;
+pub(crate) use reshim::ConfigReshimCommand;

@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 use std::collections::HashSet;
+use std::path::PathBuf;
 
 use blake3::Hasher;
 use itertools::Itertools;
@@ -14,6 +15,7 @@ use crate::internal::config;
 use crate::internal::config::parser::EnvOperationEnum;
 use crate::internal::config::up::asdf_tool_path;
 use crate::internal::config::up::utils::get_config_mod_times;
+use crate::internal::env::data_home;
 use crate::internal::env::user_home;
 use crate::internal::user_interface::StringColor;
 use crate::internal::workdir;
@@ -23,12 +25,10 @@ const DYNENV_VAR: &str = "__omni_dynenv";
 const DYNENV_SEPARATOR: &str = ";";
 const WD_CONFIG_MODTIME_VAR: &str = "__omni_wd_config_modtime";
 
-pub fn update_dynamic_env(export_mode: DynamicEnvExportMode) {
-    update_dynamic_env_with_path(export_mode, None);
-}
-
 pub fn update_dynamic_env_for_command<T: ToString>(path: T) {
-    update_dynamic_env_with_path(DynamicEnvExportMode::Env, Some(path.to_string()));
+    DynamicEnvExportOptions::new(DynamicEnvExportMode::Env)
+        .path(path.to_string())
+        .apply();
 }
 
 fn remove_wd_config_modtime_var(export_mode: DynamicEnvExportMode) {
@@ -152,24 +152,23 @@ fn check_workdir_config_updated(
     dynenvdata.export(export_mode.clone());
 }
 
-pub fn update_dynamic_env_with_path(export_mode: DynamicEnvExportMode, path: Option<String>) {
+pub fn update_dynamic_env(options: &DynamicEnvExportOptions) {
     let cache = UpEnvironmentsCache::get();
     let mut current_env = DynamicEnv::from_env(cache.clone());
-    let mut expected_env = DynamicEnv::new_with_path(path.clone(), cache.clone());
+    let mut expected_env = DynamicEnv::new_with_path(options.path.clone(), cache.clone());
 
-    let print = export_mode != DynamicEnvExportMode::Env;
-    if print {
-        check_workdir_config_updated(export_mode.clone(), path.clone(), &cache);
+    if !options.is_quiet() {
+        check_workdir_config_updated(options.mode.clone(), options.path.clone(), &cache);
     }
 
     if current_env.id() == expected_env.id() {
         return;
     }
 
-    current_env.undo(export_mode.clone());
-    expected_env.apply(export_mode.clone());
+    current_env.undo(options.mode.clone());
+    expected_env.apply(options.mode.clone());
 
-    if print {
+    if !options.is_quiet() {
         match (current_env.id(), expected_env.id()) {
             (0, 0) => {}
             (0, _) => {
@@ -231,10 +230,45 @@ fn print_update(status: &str) {
     eprintln!("{} {}", "omni:".force_light_cyan(), status);
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Default)]
+pub struct DynamicEnvExportOptions {
+    mode: DynamicEnvExportMode,
+    quiet: bool,
+    path: Option<String>,
+}
+
+impl DynamicEnvExportOptions {
+    pub fn new(mode: DynamicEnvExportMode) -> Self {
+        Self {
+            mode,
+            ..Self::default()
+        }
+    }
+
+    pub fn quiet(mut self, quiet: bool) -> Self {
+        self.quiet = quiet;
+        self
+    }
+
+    pub fn path(mut self, path: String) -> Self {
+        self.path = Some(path);
+        self
+    }
+
+    pub fn is_quiet(&self) -> bool {
+        self.quiet || self.mode == DynamicEnvExportMode::Env
+    }
+
+    pub fn apply(&self) {
+        update_dynamic_env(&self);
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Default)]
 pub enum DynamicEnvExportMode {
     Posix,
     Fish,
+    #[default]
     Env,
 }
 
@@ -404,6 +438,10 @@ impl DynamicEnv {
                     (_, None) => {}
                 }
             }
+
+            // Remove the shims directory from the PATH
+            let shims_dir = PathBuf::from(data_home()).join("shims");
+            envsetter.remove_from_list("PATH", &shims_dir.to_str().unwrap());
 
             // Add the requested paths
             for path in up_env.paths.iter().rev() {
@@ -1120,11 +1158,10 @@ fn current_env() -> (u64, Option<String>) {
         Some("0000000000000000") => None,
         Some(hex) => hex_to_id(hex),
     };
-    if cur_id.is_none() {
-        return (0, None);
-    }
-
-    let cur_id = cur_id.unwrap();
+    let cur_id = match cur_id {
+        Some(cur_id) => cur_id,
+        None => return (0, None),
+    };
     let cur_data = parts.next().unwrap_or("{}");
 
     (cur_id, Some(cur_data.to_string()))
@@ -1134,11 +1171,10 @@ fn hex_to_id(hex: &str) -> Option<u64> {
     if hex.len() != 16 {
         return None;
     }
-    let cur_id = u64::from_str_radix(hex, 16);
-    if cur_id.is_err() {
-        return None;
+    match u64::from_str_radix(hex, 16) {
+        Ok(cur_id) => Some(cur_id),
+        Err(_) => None,
     }
-    Some(cur_id.unwrap())
 }
 
 /// This allows to dedup flags in environment variables

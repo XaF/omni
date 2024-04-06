@@ -1,28 +1,114 @@
 use std::process::exit;
 
+use once_cell::sync::OnceCell;
+
+use crate::internal::commands::base::BuiltinCommand;
+use crate::internal::commands::HelpCommand;
 use crate::internal::config::CommandSyntax;
-use crate::internal::dynenv::update_dynamic_env;
+use crate::internal::config::SyntaxOptArg;
+use crate::internal::dynenv::DynamicEnvExportOptions;
 use crate::internal::env::Shell;
 use crate::internal::git::report_update_error;
 use crate::internal::StringColor;
+use crate::omni_error;
 
 #[derive(Debug, Clone)]
-pub struct HookEnvCommand {}
+struct HookEnvCommandArgs {
+    quiet: bool,
+    shell: Shell,
+}
+
+impl HookEnvCommandArgs {
+    fn parse(argv: Vec<String>) -> Self {
+        let mut parse_argv = vec!["".to_string()];
+        parse_argv.extend(argv);
+
+        let matches = clap::Command::new("")
+            .disable_help_subcommand(true)
+            .disable_version_flag(true)
+            .arg(clap::Arg::new("shell").action(clap::ArgAction::Set))
+            .arg(
+                clap::Arg::new("quiet")
+                    .short('q')
+                    .long("quiet")
+                    .action(clap::ArgAction::SetTrue),
+            )
+            .try_get_matches_from(&parse_argv);
+
+        let matches = match matches {
+            Ok(matches) => matches,
+            Err(err) => {
+                match err.kind() {
+                    clap::error::ErrorKind::DisplayHelp
+                    | clap::error::ErrorKind::DisplayHelpOnMissingArgumentOrSubcommand => {
+                        HelpCommand::new().exec(vec!["hook".to_string(), "env".to_string()]);
+                    }
+                    clap::error::ErrorKind::DisplayVersion => {
+                        unreachable!("version flag is disabled");
+                    }
+                    _ => {
+                        let err_str = format!("{}", err);
+                        let err_str = err_str
+                            .split('\n')
+                            .take_while(|line| !line.is_empty())
+                            .collect::<Vec<_>>()
+                            .join(" ");
+                        let err_str = err_str.trim_start_matches("error: ");
+                        omni_error!(err_str);
+                    }
+                }
+                exit(1);
+            }
+        };
+
+        let shell = matches
+            .get_one::<String>("shell")
+            .map(|shell| Shell::from_str(shell))
+            .unwrap_or_else(|| Shell::from_env());
+        let quiet = *matches.get_one::<bool>("quiet").unwrap_or(&false);
+
+        Self { shell, quiet }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct HookEnvCommand {
+    cli_args: OnceCell<HookEnvCommandArgs>,
+}
 
 impl HookEnvCommand {
     pub fn new() -> Self {
-        Self {}
+        Self {
+            cli_args: OnceCell::new(),
+        }
     }
 
-    pub fn name(&self) -> Vec<String> {
+    fn cli_args(&self) -> &HookEnvCommandArgs {
+        self.cli_args.get_or_init(|| {
+            omni_error!("command arguments not initialized");
+            exit(1);
+        })
+    }
+}
+
+impl BuiltinCommand for HookEnvCommand {
+    fn new_boxed() -> Box<dyn BuiltinCommand> {
+        Box::new(Self::new())
+    }
+
+    fn clone_boxed(&self) -> Box<dyn BuiltinCommand> {
+        Box::new(self.clone())
+    }
+
+    fn name(&self) -> Vec<String> {
         vec!["hook".to_string(), "env".to_string()]
     }
 
-    pub fn aliases(&self) -> Vec<Vec<String>> {
+    fn aliases(&self) -> Vec<Vec<String>> {
         vec![]
     }
 
-    pub fn help(&self) -> Option<String> {
+    fn help(&self) -> Option<String> {
         Some(
             concat!(
                 "Hook used to update the dynamic environment\n",
@@ -34,47 +120,60 @@ impl HookEnvCommand {
         )
     }
 
-    pub fn syntax(&self) -> Option<CommandSyntax> {
+    fn syntax(&self) -> Option<CommandSyntax> {
         Some(CommandSyntax {
             usage: None,
-            parameters: vec![],
+            parameters: vec![SyntaxOptArg {
+                name: "--quiet".to_string(),
+                desc: Some(
+                    concat!(
+                        "Suppress the output of the hook showing information about the ",
+                        "dynamic environment update."
+                    )
+                    .to_string(),
+                ),
+                required: false,
+            }],
         })
     }
 
-    pub fn category(&self) -> Option<Vec<String>> {
+    fn category(&self) -> Option<Vec<String>> {
         Some(vec!["General".to_string()])
     }
 
-    pub fn exec(&self, argv: Vec<String>) {
-        let shell_type = if argv.len() > 2 {
-            Shell::from_str(&argv[2])
-        } else {
-            Shell::from_env()
-        };
+    fn exec(&self, argv: Vec<String>) {
+        if self.cli_args.set(HookEnvCommandArgs::parse(argv)).is_err() {
+            unreachable!();
+        }
 
+        let shell_type = &self.cli_args().shell;
         match shell_type.dynenv_export_mode() {
             Some(export_mode) => {
-                update_dynamic_env(export_mode);
+                DynamicEnvExportOptions::new(export_mode)
+                    .quiet(self.cli_args().quiet)
+                    .apply();
                 report_update_error();
                 exit(0);
             }
             None => {
-                eprintln!(
-                    "{} {} {}",
-                    "omni:".light_cyan(),
-                    "invalid export mode:".red(),
-                    shell_type.to_str(),
-                );
+                if !self.cli_args().quiet {
+                    eprintln!(
+                        "{} {} {}",
+                        "omni:".light_cyan(),
+                        "invalid export mode:".red(),
+                        shell_type.to_str(),
+                    );
+                }
                 exit(1);
             }
         }
     }
 
-    pub fn autocompletion(&self) -> bool {
+    fn autocompletion(&self) -> bool {
         false
     }
 
-    pub fn autocomplete(&self, _comp_cword: usize, _argv: Vec<String>) -> Result<(), ()> {
+    fn autocomplete(&self, _comp_cword: usize, _argv: Vec<String>) -> Result<(), ()> {
         Err(())
     }
 }

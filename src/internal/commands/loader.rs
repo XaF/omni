@@ -2,15 +2,17 @@ use std::collections::BTreeMap;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::sync::Mutex;
+use std::sync::OnceLock;
 
-use lazy_static::lazy_static;
 use strsim::normalized_damerau_levenshtein;
 
+use crate::internal::commands::base::BuiltinCommand;
 use crate::internal::commands::base::Command;
 use crate::internal::commands::builtin::CdCommand;
 use crate::internal::commands::builtin::CloneCommand;
 use crate::internal::commands::builtin::ConfigBootstrapCommand;
 use crate::internal::commands::builtin::ConfigPathSwitchCommand;
+use crate::internal::commands::builtin::ConfigReshimCommand;
 use crate::internal::commands::builtin::HelpCommand;
 use crate::internal::commands::builtin::HookCommand;
 use crate::internal::commands::builtin::HookEnvCommand;
@@ -28,12 +30,9 @@ use crate::internal::env::shell_is_interactive;
 use crate::internal::user_interface::colors::StringColor;
 use crate::omni_info;
 
-lazy_static! {
-    #[derive(Debug)]
-    pub static ref COMMAND_LOADER_PER_PATH: Mutex<CommandLoaderPerPath> = Mutex::new(CommandLoaderPerPath::new());
-
-    #[derive(Debug)]
-    pub static ref COMMAND_LOADER: CommandLoader = command_loader(".");
+fn command_loader_per_path() -> &'static Mutex<CommandLoaderPerPath> {
+    static COMMAND_LOADER_PER_PATH: OnceLock<Mutex<CommandLoaderPerPath>> = OnceLock::new();
+    COMMAND_LOADER_PER_PATH.get_or_init(|| Mutex::new(CommandLoaderPerPath::new()))
 }
 
 pub fn command_loader(path: &str) -> CommandLoader {
@@ -42,8 +41,7 @@ pub fn command_loader(path: &str) -> CommandLoader {
         .to_str()
         .unwrap()
         .to_owned();
-    let mut command_loader_per_path = COMMAND_LOADER_PER_PATH.lock().unwrap();
-    command_loader_per_path.get(&path).clone()
+    command_loader_per_path().lock().unwrap().get(&path).clone()
 }
 
 #[derive(Debug)]
@@ -79,23 +77,20 @@ impl CommandLoader {
         let mut seen = HashSet::new();
 
         // Load all builtins first
-        commands.push(Command::BuiltinCd(CdCommand::new()));
-        commands.push(Command::BuiltinClone(CloneCommand::new()));
-        commands.push(Command::BuiltinConfigBootstrap(
-            ConfigBootstrapCommand::new(),
-        ));
-        commands.push(Command::BuiltinConfigPathSwitch(
-            ConfigPathSwitchCommand::new(),
-        ));
-        commands.push(Command::BuiltinHelp(HelpCommand::new()));
-        commands.push(Command::BuiltinHook(HookCommand::new()));
-        commands.push(Command::BuiltinHookEnv(HookEnvCommand::new()));
-        commands.push(Command::BuiltinHookInit(HookInitCommand::new()));
-        commands.push(Command::BuiltinHookUuid(HookUuidCommand::new()));
-        commands.push(Command::BuiltinScope(ScopeCommand::new()));
-        commands.push(Command::BuiltinStatus(StatusCommand::new()));
-        commands.push(Command::BuiltinTidy(TidyCommand::new()));
-        commands.push(Command::BuiltinUp(UpCommand::new()));
+        commands.push(CdCommand::new_command());
+        commands.push(CloneCommand::new_command());
+        commands.push(ConfigBootstrapCommand::new_command());
+        commands.push(ConfigPathSwitchCommand::new_command());
+        commands.push(ConfigReshimCommand::new_command());
+        commands.push(HelpCommand::new_command());
+        commands.push(HookCommand::new_command());
+        commands.push(HookEnvCommand::new_command());
+        commands.push(HookInitCommand::new_command());
+        commands.push(HookUuidCommand::new_command());
+        commands.push(ScopeCommand::new_command());
+        commands.push(StatusCommand::new_command());
+        commands.push(TidyCommand::new_command());
+        commands.push(UpCommand::new_command());
 
         // Add all the builtin to seen commands
         for command in commands.iter() {

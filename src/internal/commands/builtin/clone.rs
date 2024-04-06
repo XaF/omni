@@ -10,6 +10,7 @@ use shell_escape::escape;
 use shell_words::join as shell_join;
 use tokio::process::Command as TokioCommand;
 
+use crate::internal::commands::base::BuiltinCommand;
 use crate::internal::commands::builtin::HelpCommand;
 use crate::internal::commands::builtin::UpCommand;
 use crate::internal::commands::utils::omni_cmd;
@@ -116,121 +117,6 @@ impl CloneCommand {
             omni_error!("command arguments not initialized");
             exit(1);
         })
-    }
-
-    pub fn name(&self) -> Vec<String> {
-        vec!["clone".to_string()]
-    }
-
-    pub fn aliases(&self) -> Vec<Vec<String>> {
-        vec![]
-    }
-
-    pub fn help(&self) -> Option<String> {
-        Some(
-            concat!(
-                "Clone the specified repository\n",
-                "\n",
-                "The clone operation will be handled using the first organization that matches ",
-                "the argument and for which the repository exists. The repository will be cloned ",
-                "in a path that matches omni's expectations, depending on your configuration.",
-            )
-            .to_string(),
-        )
-    }
-
-    pub fn syntax(&self) -> Option<CommandSyntax> {
-        Some(CommandSyntax {
-            usage: None,
-            parameters: vec![
-                SyntaxOptArg {
-                    name: "--package".to_string(),
-                    desc: Some(
-                        "Clone the repository as a package \x1B[90m(default: no)\x1B[0m"
-                            .to_string(),
-                    ),
-                    required: false,
-                },
-                SyntaxOptArg {
-                    name: "repo".to_string(),
-                    desc: Some(
-                        concat!(
-                            "The repository to clone; this can be in format <org>/<repo>, ",
-                            "just <repo>, or the full URL. If the case where only the repo ",
-                            "name is specified, \x1B[3mOMNI_ORG\x1B[0m will be used to search ",
-                            "for the repository to clone."
-                        )
-                        .to_string(),
-                    ),
-                    required: true,
-                },
-                SyntaxOptArg {
-                    name: "options...".to_string(),
-                    desc: Some("Any additional options to pass to git clone.".to_string()),
-                    required: false,
-                },
-            ],
-        })
-    }
-
-    pub fn category(&self) -> Option<Vec<String>> {
-        Some(vec!["Git commands".to_string()])
-    }
-
-    pub fn exec(&self, argv: Vec<String>) {
-        if self.cli_args.set(CloneCommandArgs::parse(argv)).is_err() {
-            unreachable!();
-        }
-
-        let repo = self.cli_args().repository.clone();
-        let clone_args = self.cli_args().options.clone();
-        let clone_as_package = self.cli_args().package;
-
-        // Create a spinner
-        let spinner = if shell_is_interactive() {
-            let spinner = ProgressBar::new_spinner();
-            spinner.set_style(
-                ProgressStyle::default_spinner()
-                    .template("{spinner:.green} {msg:.green}")
-                    .unwrap(),
-            );
-            spinner.set_message(format!("Looking for {}", repo));
-            spinner.enable_steady_tick(Duration::from_millis(50));
-            Some(spinner)
-        } else {
-            None
-        };
-
-        let cloned = self
-            .clone_repo_handle(
-                &repo,
-                &clone_args,
-                clone_as_package,
-                spinner.clone(),
-                None,
-                config(".").clone.auto_up,
-            )
-            .is_some();
-
-        // If we still haven't got a match, we can error out
-        if !cloned {
-            if let Some(s) = spinner.clone() {
-                s.set_message("Not found");
-                s.finish_and_clear();
-            }
-            omni_error!(format!("could not find repository {}", repo.yellow()));
-            exit(1);
-        }
-
-        exit(0);
-    }
-
-    pub fn autocompletion(&self) -> bool {
-        false
-    }
-
-    pub fn autocomplete(&self, _comp_cword: usize, _argv: Vec<String>) -> Result<(), ()> {
-        Err(())
     }
 
     pub fn lookup_repo_handle(
@@ -524,5 +410,130 @@ impl CloneCommand {
         }
 
         true
+    }
+}
+
+impl BuiltinCommand for CloneCommand {
+    fn new_boxed() -> Box<dyn BuiltinCommand> {
+        Box::new(Self::new())
+    }
+
+    fn clone_boxed(&self) -> Box<dyn BuiltinCommand> {
+        Box::new(self.clone())
+    }
+
+    fn name(&self) -> Vec<String> {
+        vec!["clone".to_string()]
+    }
+
+    fn aliases(&self) -> Vec<Vec<String>> {
+        vec![]
+    }
+
+    fn help(&self) -> Option<String> {
+        Some(
+            concat!(
+                "Clone the specified repository\n",
+                "\n",
+                "The clone operation will be handled using the first organization that matches ",
+                "the argument and for which the repository exists. The repository will be cloned ",
+                "in a path that matches omni's expectations, depending on your configuration.",
+            )
+            .to_string(),
+        )
+    }
+
+    fn syntax(&self) -> Option<CommandSyntax> {
+        Some(CommandSyntax {
+            usage: None,
+            parameters: vec![
+                SyntaxOptArg {
+                    name: "--package".to_string(),
+                    desc: Some(
+                        "Clone the repository as a package \x1B[90m(default: no)\x1B[0m"
+                            .to_string(),
+                    ),
+                    required: false,
+                },
+                SyntaxOptArg {
+                    name: "repo".to_string(),
+                    desc: Some(
+                        concat!(
+                            "The repository to clone; this can be in format <org>/<repo>, ",
+                            "just <repo>, or the full URL. If the case where only the repo ",
+                            "name is specified, \x1B[3mOMNI_ORG\x1B[0m will be used to search ",
+                            "for the repository to clone."
+                        )
+                        .to_string(),
+                    ),
+                    required: true,
+                },
+                SyntaxOptArg {
+                    name: "options...".to_string(),
+                    desc: Some("Any additional options to pass to git clone.".to_string()),
+                    required: false,
+                },
+            ],
+        })
+    }
+
+    fn category(&self) -> Option<Vec<String>> {
+        Some(vec!["Git commands".to_string()])
+    }
+
+    fn exec(&self, argv: Vec<String>) {
+        if self.cli_args.set(CloneCommandArgs::parse(argv)).is_err() {
+            unreachable!();
+        }
+
+        let repo = self.cli_args().repository.clone();
+        let clone_args = self.cli_args().options.clone();
+        let clone_as_package = self.cli_args().package;
+
+        // Create a spinner
+        let spinner = if shell_is_interactive() {
+            let spinner = ProgressBar::new_spinner();
+            spinner.set_style(
+                ProgressStyle::default_spinner()
+                    .template("{spinner:.green} {msg:.green}")
+                    .unwrap(),
+            );
+            spinner.set_message(format!("Looking for {}", repo));
+            spinner.enable_steady_tick(Duration::from_millis(50));
+            Some(spinner)
+        } else {
+            None
+        };
+
+        let cloned = self
+            .clone_repo_handle(
+                &repo,
+                &clone_args,
+                clone_as_package,
+                spinner.clone(),
+                None,
+                config(".").clone.auto_up,
+            )
+            .is_some();
+
+        // If we still haven't got a match, we can error out
+        if !cloned {
+            if let Some(s) = spinner.clone() {
+                s.set_message("Not found");
+                s.finish_and_clear();
+            }
+            omni_error!(format!("could not find repository {}", repo.yellow()));
+            exit(1);
+        }
+
+        exit(0);
+    }
+
+    fn autocompletion(&self) -> bool {
+        false
+    }
+
+    fn autocomplete(&self, _comp_cword: usize, _argv: Vec<String>) -> Result<(), ()> {
+        Err(())
     }
 }

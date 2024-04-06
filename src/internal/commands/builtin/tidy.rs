@@ -10,6 +10,7 @@ use indicatif::ProgressStyle;
 use once_cell::sync::OnceCell;
 use walkdir::WalkDir;
 
+use crate::internal::commands::base::BuiltinCommand;
 use crate::internal::commands::builtin::HelpCommand;
 use crate::internal::commands::path::global_omnipath_entries;
 use crate::internal::commands::utils::abs_path;
@@ -144,15 +145,136 @@ impl TidyCommand {
         })
     }
 
-    pub fn name(&self) -> Vec<String> {
+    fn list_repositories(&self) -> Vec<TidyGitRepo> {
+        let mut worktrees = HashSet::new();
+
+        // We want to search for repositories in all our worktrees
+        let config = config(".");
+        worktrees.insert(config.worktree().into());
+        for org in ORG_LOADER.orgs.iter() {
+            let path = PathBuf::from(org.worktree());
+            if path.is_dir() {
+                worktrees.insert(path);
+            }
+        }
+
+        // But also in any search path that was provided on the command line
+        for search_path in self.cli_args().search_paths.iter() {
+            let path = PathBuf::from(search_path);
+            if path.is_dir() {
+                worktrees.insert(path);
+            }
+        }
+
+        // And the package path
+        worktrees.insert(PathBuf::from(package_root_path()));
+
+        // And now we list the repositories
+        TidyGitRepo::list_repositories(worktrees)
+    }
+
+    fn up_repositories(&self, repositories: &[TidyGitRepo]) {
+        let current_exe = std::env::current_exe();
+        if current_exe.is_err() {
+            omni_error!("failed to get current executable path");
+            exit(1);
+        }
+        let current_exe = current_exe.unwrap();
+
+        // We get all paths so we don't have to know if the repository
+        // was organized or not; we also use an hashset to remove duplicates
+        // and then convert back to a vector to sort the paths
+        let mut all_paths = repositories
+            .iter()
+            .flat_map(|repo| vec![repo.current_path.clone(), repo.expected_path.clone()])
+            .collect::<HashSet<_>>()
+            .into_iter()
+            .collect::<Vec<_>>();
+        all_paths.sort();
+
+        let mut any_error = false;
+        for repo_path in all_paths.iter() {
+            if !repo_path.exists() {
+                continue;
+            }
+
+            let config_exists = [".omni.yaml", ".omni/config.yaml"]
+                .iter()
+                .any(|file| repo_path.join(file).exists());
+            if !config_exists {
+                continue;
+            }
+
+            let path_entry = path_entry_config(repo_path.to_str().unwrap());
+            if !path_entry.is_valid() {
+                continue;
+            }
+
+            let location = match path_entry.package {
+                Some(ref package) => format!("{}:{}", "package".underline(), package.light_cyan()),
+                None => path_entry.as_string().light_cyan(),
+            };
+
+            omni_info!(format!(
+                "running {} in {}",
+                "omni up".light_yellow(),
+                location,
+            ));
+
+            let mut omni_up_command = std::process::Command::new(current_exe.clone());
+            omni_up_command.arg("up");
+            omni_up_command.args(self.cli_args().up_args.clone());
+            omni_up_command.current_dir(repo_path.clone());
+            omni_up_command.env_remove("OMNI_FORCE_UPDATE");
+            omni_up_command.env("OMNI_SKIP_UPDATE", "1");
+
+            let child = omni_up_command.spawn();
+            match child {
+                Ok(mut child) => {
+                    let status = child.wait();
+                    match status {
+                        Ok(status) => {
+                            if !status.success() {
+                                any_error = true;
+                            }
+                        }
+                        Err(err) => {
+                            omni_error!(format!("failed to wait on process: {}", err));
+                        }
+                    }
+                }
+                Err(err) => {
+                    omni_error!(format!("failed to spawn process: {}", err));
+                }
+            }
+        }
+
+        omni_info!("done!".light_green());
+        if any_error {
+            omni_error!("some errors occurred!".light_red());
+            exit(1);
+        }
+    }
+}
+
+impl BuiltinCommand for TidyCommand {
+    fn new_boxed() -> Box<dyn BuiltinCommand> {
+        Box::new(Self::new())
+    }
+
+    fn clone_boxed(&self) -> Box<dyn BuiltinCommand> {
+        Box::new(self.clone())
+    }
+
+    fn name(&self) -> Vec<String> {
         vec!["tidy".to_string()]
     }
 
-    pub fn aliases(&self) -> Vec<Vec<String>> {
+    fn aliases(&self) -> Vec<Vec<String>> {
         vec![]
     }
 
-    pub fn help(&self) -> Option<String> {
+    fn help(&self) -> Option<String> {
         Some(
             concat!(
                 "Organize your git repositories using the configured format\n",
@@ -167,7 +289,7 @@ impl TidyCommand {
         )
     }
 
-    pub fn syntax(&self) -> Option<CommandSyntax> {
+    fn syntax(&self) -> Option<CommandSyntax> {
         Some(CommandSyntax {
             usage: None,
             parameters: vec![
@@ -207,11 +329,11 @@ impl TidyCommand {
         })
     }
 
-    pub fn category(&self) -> Option<Vec<String>> {
+    fn category(&self) -> Option<Vec<String>> {
         Some(vec!["Git commands".to_string()])
     }
 
-    pub fn exec(&self, argv: Vec<String>) {
+    fn exec(&self, argv: Vec<String>) {
         if self.cli_args.set(TidyCommandArgs::parse(argv)).is_err() {
             unreachable!();
         }
@@ -426,11 +548,11 @@ impl TidyCommand {
         exit(0);
     }
 
-    pub fn autocompletion(&self) -> bool {
+    fn autocompletion(&self) -> bool {
         true
     }
 
-    pub fn autocomplete(&self, _comp_cword: usize, _argv: Vec<String>) -> Result<(), ()> {
+    fn autocomplete(&self, _comp_cword: usize, _argv: Vec<String>) -> Result<(), ()> {
         // TODO: if the last parameter before completion is `search-path`,
         // TODO: we should autocomplete with the file system paths
         println!("--search-path");
@@ -441,117 +563,6 @@ impl TidyCommand {
         println!("--help");
 
         Ok(())
-    }
-
-    fn list_repositories(&self) -> Vec<TidyGitRepo> {
-        let mut worktrees = HashSet::new();
-
-        // We want to search for repositories in all our worktrees
-        let config = config(".");
-        worktrees.insert(config.worktree().into());
-        for org in ORG_LOADER.orgs.iter() {
-            let path = PathBuf::from(org.worktree());
-            if path.is_dir() {
-                worktrees.insert(path);
-            }
-        }
-
-        // But also in any search path that was provided on the command line
-        for search_path in self.cli_args().search_paths.iter() {
-            let path = PathBuf::from(search_path);
-            if path.is_dir() {
-                worktrees.insert(path);
-            }
-        }
-
-        // And the package path
-        worktrees.insert(PathBuf::from(package_root_path()));
-
-        // And now we list the repositories
-        TidyGitRepo::list_repositories(worktrees)
-    }
-
-    fn up_repositories(&self, repositories: &[TidyGitRepo]) {
-        let current_exe = std::env::current_exe();
-        if current_exe.is_err() {
-            omni_error!("failed to get current executable path");
-            exit(1);
-        }
-        let current_exe = current_exe.unwrap();
-
-        // We get all paths so we don't have to know if the repository
-        // was organized or not; we also use an hashset to remove duplicates
-        // and then convert back to a vector to sort the paths
-        let mut all_paths = repositories
-            .iter()
-            .flat_map(|repo| vec![repo.current_path.clone(), repo.expected_path.clone()])
-            .collect::<HashSet<_>>()
-            .into_iter()
-            .collect::<Vec<_>>();
-        all_paths.sort();
-
-        let mut any_error = false;
-        for repo_path in all_paths.iter() {
-            if !repo_path.exists() {
-                continue;
-            }
-
-            let config_exists = [".omni.yaml", ".omni/config.yaml"]
-                .iter()
-                .any(|file| repo_path.join(file).exists());
-            if !config_exists {
-                continue;
-            }
-
-            let path_entry = path_entry_config(repo_path.to_str().unwrap());
-            if !path_entry.is_valid() {
-                continue;
-            }
-
-            let location = match path_entry.package {
-                Some(ref package) => format!("{}:{}", "package".underline(), package.light_cyan()),
-                None => path_entry.as_string().light_cyan(),
-            };
-
-            omni_info!(format!(
-                "running {} in {}",
-                "omni up".light_yellow(),
-                location,
-            ));
-
-            let mut omni_up_command = std::process::Command::new(current_exe.clone());
-            omni_up_command.arg("up");
-            omni_up_command.args(self.cli_args().up_args.clone());
-            omni_up_command.current_dir(repo_path.clone());
-            omni_up_command.env_remove("OMNI_FORCE_UPDATE");
-            omni_up_command.env("OMNI_SKIP_UPDATE", "1");
-
-            let child = omni_up_command.spawn();
-            match child {
-                Ok(mut child) => {
-                    let status = child.wait();
-                    match status {
-                        Ok(status) => {
-                            if !status.success() {
-                                any_error = true;
-                            }
-                        }
-                        Err(err) => {
-                            omni_error!(format!("failed to wait on process: {}", err));
-                        }
-                    }
-                }
-                Err(err) => {
-                    omni_error!(format!("failed to spawn process: {}", err));
-                }
-            }
-        }
-
-        omni_info!("done!".light_green());
-        if any_error {
-            omni_error!("some errors occurred!".light_red());
-            exit(1);
-        }
     }
 }
 

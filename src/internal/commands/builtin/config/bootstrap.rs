@@ -14,6 +14,7 @@ use regex::Regex;
 use serde::Deserialize;
 use serde::Serialize;
 
+use crate::internal::commands::base::BuiltinCommand;
 use crate::internal::commands::builtin::HelpCommand;
 use crate::internal::commands::builtin::TidyGitRepo;
 use crate::internal::commands::utils::abs_path;
@@ -148,16 +149,26 @@ impl ConfigBootstrapCommand {
             exit(1);
         })
     }
+}
 
-    pub fn name(&self) -> Vec<String> {
+impl BuiltinCommand for ConfigBootstrapCommand {
+    fn new_boxed() -> Box<dyn BuiltinCommand> {
+        Box::new(Self::new())
+    }
+
+    fn clone_boxed(&self) -> Box<dyn BuiltinCommand> {
+        Box::new(self.clone())
+    }
+
+    fn name(&self) -> Vec<String> {
         vec!["config".to_string(), "bootstrap".to_string()]
     }
 
-    pub fn aliases(&self) -> Vec<Vec<String>> {
+    fn aliases(&self) -> Vec<Vec<String>> {
         vec![]
     }
 
-    pub fn help(&self) -> Option<String> {
+    fn help(&self) -> Option<String> {
         Some(
             concat!(
                 "Bootstraps the configuration of omni\n",
@@ -170,7 +181,7 @@ impl ConfigBootstrapCommand {
         )
     }
 
-    pub fn syntax(&self) -> Option<CommandSyntax> {
+    fn syntax(&self) -> Option<CommandSyntax> {
         Some(CommandSyntax {
             usage: None,
             parameters: vec![
@@ -198,11 +209,11 @@ impl ConfigBootstrapCommand {
         })
     }
 
-    pub fn category(&self) -> Option<Vec<String>> {
+    fn category(&self) -> Option<Vec<String>> {
         Some(vec!["General".to_string()])
     }
 
-    pub fn exec(&self, argv: Vec<String>) {
+    fn exec(&self, argv: Vec<String>) {
         if self
             .cli_args
             .set(ConfigBootstrapCommandArgs::parse(argv))
@@ -225,11 +236,11 @@ impl ConfigBootstrapCommand {
         exit(0);
     }
 
-    pub fn autocompletion(&self) -> bool {
+    fn autocompletion(&self) -> bool {
         true
     }
 
-    pub fn autocomplete(&self, _comp_cword: usize, _argv: Vec<String>) -> Result<(), ()> {
+    fn autocomplete(&self, _comp_cword: usize, _argv: Vec<String>) -> Result<(), ()> {
         println!("--organizations");
         println!("--repo-path-format");
         println!("--shell");
