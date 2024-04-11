@@ -10,6 +10,7 @@ use std::process::exit;
 use crate::internal::commands::utils::abs_path;
 use crate::internal::config::up::asdf_base::asdf_path;
 use crate::internal::config::up::utils::cleanup_path;
+use crate::internal::config::up::utils::directory::force_remove_all;
 use crate::internal::config::up::utils::ProgressHandler;
 use crate::internal::config::up::UpError;
 use crate::internal::dynenv::update_dynamic_env_for_command;
@@ -158,30 +159,64 @@ pub fn reshim(progress_handler: &dyn ProgressHandler) -> Result<Option<String>, 
         .filter(|shim| !shim.exists())
         .collect::<Vec<_>>();
 
-    if !shims_to_create.is_empty() {
-        // Create the shims directory
-        if !shims_dir().exists() {
-            std::fs::create_dir_all(shims_dir()).map_err(|err| {
+    let shims_to_update = expected_shims
+        .iter()
+        .filter(|shim| {
+            // We can skip if the shim does not exist
+            if !shim.exists() {
+                return false;
+            }
+
+            // We need to update if it is a directory
+            if shim.is_dir() {
+                return true;
+            }
+
+            // We need to update if it is not a symlink
+            if !shim.is_symlink() {
+                return true;
+            }
+
+            // We need to update if the symlink target is not
+            // the current executable
+            let target = match fs::read_link(shim) {
+                Ok(target) => target,
+                Err(_) => return true,
+            };
+
+            target != current_exe()
+        })
+        .collect::<Vec<_>>();
+
+    if !shims_to_update.is_empty() {
+        for shim in &shims_to_update {
+            progress_handler.progress(format!("removing {}", shim.display()));
+            force_remove_all(shim).map_err(|err| {
                 UpError::Exec(format!(
-                    "failed to create shims directory {}: {}",
-                    shims_dir().display(),
+                    "failed to remove existing path {}: {}",
+                    shim.display(),
                     err
                 ))
             })?;
         }
+    }
 
+    // Create the shims directory if it does not exist and is needed
+    if !shims_to_create.is_empty() && !shims_dir().exists() {
+        std::fs::create_dir_all(shims_dir()).map_err(|err| {
+            UpError::Exec(format!(
+                "failed to create shims directory {}: {}",
+                shims_dir().display(),
+                err
+            ))
+        })?;
+    }
+
+    if !shims_to_create.is_empty() || !shims_to_update.is_empty() {
         // Create the shims as a symlink to the current executable
         let target = current_exe();
-        for shim in &shims_to_create {
-            if shim.is_file() || shim.is_symlink() {
-                fs::remove_file(shim).map_err(|err| {
-                    UpError::Exec(format!(
-                        "failed to remove existing file {}: {}",
-                        shim.display(),
-                        err
-                    ))
-                })?;
-            }
+        for shim in shims_to_create.iter().chain(shims_to_update.iter()) {
+            progress_handler.progress(format!("creating {}", shim.display()));
             symlink(&target, shim).map_err(|err| {
                 UpError::Exec(format!(
                     "failed to create symlink for {}: {}",
@@ -198,27 +233,29 @@ pub fn reshim(progress_handler: &dyn ProgressHandler) -> Result<Option<String>, 
         cleanup_path(shims_dir(), expected_shims, progress_handler, false)?;
 
     let num_created = shims_to_create.len();
+    let num_updated = shims_to_update.len();
     let msg = if root_removed {
         Some("removed shims directory".to_string())
-    } else if num_created > 0 || num_removed > 0 {
-        let mut msg = String::new();
+    } else if num_created > 0 || num_updated > 0 || num_removed > 0 {
+        let mut counts = vec![];
         if num_created > 0 {
-            msg.push_str(&format!("+{}", num_created).light_green());
+            counts.push(format!("+{}", num_created).light_green());
+        }
+        if num_updated > 0 {
+            counts.push(format!("~{}", num_updated).light_yellow());
         }
         if num_removed > 0 {
-            if num_created > 0 {
-                msg.push_str(", ");
-            }
-            msg.push_str(&format!("-{}", num_removed).light_red());
+            counts.push(format!("-{}", num_removed).light_red());
         }
-        msg.push_str(&format!(
-            " shim{}",
-            if num_created + num_removed > 1 {
+        let msg = format!(
+            "{} shim{}",
+            counts.join(", "),
+            if num_created + num_updated + num_removed > 1 {
                 "s"
             } else {
                 ""
             }
-        ));
+        );
         Some(msg)
     } else {
         None
