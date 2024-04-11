@@ -17,6 +17,7 @@ Those commands take precedence over any custom commands, makefile commands or co
 |-------------------------|-----------------------------------------------------------|
 | [`config bootstrap`](builtin-commands/config/bootstrap) | Bootstraps the configuration of omni |
 | [`config path switch`](builtin-commands/config/path/switch) | Switch the source of a repository in the omnipath |
+| [`config reshim`](builtin-commands/config/reshim) | Regenerate the shims for the environments managed by omni |
 | [`help`](builtin-commands/help) | Show help for omni commands |
 | [`hook`](builtin-commands/hook) | Call one of omni's hooks for the shell |
 | [`status`](builtin-commands/status) | Show the status of omni |
