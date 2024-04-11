@@ -29,6 +29,24 @@ pub fn data_path_dir_hash(dir: &str) -> String {
     }
 }
 
+/// Remove the given path, recursively if it is a directory, even
+/// if it contains read-only files. This will first try to remove
+/// the path normally, and if that fails with a PermissionDenied
+/// error, it will make all files and directories in the given path
+/// writeable, and then try again.
+/// The path can be a file, a directory, or a symlink.
+pub fn force_remove_all(path: impl AsRef<Path>) -> std::io::Result<()> {
+    let path = path.as_ref();
+    if path.exists() {
+        if path.is_symlink() || path.is_file() {
+            std::fs::remove_file(path)?;
+        } else {
+            force_remove_dir_all(path)?;
+        }
+    }
+    Ok(())
+}
+
 /// Remove the given directory, even if it contains read-only files.
 /// This will first try to remove the directory normally, and if that
 /// fails with a PermissionDenied error, it will make all files and

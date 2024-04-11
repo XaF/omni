@@ -4,6 +4,7 @@ use std::process::exit;
 use once_cell::sync::OnceCell;
 use shell_escape::escape;
 
+use crate::internal::commands::base::BuiltinCommand;
 use crate::internal::commands::builtin::HelpCommand;
 use crate::internal::commands::utils::omni_cmd;
 use crate::internal::config::config;
@@ -119,171 +120,6 @@ impl CdCommand {
         })
     }
 
-    pub fn name(&self) -> Vec<String> {
-        vec!["cd".to_string()]
-    }
-
-    pub fn aliases(&self) -> Vec<Vec<String>> {
-        vec![]
-    }
-
-    pub fn help(&self) -> Option<String> {
-        Some(
-            concat!(
-                "Change directory to the git directory of the specified repository\n",
-                "\n",
-                "If no repository is specified, change to the git directory of the main org as ",
-                "specified by \x1B[3mOMNI_ORG\x1B[0m, if specified, or errors out if not ",
-                "specified.",
-            )
-            .to_string(),
-        )
-    }
-
-    pub fn syntax(&self) -> Option<CommandSyntax> {
-        Some(CommandSyntax {
-            usage: None,
-            parameters: vec![
-                SyntaxOptArg {
-                    name: "--locate".to_string(),
-                    desc: Some(
-                        concat!(
-                            "If provided, will only return the path to the repository instead of switching ",
-                            "directory to it. When this flag is passed, interactions are also disabled, ",
-                            "as it is assumed to be used for command line purposes. ",
-                            "This will exit with 0 if the repository is found, 1 otherwise.",
-                        )
-                        .to_string()
-                    ),
-                    required: false,
-                },
-                SyntaxOptArg {
-                    name: "--[no-]include-packages".to_string(),
-                    desc: Some(
-                        concat!(
-                            "If provided, will include (or not include) packages when running the command; ",
-                            "this defaults to including packages when using \x1B[3m--locate\x1B[0m, ",
-                            "and not including packages otherwise.",
-                        )
-                        .to_string()
-                    ),
-                    required: false,
-                },
-                SyntaxOptArg {
-                    name: "repo".to_string(),
-                    desc: Some(
-                        concat!(
-                            "The name of the repo to change directory to; this can be in the format <org>/<repo>, ",
-                            "or just <repo>, in which case the repo will be searched for in all the organizations, ",
-                            "trying to use \x1B[3mOMNI_ORG\x1B[0m if it is set, and then trying all the other ",
-                            "organizations alphabetically.",
-                        )
-                        .to_string()
-                    ),
-                    required: false,
-                },
-            ],
-        })
-    }
-
-    pub fn category(&self) -> Option<Vec<String>> {
-        Some(vec!["Git commands".to_string()])
-    }
-
-    pub fn exec(&self, argv: Vec<String>) {
-        if self.cli_args.set(CdCommandArgs::parse(argv)).is_err() {
-            unreachable!();
-        }
-
-        if omni_cmd_file().is_none() && !self.cli_args().locate {
-            omni_error!("not available without the shell integration");
-            exit(1);
-        }
-
-        if let Some(repository) = &self.cli_args().repository {
-            self.cd_repo(repository);
-        } else {
-            self.cd_main_org();
-        }
-        exit(0);
-    }
-
-    pub fn autocompletion(&self) -> bool {
-        true
-    }
-
-    pub fn autocomplete(&self, comp_cword: usize, argv: Vec<String>) -> Result<(), ()> {
-        if comp_cword > 0 {
-            return Ok(());
-        }
-
-        let repo = if !argv.is_empty() {
-            argv[0].clone()
-        } else {
-            "".to_string()
-        };
-
-        // Figure out if this is a path, so we can avoid the expensive repository search
-        let path_only = repo.starts_with('/')
-            || repo.starts_with('.')
-            || repo.starts_with("~/")
-            || repo == "~"
-            || repo == "-";
-
-        // Print all the completion related to path completion
-        let (list_dir, strip_path_prefix, replace_home_prefix) = if repo == "~" {
-            (user_home(), false, true)
-        } else if let Some(repo) = repo.strip_prefix("~/") {
-            if let Some(slash) = repo.rfind('/') {
-                let abspath = format!("{}/{}", user_home(), &repo[..(slash + 1)]);
-                (abspath, false, true)
-            } else {
-                (user_home(), false, true)
-            }
-        } else if let Some(slash) = repo.rfind('/') {
-            (repo[..(slash + 1)].to_string(), false, false)
-        } else {
-            (".".to_string(), true, false)
-        };
-        if let Ok(files) = std::fs::read_dir(&list_dir) {
-            for path in files.flatten() {
-                if path.path().is_dir() {
-                    let path_buf;
-                    let path_obj = path.path();
-                    let path = if strip_path_prefix {
-                        path_obj.strip_prefix(&list_dir).unwrap()
-                    } else if replace_home_prefix {
-                        if let Ok(path_obj) = path_obj.strip_prefix(user_home()) {
-                            path_buf = PathBuf::from("~").join(path_obj);
-                            path_buf.as_path()
-                        } else {
-                            path_obj.as_path()
-                        }
-                    } else {
-                        path_obj.as_path()
-                    };
-                    let path_str = path.to_str().unwrap();
-
-                    if !path_str.starts_with(repo.as_str()) {
-                        continue;
-                    }
-
-                    println!("{}/", path.display());
-                }
-            }
-        }
-
-        // Get all the repositories per org
-        if !path_only {
-            let add_space = if Shell::current().is_fish() { " " } else { "" };
-            for match_repo in ORG_LOADER.complete(&repo) {
-                println!("{}{}", match_repo, add_space);
-            }
-        }
-
-        Ok(())
-    }
-
     fn cd_main_org(&self) {
         let path = if let Some(main_org) = ORG_LOADER.first() {
             main_org.worktree()
@@ -367,5 +203,180 @@ impl CdCommand {
         }
 
         None
+    }
+}
+
+impl BuiltinCommand for CdCommand {
+    fn new_boxed() -> Box<dyn BuiltinCommand> {
+        Box::new(Self::new())
+    }
+
+    fn clone_boxed(&self) -> Box<dyn BuiltinCommand> {
+        Box::new(self.clone())
+    }
+
+    fn name(&self) -> Vec<String> {
+        vec!["cd".to_string()]
+    }
+
+    fn aliases(&self) -> Vec<Vec<String>> {
+        vec![]
+    }
+
+    fn help(&self) -> Option<String> {
+        Some(
+            concat!(
+                "Change directory to the git directory of the specified repository\n",
+                "\n",
+                "If no repository is specified, change to the git directory of the main org as ",
+                "specified by \x1B[3mOMNI_ORG\x1B[0m, if specified, or errors out if not ",
+                "specified.",
+            )
+            .to_string(),
+        )
+    }
+
+    fn syntax(&self) -> Option<CommandSyntax> {
+        Some(CommandSyntax {
+            usage: None,
+            parameters: vec![
+                SyntaxOptArg {
+                    name: "--locate".to_string(),
+                    desc: Some(
+                        concat!(
+                            "If provided, will only return the path to the repository instead of switching ",
+                            "directory to it. When this flag is passed, interactions are also disabled, ",
+                            "as it is assumed to be used for command line purposes. ",
+                            "This will exit with 0 if the repository is found, 1 otherwise.",
+                        )
+                        .to_string()
+                    ),
+                    required: false,
+                },
+                SyntaxOptArg {
+                    name: "--[no-]include-packages".to_string(),
+                    desc: Some(
+                        concat!(
+                            "If provided, will include (or not include) packages when running the command; ",
+                            "this defaults to including packages when using \x1B[3m--locate\x1B[0m, ",
+                            "and not including packages otherwise.",
+                        )
+                        .to_string()
+                    ),
+                    required: false,
+                },
+                SyntaxOptArg {
+                    name: "repo".to_string(),
+                    desc: Some(
+                        concat!(
+                            "The name of the repo to change directory to; this can be in the format <org>/<repo>, ",
+                            "or just <repo>, in which case the repo will be searched for in all the organizations, ",
+                            "trying to use \x1B[3mOMNI_ORG\x1B[0m if it is set, and then trying all the other ",
+                            "organizations alphabetically.",
+                        )
+                        .to_string()
+                    ),
+                    required: false,
+                },
+            ],
+        })
+    }
+
+    fn category(&self) -> Option<Vec<String>> {
+        Some(vec!["Git commands".to_string()])
+    }
+
+    fn exec(&self, argv: Vec<String>) {
+        if self.cli_args.set(CdCommandArgs::parse(argv)).is_err() {
+            unreachable!();
+        }
+
+        if omni_cmd_file().is_none() && !self.cli_args().locate {
+            omni_error!("not available without the shell integration");
+            exit(1);
+        }
+
+        if let Some(repository) = &self.cli_args().repository {
+            self.cd_repo(repository);
+        } else {
+            self.cd_main_org();
+        }
+        exit(0);
+    }
+
+    fn autocompletion(&self) -> bool {
+        true
+    }
+
+    fn autocomplete(&self, comp_cword: usize, argv: Vec<String>) -> Result<(), ()> {
+        if comp_cword > 0 {
+            return Ok(());
+        }
+
+        let repo = if !argv.is_empty() {
+            argv[0].clone()
+        } else {
+            "".to_string()
+        };
+
+        // Figure out if this is a path, so we can avoid the expensive repository search
+        let path_only = repo.starts_with('/')
+            || repo.starts_with('.')
+            || repo.starts_with("~/")
+            || repo == "~"
+            || repo == "-";
+
+        // Print all the completion related to path completion
+        let (list_dir, strip_path_prefix, replace_home_prefix) = if repo == "~" {
+            (user_home(), false, true)
+        } else if let Some(repo) = repo.strip_prefix("~/") {
+            if let Some(slash) = repo.rfind('/') {
+                let abspath = format!("{}/{}", user_home(), &repo[..(slash + 1)]);
+                (abspath, false, true)
+            } else {
+                (user_home(), false, true)
+            }
+        } else if let Some(slash) = repo.rfind('/') {
+            (repo[..(slash + 1)].to_string(), false, false)
+        } else {
+            (".".to_string(), true, false)
+        };
+        if let Ok(files) = std::fs::read_dir(&list_dir) {
+            for path in files.flatten() {
+                if path.path().is_dir() {
+                    let path_buf;
+                    let path_obj = path.path();
+                    let path = if strip_path_prefix {
+                        path_obj.strip_prefix(&list_dir).unwrap()
+                    } else if replace_home_prefix {
+                        if let Ok(path_obj) = path_obj.strip_prefix(user_home()) {
+                            path_buf = PathBuf::from("~").join(path_obj);
+                            path_buf.as_path()
+                        } else {
+                            path_obj.as_path()
+                        }
+                    } else {
+                        path_obj.as_path()
+                    };
+                    let path_str = path.to_str().unwrap();
+
+                    if !path_str.starts_with(repo.as_str()) {
+                        continue;
+                    }
+
+                    println!("{}/", path.display());
+                }
+            }
+        }
+
+        // Get all the repositories per org
+        if !path_only {
+            let add_space = if Shell::current().is_fish() { " " } else { "" };
+            for match_repo in ORG_LOADER.complete(&repo) {
+                println!("{}{}", match_repo, add_space);
+            }
+        }
+
+        Ok(())
     }
 }

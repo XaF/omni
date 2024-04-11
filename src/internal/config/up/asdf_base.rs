@@ -51,7 +51,7 @@ type PostInstallFunc = fn(
     Vec<AsdfToolUpVersion>,
 ) -> Result<(), UpError>;
 
-fn asdf_path() -> String {
+pub fn asdf_path() -> String {
     (*ASDF_PATH).clone()
 }
 

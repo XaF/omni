@@ -3,10 +3,12 @@ use std::process::exit;
 
 mod internal;
 use internal::command_loader;
+use internal::commands::base::BuiltinCommand;
 use internal::commands::HookEnvCommand;
 use internal::commands::HookInitCommand;
 use internal::commands::HookUuidCommand;
 use internal::config::ensure_bootstrap;
+use internal::config::up::utils::handle_shims;
 use internal::config::up::utils::AskPassRequest;
 use internal::env::tmpdir_cleanup;
 use internal::git::auto_update_async;
@@ -273,6 +275,8 @@ fn set_cleanup_handler() {
 }
 
 fn main() {
+    handle_shims();
+
     let args: Vec<String> = env::args().skip(1).collect();
 
     if !args.is_empty() && args[0] == "--complete" {

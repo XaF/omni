@@ -6,6 +6,7 @@ use crate::internal::cache::utils::Empty;
 use crate::internal::cache::CacheObject;
 use crate::internal::cache::UpEnvironmentsCache;
 use crate::internal::config::up::utils::cleanup_path;
+use crate::internal::config::up::utils::reshim;
 use crate::internal::config::up::utils::ProgressHandler;
 use crate::internal::config::up::utils::UpProgressHandler;
 use crate::internal::config::up::UpConfigAsdfBase;
@@ -218,6 +219,11 @@ impl UpConfig {
         // Then cleanup the data path
         if let Some(cleanup) = self.cleanup_data_path(&progress_handler)? {
             cleanups.push(cleanup);
+        }
+
+        // Then regenerate the shims
+        if let Some(reshim) = reshim(&progress_handler)? {
+            cleanups.push(reshim);
         }
 
         if cleanups.is_empty() {

@@ -20,6 +20,10 @@ pub(crate) use progress_handler::ProgressHandler;
 pub(crate) mod run_config;
 pub(crate) use run_config::RunConfig;
 
+pub(crate) mod shims;
+pub(crate) use shims::handle_shims;
+pub(crate) use shims::reshim;
+
 pub(crate) mod spinner_progress_handler;
 pub(crate) use spinner_progress_handler::SpinnerProgressHandler;
 

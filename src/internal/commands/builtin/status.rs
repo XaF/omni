@@ -4,6 +4,7 @@ use once_cell::sync::OnceCell;
 use regex::Regex;
 
 use crate::internal::cache::utils::Empty;
+use crate::internal::commands::base::BuiltinCommand;
 use crate::internal::commands::builtin::HelpCommand;
 use crate::internal::commands::path::omnipath_entries;
 use crate::internal::config::config;
@@ -135,123 +136,6 @@ impl StatusCommand {
             omni_error!("command arguments not initialized");
             exit(1);
         })
-    }
-
-    pub fn name(&self) -> Vec<String> {
-        vec!["status".to_string()]
-    }
-
-    pub fn aliases(&self) -> Vec<Vec<String>> {
-        vec![]
-    }
-
-    pub fn help(&self) -> Option<String> {
-        Some(
-            concat!(
-                "Show the status of omni\n",
-                "\n",
-                "This will show the configuration that omni is loading when called ",
-                "from the current directory."
-            )
-            .to_string(),
-        )
-    }
-
-    pub fn syntax(&self) -> Option<CommandSyntax> {
-        Some(CommandSyntax {
-            usage: None,
-            parameters: vec![
-                SyntaxOptArg {
-                    name: "--shell-integration".to_string(),
-                    desc: Some("Show if the shell integration is loaded or not.".to_string()),
-                    required: false,
-                },
-                SyntaxOptArg {
-                    name: "--config".to_string(),
-                    desc: Some(
-                        "Show the configuration that omni is using for the current directory. This is not shown by default."
-                            .to_string(),
-                    ),
-                    required: false,
-                },
-                SyntaxOptArg {
-                    name: "--config-files".to_string(),
-                    desc: Some(
-                        "Show the configuration files that omni is loading for the current directory."
-                            .to_string(),
-                    ),
-                    required: false,
-                },
-                SyntaxOptArg {
-                    name: "--worktree".to_string(),
-                    desc: Some(
-                        "Show the default worktree."
-                            .to_string(),
-                    ),
-                    required: false,
-                },
-                SyntaxOptArg {
-                    name: "--orgs".to_string(),
-                    desc: Some(
-                        "Show the organizations."
-                            .to_string(),
-                    ),
-                    required: false,
-                },
-                SyntaxOptArg {
-                    name: "--path".to_string(),
-                    desc: Some(
-                        "Show the current omnipath."
-                            .to_string(),
-                    ),
-                    required: false,
-                },
-            ],
-        })
-    }
-
-    pub fn category(&self) -> Option<Vec<String>> {
-        Some(vec!["General".to_string()])
-    }
-
-    pub fn exec(&self, argv: Vec<String>) {
-        if self.cli_args.set(StatusCommandArgs::parse(argv)).is_err() {
-            unreachable!();
-        }
-
-        if !self.cli_args().single {
-            println!("{}", omni_header!());
-        }
-
-        self.print_shell_integration();
-        self.print_configuration();
-        self.print_configuration_files();
-        self.print_worktree();
-        self.print_orgs();
-        self.print_path();
-
-        exit(0);
-    }
-
-    pub fn autocompletion(&self) -> bool {
-        true
-    }
-
-    pub fn autocomplete(&self, _comp_cword: usize, argv: Vec<String>) -> Result<(), ()> {
-        for arg in &[
-            "--shell-integration",
-            "--config",
-            "--config-files",
-            "--worktree",
-            "--orgs",
-            "--path",
-        ] {
-            if !argv.contains(&arg.to_string()) {
-                println!("{}", arg);
-            }
-        }
-
-        Ok(())
     }
 
     fn print_shell_integration(&self) {
@@ -433,5 +317,132 @@ impl StatusCommand {
 
         let yaml_code = yaml_lines.join("\n  │ ");
         format!("  │ {}", yaml_code)
+    }
+}
+
+impl BuiltinCommand for StatusCommand {
+    fn new_boxed() -> Box<dyn BuiltinCommand> {
+        Box::new(Self::new())
+    }
+
+    fn clone_boxed(&self) -> Box<dyn BuiltinCommand> {
+        Box::new(self.clone())
+    }
+
+    fn name(&self) -> Vec<String> {
+        vec!["status".to_string()]
+    }
+
+    fn aliases(&self) -> Vec<Vec<String>> {
+        vec![]
+    }
+
+    fn help(&self) -> Option<String> {
+        Some(
+            concat!(
+                "Show the status of omni\n",
+                "\n",
+                "This will show the configuration that omni is loading when called ",
+                "from the current directory."
+            )
+            .to_string(),
+        )
+    }
+
+    fn syntax(&self) -> Option<CommandSyntax> {
+        Some(CommandSyntax {
+            usage: None,
+            parameters: vec![
+                SyntaxOptArg {
+                    name: "--shell-integration".to_string(),
+                    desc: Some("Show if the shell integration is loaded or not.".to_string()),
+                    required: false,
+                },
+                SyntaxOptArg {
+                    name: "--config".to_string(),
+                    desc: Some(
+                        "Show the configuration that omni is using for the current directory. This is not shown by default."
+                            .to_string(),
+                    ),
+                    required: false,
+                },
+                SyntaxOptArg {
+                    name: "--config-files".to_string(),
+                    desc: Some(
+                        "Show the configuration files that omni is loading for the current directory."
+                            .to_string(),
+                    ),
+                    required: false,
+                },
+                SyntaxOptArg {
+                    name: "--worktree".to_string(),
+                    desc: Some(
+                        "Show the default worktree."
+                            .to_string(),
+                    ),
+                    required: false,
+                },
+                SyntaxOptArg {
+                    name: "--orgs".to_string(),
+                    desc: Some(
+                        "Show the organizations."
+                            .to_string(),
+                    ),
+                    required: false,
+                },
+                SyntaxOptArg {
+                    name: "--path".to_string(),
+                    desc: Some(
+                        "Show the current omnipath."
+                            .to_string(),
+                    ),
+                    required: false,
+                },
+            ],
+        })
+    }
+
+    fn category(&self) -> Option<Vec<String>> {
+        Some(vec!["General".to_string()])
+    }
+
+    fn exec(&self, argv: Vec<String>) {
+        if self.cli_args.set(StatusCommandArgs::parse(argv)).is_err() {
+            unreachable!();
+        }
+
+        if !self.cli_args().single {
+            println!("{}", omni_header!());
+        }
+
+        self.print_shell_integration();
+        self.print_configuration();
+        self.print_configuration_files();
+        self.print_worktree();
+        self.print_orgs();
+        self.print_path();
+
+        exit(0);
+    }
+
+    fn autocompletion(&self) -> bool {
+        true
+    }
+
+    fn autocomplete(&self, _comp_cword: usize, argv: Vec<String>) -> Result<(), ()> {
+        for arg in &[
+            "--shell-integration",
+            "--config",
+            "--config-files",
+            "--worktree",
+            "--orgs",
+            "--path",
+        ] {
+            if !argv.contains(&arg.to_string()) {
+                println!("{}", arg);
+            }
+        }
+
+        Ok(())
     }
 }

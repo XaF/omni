@@ -6,6 +6,7 @@ use shell_escape::escape;
 use tera::Context;
 use tera::Tera;
 
+use crate::internal::commands::base::BuiltinCommand;
 use crate::internal::commands::HelpCommand;
 use crate::internal::config::global_config;
 use crate::internal::config::CommandSyntax;
@@ -168,16 +169,26 @@ impl HookInitCommand {
     pub fn new() -> Self {
         Self {}
     }
+}
 
-    pub fn name(&self) -> Vec<String> {
+impl BuiltinCommand for HookInitCommand {
+    fn new_boxed() -> Box<dyn BuiltinCommand> {
+        Box::new(Self::new())
+    }
+
+    fn clone_boxed(&self) -> Box<dyn BuiltinCommand> {
+        Box::new(self.clone())
+    }
+
+    fn name(&self) -> Vec<String> {
         vec!["hook".to_string(), "init".to_string()]
     }
 
-    pub fn aliases(&self) -> Vec<Vec<String>> {
+    fn aliases(&self) -> Vec<Vec<String>> {
         vec![]
     }
 
-    pub fn help(&self) -> Option<String> {
+    fn help(&self) -> Option<String> {
         Some(
             concat!(
             "Hook used to initialize the shell\n",
@@ -199,7 +210,7 @@ impl HookInitCommand {
         )
     }
 
-    pub fn syntax(&self) -> Option<CommandSyntax> {
+    fn syntax(&self) -> Option<CommandSyntax> {
         Some(CommandSyntax {
             usage: None,
             parameters: vec![
@@ -235,11 +246,11 @@ impl HookInitCommand {
         })
     }
 
-    pub fn category(&self) -> Option<Vec<String>> {
+    fn category(&self) -> Option<Vec<String>> {
         Some(vec!["General".to_string()])
     }
 
-    pub fn exec(&self, argv: Vec<String>) {
+    fn exec(&self, argv: Vec<String>) {
         let args = HookInitCommandArgs::parse(argv);
 
         match args.shell.as_str() {
@@ -269,11 +280,11 @@ impl HookInitCommand {
         exit(0);
     }
 
-    pub fn autocompletion(&self) -> bool {
+    fn autocompletion(&self) -> bool {
         false
     }
 
-    pub fn autocomplete(&self, _comp_cword: usize, _argv: Vec<String>) -> Result<(), ()> {
+    fn autocomplete(&self, _comp_cword: usize, _argv: Vec<String>) -> Result<(), ()> {
         Err(())
     }
 }

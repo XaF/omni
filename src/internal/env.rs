@@ -95,6 +95,11 @@ lazy_static! {
     };
 
     #[derive(Debug)]
+    static ref SHIMS_DIR: PathBuf = {
+        PathBuf::from(data_home()).join("shims")
+    };
+
+    #[derive(Debug)]
     static ref XDG_CACHE_HOME: String = match std::env::var("XDG_CACHE_HOME") {
         Ok(xdg_cache_home) if !xdg_cache_home.is_empty() && xdg_cache_home.starts_with('/') => {
             xdg_cache_home
@@ -373,6 +378,10 @@ pub fn xdg_data_home() -> String {
 
 pub fn data_home() -> String {
     (*DATA_HOME).to_string()
+}
+
+pub fn shims_dir() -> PathBuf {
+    (*SHIMS_DIR).clone()
 }
 
 pub fn xdg_cache_home() -> String {
