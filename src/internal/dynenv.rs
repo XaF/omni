@@ -260,7 +260,7 @@ impl DynamicEnvExportOptions {
     }
 
     pub fn apply(&self) {
-        update_dynamic_env(&self);
+        update_dynamic_env(self);
     }
 }
 
@@ -441,7 +441,7 @@ impl DynamicEnv {
 
             // Remove the shims directory from the PATH
             let shims_dir = PathBuf::from(data_home()).join("shims");
-            envsetter.remove_from_list("PATH", &shims_dir.to_str().unwrap());
+            envsetter.remove_from_list("PATH", shims_dir.to_str().unwrap());
 
             // Add the requested paths
             for path in up_env.paths.iter().rev() {

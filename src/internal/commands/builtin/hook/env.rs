@@ -61,6 +61,7 @@ impl HookEnvCommandArgs {
             }
         };
 
+        #[allow(clippy::redundant_closure)]
         let shell = matches
             .get_one::<String>("shell")
             .map(|shell| Shell::from_str(shell))

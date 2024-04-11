@@ -40,7 +40,7 @@ pub fn handle_shims() {
 
     // Check if argv0 is a shim, i.e. if its path is in the
     // shims directory
-    if !path.starts_with(&shims_dir()) {
+    if !path.starts_with(shims_dir()) {
         return;
     }
 
@@ -56,10 +56,10 @@ pub fn handle_shims() {
     // Make sure that the PATH does not contain the shims directory
     let path_env = path_env
         .split(':')
-        .filter(|path| !PathBuf::from(path).starts_with(&shims_dir()))
+        .filter(|path| !PathBuf::from(path).starts_with(shims_dir()))
         .collect::<Vec<_>>()
         .join(":");
-    env::set_var("PATH", &path_env);
+    env::set_var("PATH", path_env);
 
     // Resolve the binary full path
     let binary_path = match which::which(&binary) {
@@ -75,7 +75,7 @@ pub fn handle_shims() {
     let args = env::args().skip(1).collect::<Vec<_>>();
 
     // Now replace the current process with the binary
-    let err = std::process::Command::new(&binary_path).args(&args).exec();
+    let err = std::process::Command::new(binary_path).args(args).exec();
 
     // If we reach this point, it means that the exec failed
     // so we'll print the error and exit with 126
@@ -93,18 +93,18 @@ pub fn reshim(progress_handler: &dyn ProgressHandler) -> Result<Option<String>, 
     // Use a glob to get the shims from the different tools bin
     // directories in the isolated workdir environments
     let venv_glob = format!("{}/wd/*/*/*/*/bin", data_home());
-    for entry in glob::glob(&venv_glob).unwrap() {
-        if let Ok(path) = entry {
-            shims_sources.push(path);
+    if let Ok(entries) = glob::glob(&venv_glob) {
+        for entry in entries.flatten() {
+            shims_sources.push(entry);
         }
     }
 
     // Use a glob to get the shims from the github release tools
     // bin directories
     let gh_glob = format!("{}/ghreleases/*/*/*", data_home());
-    for entry in glob::glob(&gh_glob).unwrap() {
-        if let Ok(path) = entry {
-            shims_sources.push(path);
+    if let Ok(entries) = glob::glob(&gh_glob) {
+        for entry in entries.flatten() {
+            shims_sources.push(entry);
         }
     }
 
@@ -161,7 +161,7 @@ pub fn reshim(progress_handler: &dyn ProgressHandler) -> Result<Option<String>, 
     if !shims_to_create.is_empty() {
         // Create the shims directory
         if !shims_dir().exists() {
-            std::fs::create_dir_all(&shims_dir()).map_err(|err| {
+            std::fs::create_dir_all(shims_dir()).map_err(|err| {
                 UpError::Exec(format!(
                     "failed to create shims directory {}: {}",
                     shims_dir().display(),
@@ -195,11 +195,11 @@ pub fn reshim(progress_handler: &dyn ProgressHandler) -> Result<Option<String>, 
     // Find all shims that are not needed anymore and clean them up
     let expected_shims: Vec<_> = expected_shims.iter().collect();
     let (root_removed, num_removed, _) =
-        cleanup_path(&shims_dir(), expected_shims, progress_handler, false)?;
+        cleanup_path(shims_dir(), expected_shims, progress_handler, false)?;
 
     let num_created = shims_to_create.len();
     let msg = if root_removed {
-        Some(format!("removed shims directory"))
+        Some("removed shims directory".to_string())
     } else if num_created > 0 || num_removed > 0 {
         let mut msg = String::new();
         if num_created > 0 {
