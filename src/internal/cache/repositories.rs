@@ -32,8 +32,16 @@ impl RepositoriesCache {
     }
 
     pub fn add_trusted(&mut self, repository: &str) -> bool {
-        if !self.has_trusted(repository) {
-            self.trusted.insert(repository.to_string());
+        if self.trusted.insert(repository.to_string()) {
+            self.updated_at = OffsetDateTime::now_utc();
+            true
+        } else {
+            false
+        }
+    }
+
+    pub fn remove_trusted(&mut self, repository: &str) -> bool {
+        if self.trusted.remove(repository) {
             self.updated_at = OffsetDateTime::now_utc();
             true
         } else {

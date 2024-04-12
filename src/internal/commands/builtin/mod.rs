@@ -18,6 +18,7 @@ pub(crate) use config::config_bootstrap;
 pub(crate) use config::ConfigBootstrapCommand;
 pub(crate) use config::ConfigPathSwitchCommand;
 pub(crate) use config::ConfigReshimCommand;
+pub(crate) use config::ConfigTrustCommand;
 
 pub(crate) mod scope;
 pub(crate) use scope::ScopeCommand;

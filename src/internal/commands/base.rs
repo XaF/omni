@@ -357,7 +357,7 @@ impl Command {
         match self {
             Command::FromPath(_) | Command::FromConfig(_) | Command::FromMakefile(_) => {
                 // Check if the workdir where the command is located is trusted
-                if !is_trusted(&self.source_dir()) {
+                if !is_trusted(self.source_dir()) {
                     return Err(());
                 }
             }

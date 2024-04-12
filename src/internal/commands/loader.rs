@@ -13,6 +13,7 @@ use crate::internal::commands::builtin::CloneCommand;
 use crate::internal::commands::builtin::ConfigBootstrapCommand;
 use crate::internal::commands::builtin::ConfigPathSwitchCommand;
 use crate::internal::commands::builtin::ConfigReshimCommand;
+use crate::internal::commands::builtin::ConfigTrustCommand;
 use crate::internal::commands::builtin::HelpCommand;
 use crate::internal::commands::builtin::HookCommand;
 use crate::internal::commands::builtin::HookEnvCommand;
@@ -82,6 +83,7 @@ impl CommandLoader {
         commands.push(ConfigBootstrapCommand::new_command());
         commands.push(ConfigPathSwitchCommand::new_command());
         commands.push(ConfigReshimCommand::new_command());
+        commands.push(ConfigTrustCommand::new_command());
         commands.push(HelpCommand::new_command());
         commands.push(HookCommand::new_command());
         commands.push(HookEnvCommand::new_command());

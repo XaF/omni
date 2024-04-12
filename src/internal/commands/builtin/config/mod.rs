@@ -7,3 +7,6 @@ pub(crate) use path::ConfigPathSwitchCommand;
 
 pub(crate) mod reshim;
 pub(crate) use reshim::ConfigReshimCommand;
+
+pub(crate) mod trust;
+pub(crate) use trust::ConfigTrustCommand;
