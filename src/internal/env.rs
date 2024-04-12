@@ -819,6 +819,12 @@ pub enum Shell {
     Unknown(String),
 }
 
+impl ToString for Shell {
+    fn to_string(&self) -> String {
+        self.to_str().to_string()
+    }
+}
+
 impl Shell {
     pub fn current() -> Self {
         CURRENT_SHELL.clone()
@@ -888,8 +894,9 @@ fn determine_shell() -> String {
             let shell = shell.to_str().unwrap();
             if !shell.is_empty() {
                 if shell.contains('/') {
-                    let shell = shell.split('/').last().unwrap();
-                    return shell.to_string();
+                    if let Some(shell) = shell.split('/').last() {
+                        return shell.to_string();
+                    }
                 }
                 return shell.to_string();
             }

@@ -61,10 +61,10 @@ impl HookEnvCommandArgs {
             }
         };
 
-        #[allow(clippy::redundant_closure)]
         let shell = matches
             .get_one::<String>("shell")
-            .map(|shell| Shell::from_str(shell))
+            .map(|shell| shell.as_str())
+            .map(Shell::from_str)
             .unwrap_or_else(|| Shell::from_env());
         let quiet = *matches.get_one::<bool>("quiet").unwrap_or(&false);
 

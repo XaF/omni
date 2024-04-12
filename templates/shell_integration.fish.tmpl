@@ -1,3 +1,15 @@
+{% if SHIMS_ONLY -%}
+set -l omni_shims_path {{ OMNI_DATA_HOME }}/shims
+if not contains $omni_shims_path $PATH
+    set -l PATH $omni_shims_path $PATH
+    set -gx PATH $PATH
+end
+{%- else -%}
+# This function is used to run the omni command, and then operate on
+# the requested shell changes from the command (changing current
+# working directory, environment, etc.); this is why we require using
+# a shell function for this, instead of simply calling the omni
+# command from the path
 function omni
     # Prepare the environment for omni
     set -gx OMNI_UUID (uuidgen)
@@ -97,3 +109,15 @@ function __omni_hook --on-event fish_prompt --on-variable PWD
             eval "$line" 2>/dev/null
         end
 end
+
+# If we are not in an interactive shell, we will add the
+# shims directory to the PATH, so that the dynamic
+# environment can be used in non-interactive shells
+if status is-interactive
+    set -l omni_shims_path {{ OMNI_DATA_HOME }}/shims
+    if not contains $omni_shims_path $PATH
+        set -l PATH $omni_shims_path $PATH
+        set -gx PATH $PATH
+    end
+end
+{%- endif -%}

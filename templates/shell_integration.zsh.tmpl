@@ -1,3 +1,8 @@
+{% if SHIMS_ONLY -%}
+if [[ ":$PATH:" != *":{{ OMNI_DATA_HOME }}/shims:"* ]]; then
+	export PATH="{{ OMNI_DATA_HOME }}/shims:$PATH"
+fi
+{%- else -%}
 # This function is used to run the omni command, and then operate on
 # the requested shell changes from the command (changing current
 # working directory, environment, etc.); this is why we require using
@@ -5,14 +10,14 @@
 # command from the path
 function omni() {
 	# Prepare the environment for omni
-	export OMNI_UUID=$(command -v uuidgen >/dev/null && uuidgen || {{OMNI_BIN}} hook uuid)
+	export OMNI_UUID=$(command -v uuidgen >/dev/null && uuidgen || {{ OMNI_BIN }} hook uuid)
 	local tmpdir=${TMPDIR:-/tmp}
 	OMNI_FILE_PREFIX="omni_${OMNI_UUID}"
 	export OMNI_CMD_FILE="${tmpdir}/${OMNI_FILE_PREFIX}.cmd"
 	export OMNI_SHELL=zsh
 
 	# Run the command
-	{{OMNI_BIN}} "$@"
+	{{ OMNI_BIN }} "$@"
 	EXIT_CODE=$?
 
 	# Check if OMNI_CMD_FILE exists, and if it does, run the commands
@@ -48,10 +53,10 @@ function omni() {
 {% if OMNI_ALIASES or OMNI_COMMAND_ALIASES -%}
 # Setup aliases for omni
 {% for alias in OMNI_ALIASES -%}
-alias {{alias}}="omni"
+alias {{ alias }}="omni"
 {% endfor -%}
 {% for alias in OMNI_COMMAND_ALIASES -%}
-alias {{alias.alias}}={{alias.full_command}}
+alias {{ alias.alias }}={{ alias.full_command }}
 {% endfor %}
 
 {% endif -%}
@@ -66,9 +71,9 @@ _omni_complete_zsh() {
 	local alias_skip
 	case "${words[1]}" in
 		{% for alias in OMNI_COMMAND_ALIASES -%}
-		"{{alias.alias}}")
-			alias_prefix={{alias.command}}
-			alias_skip={{alias.command_size}}
+		"{{ alias.alias }}")
+			alias_prefix={{ alias.command }}
+			alias_skip={{ alias.command_size }}
 			;;
 		{% endfor -%}
 		*)
@@ -77,7 +82,7 @@ _omni_complete_zsh() {
 	esac
 
 	{% endif -%}
-	autocomplete="{{OMNI_BIN}} --complete"
+	autocomplete="{{ OMNI_BIN }} --complete"
 	{%- if OMNI_COMMAND_ALIASES %}
 	[[ -n "${alias_prefix}" ]] && autocomplete="${autocomplete} ${alias_prefix}"
 	{%- endif %}
@@ -112,21 +117,31 @@ fi
 compdef _omni_complete_zsh omni
 {% if OMNI_ALIASES or OMNI_COMMAND_ALIASES -%}
 {% for alias in OMNI_ALIASES -%}
-compdef _omni_complete_zsh {{alias}}
+compdef _omni_complete_zsh {{ alias }}
 {% endfor -%}
 {% for alias in OMNI_COMMAND_ALIASES -%}
-compdef _omni_complete_zsh {{alias.alias}}
+compdef _omni_complete_zsh {{ alias.alias }}
 {% endfor -%}
 {% endif %}
 
 # Prepare omni's hook
 __omni_hook() {
 	local ppid=$$
-	eval "$(OMNI_SHELL_PPID="${ppid}" "{{OMNI_BIN}}" hook env "${@}")"
+	eval "$(OMNI_SHELL_PPID="${ppid}" "{{ OMNI_BIN }}" hook env "${@}")"
 }
+
 
 # Inject omni's hooks into the prompt command
 __omni_hook_precmd()  { __omni_hook zsh }
 if [[ ! ${precmd_functions[(r)__omni_hook_precmd]} ]]; then
 	precmd_functions+=("__omni_hook_precmd");
 fi
+
+
+# If we are not in an interactive shell, we will add the
+# shims directory to the PATH, so that the dynamic
+# environment can be used in non-interactive shells
+if [[ $- != *i* ]] && [[ ":$PATH:" != *":{{ OMNI_DATA_HOME }}/shims:"* ]]; then
+	export PATH="{{ OMNI_DATA_HOME }}/shims:$PATH"
+fi
+{%- endif -%}
