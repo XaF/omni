@@ -8,7 +8,8 @@ use crate::internal::workdir;
 use crate::omni_error;
 use crate::omni_info;
 
-pub fn is_trusted(path: &str) -> bool {
+pub fn is_trusted<T: AsRef<str>>(path: T) -> bool {
+    let path = path.as_ref();
     let git = git_env(path);
     if git.in_repo() && git.has_origin() {
         for org in ORG_LOADER.orgs() {
@@ -81,6 +82,20 @@ pub fn add_trust(path: &str) -> bool {
     let wd = workdir(path);
     if let Some(workdir_id) = wd.trust_id() {
         if let Err(err) = RepositoriesCache::exclusive(|repos| repos.add_trusted(&workdir_id)) {
+            omni_error!(format!("Unable to update cache: {:?}", err.to_string()));
+            return false;
+        }
+    } else {
+        omni_error!("Unable to get repository id");
+        return false;
+    }
+    true
+}
+
+pub fn remove_trust(path: &str) -> bool {
+    let wd = workdir(path);
+    if let Some(workdir_id) = wd.trust_id() {
+        if let Err(err) = RepositoriesCache::exclusive(|repos| repos.remove_trusted(&workdir_id)) {
             omni_error!(format!("Unable to update cache: {:?}", err.to_string()));
             return false;
         }
