@@ -174,7 +174,7 @@ impl BuiltinCommand for ConfigTrustCommand {
         }
 
         let path = if let Some(repo) = &self.cli_args().repository {
-            if let Some(repo_path) = ORG_LOADER.find_repo(&repo, true, false) {
+            if let Some(repo_path) = ORG_LOADER.find_repo(repo, true, false) {
                 repo_path
             } else {
                 omni_error!(format!("repository not found: {}", repo));
