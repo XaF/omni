@@ -359,11 +359,25 @@ impl UpConfigGithubRelease {
             UpError::Exec(errmsg)
         })?;
 
+        let status = response.status();
         let contents = response.text().map_err(|err| {
             let errmsg = format!("failed to read response: {}", err);
             progress_handler.error_with_message(errmsg.clone());
             UpError::Exec(errmsg)
         })?;
+
+        if !status.is_success() {
+            // Try parsing the error message from the body, and default to
+            // the body if we can't parse it
+            let errmsg = match GithubApiError::from_json(&contents) {
+                Ok(gherr) => gherr.message,
+                Err(_) => contents.clone(),
+            };
+
+            let errmsg = format!("{} ({})", errmsg, status);
+            progress_handler.error_with_message(errmsg.to_string());
+            return Err(UpError::Exec(errmsg));
+        }
 
         let releases = GithubReleases::from_json(&contents).map_err(|err| {
             let errmsg = format!("failed to parse releases: {}", err);
@@ -714,5 +728,17 @@ impl UpConfigGithubRelease {
             .collect::<Vec<_>>();
 
         Ok(Some(format!("removed {}", removed_releases.join(", "))))
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+struct GithubApiError {
+    message: String,
+    documentation_url: String,
+}
+
+impl GithubApiError {
+    pub fn from_json(json: &str) -> Result<Self, serde_json::Error> {
+        serde_json::from_str(json)
     }
 }
