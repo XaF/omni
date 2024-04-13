@@ -1,4 +1,3 @@
-use std::env;
 use std::process::exit;
 
 use serde::Serialize;
@@ -12,6 +11,8 @@ use crate::internal::config::global_config;
 use crate::internal::config::CommandSyntax;
 use crate::internal::config::SyntaxOptArg;
 use crate::internal::env::current_exe;
+use crate::internal::env::data_home;
+use crate::internal::env::Shell;
 use crate::internal::user_interface::StringColor;
 use crate::omni_error;
 
@@ -20,6 +21,7 @@ struct HookInitCommandArgs {
     shell: String,
     aliases: Vec<String>,
     command_aliases: Vec<InitHookAlias>,
+    shims: bool,
 }
 
 impl HookInitCommandArgs {
@@ -44,42 +46,47 @@ impl HookInitCommandArgs {
                     .number_of_values(2)
                     .action(clap::ArgAction::Append),
             )
+            .arg(
+                clap::Arg::new("shims")
+                    .long("shims")
+                    .action(clap::ArgAction::SetTrue)
+                    .conflicts_with("aliases")
+                    .conflicts_with("command_aliases"),
+            )
             .try_get_matches_from(&parse_argv);
 
-        if let Err(err) = matches {
-            match err.kind() {
-                clap::error::ErrorKind::DisplayHelp
-                | clap::error::ErrorKind::DisplayHelpOnMissingArgumentOrSubcommand => {
-                    HelpCommand::new().exec(vec!["hook".to_string()]);
+        let matches = match matches {
+            Ok(matches) => matches,
+            Err(err) => {
+                match err.kind() {
+                    clap::error::ErrorKind::DisplayHelp
+                    | clap::error::ErrorKind::DisplayHelpOnMissingArgumentOrSubcommand => {
+                        HelpCommand::new().exec(vec!["hook".to_string()]);
+                    }
+                    clap::error::ErrorKind::DisplayVersion => {
+                        unreachable!("version flag is disabled");
+                    }
+                    _ => {
+                        let err_str = format!("{}", err);
+                        let err_str = err_str
+                            .split('\n')
+                            .take_while(|line| !line.is_empty())
+                            .collect::<Vec<_>>()
+                            .join(" ");
+                        let err_str = err_str.trim_start_matches("error: ");
+                        omni_error!(err_str);
+                    }
                 }
-                clap::error::ErrorKind::DisplayVersion => {
-                    unreachable!("version flag is disabled");
-                }
-                _ => {
-                    let err_str = format!("{}", err);
-                    let err_str = err_str
-                        .split('\n')
-                        .take_while(|line| !line.is_empty())
-                        .collect::<Vec<_>>()
-                        .join(" ");
-                    let err_str = err_str.trim_start_matches("error: ");
-                    omni_error!(err_str);
-                }
+                exit(1);
             }
-            exit(1);
-        }
-
-        let matches = matches.unwrap();
-
-        let shell = if let Some(shell) = matches.get_one::<String>("shell") {
-            shell.to_string()
-        } else {
-            let mut shell = env::var("SHELL").unwrap_or("bash".to_string());
-            if shell.contains('/') {
-                shell = shell.split('/').last().unwrap().to_string();
-            }
-            shell
         };
+
+        let shell = matches
+            .get_one::<String>("shell")
+            .map(|shell| shell.as_str())
+            .map(Shell::from_str)
+            .unwrap_or_else(Shell::from_env)
+            .to_string();
 
         // Load aliases from the configuration first
         let config = global_config();
@@ -120,10 +127,13 @@ impl HookInitCommandArgs {
             },
         );
 
+        let shims = *matches.get_one::<bool>("shims").unwrap_or(&false);
+
         Self {
             shell,
             aliases,
             command_aliases,
+            shims,
         }
     }
 }
@@ -235,6 +245,14 @@ impl BuiltinCommand for HookInitCommand {
                     required: false,
                 },
                 SyntaxOptArg {
+                    name: "--shims".to_string(),
+                    desc: Some(
+                        "Only load the shims without setting up the dynamic environment."
+                            .to_string(),
+                    ),
+                    required: false,
+                },
+                SyntaxOptArg {
                     name: "shell".to_string(),
                     desc: Some(
                         "Which shell to initialize omni for. Can be one of bash, zsh or fish."
@@ -299,8 +317,10 @@ fn dump_integration(args: HookInitCommandArgs, integration: &[u8]) {
             current_exe().to_string_lossy().as_ref(),
         )),
     );
+    context.insert("OMNI_DATA_HOME", &escape(data_home().into()));
     context.insert("OMNI_ALIASES", &args.aliases);
     context.insert("OMNI_COMMAND_ALIASES", &args.command_aliases);
+    context.insert("SHIMS_ONLY", &args.shims);
 
     let result = Tera::one_off(&integration, &context, false)
         .expect("failed to render integration template");
