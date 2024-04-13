@@ -28,7 +28,7 @@ use crate::internal::env::data_home;
 use crate::internal::user_interface::StringColor;
 use crate::internal::workdir;
 
-const GITHUB_RELEASES_BIN_PATH: Lazy<PathBuf> =
+static GITHUB_RELEASES_BIN_PATH: Lazy<PathBuf> =
     Lazy::new(|| PathBuf::from(data_home()).join("ghreleases"));
 
 fn github_releases_bin_path() -> PathBuf {
@@ -124,7 +124,7 @@ impl UpConfigGithubReleases {
             return Self { releases };
         }
 
-        return UpConfigGithubReleases::default();
+        UpConfigGithubReleases::default()
     }
 
     pub fn up(
@@ -182,7 +182,7 @@ impl UpConfigGithubReleases {
                     release
                         .actual_version
                         .get()
-                        .and_then(|v| Some(v.to_string()))
+                        .map(|v| v.to_string())
                         .unwrap_or_else(|| "?".to_string())
                 )),
                 _ => None,
@@ -190,7 +190,7 @@ impl UpConfigGithubReleases {
             .sorted()
             .collect();
 
-        if handled.len() == 0 {
+        if handled.is_empty() {
             return "nothing done".to_string();
         }
 
