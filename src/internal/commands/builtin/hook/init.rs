@@ -85,7 +85,7 @@ impl HookInitCommandArgs {
             .get_one::<String>("shell")
             .map(|shell| shell.as_str())
             .map(Shell::from_str)
-            .unwrap_or_else(|| Shell::from_env())
+            .unwrap_or_else(Shell::from_env)
             .to_string();
 
         // Load aliases from the configuration first
