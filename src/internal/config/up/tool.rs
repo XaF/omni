@@ -12,7 +12,7 @@ use crate::internal::config::up::UpConfig;
 use crate::internal::config::up::UpConfigAsdfBase;
 use crate::internal::config::up::UpConfigBundler;
 use crate::internal::config::up::UpConfigCustom;
-use crate::internal::config::up::UpConfigGithubRelease;
+use crate::internal::config::up::UpConfigGithubReleases;
 use crate::internal::config::up::UpConfigGolang;
 use crate::internal::config::up::UpConfigHomebrew;
 use crate::internal::config::up::UpConfigNix;
@@ -52,7 +52,7 @@ pub enum UpConfigTool {
     // TODO: Dnf(UpConfigDnf),
     /// GithubRelease represents a tool that can be installed from
     /// a github release.
-    GithubRelease(UpConfigGithubRelease),
+    GithubRelease(UpConfigGithubReleases),
 
     /// Go represents the golang tool.
     Go(UpConfigGolang),
@@ -163,9 +163,12 @@ impl UpConfigTool {
             "custom" => Some(UpConfigTool::Custom(UpConfigCustom::from_config_value(
                 config_value,
             ))),
-            "github-release" | "github_release" | "githubrelease" | "ghrelease" => Some(
-                UpConfigTool::GithubRelease(UpConfigGithubRelease::from_config_value(config_value)),
-            ),
+            "github-release" | "github_release" | "githubrelease" | "ghrelease"
+            | "github-releases" | "github_releases" | "githubreleases" | "ghreleases" => {
+                Some(UpConfigTool::GithubRelease(
+                    UpConfigGithubReleases::from_config_value(config_value),
+                ))
+            }
             "go" | "golang" => Some(UpConfigTool::Go(UpConfigGolang::from_config_value(
                 config_value,
             ))),

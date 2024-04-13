@@ -1,8 +1,11 @@
+use std::collections::HashMap;
 use std::fs::OpenOptions;
 use std::io;
 use std::os::unix::fs::PermissionsExt;
 use std::path::PathBuf;
 
+use itertools::Itertools;
+use once_cell::sync::Lazy;
 use once_cell::sync::OnceCell;
 use serde::Deserialize;
 use serde::Serialize;
@@ -25,8 +28,349 @@ use crate::internal::env::data_home;
 use crate::internal::user_interface::StringColor;
 use crate::internal::workdir;
 
-#[derive(Debug, Serialize, Deserialize, Clone, Default)]
-pub struct UpConfigGithubRelease {
+const GITHUB_RELEASES_BIN_PATH: Lazy<PathBuf> =
+    Lazy::new(|| PathBuf::from(data_home()).join("ghreleases"));
+
+fn github_releases_bin_path() -> PathBuf {
+    GITHUB_RELEASES_BIN_PATH.clone()
+}
+
+#[derive(Debug, Deserialize, Clone, Default)]
+pub struct UpConfigGithubReleases {
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    releases: Vec<UpConfigGithubRelease>,
+}
+
+impl Serialize for UpConfigGithubReleases {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        match self.releases.len() {
+            0 => serializer.serialize_none(),
+            1 => serializer.serialize_newtype_struct("UpConfigGithubReleases", &self.releases[0]),
+            _ => serializer.collect_seq(self.releases.iter()),
+        }
+    }
+}
+
+impl UpConfigGithubReleases {
+    pub fn from_config_value(config_value: Option<&ConfigValue>) -> Self {
+        let config_value = match config_value {
+            Some(config_value) => config_value,
+            None => return UpConfigGithubReleases::default(),
+        };
+
+        if let Some(_repository) = config_value.as_str_forced() {
+            return Self {
+                releases: vec![UpConfigGithubRelease::from_config_value(Some(config_value))],
+            };
+        }
+
+        if let Some(array) = config_value.as_array() {
+            return Self {
+                releases: array
+                    .iter()
+                    .map(|config_value| {
+                        UpConfigGithubRelease::from_config_value(Some(config_value))
+                    })
+                    .collect(),
+            };
+        }
+
+        if let Some(table) = config_value.as_table() {
+            // Check if there is a 'repository' key, in which case it's a single
+            // repository and we can just parse it and return it
+            if ["repository", "repo"]
+                .iter()
+                .find_map(|key| table.get(*key))
+                .is_some()
+            {
+                return Self {
+                    releases: vec![UpConfigGithubRelease::from_config_value(Some(config_value))],
+                };
+            }
+
+            // Otherwise, we have a table of repositories, where repositories are
+            // the keys and the values are the configuration for the repository;
+            // we want to go over them in lexico-graphical order to ensure that
+            // the order is consistent
+            let mut releases = Vec::new();
+            for repo in table.keys().sorted() {
+                let value = table.get(repo).expect("repo config not found");
+                let repository = match ConfigValue::from_str(repo) {
+                    Ok(value) => value,
+                    Err(_) => continue,
+                };
+
+                let mut repo_config = if let Some(table) = value.as_table() {
+                    table.clone()
+                } else if let Some(version) = value.as_str_forced() {
+                    let mut repo_config = HashMap::new();
+                    let value = match ConfigValue::from_str(&version) {
+                        Ok(value) => value,
+                        Err(_) => continue,
+                    };
+                    repo_config.insert("version".to_string(), value);
+                    repo_config
+                } else {
+                    HashMap::new()
+                };
+
+                repo_config.insert("repository".to_string(), repository);
+                releases.push(UpConfigGithubRelease::from_table(&repo_config));
+            }
+
+            return Self { releases };
+        }
+
+        return UpConfigGithubReleases::default();
+    }
+
+    pub fn up(
+        &self,
+        options: &UpOptions,
+        progress_handler: &UpProgressHandler,
+    ) -> Result<(), UpError> {
+        if self.releases.len() == 1 {
+            return self.releases[0].up(options, progress_handler);
+        }
+
+        progress_handler.init("github releases:".light_blue());
+        if self.releases.is_empty() {
+            progress_handler.error_with_message("no release information".to_string());
+            return Err(UpError::Config("at least one release required".to_string()));
+        }
+
+        progress_handler.progress("install dependencies".to_string());
+
+        let num = self.releases.len();
+        for (idx, release) in self.releases.iter().enumerate() {
+            let subhandler = progress_handler.subhandler(
+                &format!(
+                    "[{current:padding$}/{total:padding$}] ",
+                    current = idx + 1,
+                    total = num,
+                    padding = format!("{}", num).len(),
+                )
+                .light_yellow(),
+            );
+            release.up(options, &subhandler)?;
+        }
+
+        progress_handler.success_with_message(self.get_up_message());
+
+        Ok(())
+    }
+
+    fn get_up_message(&self) -> String {
+        let count: HashMap<GithubReleaseHandled, usize> = self
+            .releases
+            .iter()
+            .map(|release| release.handling())
+            .fold(HashMap::new(), |mut map, item| {
+                *map.entry(item).or_insert(0) += 1;
+                map
+            });
+        let handled: Vec<String> = self
+            .releases
+            .iter()
+            .filter_map(|release| match release.handling() {
+                GithubReleaseHandled::Handled | GithubReleaseHandled::Noop => Some(format!(
+                    "{} {}",
+                    release.repository,
+                    release
+                        .actual_version
+                        .get()
+                        .and_then(|v| Some(v.to_string()))
+                        .unwrap_or_else(|| "?".to_string())
+                )),
+                _ => None,
+            })
+            .sorted()
+            .collect();
+
+        if handled.len() == 0 {
+            return "nothing done".to_string();
+        }
+
+        let mut numbers = vec![];
+
+        if let Some(count) = count.get(&GithubReleaseHandled::Handled) {
+            numbers.push(format!("+{}", count).green());
+        }
+
+        if let Some(count) = count.get(&GithubReleaseHandled::Noop) {
+            numbers.push(format!("{}", count));
+        }
+
+        if numbers.is_empty() {
+            return "nothing done".to_string();
+        }
+
+        format!(
+            "{} {}",
+            numbers.join(", "),
+            format!("({})", handled.join(", ")).light_black().italic(),
+        )
+    }
+
+    pub fn down(&self, progress_handler: &UpProgressHandler) -> Result<(), UpError> {
+        if self.releases.len() == 1 {
+            return self.releases[0].down(progress_handler);
+        }
+
+        progress_handler.init("github releases:".light_blue());
+        progress_handler.progress("updating dependencies".to_string());
+
+        let num = self.releases.len();
+        for (idx, release) in self.releases.iter().enumerate() {
+            let subhandler = progress_handler.subhandler(
+                &format!(
+                    "[{current:padding$}/{total:padding$}] ",
+                    current = idx + 1,
+                    total = num,
+                    padding = format!("{}", num).len(),
+                )
+                .light_yellow(),
+            );
+            release.down(&subhandler)?;
+        }
+
+        progress_handler.success_with_message("dependencies cleaned".light_green());
+
+        Ok(())
+    }
+
+    pub fn cleanup(progress_handler: &UpProgressHandler) -> Result<Option<String>, UpError> {
+        let wd = workdir(".");
+        let wd_id = match wd.id() {
+            Some(wd_id) => wd_id,
+            None => return Err(UpError::Exec("failed to get workdir id".to_string())),
+        };
+
+        let mut return_value: Result<(bool, usize, Vec<PathBuf>), UpError> =
+            Err(UpError::Exec("cleanup_path not run".to_string()));
+
+        if let Err(err) = GithubReleaseOperationCache::exclusive(|ghrelease| {
+            progress_handler.init("github releases:".light_blue());
+            progress_handler.progress("checking for unused github releases".to_string());
+
+            let mut updated = false;
+
+            let expected_paths = ghrelease
+                .installed
+                .iter_mut()
+                .filter_map(|install| {
+                    // Cleanup the references to this repository for
+                    // any installed github release that is not currently
+                    // listed in the up configuration
+                    if install.required_by.contains(&wd_id) && install.stale() {
+                        install.required_by.retain(|id| id != &wd_id);
+                        updated = true;
+                    }
+
+                    // Only return the path if the github release is
+                    // expected, as we will clear the bin path from
+                    // all unexpected github releases
+                    if install.required_by.is_empty() {
+                        None
+                    } else {
+                        Some(
+                            github_releases_bin_path()
+                                .join(&install.repository)
+                                .join(&install.version),
+                        )
+                    }
+                })
+                .collect::<Vec<PathBuf>>();
+
+            return_value = cleanup_path(
+                github_releases_bin_path(),
+                expected_paths,
+                progress_handler,
+                true,
+            );
+
+            return_value.is_ok() && updated
+        }) {
+            progress_handler.progress(format!("failed to update cache: {}", err).light_yellow());
+        }
+
+        let (root_removed, num_removed, removed_paths) = return_value?;
+
+        if root_removed {
+            return Ok(Some(format!(
+                "removed github release bin path {}",
+                github_releases_bin_path()
+                    .display()
+                    .to_string()
+                    .light_yellow()
+            )));
+        }
+
+        if num_removed == 0 {
+            return Ok(None);
+        }
+
+        // We want to go over the paths that were removed to
+        // return a proper message about the github releases
+        // that were removed
+        let removed_releases = removed_paths
+            .iter()
+            .filter_map(|path| {
+                // Path should starts with the bin path if it is a release
+                let rest_of_path = match path.strip_prefix(github_releases_bin_path()) {
+                    Ok(rest_of_path) => rest_of_path,
+                    Err(_) => return None,
+                };
+
+                // Path should have three components left after stripping
+                // the bin path: the repository (2) and the version (1)
+                let parts = rest_of_path.components().collect::<Vec<_>>();
+                if parts.len() != 3 {
+                    return None;
+                }
+
+                let parts = parts
+                    .into_iter()
+                    .map(|part| part.as_os_str().to_string_lossy().to_string())
+                    .collect::<Vec<String>>();
+
+                let repo_owner = parts[0].clone();
+                let repo_name = parts[1].clone();
+                let version = parts[2].clone();
+
+                Some((repo_owner, repo_name, version))
+            })
+            .collect::<Vec<_>>();
+
+        let removed_releases = removed_releases
+            .iter()
+            .map(|(repo_owner, repo_name, version)| {
+                format!(
+                    "{}/{} {}",
+                    repo_owner.light_yellow(),
+                    repo_name.light_yellow(),
+                    version.light_yellow()
+                )
+                .light_yellow()
+            })
+            .collect::<Vec<_>>();
+
+        Ok(Some(format!("removed {}", removed_releases.join(", "))))
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone, Eq, PartialEq, Hash)]
+pub enum GithubReleaseHandled {
+    Handled,
+    Noop,
+    Unhandled,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+struct UpConfigGithubRelease {
     /// The repository to install the tool from, should
     /// be in the format `owner/repo`
     pub repository: String,
@@ -59,6 +403,23 @@ pub struct UpConfigGithubRelease {
 
     #[serde(default, skip)]
     pub actual_version: OnceCell<String>,
+
+    #[serde(default, skip)]
+    was_handled: OnceCell<GithubReleaseHandled>,
+}
+
+impl Default for UpConfigGithubRelease {
+    fn default() -> Self {
+        UpConfigGithubRelease {
+            repository: "".to_string(),
+            version: None,
+            prerelease: false,
+            binary: true,
+            api_url: None,
+            actual_version: OnceCell::new(),
+            was_handled: OnceCell::new(),
+        }
+    }
 }
 
 impl UpConfigGithubRelease {
@@ -69,59 +430,7 @@ impl UpConfigGithubRelease {
         };
 
         if let Some(table) = config_value.as_table() {
-            let repository = ["repository", "repo"]
-                .iter()
-                .find_map(|key| table.get(*key));
-
-            let repository = if let Some(repository) = repository {
-                if let Some(repository_details) = repository.as_table() {
-                    let owner = repository_details
-                        .get("owner")
-                        .map(|v| v.as_str_forced())
-                        .unwrap_or(None)
-                        .unwrap_or("".to_string());
-                    let name = repository_details
-                        .get("name")
-                        .map(|v| v.as_str_forced())
-                        .unwrap_or(None)
-                        .unwrap_or("".to_string());
-                    format!("{}/{}", owner, name)
-                } else if let Some(repository) = repository.as_str_forced() {
-                    repository.to_string()
-                } else {
-                    "".to_string()
-                }
-            } else {
-                "".to_string()
-            };
-
-            let version = table
-                .get("version")
-                .map(|v| v.as_str_forced())
-                .unwrap_or(None);
-            let prerelease = table
-                .get("prerelease")
-                .map(|v| v.as_bool())
-                .unwrap_or(None)
-                .unwrap_or(false);
-            let binary = table
-                .get("binary")
-                .map(|v| v.as_bool())
-                .unwrap_or(None)
-                .unwrap_or(true);
-            let api_url = table
-                .get("api_url")
-                .map(|v| v.as_str_forced())
-                .unwrap_or(None);
-
-            UpConfigGithubRelease {
-                repository,
-                version,
-                prerelease,
-                binary,
-                api_url,
-                ..UpConfigGithubRelease::default()
-            }
+            Self::from_table(&table)
         } else if let Some(repository) = config_value.as_str_forced() {
             UpConfigGithubRelease {
                 repository,
@@ -132,8 +441,60 @@ impl UpConfigGithubRelease {
         }
     }
 
-    fn bin_path() -> PathBuf {
-        PathBuf::from(data_home()).join("ghreleases")
+    fn from_table(table: &HashMap<String, ConfigValue>) -> Self {
+        let repository = ["repository", "repo"]
+            .iter()
+            .find_map(|key| table.get(*key));
+
+        let repository = if let Some(repository) = repository {
+            if let Some(repository_details) = repository.as_table() {
+                let owner = repository_details
+                    .get("owner")
+                    .map(|v| v.as_str_forced())
+                    .unwrap_or(None)
+                    .unwrap_or("".to_string());
+                let name = repository_details
+                    .get("name")
+                    .map(|v| v.as_str_forced())
+                    .unwrap_or(None)
+                    .unwrap_or("".to_string());
+                format!("{}/{}", owner, name)
+            } else if let Some(repository) = repository.as_str_forced() {
+                repository.to_string()
+            } else {
+                "".to_string()
+            }
+        } else {
+            "".to_string()
+        };
+
+        let version = table
+            .get("version")
+            .map(|v| v.as_str_forced())
+            .unwrap_or(None);
+        let prerelease = table
+            .get("prerelease")
+            .map(|v| v.as_bool())
+            .unwrap_or(None)
+            .unwrap_or(false);
+        let binary = table
+            .get("binary")
+            .map(|v| v.as_bool())
+            .unwrap_or(None)
+            .unwrap_or(true);
+        let api_url = table
+            .get("api_url")
+            .map(|v| v.as_str_forced())
+            .unwrap_or(None);
+
+        UpConfigGithubRelease {
+            repository,
+            version,
+            prerelease,
+            binary,
+            api_url,
+            ..UpConfigGithubRelease::default()
+        }
     }
 
     fn update_cache(&self, progress_handler: &dyn ProgressHandler) {
@@ -398,7 +759,10 @@ impl UpConfigGithubRelease {
         let (version, release) = releases
             .get(&version, self.prerelease, self.binary)
             .ok_or_else(|| {
-                let errmsg = "no matching release found".to_string();
+                let errmsg = format!(
+                    "no matching release found for {} {}",
+                    self.repository, version
+                );
                 progress_handler.error_with_message(errmsg.clone());
                 UpError::Exec(errmsg)
             })?;
@@ -418,7 +782,9 @@ impl UpConfigGithubRelease {
             .get()
             .ok_or_else(|| UpError::Exec("version not set".to_string()))?;
 
-        Ok(Self::bin_path().join(&self.repository).join(version))
+        Ok(github_releases_bin_path()
+            .join(&self.repository)
+            .join(version))
     }
 
     fn download_release(
@@ -437,6 +803,10 @@ impl UpConfigGithubRelease {
             progress_handler.progress(
                 format!("downloaded {} {} (cached)", self.repository, version).light_black(),
             );
+
+            if self.was_handled.set(GithubReleaseHandled::Noop).is_err() {
+                unreachable!("failed to set was_handled");
+            }
 
             return Ok(false);
         }
@@ -618,116 +988,19 @@ impl UpConfigGithubRelease {
             self.repository.light_yellow(),
             version.light_yellow()
         ));
+
+        if self.was_handled.set(GithubReleaseHandled::Handled).is_err() {
+            unreachable!("failed to set was_handled");
+        }
+
         Ok(true)
     }
 
-    // TODO: implement cleanup
-    pub fn cleanup(progress_handler: &UpProgressHandler) -> Result<Option<String>, UpError> {
-        let wd = workdir(".");
-        let wd_id = match wd.id() {
-            Some(wd_id) => wd_id,
-            None => return Err(UpError::Exec("failed to get workdir id".to_string())),
-        };
-
-        let bin_path = Self::bin_path();
-        let mut return_value: Result<(bool, usize, Vec<PathBuf>), UpError> =
-            Err(UpError::Exec("cleanup_path not run".to_string()));
-
-        if let Err(err) = GithubReleaseOperationCache::exclusive(|ghrelease| {
-            progress_handler.init("github releases:".light_blue());
-            progress_handler.progress("checking for unused github releases".to_string());
-
-            let mut updated = false;
-
-            let expected_paths = ghrelease
-                .installed
-                .iter_mut()
-                .filter_map(|install| {
-                    // Cleanup the references to this repository for
-                    // any installed github release that is not currently
-                    // listed in the up configuration
-                    if install.required_by.contains(&wd_id) && install.stale() {
-                        install.required_by.retain(|id| id != &wd_id);
-                        updated = true;
-                    }
-
-                    // Only return the path if the github release is
-                    // expected, as we will clear the bin path from
-                    // all unexpected github releases
-                    if install.required_by.is_empty() {
-                        None
-                    } else {
-                        Some(bin_path.join(&install.repository).join(&install.version))
-                    }
-                })
-                .collect::<Vec<PathBuf>>();
-
-            return_value = cleanup_path(&bin_path, expected_paths, progress_handler, true);
-
-            return_value.is_ok() && updated
-        }) {
-            progress_handler.progress(format!("failed to update cache: {}", err).light_yellow());
+    fn handling(&self) -> GithubReleaseHandled {
+        match self.was_handled.get() {
+            Some(handled) => handled.clone(),
+            None => GithubReleaseHandled::Unhandled,
         }
-
-        let (root_removed, num_removed, removed_paths) = return_value?;
-
-        if root_removed {
-            return Ok(Some(format!(
-                "removed github release bin path {}",
-                bin_path.display().to_string().light_yellow()
-            )));
-        }
-
-        if num_removed == 0 {
-            return Ok(None);
-        }
-
-        // We want to go over the paths that were removed to
-        // return a proper message about the github releases
-        // that were removed
-        let removed_releases = removed_paths
-            .iter()
-            .filter_map(|path| {
-                // Path should starts with the bin path if it is a release
-                let rest_of_path = match path.strip_prefix(&bin_path) {
-                    Ok(rest_of_path) => rest_of_path,
-                    Err(_) => return None,
-                };
-
-                // Path should have three components left after stripping
-                // the bin path: the repository (2) and the version (1)
-                let parts = rest_of_path.components().collect::<Vec<_>>();
-                if parts.len() != 3 {
-                    return None;
-                }
-
-                let parts = parts
-                    .into_iter()
-                    .map(|part| part.as_os_str().to_string_lossy().to_string())
-                    .collect::<Vec<String>>();
-
-                let repo_owner = parts[0].clone();
-                let repo_name = parts[1].clone();
-                let version = parts[2].clone();
-
-                Some((repo_owner, repo_name, version))
-            })
-            .collect::<Vec<_>>();
-
-        let removed_releases = removed_releases
-            .iter()
-            .map(|(repo_owner, repo_name, version)| {
-                format!(
-                    "{}/{} {}",
-                    repo_owner.light_yellow(),
-                    repo_name.light_yellow(),
-                    version.light_yellow()
-                )
-                .light_yellow()
-            })
-            .collect::<Vec<_>>();
-
-        Ok(Some(format!("removed {}", removed_releases.join(", "))))
     }
 }
 
