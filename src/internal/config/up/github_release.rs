@@ -608,7 +608,33 @@ impl UpConfigGithubRelease {
         }
 
         let releases = self.list_releases(options, progress_handler)?;
-        let release = self.resolve_release(&releases, progress_handler)?;
+        let release = match self.resolve_release(&releases) {
+            Ok(release) => release,
+            Err(err) => {
+                // If the release is not fresh of now, and we failed to
+                // resolve the release, we should try to refresh the
+                // release list and try again
+                if options.read_cache && !releases.is_fresh() {
+                    progress_handler.progress("no matching release found in cache".to_string());
+
+                    let releases = self.list_releases(
+                        &UpOptions {
+                            read_cache: false,
+                            ..options.clone()
+                        },
+                        progress_handler,
+                    )?;
+
+                    self.resolve_release(&releases).map_err(|err| {
+                        progress_handler.error_with_message(err.message());
+                        err
+                    })?
+                } else {
+                    progress_handler.error_with_message(err.message());
+                    return Err(err);
+                }
+            }
+        };
 
         progress_handler.progress(format!("found release {}", release.tag_name.light_yellow()));
 
@@ -787,11 +813,7 @@ impl UpConfigGithubRelease {
         Ok(releases)
     }
 
-    fn resolve_release(
-        &self,
-        releases: &GithubReleases,
-        progress_handler: &UpProgressHandler,
-    ) -> Result<GithubReleaseVersion, UpError> {
+    fn resolve_release(&self, releases: &GithubReleases) -> Result<GithubReleaseVersion, UpError> {
         let version = self.version.clone().unwrap_or_else(|| "latest".to_string());
 
         let (version, release) = releases
@@ -801,13 +823,11 @@ impl UpConfigGithubRelease {
                     "no matching release found for {} {}",
                     self.repository, version
                 );
-                progress_handler.error_with_message(errmsg.clone());
                 UpError::Exec(errmsg)
             })?;
 
         self.actual_version.set(version.to_string()).map_err(|_| {
             let errmsg = "failed to set actual version".to_string();
-            progress_handler.error_with_message(errmsg.clone());
             UpError::Exec(errmsg)
         })?;
 

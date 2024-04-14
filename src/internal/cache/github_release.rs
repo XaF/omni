@@ -193,6 +193,10 @@ impl GithubReleases {
         })
     }
 
+    pub fn is_fresh(&self) -> bool {
+        self.fetched_at >= GITHUB_RELEASE_OPERATION_NOW.clone()
+    }
+
     pub fn is_stale(&self, ttl: u64) -> bool {
         let duration = time::Duration::seconds(ttl as i64);
         self.fetched_at + duration < OffsetDateTime::now_utc()
