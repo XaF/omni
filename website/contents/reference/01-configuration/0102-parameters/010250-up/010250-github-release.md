@@ -7,7 +7,7 @@ description: Configuration of the `github-release` kind of `up` parameter
 Install a tool from a GitHub release.
 
 For this to work properly for a GitHub release, it will need to:
-- Be provided as a `.tar.gz` or `.zip` archive
+- Be provided as a `.tar.gz` or `.zip` archive, or as a binary file (no extension)
 - Have a file name that contains hints about the OS it was built for (e.g. `linux`, `darwin`, ...)
 - Have a file name that contains hints about the architecture it was built for (e.g. `amd64`, `arm64`, ...)
 
@@ -22,6 +22,10 @@ This does not support using authentication yet, and thus will only work for publ
 - `ghrelease`
 - `github_release`
 - `githubrelease`
+- `github-releases`
+- `ghreleases`
+- `github_releases`
+- `githubreleases`
 
 ## Parameters
 
@@ -71,6 +75,10 @@ up:
   - ghrelease: XaF/omni
   - github_release: XaF/omni
   - githubrelease: XaF/omni
+  - github-releases: XaF/omni
+  - ghreleases: XaF/omni
+  - github_releases: XaF/omni
+  - githubreleases: XaF/omni
 
   # Will also install the latest version
   - github-release:
@@ -99,6 +107,19 @@ up:
       repository: XaF/omni
       version: 1
       prerelease: true
+
+  # Will install all the specified releases
+  - github-release:
+      XaF/omni: 1.2.3
+      omnicli/omni:
+        version: 4.5.6
+        prerelease: true
+
+  # Will install all the listed releases
+  - github-release:
+      - XaF/omni: 1.2.3
+      - repository: omnicli/omni
+        version: 4.5.6
 ```
 
 ## Dynamic environment

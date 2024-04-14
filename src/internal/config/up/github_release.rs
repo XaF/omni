@@ -197,11 +197,11 @@ impl UpConfigGithubReleases {
         let mut numbers = vec![];
 
         if let Some(count) = count.get(&GithubReleaseHandled::Handled) {
-            numbers.push(format!("+{}", count).green());
+            numbers.push(format!("{} installed", count).green());
         }
 
         if let Some(count) = count.get(&GithubReleaseHandled::Noop) {
-            numbers.push(format!("{}", count));
+            numbers.push(format!("{} already installed", count).light_black());
         }
 
         if numbers.is_empty() {
@@ -300,13 +300,7 @@ impl UpConfigGithubReleases {
         let (root_removed, num_removed, removed_paths) = return_value?;
 
         if root_removed {
-            return Ok(Some(format!(
-                "removed github release bin path {}",
-                github_releases_bin_path()
-                    .display()
-                    .to_string()
-                    .light_yellow()
-            )));
+            return Ok(Some("removed all github releases".to_string()));
         }
 
         if num_removed == 0 {
@@ -328,7 +322,7 @@ impl UpConfigGithubReleases {
                 // Path should have three components left after stripping
                 // the bin path: the repository (2) and the version (1)
                 let parts = rest_of_path.components().collect::<Vec<_>>();
-                if parts.len() != 3 {
+                if parts.len() > 3 {
                     return None;
                 }
 
@@ -338,24 +332,49 @@ impl UpConfigGithubReleases {
                     .collect::<Vec<String>>();
 
                 let repo_owner = parts[0].clone();
-                let repo_name = parts[1].clone();
-                let version = parts[2].clone();
+                let repo_name = if parts.len() > 1 {
+                    Some(parts[1].clone())
+                } else {
+                    None
+                };
+                let version = if parts.len() > 2 {
+                    Some(parts[2].clone())
+                } else {
+                    None
+                };
 
                 Some((repo_owner, repo_name, version))
             })
             .collect::<Vec<_>>();
 
+        if removed_releases.is_empty() {
+            return Ok(Some(format!(
+                "removed {} release{}",
+                num_removed.light_yellow(),
+                if num_removed > 1 { "s" } else { "" }
+            )));
+        }
+
         let removed_releases = removed_releases
             .iter()
-            .map(|(repo_owner, repo_name, version)| {
-                format!(
-                    "{}/{} {}",
-                    repo_owner.light_yellow(),
-                    repo_name.light_yellow(),
-                    version.light_yellow()
-                )
-                .light_yellow()
-            })
+            .map(
+                |(repo_owner, repo_name, version)| match (repo_name, version) {
+                    (Some(repo_name), Some(version)) => format!(
+                        "{}/{} {}",
+                        repo_owner.light_yellow(),
+                        repo_name.light_yellow(),
+                        version.light_yellow()
+                    ),
+                    (Some(repo_name), None) => {
+                        format!(
+                            "{}/{} (all versions)",
+                            repo_owner.light_yellow(),
+                            repo_name.light_yellow()
+                        )
+                    }
+                    (None, _) => format!("{} (all releases)", repo_owner.light_yellow()),
+                },
+            )
             .collect::<Vec<_>>();
 
         Ok(Some(format!("removed {}", removed_releases.join(", "))))
@@ -446,24 +465,43 @@ impl UpConfigGithubRelease {
             .iter()
             .find_map(|key| table.get(*key));
 
-        let repository = if let Some(repository) = repository {
-            if let Some(repository_details) = repository.as_table() {
-                let owner = repository_details
-                    .get("owner")
-                    .map(|v| v.as_str_forced())
-                    .unwrap_or(None)
-                    .unwrap_or("".to_string());
-                let name = repository_details
-                    .get("name")
-                    .map(|v| v.as_str_forced())
-                    .unwrap_or(None)
-                    .unwrap_or("".to_string());
-                format!("{}/{}", owner, name)
-            } else if let Some(repository) = repository.as_str_forced() {
-                repository.to_string()
-            } else {
-                "".to_string()
+        let repository = match repository {
+            Some(repository) => repository,
+            None => {
+                if table.len() == 1 {
+                    let (key, value) = table.iter().next().unwrap();
+                    if let Some(version) = value.as_str_forced() {
+                        return UpConfigGithubRelease {
+                            repository: key.clone(),
+                            version: Some(version.to_string()),
+                            ..UpConfigGithubRelease::default()
+                        };
+                    } else if let (Some(table), Ok(repo_config_value)) =
+                        (value.as_table(), ConfigValue::from_str(key))
+                    {
+                        let mut repo_config = table.clone();
+                        repo_config.insert("repository".to_string(), repo_config_value);
+                        return UpConfigGithubRelease::from_table(&repo_config);
+                    }
+                }
+                return UpConfigGithubRelease::default();
             }
+        };
+
+        let repository = if let Some(repository_details) = repository.as_table() {
+            let owner = repository_details
+                .get("owner")
+                .map(|v| v.as_str_forced())
+                .unwrap_or(None)
+                .unwrap_or("".to_string());
+            let name = repository_details
+                .get("name")
+                .map(|v| v.as_str_forced())
+                .unwrap_or(None)
+                .unwrap_or("".to_string());
+            format!("{}/{}", owner, name)
+        } else if let Some(repository) = repository.as_str_forced() {
+            repository.to_string()
         } else {
             "".to_string()
         };
