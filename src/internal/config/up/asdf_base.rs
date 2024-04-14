@@ -1123,7 +1123,7 @@ fn detect_version_from_tool_version_file(tool_name: String, path: PathBuf) -> Op
     let tool_name = tool_name.to_lowercase();
     let version_file_prefixes = match tool_name.as_str() {
         "golang" => vec!["go", "golang"],
-        "node" => vec!["node", "nodejs"],
+        "nodejs" => vec!["node", "nodejs"],
         _ => vec![tool_name.as_str()],
     };
 
