@@ -14,7 +14,7 @@ pub(crate) mod custom;
 pub(crate) use custom::UpConfigCustom;
 
 pub(crate) mod github_release;
-pub(crate) use github_release::UpConfigGithubRelease;
+pub(crate) use github_release::UpConfigGithubReleases;
 
 pub(crate) mod golang;
 pub(crate) use golang::UpConfigGolang;
