@@ -3,6 +3,7 @@ use std::fs::OpenOptions;
 use std::io;
 use std::os::unix::fs::PermissionsExt;
 use std::path::PathBuf;
+use std::process::Command as ProcessCommand;
 
 use itertools::Itertools;
 use once_cell::sync::Lazy;
@@ -148,10 +149,11 @@ impl UpConfigGithubReleases {
         for (idx, release) in self.releases.iter().enumerate() {
             let subhandler = progress_handler.subhandler(
                 &format!(
-                    "[{current:padding$}/{total:padding$}] ",
+                    "[{current:padding$}/{total:padding$}] {release} ",
                     current = idx + 1,
                     total = num,
                     padding = format!("{}", num).len(),
+                    release = release.desc(),
                 )
                 .light_yellow(),
             );
@@ -739,6 +741,61 @@ impl UpConfigGithubRelease {
         }
     }
 
+    fn get_auth_token(&self, progress_handler: &UpProgressHandler) -> Option<String> {
+        // TODO: allow to fetch PAT from config too, so someone
+        // could configure it if they don't have `gh` installed
+        if !which::which("gh").is_ok() {
+            return None;
+        }
+
+        progress_handler.progress(format!(
+            "preparing to get auth token from {}",
+            "gh".light_yellow()
+        ));
+
+        let hostname = if let Some(api_url) = &self.api_url {
+            match url::Url::parse(api_url) {
+                Ok(url) => url.host_str().unwrap_or(api_url).to_string(),
+                Err(err) => {
+                    progress_handler.progress(format!("failed to parse URL: {}", err));
+
+                    api_url.clone()
+                }
+            }
+        } else {
+            "github.com".to_string()
+        };
+
+        progress_handler.progress(format!(
+            "getting auth token from {} and hostname {}",
+            "gh".light_yellow(),
+            hostname.light_yellow()
+        ));
+
+        let mut gh_auth_token = ProcessCommand::new("gh");
+        gh_auth_token.arg("auth");
+        gh_auth_token.arg("token");
+        gh_auth_token.arg("--hostname");
+        gh_auth_token.arg(hostname);
+        gh_auth_token.stdout(std::process::Stdio::piped());
+        gh_auth_token.stderr(std::process::Stdio::piped());
+
+        let output = gh_auth_token.output().ok()?;
+
+        if !output.status.success() {
+            progress_handler.progress(format!(
+                "failed to get auth token: {}",
+                String::from_utf8_lossy(&output.stderr)
+            ));
+            return None;
+        }
+
+        progress_handler.progress("auth token retrieved".to_string());
+
+        let token = String::from_utf8_lossy(&output.stdout).trim().to_string();
+        Some(token)
+    }
+
     fn list_releases_from_api(
         &self,
         progress_handler: &UpProgressHandler,
@@ -764,6 +821,17 @@ impl UpConfigGithubRelease {
             "X-GitHub-Api-Version",
             reqwest::header::HeaderValue::from_static("2022-11-28"),
         );
+
+        if let Some(token) = self.get_auth_token(progress_handler) {
+            match reqwest::header::HeaderValue::from_str(&format!("Bearer {}", token)) {
+                Ok(header_value) => {
+                    headers.insert(reqwest::header::AUTHORIZATION, header_value);
+                }
+                Err(err) => {
+                    progress_handler.progress(format!("failed to set auth token: {}", err));
+                }
+            }
+        }
 
         let client = match reqwest::blocking::Client::builder()
             .user_agent(format!("omni {}", env!("CARGO_PKG_VERSION")))
