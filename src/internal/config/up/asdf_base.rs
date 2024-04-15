@@ -339,7 +339,7 @@ impl UpConfigAsdfBase {
             }
         }
 
-        let (tool, tool_url, tool_real_name) = match &override_tool_url {
+        let (tool, tool_real_name, tool_url) = match &override_tool_url {
             Some(url) => {
                 let tool_real_name = Some(tool.to_string());
 
