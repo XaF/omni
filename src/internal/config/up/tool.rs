@@ -38,6 +38,10 @@ pub enum UpConfigTool {
     /// or all have been tried.
     Any(Vec<UpConfigTool>),
 
+    /// Asdf represents any generic asdf tool that is not specifically
+    /// defined in the other types for special handling.
+    Asdf(UpConfigAsdfBase),
+
     // TODO: Apt(UpConfigApt),
     /// Bash represents the bash tool.
     Bash(UpConfigAsdfBase),
@@ -77,15 +81,6 @@ pub enum UpConfigTool {
     // TODO: Pacman(UpConfigPacman),
     /// Python represents the python tool.
     Python(UpConfigPython),
-
-    /// Ruby represents the ruby tool.
-    Ruby(UpConfigAsdfBase),
-
-    /// Rust represents the rust tool.
-    Rust(UpConfigAsdfBase),
-
-    /// Terraform represents the terraform tool.
-    Terraform(UpConfigAsdfBase),
 }
 
 // Generic function to create a hashmap with a single key/value pair.
@@ -105,6 +100,9 @@ impl Serialize for UpConfigTool {
         match self {
             UpConfigTool::And(configs) => create_hashmap("and", configs).serialize(serializer),
             UpConfigTool::Any(configs) => create_hashmap("any", configs).serialize(serializer),
+            UpConfigTool::Asdf(config) => {
+                create_hashmap(&config.name(), config).serialize(serializer)
+            }
             UpConfigTool::Bash(config) => create_hashmap("bash", config).serialize(serializer),
             UpConfigTool::Bundler(config) => {
                 create_hashmap("bundler", config).serialize(serializer)
@@ -121,11 +119,6 @@ impl Serialize for UpConfigTool {
             UpConfigTool::Nodejs(config) => create_hashmap("nodejs", config).serialize(serializer),
             UpConfigTool::Or(configs) => create_hashmap("or", configs).serialize(serializer),
             UpConfigTool::Python(config) => create_hashmap("python", config).serialize(serializer),
-            UpConfigTool::Ruby(config) => create_hashmap("ruby", config).serialize(serializer),
-            UpConfigTool::Rust(config) => create_hashmap("rust", config).serialize(serializer),
-            UpConfigTool::Terraform(config) => {
-                create_hashmap("terraform", config).serialize(serializer)
-            }
         }
     }
 }
@@ -184,18 +177,10 @@ impl UpConfigTool {
             "python" => Some(UpConfigTool::Python(UpConfigPython::from_config_value(
                 config_value,
             ))),
-            "ruby" => Some(UpConfigTool::Ruby(UpConfigAsdfBase::from_config_value(
-                "ruby",
+            _ => Some(UpConfigTool::Asdf(UpConfigAsdfBase::from_config_value(
+                up_name,
                 config_value,
             ))),
-            "rust" => Some(UpConfigTool::Rust(UpConfigAsdfBase::from_config_value(
-                "rust",
-                config_value,
-            ))),
-            "terraform" => Some(UpConfigTool::Terraform(
-                UpConfigAsdfBase::from_config_value("terraform", config_value),
-            )),
-            _ => None,
         }
     }
 
@@ -232,6 +217,7 @@ impl UpConfigTool {
                 }
                 result
             }
+            UpConfigTool::Asdf(config) => config.up(options, progress_handler),
             UpConfigTool::Bash(config) => config.up(options, progress_handler),
             UpConfigTool::Bundler(config) => config.up(progress_handler),
             UpConfigTool::Custom(config) => config.up(progress_handler),
@@ -255,9 +241,6 @@ impl UpConfigTool {
                 result
             }
             UpConfigTool::Python(config) => config.up(options, progress_handler),
-            UpConfigTool::Ruby(config) => config.up(options, progress_handler),
-            UpConfigTool::Rust(config) => config.up(options, progress_handler),
-            UpConfigTool::Terraform(config) => config.up(options, progress_handler),
         }
     }
 
@@ -269,6 +252,7 @@ impl UpConfigTool {
                 }
                 Ok(())
             }
+            UpConfigTool::Asdf(config) => config.down(progress_handler),
             UpConfigTool::Bash(config) => config.down(progress_handler),
             UpConfigTool::Bundler(config) => config.down(progress_handler),
             UpConfigTool::Custom(config) => config.down(progress_handler),
@@ -278,9 +262,6 @@ impl UpConfigTool {
             UpConfigTool::Nix(config) => config.down(progress_handler),
             UpConfigTool::Nodejs(config) => config.down(progress_handler),
             UpConfigTool::Python(config) => config.down(progress_handler),
-            UpConfigTool::Ruby(config) => config.down(progress_handler),
-            UpConfigTool::Rust(config) => config.down(progress_handler),
-            UpConfigTool::Terraform(config) => config.down(progress_handler),
         }
     }
 
@@ -307,6 +288,7 @@ impl UpConfigTool {
             UpConfigTool::And(configs) | UpConfigTool::Any(configs) | UpConfigTool::Or(configs) => {
                 any(configs, |config| config.was_upped())
             }
+            UpConfigTool::Asdf(config) => config.was_upped(),
             UpConfigTool::Bash(config) => config.was_upped(),
             // UpConfigTool::Bundler(config) => config.was_upped(),
             // UpConfigTool::Custom(config) => config.was_upped(),
@@ -316,9 +298,6 @@ impl UpConfigTool {
             UpConfigTool::Nix(config) => config.was_upped(),
             UpConfigTool::Nodejs(config) => config.asdf_base.was_upped(),
             UpConfigTool::Python(config) => config.asdf_base.was_upped(),
-            UpConfigTool::Ruby(config) => config.was_upped(),
-            UpConfigTool::Rust(config) => config.was_upped(),
-            UpConfigTool::Terraform(config) => config.was_upped(),
             _ => false,
         }
     }
@@ -338,6 +317,7 @@ impl UpConfigTool {
                     None => vec![],
                 }
             }
+            UpConfigTool::Asdf(config) => config.data_paths(),
             UpConfigTool::Bash(config) => config.data_paths(),
             // UpConfigTool::Bundler(config) => config.data_paths(),
             // UpConfigTool::Custom(config) => config.data_paths(),
@@ -347,30 +327,25 @@ impl UpConfigTool {
             UpConfigTool::Nix(config) => config.data_paths(),
             UpConfigTool::Nodejs(config) => config.asdf_base.data_paths(),
             UpConfigTool::Python(config) => config.asdf_base.data_paths(),
-            UpConfigTool::Ruby(config) => config.data_paths(),
-            UpConfigTool::Rust(config) => config.data_paths(),
-            UpConfigTool::Terraform(config) => config.data_paths(),
             _ => vec![],
         }
     }
 
-    pub fn to_name(&self) -> &str {
+    pub fn to_name(&self) -> String {
         match self {
-            UpConfigTool::And(_) => "and",
-            UpConfigTool::Any(_) => "any",
-            UpConfigTool::Or(_) => "or",
-            UpConfigTool::Bash(_) => "bash",
-            UpConfigTool::Bundler(_) => "bundler",
-            UpConfigTool::Custom(_) => "custom",
-            UpConfigTool::GithubRelease(_) => "github-release",
-            UpConfigTool::Go(_) => "go",
-            UpConfigTool::Homebrew(_) => "homebrew",
-            UpConfigTool::Nix(_) => "nix",
-            UpConfigTool::Nodejs(_) => "nodejs",
-            UpConfigTool::Python(_) => "python",
-            UpConfigTool::Ruby(_) => "ruby",
-            UpConfigTool::Rust(_) => "rust",
-            UpConfigTool::Terraform(_) => "terraform",
+            UpConfigTool::And(_) => "and".into(),
+            UpConfigTool::Any(_) => "any".into(),
+            UpConfigTool::Asdf(config) => config.name(),
+            UpConfigTool::Or(_) => "or".into(),
+            UpConfigTool::Bash(_) => "bash".into(),
+            UpConfigTool::Bundler(_) => "bundler".into(),
+            UpConfigTool::Custom(_) => "custom".into(),
+            UpConfigTool::GithubRelease(_) => "github-release".into(),
+            UpConfigTool::Go(_) => "go".into(),
+            UpConfigTool::Homebrew(_) => "homebrew".into(),
+            UpConfigTool::Nix(_) => "nix".into(),
+            UpConfigTool::Nodejs(_) => "nodejs".into(),
+            UpConfigTool::Python(_) => "python".into(),
         }
     }
 

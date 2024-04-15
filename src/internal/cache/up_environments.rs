@@ -125,6 +125,7 @@ impl UpEnvironmentsCache {
         &mut self,
         workdir_id: &str,
         tool: &str,
+        tool_real_name: Option<&str>,
         version: &str,
         dirs: BTreeSet<String>,
     ) -> bool {
@@ -155,7 +156,9 @@ impl UpEnvironmentsCache {
         };
 
         for dir in dirs {
-            wd_up_env.versions.push(UpVersion::new(tool, version, &dir));
+            wd_up_env
+                .versions
+                .push(UpVersion::new(tool, tool_real_name, version, &dir));
         }
 
         self.updated();
@@ -291,6 +294,8 @@ impl UpEnvironment {
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct UpVersion {
     pub tool: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tool_real_name: Option<String>,
     pub version: String,
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub dir: String,
@@ -299,9 +304,10 @@ pub struct UpVersion {
 }
 
 impl UpVersion {
-    pub fn new(tool: &str, version: &str, dir: &str) -> Self {
+    pub fn new(tool: &str, tool_real_name: Option<&str>, version: &str, dir: &str) -> Self {
         Self {
             tool: tool.to_string(),
+            tool_real_name: tool_real_name.map(|s| s.to_string()),
             version: version.to_string(),
             dir: dir.to_string(),
             data_path: None,
