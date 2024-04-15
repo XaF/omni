@@ -52,10 +52,13 @@ pub fn config_template_context<T: AsRef<str>>(path: T) -> tera::Context {
         context.insert("repo", &repo);
     }
 
+    // Load context for the environment
+    let env = std::env::vars().collect::<HashMap<String, String>>();
+    context.insert("env", &env);
+
     // Load context for the user prompts
     let prompts = PromptsCache::get().answers(path);
     context.insert("prompts", &prompts);
-    // TODO implement this
 
     context
 }

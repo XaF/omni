@@ -28,6 +28,10 @@ The `repo` object contains information about the current repository, if in a rep
 | `org` | string | The organization of the repository |
 | `name` | string | The name of the repository |
 
+### `env` object
+
+The `env` map contains the environment variables of the current process.
+
 ### `prompts` object
 
 When using prompts in your working directory, they are made available through the `prompts` object in a template, as soon as that prompt has been answered. This means that you can use that prompt's answer when asking any following prompt.
