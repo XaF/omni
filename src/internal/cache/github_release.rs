@@ -194,7 +194,7 @@ impl GithubReleases {
     }
 
     pub fn is_fresh(&self) -> bool {
-        self.fetched_at >= GITHUB_RELEASE_OPERATION_NOW.clone()
+        self.fetched_at >= github_release_operation_now()
     }
 
     pub fn is_stale(&self, ttl: u64) -> bool {
