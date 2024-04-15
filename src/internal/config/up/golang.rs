@@ -224,32 +224,35 @@ fn setup_individual_gopath(
     progress_handler: &dyn ProgressHandler,
     _config_value: Option<ConfigValue>,
     tool: String,
+    tool_real_name: String,
     _requested_version: String,
     versions: Vec<AsdfToolUpVersion>,
 ) -> Result<(), UpError> {
-    if tool != "golang" {
+    if tool_real_name != "golang" {
         panic!("setup_individual_gopath called with wrong tool: {}", tool);
     }
 
     // Get the data path for the work directory
     let workdir = workdir(".");
 
-    let workdir_id = if let Some(workdir_id) = workdir.id() {
-        workdir_id
-    } else {
-        return Err(UpError::Exec(format!(
-            "failed to get workdir id for {}",
-            current_dir().display()
-        )));
+    let workdir_id = match workdir.id() {
+        Some(workdir_id) => workdir_id,
+        None => {
+            return Err(UpError::Exec(format!(
+                "failed to get workdir id for {}",
+                current_dir().display()
+            )));
+        }
     };
 
-    let data_path = if let Some(data_path) = workdir.data_path() {
-        data_path
-    } else {
-        return Err(UpError::Exec(format!(
-            "failed to get data path for {}",
-            current_dir().display()
-        )));
+    let data_path = match workdir.data_path() {
+        Some(data_path) => data_path,
+        None => {
+            return Err(UpError::Exec(format!(
+                "failed to get data path for {}",
+                current_dir().display()
+            )));
+        }
     };
 
     // Handle each version individually

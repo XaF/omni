@@ -44,13 +44,14 @@ lazy_static! {
     static ref ASDF_BIN: String = format!("{}/bin/asdf", *ASDF_PATH);
 }
 
-type DetectVersionFunc = fn(String, PathBuf) -> Option<String>;
+type DetectVersionFunc = fn(tool_real_name: String, path: PathBuf) -> Option<String>;
 type PostInstallFunc = fn(
-    &dyn ProgressHandler,
-    Option<ConfigValue>,
-    String,
-    String,
-    Vec<AsdfToolUpVersion>,
+    progress_handler: &dyn ProgressHandler,
+    config_value: Option<ConfigValue>,
+    tool: String,
+    tool_real_name: String,
+    requested_version: String,
+    versions: Vec<AsdfToolUpVersion>,
 ) -> Result<(), UpError>;
 
 pub fn asdf_path() -> String {
@@ -495,6 +496,7 @@ impl UpConfigAsdfBase {
                             progress_handler,
                             self.config_value.clone(),
                             self.tool.clone(),
+                            self.name(),
                             self.version.clone(),
                             post_install_versions.clone(),
                         ) {
@@ -654,6 +656,7 @@ impl UpConfigAsdfBase {
                     progress_handler,
                     self.config_value.clone(),
                     self.tool.clone(),
+                    self.name(),
                     self.version.clone(),
                     post_install_versions.clone(),
                 ) {
