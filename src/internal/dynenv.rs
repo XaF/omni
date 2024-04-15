@@ -457,7 +457,8 @@ impl DynamicEnv {
                 let version_minor = version.split('.').take(2).join(".");
                 let tool_prefix = asdf_tool_path(&tool, &version);
 
-                self.features.push(format!("{}:{}", tool, version));
+                self.features
+                    .push(format!("{}:{}", tool_real_name, version));
 
                 match tool_real_name.as_str() {
                     "ruby" => {
