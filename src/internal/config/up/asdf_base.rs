@@ -471,215 +471,236 @@ impl UpConfigAsdfBase {
         }
 
         if self.version == "auto" {
-            progress_handler.progress("detecting required versions and paths".to_string());
+            return self.run_up_auto(options, progress_handler);
+        }
 
-            let mut detected_versions: BTreeMap<String, BTreeSet<String>> = BTreeMap::new();
+        match self.install_version(progress_handler) {
+            Ok(installed) => {
+                self.update_cache(progress_handler);
 
-            // Get the current directory
-            let current_dir = std::env::current_dir().expect("failed to get current directory");
+                let version = self.version(None).unwrap();
 
-            let mut search_dirs = self.dirs.clone();
-            if search_dirs.is_empty() {
-                search_dirs.insert("".to_string());
-            }
-
-            let mut detect_version_funcs = self.detect_version_funcs.clone();
-            detect_version_funcs.push(detect_version_from_asdf_version_file);
-            detect_version_funcs.push(detect_version_from_tool_version_file);
-
-            for search_dir in search_dirs.iter() {
-                // For safety, we remove any leading slashes from the search directory,
-                // as we only want to search in the workdir
-                let mut search_dir = search_dir.clone();
-                while search_dir.starts_with('/') {
-                    search_dir.remove(0);
-                }
-
-                // Append the search directory to the current directory, since we are
-                // at the root of the workdir
-                let search_path = current_dir.join(search_dir);
-
-                for entry in WalkDir::new(search_path)
-                    .follow_links(true)
-                    .into_iter()
-                    .flatten()
-                {
-                    if !entry.path().is_dir() {
-                        continue;
-                    }
-
-                    for detect_version_func in detect_version_funcs.iter() {
-                        if let Some(detected_version) =
-                            detect_version_func(self.name(), entry.path().to_path_buf())
-                        {
-                            let mut dir = entry
-                                .path()
-                                .strip_prefix(&current_dir)
-                                .expect("failed to strip prefix")
-                                .to_string_lossy()
-                                .to_string();
-                            while dir.starts_with('/') {
-                                dir.remove(0);
-                            }
-                            while dir.ends_with('/') {
-                                dir.pop();
-                            }
-
-                            if let Some(dirs) = detected_versions.get_mut(&detected_version) {
-                                dirs.insert(dir);
-                            } else {
-                                let mut dirs = BTreeSet::new();
-                                dirs.insert(dir);
-                                detected_versions.insert(detected_version.to_string(), dirs);
-                            }
-
-                            break;
-                        }
-                    }
-                }
-            }
-
-            if detected_versions.is_empty() {
-                progress_handler.success_with_message("no version detected".to_string());
-                return Ok(());
-            }
-
-            let mut installed_versions = Vec::new();
-            let mut already_installed_versions = Vec::new();
-            let mut all_versions = BTreeMap::new();
-
-            for (version, dirs) in detected_versions.iter() {
-                let asdf_base = self.new_from_auto(version, dirs.clone());
-                let installed = asdf_base.install_version(progress_handler);
-                if installed.is_err() {
-                    let err = installed.err().unwrap();
-                    progress_handler.error_with_message(format!("error: {}", err));
-                    return Err(err);
-                }
-
-                let version = asdf_base.version(None).unwrap();
-                all_versions.insert(version.clone(), dirs.clone());
-                if installed.unwrap() {
-                    installed_versions.push(version.clone());
-                } else {
-                    already_installed_versions.push(version.clone());
-                }
-
-                asdf_base.update_cache(progress_handler);
-            }
-
-            self.actual_versions
-                .set(all_versions.clone())
-                .expect("failed to set installed versions");
-
-            if !self.post_install_funcs.is_empty() {
-                let post_install_versions = all_versions
-                    .iter()
-                    .map(|(version, dirs)| AsdfToolUpVersion {
+                if !self.post_install_funcs.is_empty() {
+                    let post_install_versions = vec![AsdfToolUpVersion {
                         version: version.clone(),
-                        dirs: dirs.clone(),
-                        installed: installed_versions.contains(version),
-                    })
-                    .collect::<Vec<AsdfToolUpVersion>>();
+                        dirs: if self.dirs.is_empty() {
+                            vec!["".to_string()].into_iter().collect()
+                        } else {
+                            self.dirs.clone()
+                        },
+                        installed,
+                    }];
 
-                for func in self.post_install_funcs.iter() {
-                    if let Err(err) = func(
-                        progress_handler,
-                        self.config_value.clone(),
-                        self.tool.clone(),
-                        self.name(),
-                        self.version.clone(),
-                        post_install_versions.clone(),
-                    ) {
-                        progress_handler.error_with_message(format!("error: {}", err));
-                        return Err(err);
-                    }
-                }
-            }
-
-            let mut msgs = Vec::new();
-
-            if !installed_versions.is_empty() {
-                msgs.push(
-                    format!(
-                        "{} {} installed",
-                        self.name(),
-                        installed_versions
-                            .iter()
-                            .map(|version| version.to_string())
-                            .collect::<Vec<String>>()
-                            .join(", ")
-                    )
-                    .green(),
-                );
-            }
-
-            if !already_installed_versions.is_empty() {
-                msgs.push(
-                    format!(
-                        "{} {} already installed",
-                        self.name(),
-                        already_installed_versions
-                            .iter()
-                            .map(|version| version.to_string())
-                            .collect::<Vec<String>>()
-                            .join(", ")
-                    )
-                    .light_black(),
-                );
-            }
-
-            progress_handler.success_with_message(msgs.join(", "));
-
-            Ok(())
-        } else {
-            match self.install_version(progress_handler) {
-                Ok(installed) => {
-                    self.update_cache(progress_handler);
-
-                    let version = self.version(None).unwrap();
-
-                    if !self.post_install_funcs.is_empty() {
-                        let post_install_versions = vec![AsdfToolUpVersion {
-                            version: version.clone(),
-                            dirs: if self.dirs.is_empty() {
-                                vec!["".to_string()].into_iter().collect()
-                            } else {
-                                self.dirs.clone()
-                            },
-                            installed,
-                        }];
-
-                        for func in self.post_install_funcs.iter() {
-                            if let Err(err) = func(
-                                progress_handler,
-                                self.config_value.clone(),
-                                self.tool.clone(),
-                                self.name(),
-                                self.version.clone(),
-                                post_install_versions.clone(),
-                            ) {
-                                progress_handler.error_with_message(format!("error: {}", err));
-                                return Err(err);
-                            }
+                    for func in self.post_install_funcs.iter() {
+                        if let Err(err) = func(
+                            progress_handler,
+                            self.config_value.clone(),
+                            self.tool.clone(),
+                            self.name(),
+                            self.version.clone(),
+                            post_install_versions.clone(),
+                        ) {
+                            progress_handler.error_with_message(format!("error: {}", err));
+                            return Err(err);
                         }
                     }
-
-                    let msg = if installed {
-                        format!("{} {} installed", self.name(), version).green()
-                    } else {
-                        format!("{} {} already installed", self.name(), version).light_black()
-                    };
-                    progress_handler.success_with_message(msg);
-
-                    Ok(())
                 }
-                Err(err) => {
-                    progress_handler.error_with_message(format!("error: {}", err));
-                    Err(err)
+
+                let msg = if installed {
+                    format!("{} {} installed", self.name(), version).green()
+                } else {
+                    format!("{} {} already installed", self.name(), version).light_black()
+                };
+                progress_handler.success_with_message(msg);
+
+                Ok(())
+            }
+            Err(err) => {
+                progress_handler.error_with_message(format!("error: {}", err));
+                Err(err)
+            }
+        }
+    }
+
+    fn run_up_auto(
+        &self,
+        _options: &UpOptions,
+        progress_handler: &UpProgressHandler,
+    ) -> Result<(), UpError> {
+        progress_handler.progress("detecting required versions and paths".to_string());
+
+        let mut detected_versions: BTreeMap<String, BTreeSet<String>> = BTreeMap::new();
+
+        // Get the current directory
+        let current_dir = std::env::current_dir().expect("failed to get current directory");
+
+        let mut search_dirs = self.dirs.clone();
+        if search_dirs.is_empty() {
+            search_dirs.insert("".to_string());
+        }
+
+        let mut detect_version_funcs = self.detect_version_funcs.clone();
+        detect_version_funcs.push(detect_version_from_asdf_version_file);
+        detect_version_funcs.push(detect_version_from_tool_version_file);
+
+        for search_dir in search_dirs.iter() {
+            // For safety, we remove any leading slashes from the search directory,
+            // as we only want to search in the workdir
+            let mut search_dir = search_dir.clone();
+            while search_dir.starts_with('/') {
+                search_dir.remove(0);
+            }
+
+            // Append the search directory to the current directory, since we are
+            // at the root of the workdir
+            let search_path = current_dir.join(search_dir);
+
+            for entry in WalkDir::new(&search_path)
+                .follow_links(true)
+                .into_iter()
+                .filter_map(|entry| {
+                    let entry = entry.ok()?;
+                    if !entry.file_type().is_dir() {
+                        return None;
+                    }
+
+                    // Get the path of the entry after search_dir
+                    let entry_path = entry.path().strip_prefix(&search_path).ok()?;
+
+                    // Ignore the `vendor` directories in the relative path
+                    if entry_path.components().any(|component| {
+                        component == std::path::Component::Normal("vendor".as_ref())
+                    }) {
+                        return None;
+                    }
+
+                    Some(entry)
+                })
+            {
+                for detect_version_func in detect_version_funcs.iter() {
+                    if let Some(detected_version) =
+                        detect_version_func(self.tool.clone(), entry.path().to_path_buf())
+                    {
+                        let mut dir = entry
+                            .path()
+                            .strip_prefix(&current_dir)
+                            .expect("failed to strip prefix")
+                            .to_string_lossy()
+                            .to_string();
+                        while dir.starts_with('/') {
+                            dir.remove(0);
+                        }
+                        while dir.ends_with('/') {
+                            dir.pop();
+                        }
+
+                        if let Some(dirs) = detected_versions.get_mut(&detected_version) {
+                            dirs.insert(dir);
+                        } else {
+                            let mut dirs = BTreeSet::new();
+                            dirs.insert(dir);
+                            detected_versions.insert(detected_version.to_string(), dirs);
+                        }
+
+                        break;
+                    }
                 }
             }
         }
+
+        if detected_versions.is_empty() {
+            progress_handler.success_with_message("no version detected".to_string());
+            return Ok(());
+        }
+
+        let mut installed_versions = Vec::new();
+        let mut already_installed_versions = Vec::new();
+        let mut all_versions = BTreeMap::new();
+
+        for (version, dirs) in detected_versions.iter() {
+            let asdf_base = self.new_from_auto(version, dirs.clone());
+            let installed = asdf_base.install_version(progress_handler);
+            if installed.is_err() {
+                let err = installed.err().unwrap();
+                progress_handler.error_with_message(format!("error: {}", err));
+                return Err(err);
+            }
+
+            let version = asdf_base.version(None).unwrap();
+            all_versions.insert(version.clone(), dirs.clone());
+            if installed.unwrap() {
+                installed_versions.push(version.clone());
+            } else {
+                already_installed_versions.push(version.clone());
+            }
+
+            asdf_base.update_cache(progress_handler);
+        }
+
+        self.actual_versions
+            .set(all_versions.clone())
+            .expect("failed to set installed versions");
+
+        if !self.post_install_funcs.is_empty() {
+            let post_install_versions = all_versions
+                .iter()
+                .map(|(version, dirs)| AsdfToolUpVersion {
+                    version: version.clone(),
+                    dirs: dirs.clone(),
+                    installed: installed_versions.contains(version),
+                })
+                .collect::<Vec<AsdfToolUpVersion>>();
+
+            for func in self.post_install_funcs.iter() {
+                if let Err(err) = func(
+                    progress_handler,
+                    self.config_value.clone(),
+                    self.tool.clone(),
+                    self.name(),
+                    self.version.clone(),
+                    post_install_versions.clone(),
+                ) {
+                    progress_handler.error_with_message(format!("error: {}", err));
+                    return Err(err);
+                }
+            }
+        }
+
+        let mut msgs = Vec::new();
+
+        if !installed_versions.is_empty() {
+            msgs.push(
+                format!(
+                    "{} {} installed",
+                    self.name(),
+                    installed_versions
+                        .iter()
+                        .map(|version| version.to_string())
+                        .collect::<Vec<String>>()
+                        .join(", ")
+                )
+                .green(),
+            );
+        }
+
+        if !already_installed_versions.is_empty() {
+            msgs.push(
+                format!(
+                    "{} {} already installed",
+                    self.name(),
+                    already_installed_versions
+                        .iter()
+                        .map(|version| version.to_string())
+                        .collect::<Vec<String>>()
+                        .join(", ")
+                )
+                .light_black(),
+            );
+        }
+
+        progress_handler.success_with_message(msgs.join(", "));
+
+        Ok(())
     }
 
     pub fn down(&self, progress_handler: &UpProgressHandler) -> Result<(), UpError> {
