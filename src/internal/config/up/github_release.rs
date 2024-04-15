@@ -744,7 +744,7 @@ impl UpConfigGithubRelease {
     fn get_auth_token(&self, progress_handler: &UpProgressHandler) -> Option<String> {
         // TODO: allow to fetch PAT from config too, so someone
         // could configure it if they don't have `gh` installed
-        if !which::which("gh").is_ok() {
+        if which::which("gh").is_err() {
             return None;
         }
 
