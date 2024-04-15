@@ -334,9 +334,34 @@ impl OmniRelease {
     fn brew_upgrade(&self, progress_handler: &dyn ProgressHandler) -> io::Result<bool> {
         progress_handler.progress("updating with homebrew".to_string());
 
+        // We need to make sure first that the tap is up-to-date;
+        // since we don't want to update the whole of homebrew,
+        // which could take a while, we can use `git pull` in the
+        // tap directory to update it
+        let mut git_pull = TokioCommand::new("git");
+        git_pull.arg("pull");
+        git_pull.current_dir(
+            Path::new(&homebrew_prefix().ok_or_else(|| {
+                io::Error::new(io::ErrorKind::Other, "failed to get homebrew prefix")
+            })?)
+            .join("Library")
+            .join("Taps")
+            .join("xaf")
+            .join("homebrew-omni"),
+        );
+        git_pull.stdout(std::process::Stdio::piped());
+        git_pull.stderr(std::process::Stdio::piped());
+
+        let run = run_progress(&mut git_pull, Some(progress_handler), RunConfig::default());
+        if let Err(err) = run {
+            return Err(io::Error::new(io::ErrorKind::Other, err.to_string()));
+        }
+
         let mut brew_upgrade = TokioCommand::new("brew");
         brew_upgrade.arg("upgrade");
         brew_upgrade.arg("xaf/omni/omni");
+        brew_upgrade.env("HOMEBREW_NO_AUTO_UPDATE", "1");
+        brew_upgrade.env("HOMEBREW_NO_INSTALL_UPGRADE", "1");
         brew_upgrade.stdout(std::process::Stdio::piped());
         brew_upgrade.stderr(std::process::Stdio::piped());
 
