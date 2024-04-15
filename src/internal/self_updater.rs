@@ -153,6 +153,31 @@ impl OmniRelease {
         }
     }
 
+    fn is_binary_version(&self) -> Result<bool, String> {
+        // Get the current version from the binary at the path
+        // of the current exe -- if it has been updated, it should
+        // return the new version
+        match ProcessCommand::new(current_exe()).arg("--version").output() {
+            Ok(output) => {
+                let output = String::from_utf8_lossy(&output.stdout);
+                let output = output.trim();
+                let version = output.split_whitespace().last().unwrap_or_default();
+
+                let expected_version = Version::parse(self.version.as_str())
+                    .expect("failed to parse expected version");
+
+                match Version::parse(version) {
+                    Ok(version) => Ok(version == expected_version),
+                    Err(err) => Err(format!(
+                        "failed to parse binary version '{}': {:?}",
+                        version, err
+                    )),
+                }
+            }
+            Err(err) => Err(format!("failed to get binary version: {:?}", err)),
+        }
+    }
+
     fn compatible_binary(&self) -> Option<&OmniReleaseBinary> {
         self.binaries
             .iter()
@@ -241,6 +266,19 @@ impl OmniRelease {
                 return;
             }
         };
+
+        match self.is_binary_version() {
+            Ok(true) => {}
+            Ok(false) => {
+                progress_handler
+                    .error_with_message("failed to update: binary version mismatch".to_string());
+                return;
+            }
+            Err(err) => {
+                progress_handler.error_with_message(err);
+                return;
+            }
+        }
 
         if updated {
             progress_handler
