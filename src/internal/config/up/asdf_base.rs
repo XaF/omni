@@ -370,18 +370,9 @@ impl UpConfigAsdfBase {
     }
 
     pub fn name(&self) -> String {
-        match self.override_tool_url {
+        match &self.tool_real_name {
+            Some(tool) => tool.to_string(),
             None => self.tool.clone(),
-            Some(_) => {
-                // The name is everything before the last `-`
-                let name = self.tool.clone();
-                let last_dash = name.rfind('-').unwrap_or(0);
-                if last_dash == 0 {
-                    self.tool.clone()
-                } else {
-                    name[0..last_dash].to_string()
-                }
-            }
         }
     }
 
