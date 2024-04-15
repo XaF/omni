@@ -12,6 +12,8 @@ use normalize_path::NormalizePath;
 use once_cell::sync::OnceCell;
 use serde::Deserialize;
 use serde::Serialize;
+use sha2::Digest;
+use sha2::Sha256;
 use tokio::process::Command as TokioCommand;
 use walkdir::WalkDir;
 
@@ -172,9 +174,20 @@ pub struct UpConfigAsdfBase {
     #[serde(skip)]
     pub tool: String,
 
+    /// The real name of the tool, if different than tool
+    #[serde(skip)]
+    pub tool_real_name: Option<String>,
+
     /// The URL to use to install the tool.
     #[serde(skip)]
     pub tool_url: Option<String>,
+
+    /// The URL passed as parameter to override the location
+    /// of the tool; this is stored as a separate parameter
+    /// to make sure it can be dumped when looking at the
+    /// configuration.
+    #[serde(rename = "url", default, skip_serializing_if = "Option::is_none")]
+    pub override_tool_url: Option<String>,
 
     /// The version of the tool to install, as specified in the config file.
     pub version: String,
@@ -237,16 +250,9 @@ impl UpConfigAsdfBase {
     pub fn new(tool: &str, version: &str, dirs: BTreeSet<String>) -> Self {
         UpConfigAsdfBase {
             tool: tool.to_string(),
-            tool_url: None,
             version: version.to_string(),
             dirs: dirs.clone(),
-            detect_version_funcs: vec![],
-            post_install_funcs: vec![],
-            actual_version: OnceCell::new(),
-            actual_versions: OnceCell::new(),
-            config_value: None,
-            up_succeeded: OnceCell::new(),
-            deps: OnceCell::new(),
+            ..UpConfigAsdfBase::default()
         }
     }
 
@@ -264,19 +270,7 @@ impl UpConfigAsdfBase {
             tool_url: self.tool_url.clone(),
             version: version.to_string(),
             dirs: dirs.clone(),
-
-            up_succeeded: OnceCell::new(),
-            deps: OnceCell::new(),
-
-            // We can ignore all those fields, as they won't be used,
-            // since the version passed to that call is a specific version
-            // that we got from running the detection functions from a
-            // main instance called with "auto" as the version.
-            detect_version_funcs: vec![],
-            post_install_funcs: vec![],
-            actual_version: OnceCell::new(),
-            actual_versions: OnceCell::new(),
-            config_value: None,
+            ..UpConfigAsdfBase::default()
         }
     }
 
@@ -299,6 +293,7 @@ impl UpConfigAsdfBase {
     ) -> Self {
         let mut version = "latest".to_string();
         let mut dirs = BTreeSet::new();
+        let mut override_tool_url = None;
 
         if let Some(config_value) = config_value {
             if let Some(value) = config_value.as_str() {
@@ -331,21 +326,53 @@ impl UpConfigAsdfBase {
                         }
                     }
                 }
+
+                if let Some(url) = config_value.get_as_str_forced("url") {
+                    let set_override = match &tool_url {
+                        None => true,
+                        Some(tool_url) => url != *tool_url,
+                    };
+                    if set_override {
+                        override_tool_url = Some(url.to_string());
+                    }
+                }
             }
         }
 
+        let (tool, tool_real_name, tool_url) = match &override_tool_url {
+            Some(url) => {
+                let tool_real_name = Some(tool.to_string());
+
+                // Hash the URL into sha256
+                let mut hasher = Sha256::new();
+                hasher.update(url.as_bytes());
+                let hash = format!("{:x}", hasher.finalize());
+                let short_hash = &hash[0..8];
+
+                let tool = format!("{}-{}", tool, short_hash);
+                let tool_url = Some(url.to_string());
+
+                (tool, tool_real_name, tool_url)
+            }
+            None => (tool.to_string(), None, tool_url),
+        };
+
         UpConfigAsdfBase {
-            tool: tool.to_string(),
+            tool,
+            tool_real_name,
             tool_url,
+            override_tool_url,
             version,
             dirs,
-            detect_version_funcs: vec![],
-            post_install_funcs: vec![],
-            actual_version: OnceCell::new(),
-            actual_versions: OnceCell::new(),
             config_value: config_value.cloned(),
-            up_succeeded: OnceCell::new(),
-            deps: OnceCell::new(),
+            ..UpConfigAsdfBase::default()
+        }
+    }
+
+    pub fn name(&self) -> String {
+        match &self.tool_real_name {
+            Some(tool) => tool.to_string(),
+            None => self.tool.clone(),
         }
     }
 
@@ -367,7 +394,12 @@ impl UpConfigAsdfBase {
         progress_handler.progress("updating cache".to_string());
 
         if let Err(err) = AsdfOperationCache::exclusive(|asdf_cache| {
-            asdf_cache.add_installed(&repo_id, &self.tool, &version)
+            asdf_cache.add_installed(
+                &repo_id,
+                &self.tool,
+                &version,
+                self.tool_real_name.as_deref(),
+            )
         }) {
             progress_handler.progress(format!("failed to update tool cache: {}", err));
             return;
@@ -379,7 +411,13 @@ impl UpConfigAsdfBase {
                 dirs.insert("".to_string());
             }
 
-            up_env.add_version(&repo_id, &self.tool, &version, dirs.clone())
+            up_env.add_version(
+                &repo_id,
+                &self.tool,
+                self.tool_real_name.as_deref(),
+                &version,
+                dirs.clone(),
+            )
         }) {
             progress_handler.progress(format!("failed to update tool cache: {}", err));
             return;
@@ -414,7 +452,7 @@ impl UpConfigAsdfBase {
         options: &UpOptions,
         progress_handler: &UpProgressHandler,
     ) -> Result<(), UpError> {
-        progress_handler.init(format!("{} ({}):", self.tool, self.version).light_blue());
+        progress_handler.init(format!("{} ({}):", self.name(), self.version).light_blue());
 
         // Make sure that dependencies are installed
         let subhandler = progress_handler.subhandler(&"deps: ".light_black());
@@ -422,12 +460,12 @@ impl UpConfigAsdfBase {
         update_dynamic_env_for_command(".");
 
         if let Err(err) = install_asdf(progress_handler) {
-            progress_handler.error_with_message(format!("error: {}", err));
+            progress_handler.error();
             return Err(err);
         }
 
         if let Err(err) = self.install_plugin(progress_handler) {
-            progress_handler.error_with_message(format!("error: {}", err));
+            progress_handler.error();
             return Err(err);
         }
 
@@ -563,7 +601,7 @@ impl UpConfigAsdfBase {
                 msgs.push(
                     format!(
                         "{} {} installed",
-                        self.tool,
+                        self.name(),
                         installed_versions
                             .iter()
                             .map(|version| version.to_string())
@@ -578,7 +616,7 @@ impl UpConfigAsdfBase {
                 msgs.push(
                     format!(
                         "{} {} already installed",
-                        self.tool,
+                        self.name(),
                         already_installed_versions
                             .iter()
                             .map(|version| version.to_string())
@@ -625,9 +663,9 @@ impl UpConfigAsdfBase {
                     }
 
                     let msg = if installed {
-                        format!("{} {} installed", self.tool, version).green()
+                        format!("{} {} installed", self.name(), version).green()
                     } else {
-                        format!("{} {} already installed", self.tool, version).light_black()
+                        format!("{} {} already installed", self.name(), version).light_black()
                     };
                     progress_handler.success_with_message(msg);
 
@@ -686,12 +724,13 @@ impl UpConfigAsdfBase {
                     } else {
                         omni_error!(format!(
                             "failed to list versions for {}; exited with status {}",
-                            self.tool, output.status
+                            self.name(),
+                            output.status
                         ));
                         return "".to_string();
                     }
                 } else {
-                    omni_error!(format!("failed to list versions for {}", self.tool));
+                    omni_error!(format!("failed to list versions for {}", self.name()));
                     return "".to_string();
                 }
             };
@@ -709,7 +748,8 @@ impl UpConfigAsdfBase {
         if version.is_empty() {
             return Err(UpError::Exec(format!(
                 "No {} version found matching {}",
-                self.tool, self.version,
+                self.name(),
+                self.version,
             )));
         }
 
@@ -802,7 +842,7 @@ impl UpConfigAsdfBase {
             return Ok(false);
         }
 
-        progress_handler.progress(format!("installing {} {}", self.tool, version));
+        progress_handler.progress(format!("installing {} {}", self.name(), version));
 
         let mut asdf_install = asdf_async_command();
         asdf_install.arg("install");
@@ -973,7 +1013,7 @@ impl UpConfigAsdfBase {
             // HomebrewInstall::new_formula("unixodbc"),
         ];
 
-        match self.tool.as_str() {
+        match self.name().as_str() {
             "python" => {
                 homebrew_install.extend(vec![
                     HomebrewInstall::new_formula("pkg-config"),

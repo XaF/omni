@@ -76,7 +76,13 @@ impl AsdfOperationCache {
         )
     }
 
-    pub fn add_installed(&mut self, workdir_id: &str, tool: &str, version: &str) -> bool {
+    pub fn add_installed(
+        &mut self,
+        workdir_id: &str,
+        tool: &str,
+        version: &str,
+        tool_real_name: Option<&str>,
+    ) -> bool {
         let inserted = if let Some(install) = self
             .installed
             .iter_mut()
@@ -86,6 +92,7 @@ impl AsdfOperationCache {
         } else {
             let install = AsdfInstalled {
                 tool: tool.to_string(),
+                tool_real_name: tool_real_name.map(|s| s.to_string()),
                 version: version.to_string(),
                 required_by: [workdir_id.to_string()].iter().cloned().collect(),
             };
@@ -139,6 +146,8 @@ impl CacheObject for AsdfOperationCache {
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct AsdfInstalled {
     pub tool: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tool_real_name: Option<String>,
     pub version: String,
     #[serde(default = "BTreeSet::new", skip_serializing_if = "BTreeSet::is_empty")]
     pub required_by: BTreeSet<String>,

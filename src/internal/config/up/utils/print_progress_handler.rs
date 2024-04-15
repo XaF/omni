@@ -1,9 +1,12 @@
+use std::cell::RefCell;
+
 use crate::internal::config::up::utils::ProgressHandler;
 use crate::internal::user_interface::StringColor;
 
 #[derive(Debug, Clone)]
 pub struct PrintProgressHandler {
     template: String,
+    message: RefCell<String>,
 }
 
 impl PrintProgressHandler {
@@ -24,7 +27,18 @@ impl PrintProgressHandler {
 
         let template = format!("{}{{}} {} {{}}", prefix, desc);
 
-        PrintProgressHandler { template }
+        PrintProgressHandler {
+            template,
+            message: RefCell::new("".to_string()),
+        }
+    }
+
+    fn set_message(&self, message: impl ToString) {
+        self.message.replace(message.to_string());
+    }
+
+    fn get_message(&self) -> String {
+        self.message.borrow().clone()
     }
 }
 
@@ -34,6 +48,7 @@ impl ProgressHandler for PrintProgressHandler {
     }
 
     fn progress(&self, message: String) {
+        self.set_message(&message);
         eprintln!(
             "{}",
             self.template
@@ -47,6 +62,7 @@ impl ProgressHandler for PrintProgressHandler {
     }
 
     fn success_with_message(&self, message: String) {
+        self.set_message(&message);
         eprintln!(
             "{}",
             self.template
@@ -56,10 +72,11 @@ impl ProgressHandler for PrintProgressHandler {
     }
 
     fn error(&self) {
-        self.error_with_message("error".to_string());
+        self.error_with_message(self.get_message());
     }
 
     fn error_with_message(&self, message: String) {
+        self.set_message(&message);
         eprintln!(
             "{}",
             self.template
