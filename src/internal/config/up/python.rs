@@ -97,16 +97,17 @@ fn setup_python_venv(
     progress_handler: &dyn ProgressHandler,
     _config_value: Option<ConfigValue>,
     tool: String,
+    tool_real_name: String,
     _requested_version: String,
     versions: Vec<AsdfToolUpVersion>,
 ) -> Result<(), UpError> {
-    if tool != "python" {
+    if tool_real_name != "python" {
         panic!("setup_python_venv called with wrong tool: {}", tool);
     }
 
     // Handle each version individually
     for version in &versions {
-        setup_python_venv_per_version(progress_handler, version.clone())?;
+        setup_python_venv_per_version(progress_handler, &tool, version.clone())?;
     }
 
     Ok(())
@@ -114,6 +115,7 @@ fn setup_python_venv(
 
 fn setup_python_venv_per_version(
     progress_handler: &dyn ProgressHandler,
+    tool: &str,
     version: AsdfToolUpVersion,
 ) -> Result<(), UpError> {
     // Check if we care about that version
@@ -137,7 +139,7 @@ fn setup_python_venv_per_version(
     }
 
     for dir in version.dirs {
-        setup_python_venv_per_dir(progress_handler, version.version.clone(), dir)?;
+        setup_python_venv_per_dir(progress_handler, tool, version.version.clone(), dir)?;
     }
 
     Ok(())
@@ -145,6 +147,7 @@ fn setup_python_venv_per_version(
 
 fn setup_python_venv_per_dir(
     progress_handler: &dyn ProgressHandler,
+    tool: &str,
     version: String,
     dir: String,
 ) -> Result<(), UpError> {
@@ -173,7 +176,7 @@ fn setup_python_venv_per_dir(
     let venv_dir = data_path_dir_hash(&dir);
 
     let venv_path = data_path
-        .join("python")
+        .join(tool)
         .join(version.clone())
         .join(venv_dir.clone());
 
@@ -199,7 +202,7 @@ fn setup_python_venv_per_dir(
 
     // Only create the new venv if it doesn't exist
     if !already_setup {
-        let python_version_path = asdf_tool_path("python", &version);
+        let python_version_path = asdf_tool_path(tool, &version);
         let python_bin = PathBuf::from(python_version_path)
             .join("bin")
             .join("python");
@@ -231,7 +234,7 @@ fn setup_python_venv_per_dir(
     if let Err(err) = UpEnvironmentsCache::exclusive(|up_env| {
         up_env.add_version_data_path(
             &workdir_id,
-            "python",
+            tool,
             &version,
             &dir,
             &venv_path.to_string_lossy(),
@@ -251,8 +254,9 @@ fn setup_python_pip(
     progress_handler: &dyn ProgressHandler,
     config_value: Option<ConfigValue>,
     _tool: String,
+    _tool_real_name: String,
     requested_version: String,
-    _versions: Vec<AsdfToolUpVersion>,
+    versions: Vec<AsdfToolUpVersion>,
 ) -> Result<(), UpError> {
     let config_value = if let Some(config_value) = config_value {
         config_value
@@ -284,7 +288,7 @@ fn setup_python_pip(
         }
     }
 
-    let tool_dirs = _versions
+    let tool_dirs = versions
         .iter()
         .flat_map(|version| version.dirs.clone())
         .collect::<Vec<String>>();
