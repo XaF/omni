@@ -382,7 +382,7 @@ impl Default for NixSource {
 }
 
 impl NixSource {
-    fn new(nixfile: &Option<String>, packages: &Vec<String>) -> Result<Self, UpError> {
+    fn new(nixfile: &Option<String>, packages: &[String]) -> Result<Self, UpError> {
         let wd = workdir(".");
         let wd_root = match wd.root() {
             Some(wd_root) => PathBuf::from(wd_root),
@@ -574,7 +574,7 @@ impl NixSource {
         nix_print_dev_env.arg("--verbose");
         nix_print_dev_env.arg("--print-build-logs");
         nix_print_dev_env.arg("--profile");
-        nix_print_dev_env.arg(&tmp_profile);
+        nix_print_dev_env.arg(tmp_profile);
 
         match *self {
             Self::Packages(ref packages) => {
@@ -633,8 +633,8 @@ impl NixSource {
     /// directory data.
     fn build(
         &self,
-        tmp_profile: &PathBuf,
-        nix_data_path: &PathBuf,
+        tmp_profile: &Path,
+        nix_data_path: &Path,
         progress_handler: &dyn ProgressHandler,
     ) -> Result<Vec<PathBuf>, UpError> {
         progress_handler.progress("protecting dependencies with gcroots".to_string());
@@ -681,7 +681,7 @@ impl NixSource {
 
     fn paths(
         &self,
-        nix_data_path: &PathBuf,
+        nix_data_path: &Path,
         progress_handler: &dyn ProgressHandler,
     ) -> Result<Vec<PathBuf>, UpError> {
         let profile_id = self.profile_id()?;
