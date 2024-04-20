@@ -630,7 +630,7 @@ impl NixSource {
     ///
     /// And we will put the permanent profile in the data directory
     /// of the work directory, so that its life is tied to the work
-    /// directory cache.
+    /// directory data.
     fn build(
         &self,
         tmp_profile: &PathBuf,
@@ -654,6 +654,7 @@ impl NixSource {
             return Err(UpError::Exec(msg));
         }
 
+        // For flakes, we can also add the sources to the garbage collection root
         let paths = self.flake_archive_paths(progress_handler)?;
         for path in paths {
             let perm_path = nix_data_path.join(format!(
