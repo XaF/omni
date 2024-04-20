@@ -294,7 +294,7 @@ struct NixHandler {
 }
 
 impl NixHandler {
-    fn new(nixfile: &Option<String>, packages: &Vec<String>) -> Result<Self, UpError> {
+    fn new(nixfile: &Option<String>, packages: &[String]) -> Result<Self, UpError> {
         let nix_source = NixSource::new(nixfile, packages)?;
 
         Ok(Self {
