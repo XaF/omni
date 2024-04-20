@@ -93,9 +93,9 @@ fi
 
 # Get the expected response
 response=()
-while read -r line; do
+while IFS= read -r line; do
     response+=("$line")
-done <<< $(echo "$expected" | tail -n +4)
+done < <(echo "$expected" | tail -n +4)
 
 # If the first line of the response is '#omni-test-bash-function', then
 # we want to eval the response as a bash function, and then check that
