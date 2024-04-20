@@ -594,6 +594,16 @@ impl UpConfigAsdfBase {
                             dir.pop();
                         }
 
+                        progress_handler.progress(format!(
+                            "detected required version {} {}",
+                            detected_version,
+                            if dir != "" {
+                                format!("in {}", dir)
+                            } else {
+                                "at root".to_string()
+                            }
+                        ));
+
                         if let Some(dirs) = detected_versions.get_mut(&detected_version) {
                             dirs.insert(dir);
                         } else {

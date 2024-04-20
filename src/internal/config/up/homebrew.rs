@@ -453,7 +453,7 @@ pub struct HomebrewTap {
 
 impl PartialOrd for HomebrewTap {
     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-        self.name.partial_cmp(&other.name)
+        Some(self.cmp(other))
     }
 }
 
@@ -468,6 +468,7 @@ impl HomebrewTap {
         config_value: Option<&ConfigValue>,
         installs: &[HomebrewInstall],
     ) -> Vec<Self> {
+        #[allow(clippy::mutable_key_type)]
         let mut taps = BTreeSet::new();
 
         if let Some(config_value) = config_value {
