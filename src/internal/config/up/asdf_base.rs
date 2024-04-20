@@ -597,10 +597,10 @@ impl UpConfigAsdfBase {
                         progress_handler.progress(format!(
                             "detected required version {} {}",
                             detected_version,
-                            if dir != "" {
-                                format!("in {}", dir)
-                            } else {
+                            if dir.is_empty() {
                                 "at root".to_string()
+                            } else {
+                                format!("in {}", dir)
                             }
                         ));
 
