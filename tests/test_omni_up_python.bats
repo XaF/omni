@@ -125,7 +125,7 @@ add_nix_python_calls() {
 
   local nix=(nix --extra-experimental-features "nix-command flakes")
 
-  add_command "${nix[@]}" print-dev-env --verbose --print-build-logs --profile "regex:${tmpdir}/omni_up_nix\..*/profile" --impure --expr 'with import <nixpkgs> {}; mkShell { buildInputs = [ gawk gnused openssl readline bzip2 gcc gdbm gnumake libffi lzma ncurses pkg-config sqlite zlib ]; }'
+  add_command "${nix[@]}" print-dev-env --verbose --print-build-logs --profile "regex:${tmpdir}/omni_up_nix\..*/profile" --impure --expr 'with import <nixpkgs> {}; mkShell { buildInputs = [ bzip2 gawk gcc gdbm gnumake gnused libffi lzma ncurses openssl pkg-config readline sqlite zlib ]; }'
   add_command "${nix[@]}" build --print-out-paths --out-link "regex:${HOME}/\.local/share/omni/wd/.*/nix/profile-pkgs-.*" "regex:${tmpdir}/omni_up_nix\..*/profile" <<EOF
 #omni-test-bash-function
 function process_response() {
