@@ -1,3 +1,4 @@
+use std::collections::BTreeSet;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::path::PathBuf;
@@ -40,7 +41,7 @@ pub struct UpConfigHomebrew {
 impl UpConfigHomebrew {
     pub fn from_config_value(config_value: Option<&ConfigValue>) -> Self {
         let install = HomebrewInstall::from_config_value(config_value);
-        let tap = HomebrewTap::from_config_value(config_value);
+        let tap = HomebrewTap::from_config_value(config_value, &install);
 
         UpConfigHomebrew { install, tap }
     }
@@ -440,7 +441,7 @@ pub enum HomebrewHandled {
     Unhandled,
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone, Eq, PartialEq)]
 pub struct HomebrewTap {
     name: String,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -450,9 +451,24 @@ pub struct HomebrewTap {
     was_handled: OnceCell<HomebrewHandled>,
 }
 
+impl PartialOrd for HomebrewTap {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        self.name.partial_cmp(&other.name)
+    }
+}
+
+impl Ord for HomebrewTap {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        self.name.cmp(&other.name)
+    }
+}
+
 impl HomebrewTap {
-    fn from_config_value(config_value: Option<&ConfigValue>) -> Vec<Self> {
-        let mut taps = Vec::new();
+    fn from_config_value(
+        config_value: Option<&ConfigValue>,
+        installs: &[HomebrewInstall],
+    ) -> Vec<Self> {
+        let mut taps = BTreeSet::new();
 
         if let Some(config_value) = config_value {
             if let Some(config_value) = config_value.as_table() {
@@ -462,7 +478,19 @@ impl HomebrewTap {
             }
         }
 
-        taps
+        for install in installs {
+            // If the formula name is `a/b/c`, then really the formula
+            // name is `c` and the tap is `a/b`. We can use this to
+            // force-add the tap to the list of taps if it was not
+            // explicitly defined in the configuration
+            let split = install.name.split('/').collect::<Vec<_>>();
+            if split.len() == 3 {
+                let tap_name = format!("{}/{}", split[0], split[1]);
+                taps.insert(Self::from_name(&tap_name));
+            }
+        }
+
+        taps.into_iter().collect()
     }
 
     fn parse_taps(taps: &ConfigValue) -> Vec<Self> {
@@ -561,7 +589,7 @@ impl HomebrewTap {
 
     fn up(&self, progress_handler: &UpProgressHandler) -> Result<(), UpError> {
         let progress_handler = progress_handler
-            .subhandler(&format!("{} {}", "tap".underline(), self.name).light_yellow());
+            .subhandler(&format!("{} {}: ", "tap".underline(), self.name).light_yellow());
 
         if self.is_tapped() {
             self.update_cache(&progress_handler);
