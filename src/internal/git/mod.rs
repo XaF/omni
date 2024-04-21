@@ -17,7 +17,7 @@ pub(crate) use utils::safe_normalize_url;
 
 mod updater;
 pub(crate) use updater::auto_update_async;
-pub(crate) use updater::auto_update_sync;
+pub(crate) use updater::auto_update_on_command_not_found;
 pub(crate) use updater::exec_update;
 pub(crate) use updater::exec_update_and_log_on_error;
 pub(crate) use updater::report_update_error;

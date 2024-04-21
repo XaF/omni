@@ -12,7 +12,7 @@ use internal::config::up::utils::handle_shims;
 use internal::config::up::utils::AskPassRequest;
 use internal::env::tmpdir_cleanup;
 use internal::git::auto_update_async;
-use internal::git::auto_update_sync;
+use internal::git::auto_update_on_command_not_found;
 use internal::git::exec_update;
 use internal::git::exec_update_and_log_on_error;
 use internal::StringColor;
@@ -239,7 +239,7 @@ fn run_omni_subcommand(parsed: &MainArgs) {
     }
 
     // We didn't find the command, so let's try to update synchronously
-    if auto_update_sync() {
+    if auto_update_on_command_not_found() {
         // If any updates were done, let's check again if we can serve the command
         if let Some((omni_cmd, called_as, argv)) = command_loader.to_serve(&parsed.args) {
             set_cleanup_handler();
