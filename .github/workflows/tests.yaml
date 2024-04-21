@@ -257,13 +257,24 @@ jobs:
     runs-on: ubuntu-latest
 
     needs:
-      - deploy-website
       - build-and-test-binaries
       - rust-clippy-analysis
+      - deploy-website
 
     if: '!cancelled()'
 
     steps:
+      - name: Print status
+        run: |
+          echo "== RESULTS"
+          echo "Build and test binaries: ${{ needs.build-and-test-binaries.result }}"
+          echo "Rust clippy analysis: ${{ needs.rust-clippy-analysis.result }}"
+          echo "Deploy website: ${{ needs.deploy-website.result }}"
+          echo "== CONCLUSIONS"
+          echo "Build and test binaries: ${{ needs.build-and-test-binaries.conclusion }}"
+          echo "Rust clippy analysis: ${{ needs.rust-clippy-analysis.conclusion }}"
+          echo "Deploy website: ${{ needs.deploy-website.conclusion }}"
+
       - name: Fail if tests failed
         if: needs.build-and-test-binaries.result == 'failure'
         run: exit 1
