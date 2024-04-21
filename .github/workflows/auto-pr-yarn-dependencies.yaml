@@ -30,6 +30,8 @@ defaults:
 env:
   # Which branch to use to make the pull request
   PR_BRANCH: auto/yarn_update
+  # Whether or not to enable auto-merge
+  PR_AUTO_MERGE: true
 
 
 jobs:
@@ -305,6 +307,23 @@ jobs:
               --add-label dependencies \
               --add-label javascript
           fi
+
+      - name: Enable auto-merge
+        if: ${{ env.PR_AUTO_MERGE == 'true' }}
+        env:
+          GITHUB_TOKEN: ${{ steps.app-token.outputs.token }}
+        run: |
+          NUM=$(gh pr view "${{ env.PR_BRANCH }}" \
+                  --repo "${{ github.repository }}" \
+                  --json number --jq '.number' || \
+                echo "")
+
+          if [[ -z "$NUM" ]]; then
+            echo "Failed to get PR number"
+            exit 1
+          fi
+
+          gh pr merge --squash --auto --body "" "$NUM"
 
 
   close-pr:
