@@ -15,14 +15,15 @@ use crate::internal::cache::loaders::set_github_release_operation_cache;
 use crate::internal::cache::utils;
 use crate::internal::cache::utils::Empty;
 use crate::internal::cache::CacheObject;
+use crate::internal::config::global_config;
 use crate::internal::config::up::asdf_base::version_match;
+use crate::internal::env::now as omni_now;
 use crate::internal::self_updater::compatible_release_arch;
 use crate::internal::self_updater::compatible_release_os;
 
 const GITHUB_RELEASE_CACHE_NAME: &str = "github_release_operation";
 
 lazy_static! {
-    static ref GITHUB_RELEASE_OPERATION_NOW: OffsetDateTime = OffsetDateTime::now_utc();
     static ref VERSION_REGEX: Regex = {
         let pattern = r"^(?P<prefix>[^0-9]*)(?P<version>\d+(?:\.\d+)*(?:\-[\w\d_-]+)?)$";
         match Regex::new(pattern) {
@@ -50,11 +51,6 @@ lazy_static! {
         Ok(separator_re) => separator_re,
         Err(err) => panic!("failed to create separator regex: {}", err),
     };
-}
-
-// TODO: merge this with homebrew_operation_now, maybe up_operation_now?
-fn github_release_operation_now() -> OffsetDateTime {
-    *GITHUB_RELEASE_OPERATION_NOW
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -94,9 +90,9 @@ impl GithubReleaseOperationCache {
             .find(|i| i.repository == repository && i.version == version)
         {
             if install.required_by.insert(workdir_id.to_string())
-                || install.last_required_at < github_release_operation_now()
+                || install.last_required_at < omni_now()
             {
-                install.last_required_at = github_release_operation_now();
+                install.last_required_at = omni_now();
                 true
             } else {
                 false
@@ -106,7 +102,7 @@ impl GithubReleaseOperationCache {
                 repository: repository.to_string(),
                 version: version.to_string(),
                 required_by: [workdir_id.to_string()].iter().cloned().collect(),
-                last_required_at: github_release_operation_now(),
+                last_required_at: omni_now(),
             };
             self.installed.push(install);
             true
@@ -169,7 +165,19 @@ pub struct GithubReleaseInstalled {
 
 impl GithubReleaseInstalled {
     pub fn stale(&self) -> bool {
-        self.last_required_at < github_release_operation_now()
+        self.last_required_at < omni_now()
+    }
+
+    pub fn removable(&self) -> bool {
+        if !self.required_by.is_empty() {
+            return false;
+        }
+
+        let config = global_config();
+        let grace_period = config.cache.github_release.cleanup_after;
+        let grace_period = time::Duration::seconds(grace_period as i64);
+
+        (self.last_required_at + grace_period) < omni_now()
     }
 }
 
@@ -194,7 +202,7 @@ impl GithubReleases {
     }
 
     pub fn is_fresh(&self) -> bool {
-        self.fetched_at >= github_release_operation_now()
+        self.fetched_at >= omni_now()
     }
 
     pub fn is_stale(&self, ttl: u64) -> bool {

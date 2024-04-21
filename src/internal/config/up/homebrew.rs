@@ -263,7 +263,7 @@ impl UpConfigHomebrew {
                 .enumerate()
                 .rev() // reverse so we can remove from the end
                 .filter_map(|(idx, install)| {
-                    if install.required_by.is_empty() && install.installed {
+                    if install.installed && install.removable() {
                         Some((idx, HomebrewInstall::from_cache(install)))
                     } else {
                         None
@@ -299,9 +299,7 @@ impl UpConfigHomebrew {
             }
 
             let current_installed = brew_cache.installed.len();
-            brew_cache
-                .installed
-                .retain(|install| !install.required_by.is_empty() || install.installed);
+            brew_cache.installed.retain(|install| !install.removable());
             if current_installed != brew_cache.installed.len() {
                 updated = true;
             }
@@ -314,7 +312,7 @@ impl UpConfigHomebrew {
                 .enumerate()
                 .rev() // reverse so we can remove from the end
                 .filter_map(|(idx, tap)| {
-                    if tap.required_by.is_empty() && tap.tapped {
+                    if tap.tapped && tap.removable() {
                         Some((idx, HomebrewTap::from_name(&tap.name)))
                     } else {
                         None
@@ -349,9 +347,7 @@ impl UpConfigHomebrew {
             }
 
             let current_tapped = brew_cache.tapped.len();
-            brew_cache
-                .tapped
-                .retain(|tap| !tap.required_by.is_empty() || tap.tapped);
+            brew_cache.tapped.retain(|tap| !tap.removable());
             if current_tapped != brew_cache.tapped.len() {
                 updated = true;
             }

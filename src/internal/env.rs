@@ -14,6 +14,7 @@ use git_url_parse::GitUrl;
 use is_terminal::IsTerminal;
 use lazy_static::lazy_static;
 use once_cell::sync::OnceCell;
+use time::OffsetDateTime;
 
 use crate::internal::config::parser::PathEntryConfig;
 use crate::internal::config::up::utils::force_remove_dir_all;
@@ -225,6 +226,18 @@ lazy_static! {
 
         format!("omnitmp-{}", short_uuid)
     };
+
+    #[derive(Debug)]
+    static ref NOW: OffsetDateTime = OffsetDateTime::now_utc();
+}
+
+/// Get the time of the current execution of omni in UTC.
+/// This is only computed once and the same time will keep
+/// being returned for the same run of omni. If omni calls
+/// itself in a subprocess, the subprocess will have a time
+/// greater or equal to the one of the calling process.
+pub fn now() -> OffsetDateTime {
+    (*NOW).clone()
 }
 
 /// Cleanup temporary directories created by omni in the system's

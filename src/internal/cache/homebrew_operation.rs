@@ -3,7 +3,6 @@ use std::collections::HashMap;
 use std::io;
 use std::time::Duration;
 
-use lazy_static::lazy_static;
 use serde::Deserialize;
 use serde::Serialize;
 use time::OffsetDateTime;
@@ -16,16 +15,9 @@ use crate::internal::cache::utils;
 use crate::internal::cache::utils::Empty;
 use crate::internal::cache::CacheObject;
 use crate::internal::config::global_config;
+use crate::internal::env::now as omni_now;
 
 const HOMEBREW_OPERATION_CACHE_NAME: &str = "homebrew_operation";
-
-lazy_static! {
-    static ref HOMEBREW_OPERATION_NOW: OffsetDateTime = OffsetDateTime::now_utc();
-}
-
-fn homebrew_operation_now() -> OffsetDateTime {
-    *HOMEBREW_OPERATION_NOW
-}
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct HomebrewOperationCache {
@@ -54,10 +46,8 @@ impl HomebrewOperationCache {
     pub fn add_tap(&mut self, workdir_id: &str, tap_name: &str, tapped: bool) -> bool {
         let inserted = if let Some(tap) = self.tapped.iter_mut().find(|t| t.name == tap_name) {
             tap.tapped = tap.tapped || tapped;
-            if tap.required_by.insert(workdir_id.to_string())
-                || tap.last_required_at < homebrew_operation_now()
-            {
-                tap.last_required_at = homebrew_operation_now();
+            if tap.required_by.insert(workdir_id.to_string()) || tap.last_required_at < omni_now() {
+                tap.last_required_at = omni_now();
                 true
             } else {
                 false
@@ -67,7 +57,7 @@ impl HomebrewOperationCache {
                 name: tap_name.to_string(),
                 tapped,
                 required_by: [workdir_id.to_string()].iter().cloned().collect(),
-                last_required_at: homebrew_operation_now(),
+                last_required_at: omni_now(),
             };
             self.tapped.push(tap);
             true
@@ -94,9 +84,9 @@ impl HomebrewOperationCache {
             }) {
                 install.installed = install.installed || installed;
                 if install.required_by.insert(workdir_id.to_string())
-                    || install.last_required_at < homebrew_operation_now()
+                    || install.last_required_at < omni_now()
                 {
-                    install.last_required_at = homebrew_operation_now();
+                    install.last_required_at = omni_now();
                     true
                 } else {
                     false
@@ -108,7 +98,7 @@ impl HomebrewOperationCache {
                     cask: is_cask,
                     installed,
                     required_by: [workdir_id.to_string()].iter().cloned().collect(),
-                    last_required_at: homebrew_operation_now(),
+                    last_required_at: omni_now(),
                 };
                 self.installed.push(install);
                 true
@@ -273,7 +263,28 @@ pub struct HomebrewInstalled {
 
 impl HomebrewInstalled {
     pub fn stale(&self) -> bool {
-        self.last_required_at < homebrew_operation_now()
+        self.last_required_at < omni_now()
+    }
+
+    pub fn removable(&self) -> bool {
+        // If the formula is required by any workdir, it should not be removed.
+        if !self.required_by.is_empty() {
+            return false;
+        }
+
+        // If the formula was not installed by omni, and is not required by any
+        // workdir, it can be removed without any grace period or extra logic
+        if !self.installed {
+            return true;
+        }
+
+        // If the formula was installed by omni, and is not required by any
+        // workdir, it can be removed after the grace period.
+        let config = global_config();
+        let grace_period = config.cache.homebrew.cleanup_after;
+        let grace_period = time::Duration::seconds(grace_period as i64);
+
+        (self.last_required_at + grace_period) < omni_now()
     }
 }
 
@@ -290,7 +301,28 @@ pub struct HomebrewTapped {
 
 impl HomebrewTapped {
     pub fn stale(&self) -> bool {
-        self.last_required_at < homebrew_operation_now()
+        self.last_required_at < omni_now()
+    }
+
+    pub fn removable(&self) -> bool {
+        // If the tap is required by any workdir, it should not be removed.
+        if !self.required_by.is_empty() {
+            return false;
+        }
+
+        // If the tap was not installed by omni, and is not required by any
+        // workdir, it can be removed without any grace period or extra logic
+        if !self.tapped {
+            return true;
+        }
+
+        // If the tap was installed by omni, and is not required by any
+        // workdir, it can be removed after the grace period.
+        let config = global_config();
+        let grace_period = config.cache.homebrew.cleanup_after;
+        let grace_period = time::Duration::seconds(grace_period as i64);
+
+        (self.last_required_at + grace_period) < omni_now()
     }
 }
 

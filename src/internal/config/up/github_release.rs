@@ -275,7 +275,7 @@ impl UpConfigGithubReleases {
                     // Only return the path if the github release is
                     // expected, as we will clear the bin path from
                     // all unexpected github releases
-                    if install.required_by.is_empty() {
+                    if install.removable() {
                         None
                     } else {
                         Some(
@@ -699,7 +699,7 @@ impl UpConfigGithubRelease {
             if let Some(releases) = cache.get_releases(&self.repository) {
                 let releases = releases.clone();
                 let config = global_config();
-                let expire = config.cache.github_release_versions_expire;
+                let expire = config.cache.github_release.versions_expire;
                 if !releases.is_stale(expire) {
                     progress_handler.progress("using cached release list".light_black());
                     return Ok(releases);
@@ -767,7 +767,7 @@ impl UpConfigGithubRelease {
         };
 
         progress_handler.progress(format!(
-            "getting auth token from {} and hostname {}",
+            "getting auth token from {} for hostname {}",
             "gh".light_yellow(),
             hostname.light_yellow()
         ));

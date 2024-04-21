@@ -961,12 +961,13 @@ impl UpConfigAsdfBase {
 
             for (idx, exists) in asdf_cache.installed.iter_mut().enumerate() {
                 if exists.required_by.contains(&workdir_id)
+                    && exists.stale()
                     && !expected_tools.contains(&(exists.tool.clone(), exists.version.clone()))
                 {
                     exists.required_by.retain(|id| id != &workdir_id);
                     updated = true;
                 }
-                if exists.required_by.is_empty() {
+                if exists.removable() {
                     to_remove.push((idx, exists.clone()));
                 }
             }
