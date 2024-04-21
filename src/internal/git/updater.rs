@@ -1,6 +1,8 @@
 use std::collections::HashMap;
 use std::collections::HashSet;
+use std::fmt::Debug;
 use std::io::Write;
+use std::path::Path;
 use std::path::PathBuf;
 use std::process::exit;
 use std::process::Command;
@@ -79,24 +81,76 @@ fn should_update() -> bool {
 }
 
 pub fn auto_update_async(current_command_path: Option<PathBuf>) {
-    update(
-        false,
-        true,
-        if let Some(current_command_path) = current_command_path {
-            vec![current_command_path]
-        } else {
-            vec![]
-        },
-    );
+    let mut options = UpdateOptions::default();
+    if let Some(current_command_path) = current_command_path {
+        options.add_sync_path(&current_command_path);
+    }
+    update(&options);
 }
 
-pub fn auto_update_sync() -> bool {
-    let (updated, _errored) = update(false, false, vec![]);
+pub fn auto_update_on_command_not_found() -> bool {
+    let config = global_config();
+    let should_update = config.path_repo_updates.on_command_not_found;
+    if should_update.is_false() {
+        return false;
+    }
+
+    let mut options = UpdateOptions::default();
+    options.disable_background_update();
+
+    if should_update.is_ask() {
+        options.add_pre_update_validation_func(move || {
+            omni_info!(format!(
+                "{}; {}",
+                "command not found".light_red(),
+                "but it may exist in up-to-date repositories",
+            ));
+            let question = requestty::Question::confirm("command_not_found_update")
+                .ask_if_answered(true)
+                .on_esc(requestty::OnEsc::Terminate)
+                .message(format!(
+                    "{} {}",
+                    "omni:".light_cyan(),
+                    "Do you want to run a sync update? (no = async)".light_yellow(),
+                ))
+                .default(true)
+                .build();
+
+            let answer = match requestty::prompt_one(question) {
+                Ok(answer) => match answer {
+                    requestty::Answer::Bool(confirmed) => confirmed,
+                    _ => unreachable!(),
+                },
+                Err(err) => {
+                    println!("{}", format!("[✘] {:?}", err).red());
+                    false
+                }
+            };
+
+            if !answer {
+                // If background updates are authorized, let's trigger one
+                if config.path_repo_updates.background_updates {
+                    let mut options = UpdateOptions::default();
+                    options.force_update();
+
+                    update(&options);
+                }
+            }
+
+            answer
+        });
+    }
+
+    let (updated, _errored) = update(&options);
     !updated.is_empty()
 }
 
 pub fn exec_update() {
-    let (_updated, errored) = update(true, false, vec![]);
+    let mut options = UpdateOptions::default();
+    options.force_update();
+    options.disable_background_update();
+
+    let (_updated, errored) = update(&options);
     exit(if !errored.is_empty() { 1 } else { 0 });
 }
 
@@ -238,11 +292,80 @@ pub fn trigger_background_update(skip_paths: HashSet<PathBuf>) -> bool {
     }
 }
 
-pub fn update(
+pub struct UpdateOptions {
     force_update: bool,
     allow_background_update: bool,
     force_sync: Vec<PathBuf>,
-) -> (HashSet<PathBuf>, HashSet<PathBuf>) {
+    pre_update_validation_funcs: Vec<Box<dyn Fn() -> bool>>,
+}
+
+impl Debug for UpdateOptions {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("UpdateOptions")
+            .field("force_update", &self.force_update)
+            .field("allow_background_update", &self.allow_background_update)
+            .field("force_sync", &self.force_sync)
+            .field(
+                "pre_update_validation_funcs",
+                &self.pre_update_validation_funcs.len(),
+            )
+            .finish()
+    }
+}
+
+impl Default for UpdateOptions {
+    fn default() -> Self {
+        Self {
+            force_update: false,
+            allow_background_update: true,
+            force_sync: vec![],
+            pre_update_validation_funcs: vec![],
+        }
+    }
+}
+
+impl UpdateOptions {
+    pub fn force_update(&mut self) -> &mut Self {
+        self.force_update = true;
+        self
+    }
+
+    pub fn disable_background_update(&mut self) -> &mut Self {
+        self.allow_background_update = false;
+        self
+    }
+
+    pub fn add_sync_path(&mut self, path: &Path) -> &mut Self {
+        self.force_sync.push(path.to_path_buf());
+        self
+    }
+
+    pub fn add_pre_update_validation_func<F>(&mut self, func: F) -> &mut Self
+    where
+        F: Fn() -> bool + 'static,
+    {
+        self.pre_update_validation_funcs.push(Box::new(func));
+        self
+    }
+
+    fn background_update(&self) -> bool {
+        self.allow_background_update && global_config().path_repo_updates.background_updates
+    }
+
+    fn should_update(&self) -> bool {
+        if !self.force_update && !should_update() {
+            return false;
+        }
+
+        if self.pre_update_validation_funcs.iter().any(|func| !func()) {
+            return false;
+        }
+
+        true
+    }
+}
+
+pub fn update(options: &UpdateOptions) -> (HashSet<PathBuf>, HashSet<PathBuf>) {
     // Get the configuration
     let config = global_config();
 
@@ -270,7 +393,7 @@ pub fn update(
     }
 
     // Nothing to do if we don't need to update
-    if !force_update && !should_update() {
+    if !options.should_update() {
         return (HashSet::new(), HashSet::new());
     }
 
@@ -339,16 +462,9 @@ pub fn update(
         .chain(failed_early_auth.iter().map(PathBuf::from))
         .collect::<Vec<_>>();
 
-    // Override allow_background_update if the configuration does not allow it
-    let allow_background_update = if !config.path_repo_updates.background_updates {
-        false
-    } else {
-        allow_background_update
-    };
-
     let mut count_left_to_update = 0;
     let mut updates_per_path = HashMap::new();
-    if allow_background_update && force_sync.is_empty() {
+    if options.background_update() && options.force_sync.is_empty() {
         count_left_to_update = omnipath_entries.len();
     } else {
         // Let's do all the git updates in parallel since we don't require
@@ -379,8 +495,9 @@ pub fn update(
 
             // Check if we want to update this repository synchronously
             // or if we can delegate it to the background update
-            if allow_background_update
-                && !force_sync
+            if options.background_update()
+                && !options
+                    .force_sync
                     .iter()
                     .any(|force_sync_path| path_entry.includes_path(force_sync_path.clone()))
             {
@@ -541,7 +658,7 @@ pub fn update(
         .collect::<HashSet<_>>();
 
     // If we need to update in the background, let's do that now
-    if allow_background_update && count_left_to_update > 0 {
+    if options.background_update() && count_left_to_update > 0 {
         trigger_background_update(
             skip_update_path
                 .iter()

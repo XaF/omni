@@ -12,6 +12,7 @@ use crate::internal::git::update_git_repo;
 pub struct PathRepoUpdatesConfig {
     pub enabled: bool,
     pub self_update: PathRepoUpdatesSelfUpdateEnum,
+    pub on_command_not_found: PathRepoUpdatesOnCommandNotFoundEnum,
     pub pre_auth: bool,
     pub pre_auth_timeout: u64,
     pub background_updates: bool,
@@ -28,7 +29,8 @@ impl Default for PathRepoUpdatesConfig {
     fn default() -> Self {
         Self {
             enabled: Self::DEFAULT_ENABLED,
-            self_update: Self::DEFAULT_SELF_UPDATE,
+            self_update: PathRepoUpdatesSelfUpdateEnum::default(),
+            on_command_not_found: PathRepoUpdatesOnCommandNotFoundEnum::default(),
             pre_auth: Self::DEFAULT_PRE_AUTH,
             pre_auth_timeout: Self::DEFAULT_PRE_AUTH_TIMEOUT,
             background_updates: Self::DEFAULT_BACKGROUND_UPDATES,
@@ -43,7 +45,6 @@ impl Default for PathRepoUpdatesConfig {
 
 impl PathRepoUpdatesConfig {
     const DEFAULT_ENABLED: bool = true;
-    const DEFAULT_SELF_UPDATE: PathRepoUpdatesSelfUpdateEnum = PathRepoUpdatesSelfUpdateEnum::Ask;
     const DEFAULT_PRE_AUTH: bool = true;
     const DEFAULT_PRE_AUTH_TIMEOUT: u64 = 120; // 2 minutes
     const DEFAULT_BACKGROUND_UPDATES: bool = true;
@@ -81,33 +82,32 @@ impl PathRepoUpdatesConfig {
         );
 
         let self_update = if let Some(value) = config_value.get_as_bool("self_update") {
-            match value {
-                true => PathRepoUpdatesSelfUpdateEnum::True,
-                false => PathRepoUpdatesSelfUpdateEnum::False,
-            }
+            PathRepoUpdatesSelfUpdateEnum::from_bool(value)
         } else if let Some(value) = config_value.get_as_str("self_update") {
-            match value.to_lowercase().as_str() {
-                "true" | "yes" | "y" => PathRepoUpdatesSelfUpdateEnum::True,
-                "false" | "no" | "n" => PathRepoUpdatesSelfUpdateEnum::False,
-                "nocheck" => PathRepoUpdatesSelfUpdateEnum::NoCheck,
-                "ask" => PathRepoUpdatesSelfUpdateEnum::Ask,
-                _ => PathRepoUpdatesSelfUpdateEnum::Ask,
-            }
+            PathRepoUpdatesSelfUpdateEnum::from_str(&value)
         } else if let Some(value) = config_value.get_as_integer("self_update") {
-            match value {
-                0 => PathRepoUpdatesSelfUpdateEnum::False,
-                1 => PathRepoUpdatesSelfUpdateEnum::True,
-                _ => PathRepoUpdatesSelfUpdateEnum::Ask,
-            }
+            PathRepoUpdatesSelfUpdateEnum::from_int(value)
         } else {
-            PathRepoUpdatesSelfUpdateEnum::Ask
+            PathRepoUpdatesSelfUpdateEnum::default()
         };
+
+        let on_command_not_found =
+            if let Some(value) = config_value.get_as_bool("on_command_not_found") {
+                PathRepoUpdatesOnCommandNotFoundEnum::from_bool(value)
+            } else if let Some(value) = config_value.get_as_str("on_command_not_found") {
+                PathRepoUpdatesOnCommandNotFoundEnum::from_str(&value)
+            } else if let Some(value) = config_value.get_as_integer("on_command_not_found") {
+                PathRepoUpdatesOnCommandNotFoundEnum::from_int(value)
+            } else {
+                PathRepoUpdatesOnCommandNotFoundEnum::default()
+            };
 
         Self {
             enabled: config_value
                 .get_as_bool("enabled")
                 .unwrap_or(Self::DEFAULT_ENABLED),
             self_update,
+            on_command_not_found,
             pre_auth: config_value
                 .get_as_bool("pre_auth")
                 .unwrap_or(Self::DEFAULT_PRE_AUTH),
@@ -147,7 +147,7 @@ impl PathRepoUpdatesConfig {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Default)]
 pub enum PathRepoUpdatesSelfUpdateEnum {
     #[serde(rename = "true")]
     True,
@@ -155,26 +155,106 @@ pub enum PathRepoUpdatesSelfUpdateEnum {
     False,
     #[serde(rename = "nocheck")]
     NoCheck,
+    #[default]
     #[serde(other, rename = "ask")]
     Ask,
 }
 
 impl PathRepoUpdatesSelfUpdateEnum {
+    pub fn from_bool(value: bool) -> Self {
+        if value {
+            Self::True
+        } else {
+            Self::False
+        }
+    }
+
+    pub fn from_str(value: &str) -> Self {
+        match value.to_lowercase().as_str() {
+            "true" | "yes" | "y" => Self::True,
+            "false" | "no" | "n" => Self::False,
+            "nocheck" => Self::NoCheck,
+            "ask" => Self::Ask,
+            _ => Self::default(),
+        }
+    }
+
+    pub fn from_int(value: i64) -> Self {
+        match value {
+            0 => Self::False,
+            1 => Self::True,
+            _ => Self::Ask,
+        }
+    }
+
     pub fn do_not_check(&self) -> bool {
         matches!(self, PathRepoUpdatesSelfUpdateEnum::NoCheck)
     }
 
     pub fn is_false(&self) -> bool {
         match self {
-            PathRepoUpdatesSelfUpdateEnum::False => true,
-            PathRepoUpdatesSelfUpdateEnum::Ask => !shell_is_interactive(),
+            Self::False => true,
+            Self::Ask => !shell_is_interactive(),
             _ => false,
         }
     }
 
     pub fn is_ask(&self) -> bool {
         match self {
-            PathRepoUpdatesSelfUpdateEnum::Ask => shell_is_interactive(),
+            Self::Ask => shell_is_interactive(),
+            _ => false,
+        }
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Default)]
+pub enum PathRepoUpdatesOnCommandNotFoundEnum {
+    #[serde(rename = "true")]
+    True,
+    #[serde(rename = "false")]
+    False,
+    #[default]
+    #[serde(other, rename = "ask")]
+    Ask,
+}
+
+impl PathRepoUpdatesOnCommandNotFoundEnum {
+    pub fn from_bool(value: bool) -> Self {
+        if value {
+            Self::True
+        } else {
+            Self::False
+        }
+    }
+
+    pub fn from_str(value: &str) -> Self {
+        match value.to_lowercase().as_str() {
+            "true" | "yes" | "y" => Self::True,
+            "false" | "no" | "n" => Self::False,
+            "ask" => Self::Ask,
+            _ => Self::default(),
+        }
+    }
+
+    pub fn from_int(value: i64) -> Self {
+        match value {
+            0 => Self::False,
+            1 => Self::True,
+            _ => Self::default(),
+        }
+    }
+
+    pub fn is_false(&self) -> bool {
+        match self {
+            Self::False => true,
+            Self::Ask => !shell_is_interactive(),
+            _ => false,
+        }
+    }
+
+    pub fn is_ask(&self) -> bool {
+        match self {
+            Self::Ask => shell_is_interactive(),
             _ => false,
         }
     }
