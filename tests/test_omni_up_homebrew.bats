@@ -106,6 +106,8 @@ up:
       - fakerepo/fake/fakeformula
 EOF
 
+  add_command brew tap
+  add_command brew tap fakerepo/fake
   add_command brew list --formula fakerepo/fake/fakeformula exit=1
   add_command brew install --formula fakerepo/fake/fakeformula
   add_command brew --prefix --installed fakerepo/fake/fakeformula

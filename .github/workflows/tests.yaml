@@ -257,23 +257,23 @@ jobs:
     runs-on: ubuntu-latest
 
     needs:
-      - deploy-website
       - build-and-test-binaries
       - rust-clippy-analysis
+      - deploy-website
 
     if: '!cancelled()'
 
     steps:
       - name: Fail if tests failed
-        if: needs.build-and-test-binaries.result == 'failure'
+        if: needs.build-and-test-binaries.result == 'failure' || needs.build-and-test-binaries.result == 'cancelled'
         run: exit 1
 
       - name: Fail if CodeQL failed
-        if: needs.rust-clippy-analysis.result == 'failure'
+        if: needs.rust-clippy-analysis.result == 'failure' || needs.rust-clippy-analysis.result == 'cancelled'
         run: exit 1
 
       - name: Fail if website building/deployment failed
-        if: needs.deploy-website.result == 'failure'
+        if: needs.deploy-website.result == 'failure' || needs.deploy-website.result == 'cancelled'
         run: exit 1
 
 
