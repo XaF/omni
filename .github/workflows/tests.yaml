@@ -264,27 +264,16 @@ jobs:
     if: '!cancelled()'
 
     steps:
-      - name: Print status
-        run: |
-          echo "== RESULTS"
-          echo "Build and test binaries: ${{ needs.build-and-test-binaries.result }}"
-          echo "Rust clippy analysis: ${{ needs.rust-clippy-analysis.result }}"
-          echo "Deploy website: ${{ needs.deploy-website.result }}"
-          echo "== CONCLUSIONS"
-          echo "Build and test binaries: ${{ needs.build-and-test-binaries.conclusion }}"
-          echo "Rust clippy analysis: ${{ needs.rust-clippy-analysis.conclusion }}"
-          echo "Deploy website: ${{ needs.deploy-website.conclusion }}"
-
       - name: Fail if tests failed
-        if: needs.build-and-test-binaries.result == 'failure'
+        if: needs.build-and-test-binaries.result == 'failure' || needs.build-and-test-binaries.result == 'cancelled'
         run: exit 1
 
       - name: Fail if CodeQL failed
-        if: needs.rust-clippy-analysis.result == 'failure'
+        if: needs.rust-clippy-analysis.result == 'failure' || needs.rust-clippy-analysis.result == 'cancelled'
         run: exit 1
 
       - name: Fail if website building/deployment failed
-        if: needs.deploy-website.result == 'failure'
+        if: needs.deploy-website.result == 'failure' || needs.deploy-website.result == 'cancelled'
         run: exit 1
 
 
