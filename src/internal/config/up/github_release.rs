@@ -405,6 +405,11 @@ struct UpConfigGithubRelease {
     #[serde(default, skip_serializing_if = "cache_utils::is_false")]
     pub prerelease: bool,
 
+    /// Whether to allow versions containing build details
+    /// (e.g. 1.2.3+build)
+    #[serde(default, skip_serializing_if = "cache_utils::is_false")]
+    pub build: bool,
+
     /// Whether to install a file that is not currently in an
     /// archive. This is useful for tools that are being
     /// distributed as a single binary file outside of an archive.
@@ -435,6 +440,7 @@ impl Default for UpConfigGithubRelease {
             repository: "".to_string(),
             version: None,
             prerelease: false,
+            build: false,
             binary: true,
             api_url: None,
             actual_version: OnceCell::new(),
@@ -517,6 +523,11 @@ impl UpConfigGithubRelease {
             .map(|v| v.as_bool())
             .unwrap_or(None)
             .unwrap_or(false);
+        let build = table
+            .get("build")
+            .map(|v| v.as_bool())
+            .unwrap_or(None)
+            .unwrap_or(false);
         let binary = table
             .get("binary")
             .map(|v| v.as_bool())
@@ -531,6 +542,7 @@ impl UpConfigGithubRelease {
             repository,
             version,
             prerelease,
+            build,
             binary,
             api_url,
             ..UpConfigGithubRelease::default()
@@ -885,7 +897,7 @@ impl UpConfigGithubRelease {
         let version = self.version.clone().unwrap_or_else(|| "latest".to_string());
 
         let (version, release) = releases
-            .get(&version, self.prerelease, self.binary)
+            .get(&version, self.prerelease, self.build, self.binary)
             .ok_or_else(|| {
                 let errmsg = format!(
                     "no matching release found for {} {}",

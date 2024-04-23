@@ -19,6 +19,7 @@ use crate::internal::config;
 use crate::internal::config::parser::EnvOperationConfig;
 use crate::internal::config::parser::EnvOperationEnum;
 use crate::internal::config::up::utils::get_config_mod_times;
+use crate::internal::env::data_home;
 
 const UP_ENVIRONMENTS_CACHE_NAME: &str = "up_environments";
 
@@ -104,7 +105,12 @@ impl UpEnvironmentsCache {
     pub fn add_path(&mut self, workdir_id: &str, path: PathBuf) -> bool {
         if let Some(env) = self.env.get_mut(workdir_id) {
             env.paths.retain(|p| p != &path);
-            env.paths.push(path);
+            // Prepend anything that starts with the data_home()
+            if path.starts_with(data_home()) {
+                env.paths.insert(0, path);
+            } else {
+                env.paths.push(path);
+            }
         } else {
             let mut env = UpEnvironment::new();
             env.paths.push(path);
