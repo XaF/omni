@@ -97,16 +97,23 @@ add_asdf_python_calls() {
 3.13-dev
 EOF
   if [ "$installed" = "true" ]; then
-    if [ "$others_installed" = "false" ]; then installed_versions="${version}"; else installed_versions=$(echo "${others_installed},${version}" | tr ',' '\n' | sort -u); fi;
-    add_command asdf list python "${version}" exit=0 < <(for v in ${installed_versions}; do echo "  ${v}"; done)
+    if [ "$others_installed" = "false" ]; then
+      installed_versions="${version}"
+    else
+      installed_versions=$(echo "${others_installed},${version}" | tr ',' '\n' | sort -u)
+    fi
+    add_command asdf list python "${version}" exit=0 <<EOF
+$(for v in ${installed_versions}; do echo "  ${v}"; done)
+EOF
 
   else
     if [ "$others_installed" = "false" ]; then
       add_command asdf list python "${version}" exit=1
     else
       installed_versions=$(echo "${others_installed}" | tr ',' '\n' | sort -u)
-      add_command asdf list python "${version}" exit=0 < <(for v in ${installed_versions}; do echo "  ${v}"; done)
-
+      add_command asdf list python "${version}" exit=0 <<EOF
+$(for v in ${installed_versions}; do echo "  ${v}"; done)
+EOF
     fi
     add_command asdf install python "${version}"
   fi
