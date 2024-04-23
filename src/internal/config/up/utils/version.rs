@@ -112,7 +112,7 @@ impl VersionParser {
         let mut version = self.version.clone();
         version.pre_release = vec![];
         version.build = vec![];
-        return version.satisfies(requirements);
+        version.satisfies(requirements)
     }
 }
 
