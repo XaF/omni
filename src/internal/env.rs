@@ -237,7 +237,7 @@ lazy_static! {
 /// itself in a subprocess, the subprocess will have a time
 /// greater or equal to the one of the calling process.
 pub fn now() -> OffsetDateTime {
-    (*NOW).clone()
+    *NOW
 }
 
 /// Cleanup temporary directories created by omni in the system's
