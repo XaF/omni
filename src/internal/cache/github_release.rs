@@ -16,7 +16,7 @@ use crate::internal::cache::utils;
 use crate::internal::cache::utils::Empty;
 use crate::internal::cache::CacheObject;
 use crate::internal::config::global_config;
-use crate::internal::config::up::asdf_base::version_match;
+use crate::internal::config::up::utils::VersionMatcher;
 use crate::internal::env::now as omni_now;
 use crate::internal::self_updater::compatible_release_arch;
 use crate::internal::self_updater::compatible_release_os;
@@ -24,30 +24,23 @@ use crate::internal::self_updater::compatible_release_os;
 const GITHUB_RELEASE_CACHE_NAME: &str = "github_release_operation";
 
 lazy_static! {
-    static ref VERSION_REGEX: Regex = {
-        let pattern = r"^(?P<prefix>[^0-9]*)(?P<version>\d+(?:\.\d+)*(?:\-[\w\d_-]+)?)$";
-        match Regex::new(pattern) {
-            Ok(regex) => regex,
-            Err(err) => panic!("failed to create version regex: {}", err),
-        }
-    };
-    static ref OS_REGEX: regex::Regex =
-        match regex::Regex::new(&format!(r"(?i)\b({})\b", compatible_release_os().join("|"))) {
+    static ref OS_REGEX: Regex =
+        match Regex::new(&format!(r"(?i)\b({})\b", compatible_release_os().join("|"))) {
             Ok(os_re) => os_re,
             Err(err) => panic!("failed to create OS regex: {}", err),
         };
-    static ref ARCH_REGEX: regex::Regex = match regex::Regex::new(&format!(
+    static ref ARCH_REGEX: Regex = match Regex::new(&format!(
         r"(?i)\b({})\b",
         compatible_release_arch().join("|")
     )) {
         Ok(arch_re) => arch_re,
         Err(err) => panic!("failed to create architecture regex: {}", err),
     };
-    static ref SEPARATOR_MID_REGEX: regex::Regex = match regex::Regex::new(r"([-_]{2,})") {
+    static ref SEPARATOR_MID_REGEX: Regex = match Regex::new(r"([-_]{2,})") {
         Ok(separator_re) => separator_re,
         Err(err) => panic!("failed to create separator regex: {}", err),
     };
-    static ref SEPARATOR_END_REGEX: regex::Regex = match regex::Regex::new(r"(^[-_]+|[-_]+$)") {
+    static ref SEPARATOR_END_REGEX: Regex = match Regex::new(r"(^[-_]+|[-_]+$)") {
         Ok(separator_re) => separator_re,
         Err(err) => panic!("failed to create separator regex: {}", err),
     };
@@ -214,8 +207,16 @@ impl GithubReleases {
         &self,
         version: &str,
         prerelease: bool,
+        build: bool,
         binary: bool,
     ) -> Option<(String, GithubReleaseVersion)> {
+        let mut matcher = VersionMatcher::new(version);
+        matcher.prerelease(prerelease);
+        matcher.build(build);
+        // We also always authorize `prefix` because we don't know what
+        // the prefix is going to be, `v` or anything else
+        matcher.prefix(true);
+
         self.releases
             .iter()
             .filter_map(|release| {
@@ -233,7 +234,7 @@ impl GithubReleases {
                 let release_version = release.version();
 
                 // Make sure the version fits the requested version
-                if !version_match(version, &release_version, prerelease) {
+                if !matcher.matches(&release_version) {
                     return None;
                 }
 
@@ -303,31 +304,7 @@ pub struct GithubReleaseVersion {
 
 impl GithubReleaseVersion {
     pub fn version(&self) -> String {
-        // Try and get the version from the tag name, and keep the prefix
-        // if it exists, as we will try and add it as build metadata
-        let captures = match VERSION_REGEX.captures(&self.tag_name) {
-            Some(captures) => captures,
-            None => return self.tag_name.clone(),
-        };
-
-        let version = match captures.name("version") {
-            Some(version) => version.as_str().to_string(),
-            None => return self.tag_name.clone(),
-        };
-
-        // if let Some(prefix) = captures.name("prefix") {
-        // let prefix = prefix.as_str();
-        // if prefix != "v" {
-        // let prefix = match prefix.strip_suffix('-') {
-        // Some(prefix) => prefix,
-        // None => prefix,
-        // };
-
-        // version = format!("{}-{}", version, prefix);
-        // }
-        // }
-
-        version
+        self.tag_name.clone()
     }
 }
 

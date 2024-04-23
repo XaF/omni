@@ -3,11 +3,8 @@ use std::collections::BTreeSet;
 use std::collections::HashSet;
 use std::os::unix::fs::PermissionsExt;
 use std::path::PathBuf;
-use std::str::FromStr;
 
 use lazy_static::lazy_static;
-use node_semver::Range as semverRange;
-use node_semver::Version as semverVersion;
 use normalize_path::NormalizePath;
 use once_cell::sync::OnceCell;
 use serde::Deserialize;
@@ -26,6 +23,7 @@ use crate::internal::config::up::utils::run_progress;
 use crate::internal::config::up::utils::ProgressHandler;
 use crate::internal::config::up::utils::RunConfig;
 use crate::internal::config::up::utils::UpProgressHandler;
+use crate::internal::config::up::utils::VersionMatcher;
 use crate::internal::config::up::UpConfigHomebrew;
 use crate::internal::config::up::UpConfigNix;
 use crate::internal::config::up::UpConfigTool;
@@ -157,12 +155,16 @@ fn is_asdf_tool_version_installed(tool: &str, version: &str) -> bool {
     asdf_list.arg("list");
     asdf_list.arg(tool);
     asdf_list.arg(version);
-    asdf_list.stdout(std::process::Stdio::null());
+    asdf_list.stdout(std::process::Stdio::piped());
     asdf_list.stderr(std::process::Stdio::null());
 
     if let Ok(output) = asdf_list.output() {
         if output.status.success() {
-            return true;
+            // The output is listing all available versions, one per line,
+            // so we want to go over that output and check that a version
+            // _exactly_ matches the required version
+            let stdout = String::from_utf8(output.stdout).unwrap();
+            return stdout.lines().any(|line| line.trim() == version);
         }
     }
 
@@ -769,9 +771,11 @@ impl UpConfigAsdfBase {
                 }
             };
 
+            let matcher = VersionMatcher::new(&self.version);
+
             let mut version = "".to_string();
             for available_version in available_versions {
-                if version_match(&self.version, available_version.as_str(), false) {
+                if matcher.matches(available_version.as_str()) {
                     version = available_version;
                 }
             }
@@ -860,11 +864,10 @@ impl UpConfigAsdfBase {
     }
 
     fn is_version_installed(&self) -> bool {
-        let version = self.version(None);
-        if version.is_err() {
-            return false;
-        }
-        let version = version.unwrap();
+        let version = match self.version(None) {
+            Ok(version) => version,
+            Err(_err) => return false,
+        };
 
         is_asdf_tool_version_installed(&self.tool, version)
     }
@@ -1101,53 +1104,6 @@ impl UpConfigAsdfBase {
             nix_packages.into_iter().map(|p| p.to_string()).collect(),
         ))
     }
-}
-
-pub fn version_match(expect: &str, version: &str, prerelease: bool) -> bool {
-    if expect == "latest" {
-        let mut prev = '.';
-        let chars = version.chars().collect::<Vec<char>>();
-        let lastidx = chars.len() - 1;
-        for (idx, c) in chars.iter().enumerate() {
-            let c = *c;
-            if !c.is_ascii_digit() {
-                if c == '.' {
-                    if prev == '.' {
-                        return false;
-                    }
-                } else if c == '-' {
-                    return prerelease && idx != lastidx && chars[idx + 1].is_alphanumeric();
-                } else {
-                    return false;
-                }
-            }
-            prev = c;
-        }
-        return true;
-    }
-
-    if expect == version {
-        return true;
-    }
-
-    if let Ok(requirements) = semverRange::from_str(expect) {
-        if let Ok(version) = semverVersion::from_str(version) {
-            // By not directly returning, we allow to keep the prefix
-            // check in case the version is not a semver version
-            if version.satisfies(&requirements) {
-                return true;
-            }
-        }
-    }
-
-    let expect_prefix = format!("{}.", expect);
-    if let Some(rest_of_line) = version.strip_prefix(&expect_prefix) {
-        return rest_of_line
-            .chars()
-            .all(|c| c.is_ascii_digit() || c == '.' || (prerelease && c == '-'));
-    }
-
-    false
 }
 
 fn detect_version_from_asdf_version_file(tool_name: String, path: PathBuf) -> Option<String> {

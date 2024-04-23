@@ -30,6 +30,9 @@ pub(crate) use spinner_progress_handler::SpinnerProgressHandler;
 pub(crate) mod up_progress_handler;
 pub(crate) use up_progress_handler::UpProgressHandler;
 
+pub(crate) mod version;
+pub(crate) use version::VersionMatcher;
+
 pub(crate) mod void_progress_handler;
 #[allow(unused_imports)]
 pub(crate) use void_progress_handler::VoidProgressHandler;
