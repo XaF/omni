@@ -22,6 +22,7 @@ teardown() {
 add_asdf_python_calls() {
   version="latest"
   installed=false
+  others_installed=false
   venv=true
 
   for arg in "$@"; do
@@ -32,6 +33,10 @@ add_asdf_python_calls() {
         ;;
       installed=*)
         installed="${arg#installed=}"
+        shift
+        ;;
+      others_installed=*)
+        others_installed="${arg#others_installed=}"
         shift
         ;;
       venv=*)
@@ -92,9 +97,17 @@ add_asdf_python_calls() {
 3.13-dev
 EOF
   if [ "$installed" = "true" ]; then
-    add_command asdf list python "${version}" exit=0
+    if [ "$others_installed" = "false" ]; then installed_versions="${version}"; else installed_versions=$(echo "${others_installed},${version}" | tr ',' '\n' | sort -u); fi;
+    add_command asdf list python "${version}" exit=0 < <(for v in ${installed_versions}; do echo "  ${v}"; done)
+
   else
-    add_command asdf list python "${version}" exit=1
+    if [ "$others_installed" = "false" ]; then
+      add_command asdf list python "${version}" exit=1
+    else
+      installed_versions=$(echo "${others_installed}" | tr ',' '\n' | sort -u)
+      add_command asdf list python "${version}" exit=0 < <(for v in ${installed_versions}; do echo "  ${v}"; done)
+
+    fi
     add_command asdf install python "${version}"
   fi
 
@@ -164,6 +177,22 @@ EOF
 }
 
 # bats test_tags=omni:up,omni:up:python,omni:up:python:brew
+@test "omni up python operation (latest) using brew for dependencies (other versions installed)" {
+  cat > .omni.yaml <<EOF
+up:
+  - python
+EOF
+
+  add_brew_python_calls
+  add_asdf_python_calls others_installed="3.11.6,3.11.8"
+
+  run omni up --trust 3>&-
+  echo "STATUS: $status"
+  echo "OUTPUT: $output"
+  [ "$status" -eq 0 ]
+}
+
+# bats test_tags=omni:up,omni:up:python,omni:up:python:brew
 @test "omni up python operation (latest) using brew for dependencies and call pip (single requirements file)" {
   cat > .omni.yaml <<EOF
 up:
@@ -218,6 +247,22 @@ EOF
 
   add_brew_python_calls
   add_asdf_python_calls installed=true
+
+  run omni up --trust 3>&-
+  echo "STATUS: $status"
+  echo "OUTPUT: $output"
+  [ "$status" -eq 0 ]
+}
+
+# bats test_tags=omni:up,omni:up:python,omni:up:python:brew
+@test "omni up python operation (latest) using brew for dependencies (already installed + other versions)" {
+  cat > .omni.yaml <<EOF
+up:
+  - python
+EOF
+
+  add_brew_python_calls
+  add_asdf_python_calls installed=true others_installed="3.11.6,3.11.8"
 
   run omni up --trust 3>&-
   echo "STATUS: $status"
