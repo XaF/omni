@@ -16,6 +16,7 @@ use crate::internal::cache::utils;
 use crate::internal::cache::utils::Empty;
 use crate::internal::cache::CacheObject;
 use crate::internal::config::global_config;
+use crate::internal::env::now as omni_now;
 
 const ASDF_OPERATION_CACHE_NAME: &str = "asdf_operation";
 
@@ -88,13 +89,21 @@ impl AsdfOperationCache {
             .iter_mut()
             .find(|i| i.tool == tool && i.version == version)
         {
-            install.required_by.insert(workdir_id.to_string())
+            if install.required_by.insert(workdir_id.to_string())
+                || install.last_required_at < omni_now()
+            {
+                install.last_required_at = omni_now();
+                true
+            } else {
+                false
+            }
         } else {
             let install = AsdfInstalled {
                 tool: tool.to_string(),
                 tool_real_name: tool_real_name.map(|s| s.to_string()),
                 version: version.to_string(),
                 required_by: [workdir_id.to_string()].iter().cloned().collect(),
+                last_required_at: omni_now(),
             };
             self.installed.push(install);
             true
@@ -151,6 +160,26 @@ pub struct AsdfInstalled {
     pub version: String,
     #[serde(default = "BTreeSet::new", skip_serializing_if = "BTreeSet::is_empty")]
     pub required_by: BTreeSet<String>,
+    #[serde(default = "utils::origin_of_time", with = "time::serde::rfc3339")]
+    pub last_required_at: OffsetDateTime,
+}
+
+impl AsdfInstalled {
+    pub fn stale(&self) -> bool {
+        self.last_required_at < omni_now()
+    }
+
+    pub fn removable(&self) -> bool {
+        if !self.required_by.is_empty() {
+            return false;
+        }
+
+        let config = global_config();
+        let grace_period = config.cache.asdf.cleanup_after;
+        let grace_period = time::Duration::seconds(grace_period as i64);
+
+        (self.last_required_at + grace_period) < omni_now()
+    }
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
