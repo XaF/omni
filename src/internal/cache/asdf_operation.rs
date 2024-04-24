@@ -16,6 +16,7 @@ use crate::internal::cache::utils;
 use crate::internal::cache::utils::Empty;
 use crate::internal::cache::CacheObject;
 use crate::internal::config::global_config;
+use crate::internal::config::up::utils::VersionMatcher;
 use crate::internal::env::now as omni_now;
 
 const ASDF_OPERATION_CACHE_NAME: &str = "asdf_operation";
@@ -52,7 +53,11 @@ impl AsdfOperationCache {
         self.updated();
     }
 
-    pub fn set_asdf_plugin_versions(&mut self, plugin: &str, versions: Vec<String>) {
+    pub fn set_asdf_plugin_versions(
+        &mut self,
+        plugin: &str,
+        versions: AsdfOperationUpdateCachePluginVersions,
+    ) {
         self.update_cache.set_asdf_plugin_versions(plugin, versions);
         self.updated();
     }
@@ -70,11 +75,11 @@ impl AsdfOperationCache {
         )
     }
 
-    pub fn get_asdf_plugin_versions(&self, plugin: &str) -> Option<Vec<String>> {
-        self.update_cache.get_asdf_plugin_versions(
-            plugin,
-            Duration::from_secs(global_config().cache.asdf.plugin_versions_expire),
-        )
+    pub fn get_asdf_plugin_versions(
+        &self,
+        plugin: &str,
+    ) -> Option<AsdfOperationUpdateCachePluginVersions> {
+        self.update_cache.get_asdf_plugin_versions(plugin)
     }
 
     pub fn add_installed(
@@ -218,11 +223,12 @@ impl AsdfOperationUpdateCache {
             .insert(plugin.to_string(), OffsetDateTime::now_utc());
     }
 
-    pub fn set_asdf_plugin_versions(&mut self, plugin: &str, versions: Vec<String>) {
-        self.plugins_versions.insert(
-            plugin.to_string(),
-            AsdfOperationUpdateCachePluginVersions::new(versions),
-        );
+    pub fn set_asdf_plugin_versions(
+        &mut self,
+        plugin: &str,
+        versions: AsdfOperationUpdateCachePluginVersions,
+    ) {
+        self.plugins_versions.insert(plugin.to_string(), versions);
     }
 
     pub fn should_update_asdf(&self, expire_after: Duration) -> bool {
@@ -240,16 +246,10 @@ impl AsdfOperationUpdateCache {
     pub fn get_asdf_plugin_versions(
         &self,
         plugin: &str,
-        expire_after: Duration,
-    ) -> Option<Vec<String>> {
-        if let Some(plugin_versions) = self.plugins_versions.get(plugin) {
-            if (plugin_versions.updated_at + expire_after) < OffsetDateTime::now_utc() {
-                return None;
-            }
-            Some(plugin_versions.versions.clone())
-        } else {
-            None
-        }
+    ) -> Option<AsdfOperationUpdateCachePluginVersions> {
+        self.plugins_versions
+            .get(plugin)
+            .map(|plugin_versions| plugin_versions.clone())
     }
 }
 
@@ -263,22 +263,39 @@ impl Empty for AsdfOperationUpdateCache {
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct AsdfOperationUpdateCachePluginVersions {
+    #[serde(default = "Vec::new", skip_serializing_if = "Vec::is_empty")]
+    pub versions: Vec<String>,
     #[serde(
         default = "utils::origin_of_time",
         with = "time::serde::rfc3339",
         skip_serializing_if = "utils::is_origin_of_time"
     )]
     pub updated_at: OffsetDateTime,
-    #[serde(default = "Vec::new", skip_serializing_if = "Vec::is_empty")]
-    pub versions: Vec<String>,
 }
 
 impl AsdfOperationUpdateCachePluginVersions {
     pub fn new(versions: Vec<String>) -> Self {
         Self {
-            updated_at: OffsetDateTime::now_utc(),
             versions,
+            updated_at: OffsetDateTime::now_utc(),
         }
+    }
+
+    pub fn is_fresh(&self) -> bool {
+        self.updated_at >= omni_now()
+    }
+
+    pub fn is_stale(&self, ttl: u64) -> bool {
+        let duration = time::Duration::seconds(ttl as i64);
+        self.updated_at + duration < OffsetDateTime::now_utc()
+    }
+
+    pub fn get(&self, matcher: &VersionMatcher) -> Option<String> {
+        self.versions
+            .iter()
+            .rev()
+            .find(|v| matcher.matches(v))
+            .cloned()
     }
 }
 

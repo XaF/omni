@@ -14,9 +14,11 @@ use sha2::Sha256;
 use tokio::process::Command as TokioCommand;
 use walkdir::WalkDir;
 
+use crate::internal::cache::asdf_operation::AsdfOperationUpdateCachePluginVersions;
 use crate::internal::cache::AsdfOperationCache;
 use crate::internal::cache::CacheObject;
 use crate::internal::cache::UpEnvironmentsCache;
+use crate::internal::config::global_config;
 use crate::internal::config::up::homebrew::HomebrewInstall;
 use crate::internal::config::up::utils::data_path_dir_hash;
 use crate::internal::config::up::utils::run_progress;
@@ -34,7 +36,6 @@ use crate::internal::dynenv::update_dynamic_env_for_command;
 use crate::internal::env::data_home;
 use crate::internal::user_interface::StringColor;
 use crate::internal::workdir;
-use crate::omni_error;
 use crate::omni_warning;
 
 lazy_static! {
@@ -381,17 +382,13 @@ impl UpConfigAsdfBase {
 
     fn update_cache(&self, progress_handler: &dyn ProgressHandler) {
         let workdir = workdir(".");
-
-        let repo_id = if let Some(repo_id) = workdir.id() {
-            repo_id
-        } else {
-            return;
+        let repo_id = match workdir.id() {
+            Some(repo_id) => repo_id,
+            None => return,
         };
-
-        let version = if let Ok(version) = self.version(None) {
-            version.to_string()
-        } else {
-            return;
+        let version = match self.version() {
+            Ok(version) => version,
+            Err(_err) => return,
         };
 
         progress_handler.progress("updating cache".to_string());
@@ -476,11 +473,11 @@ impl UpConfigAsdfBase {
             return self.run_up_auto(options, progress_handler);
         }
 
-        match self.install_version(progress_handler) {
+        match self.resolve_and_install_version(options, progress_handler) {
             Ok(installed) => {
-                self.update_cache(progress_handler);
+                let version = self.version()?;
 
-                let version = self.version(None).unwrap();
+                self.update_cache(progress_handler);
 
                 if !self.post_install_funcs.is_empty() {
                     let post_install_versions = vec![AsdfToolUpVersion {
@@ -526,7 +523,7 @@ impl UpConfigAsdfBase {
 
     fn run_up_auto(
         &self,
-        _options: &UpOptions,
+        options: &UpOptions,
         progress_handler: &UpProgressHandler,
     ) -> Result<(), UpError> {
         progress_handler.progress("detecting required versions and paths".to_string());
@@ -631,16 +628,17 @@ impl UpConfigAsdfBase {
 
         for (version, dirs) in detected_versions.iter() {
             let asdf_base = self.new_from_auto(version, dirs.clone());
-            let installed = asdf_base.install_version(progress_handler);
-            if installed.is_err() {
-                let err = installed.err().unwrap();
-                progress_handler.error_with_message(format!("error: {}", err));
-                return Err(err);
-            }
+            let installed = match asdf_base.resolve_and_install_version(options, progress_handler) {
+                Ok(installed) => installed,
+                Err(err) => {
+                    progress_handler.error_with_message(format!("error: {}", err));
+                    return Err(err);
+                }
+            };
 
-            let version = asdf_base.version(None).unwrap();
+            let version = asdf_base.version().expect("failed to get version");
             all_versions.insert(version.clone(), dirs.clone());
-            if installed.unwrap() {
+            if installed {
                 installed_versions.push(version.clone());
             } else {
                 already_installed_versions.push(version.clone());
@@ -719,79 +717,166 @@ impl UpConfigAsdfBase {
         self.deps().down(progress_handler)
     }
 
-    fn version(&self, progress_handler: Option<&dyn ProgressHandler>) -> Result<&String, UpError> {
-        let version = self.actual_version.get_or_init(|| {
-            if self.update_plugin(progress_handler).is_err() {
-                return "".to_string();
-            }
-
-            if let Some(handler) = progress_handler {
-                handler.progress("checking available versions".to_string());
-            }
-
-            let available_versions = if let Some(versions) =
-                AsdfOperationCache::get().get_asdf_plugin_versions(&self.tool)
-            {
-                versions
+    fn list_versions(
+        &self,
+        options: &UpOptions,
+        progress_handler: &UpProgressHandler,
+    ) -> Result<AsdfOperationUpdateCachePluginVersions, UpError> {
+        let cached_versions = if options.read_cache {
+            let cache = AsdfOperationCache::get();
+            if let Some(versions) = cache.get_asdf_plugin_versions(&self.tool) {
+                let versions = versions.clone();
+                let config = global_config();
+                let expire = config.cache.asdf.plugin_versions_expire;
+                if !versions.is_stale(expire) {
+                    progress_handler.progress("using cached version list".light_black());
+                    return Ok(versions);
+                }
+                Some(versions)
             } else {
-                let mut asdf_list_all = asdf_sync_command();
-                asdf_list_all.arg("list");
-                asdf_list_all.arg("all");
-                asdf_list_all.arg(self.tool.clone());
+                None
+            }
+        } else {
+            None
+        };
 
-                if let Ok(output) = asdf_list_all.output() {
-                    if output.status.success() {
-                        let stdout = String::from_utf8(output.stdout).unwrap();
-                        let versions = stdout
-                            .lines()
-                            .map(|line| line.trim().to_string())
-                            .filter(|line| !line.is_empty())
-                            .collect::<Vec<String>>();
-
-                        if let Err(err) = AsdfOperationCache::exclusive(|cache| {
-                            cache.set_asdf_plugin_versions(&self.tool, versions.clone());
-                            true
-                        }) {
-                            omni_error!(format!("failed to update cache: {}", err));
-                            return "".to_string();
-                        }
-
-                        versions
-                    } else {
-                        omni_error!(format!(
-                            "failed to list versions for {}; exited with status {}",
-                            self.name(),
-                            output.status
-                        ));
-                        return "".to_string();
+        progress_handler.progress("refreshing versions list".to_string());
+        match self.list_versions_from_plugin(progress_handler) {
+            Ok(versions) => {
+                if options.write_cache {
+                    progress_handler.progress("updating cache with version list".to_string());
+                    if let Err(err) = AsdfOperationCache::exclusive(|cache| {
+                        cache.set_asdf_plugin_versions(&self.tool, versions.clone());
+                        true
+                    }) {
+                        progress_handler.progress(format!("failed to update cache: {}", err));
                     }
-                } else {
-                    omni_error!(format!("failed to list versions for {}", self.name()));
-                    return "".to_string();
                 }
-            };
 
-            let matcher = VersionMatcher::new(&self.version);
-
-            let mut version = "".to_string();
-            for available_version in available_versions {
-                if matcher.matches(available_version.as_str()) {
-                    version = available_version;
+                Ok(versions)
+            }
+            Err(err) => {
+                if let Some(cached_versions) = cached_versions {
+                    progress_handler.progress(format!(
+                        "{}; {}",
+                        format!("error refreshing version list: {}", err).red(),
+                        "using cached data".light_black()
+                    ));
+                    Ok(cached_versions)
+                } else {
+                    Err(err)
                 }
             }
+        }
+    }
 
-            version
-        });
+    fn list_versions_from_plugin(
+        &self,
+        progress_handler: &dyn ProgressHandler,
+    ) -> Result<AsdfOperationUpdateCachePluginVersions, UpError> {
+        self.update_plugin(progress_handler)?;
 
-        if version.is_empty() {
-            return Err(UpError::Exec(format!(
-                "No {} version found matching {}",
+        progress_handler.progress("listing available versions for plugin".to_string());
+
+        let mut asdf_list_all = asdf_sync_command();
+        asdf_list_all.arg("list");
+        asdf_list_all.arg("all");
+        asdf_list_all.arg(self.tool.clone());
+
+        let output = asdf_list_all.output().map_err(|err| {
+            UpError::Exec(format!(
+                "failed to list versions for {}: {}",
                 self.name(),
-                self.version,
+                err
+            ))
+        })?;
+
+        if !output.status.success() {
+            return Err(UpError::Exec(format!(
+                "failed to list versions for {} (exit: {}): {}",
+                self.name(),
+                output.status,
+                String::from_utf8_lossy(&output.stderr),
             )));
         }
 
+        let stdout = String::from_utf8(output.stdout).unwrap();
+        let versions = stdout
+            .lines()
+            .map(|line| line.trim().to_string())
+            .filter(|line| !line.is_empty())
+            .collect::<Vec<String>>();
+
+        Ok(AsdfOperationUpdateCachePluginVersions::new(versions))
+    }
+
+    fn list_installed_versions_from_plugin(
+        &self,
+        _progress_handler: &dyn ProgressHandler,
+    ) -> Result<AsdfOperationUpdateCachePluginVersions, UpError> {
+        let mut asdf_list = asdf_sync_command();
+        asdf_list.arg("list");
+        asdf_list.arg(&self.tool);
+        asdf_list.stdout(std::process::Stdio::piped());
+        asdf_list.stderr(std::process::Stdio::null());
+
+        let output = asdf_list.output().map_err(|err| {
+            UpError::Exec(format!(
+                "failed to list installed versions for {}: {}",
+                self.name(),
+                err
+            ))
+        })?;
+
+        if !output.status.success() {
+            return Err(UpError::Exec(format!(
+                "failed to list installed versions for {} (exit: {}): {}",
+                self.name(),
+                output.status,
+                String::from_utf8_lossy(&output.stderr),
+            )));
+        }
+
+        // The output is listing all available versions, one per line,
+        // so we want to go over that output and check that a version
+        // _exactly_ matches the required version
+        let stdout = String::from_utf8(output.stdout).unwrap();
+        let versions = stdout
+            .lines()
+            .map(|line| line.trim().to_string())
+            .filter(|line| !line.is_empty())
+            .collect::<Vec<String>>();
+
+        Ok(AsdfOperationUpdateCachePluginVersions::new(versions))
+    }
+
+    fn resolve_version(
+        &self,
+        versions: &AsdfOperationUpdateCachePluginVersions,
+    ) -> Result<String, UpError> {
+        let matcher = VersionMatcher::new(&self.version);
+
+        let version = versions.get(&matcher).ok_or_else(|| {
+            UpError::Exec(format!(
+                "no {} version found matching {}",
+                self.name(),
+                self.version,
+            ))
+        })?;
+
+        // self.actual_version.set(version.to_string()).map_err(|_| {
+        // let errmsg = "failed to set actual version".to_string();
+        // UpError::Exec(errmsg)
+        // })?;
+
         Ok(version)
+    }
+
+    fn version(&self) -> Result<String, UpError> {
+        self.actual_version
+            .get()
+            .map(|version| version.to_string())
+            .ok_or_else(|| UpError::Exec("actual version not set".to_string()))
     }
 
     fn is_plugin_installed(&self) -> bool {
@@ -832,14 +917,12 @@ impl UpConfigAsdfBase {
         )
     }
 
-    fn update_plugin(&self, progress_handler: Option<&dyn ProgressHandler>) -> Result<(), UpError> {
+    fn update_plugin(&self, progress_handler: &dyn ProgressHandler) -> Result<(), UpError> {
         if !AsdfOperationCache::get().should_update_asdf_plugin(&self.tool) {
             return Ok(());
         }
 
-        if let Some(ph) = progress_handler {
-            ph.progress(format!("updating {} plugin", self.tool));
-        }
+        progress_handler.progress(format!("updating {} plugin", self.tool));
 
         let mut asdf_plugin_update = asdf_async_command();
         asdf_plugin_update.arg("plugin");
@@ -848,7 +931,7 @@ impl UpConfigAsdfBase {
 
         run_progress(
             &mut asdf_plugin_update,
-            progress_handler,
+            Some(progress_handler),
             RunConfig::default(),
         )?;
 
@@ -863,36 +946,100 @@ impl UpConfigAsdfBase {
         Ok(())
     }
 
-    fn is_version_installed(&self) -> bool {
-        let version = match self.version(None) {
-            Ok(version) => version,
-            Err(_err) => return false,
-        };
-
-        is_asdf_tool_version_installed(&self.tool, version)
+    fn is_version_installed(&self, version: &str) -> bool {
+        is_asdf_tool_version_installed(&self.tool, &version)
     }
 
-    fn install_version(&self, progress_handler: &dyn ProgressHandler) -> Result<bool, UpError> {
-        let version = self.version(Some(progress_handler))?;
+    fn resolve_and_install_version(
+        &self,
+        options: &UpOptions,
+        progress_handler: &UpProgressHandler,
+    ) -> Result<bool, UpError> {
+        let versions = self.list_versions(options, progress_handler)?;
+        let mut version = match self.resolve_version(&versions) {
+            Ok(version) => version,
+            Err(err) => {
+                // If the versions are not fresh of now, and we failed to
+                // resolve the version, we should try to refresh the
+                // version list and try again
+                if options.read_cache && !versions.is_fresh() {
+                    progress_handler.progress("no matching version found in cache".to_string());
 
-        if self.is_version_installed() {
-            return Ok(false);
+                    let versions = self.list_versions(
+                        &UpOptions {
+                            read_cache: false,
+                            ..options.clone()
+                        },
+                        progress_handler,
+                    )?;
+
+                    self.resolve_version(&versions).map_err(|err| {
+                        progress_handler.error_with_message(err.message());
+                        err
+                    })?
+                } else {
+                    progress_handler.error_with_message(err.message());
+                    return Err(err);
+                }
+            }
+        };
+
+        // Try installing the version found
+        let mut install_version = self.install_version(&version, options, progress_handler);
+        if install_version.is_err() {
+            // If we get here and there is an issue installing the version,
+            // list all installed versions and check if one of those could
+            // fit the requirement, in which case we can fallback to it
+            let installed_versions = self.list_installed_versions_from_plugin(progress_handler)?;
+            match self.resolve_version(&installed_versions) {
+                Ok(installed_version) => {
+                    progress_handler.progress(format!(
+                        "falling back to installed version {}",
+                        installed_version.light_yellow()
+                    ));
+                    version = installed_version;
+                    install_version = self.install_version(&version, options, progress_handler);
+                }
+                Err(_err) => {}
+            }
         }
 
-        progress_handler.progress(format!("installing {} {}", self.name(), version));
+        install_version
+    }
 
-        let mut asdf_install = asdf_async_command();
-        asdf_install.arg("install");
-        asdf_install.arg(self.tool.clone());
-        asdf_install.arg(version);
+    fn install_version(
+        &self,
+        version: &str,
+        _options: &UpOptions,
+        progress_handler: &dyn ProgressHandler,
+    ) -> Result<bool, UpError> {
+        let installed = if self.is_version_installed(version) {
+            progress_handler.progress(format!("using {} {}", self.name(), version));
 
-        run_progress(
-            &mut asdf_install,
-            Some(progress_handler),
-            RunConfig::default(),
-        )?;
+            false
+        } else {
+            progress_handler.progress(format!("installing {} {}", self.name(), version));
 
-        Ok(true)
+            let mut asdf_install = asdf_async_command();
+            asdf_install.arg("install");
+            asdf_install.arg(self.tool.clone());
+            asdf_install.arg(version);
+
+            run_progress(
+                &mut asdf_install,
+                Some(progress_handler),
+                RunConfig::default(),
+            )?;
+
+            true
+        };
+
+        self.actual_version.set(version.to_string()).map_err(|_| {
+            let errmsg = "failed to set actual version".to_string();
+            UpError::Exec(errmsg)
+        })?;
+
+        Ok(installed)
     }
 
     pub fn data_paths(&self) -> Vec<PathBuf> {
