@@ -947,7 +947,7 @@ impl UpConfigAsdfBase {
     }
 
     fn is_version_installed(&self, version: &str) -> bool {
-        is_asdf_tool_version_installed(&self.tool, &version)
+        is_asdf_tool_version_installed(&self.tool, version)
     }
 
     fn resolve_and_install_version(

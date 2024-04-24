@@ -247,9 +247,7 @@ impl AsdfOperationUpdateCache {
         &self,
         plugin: &str,
     ) -> Option<AsdfOperationUpdateCachePluginVersions> {
-        self.plugins_versions
-            .get(plugin)
-            .map(|plugin_versions| plugin_versions.clone())
+        self.plugins_versions.get(plugin).cloned()
     }
 }
 
