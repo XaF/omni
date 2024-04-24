@@ -864,11 +864,6 @@ impl UpConfigAsdfBase {
             ))
         })?;
 
-        // self.actual_version.set(version.to_string()).map_err(|_| {
-        // let errmsg = "failed to set actual version".to_string();
-        // UpError::Exec(errmsg)
-        // })?;
-
         Ok(version)
     }
 
