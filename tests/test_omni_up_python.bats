@@ -21,14 +21,26 @@ teardown() {
 
 add_asdf_python_calls() {
   version="latest"
+  fallback_version=
+  plugin_installed=false
   installed=false
   others_installed=false
   venv=true
+  cache_versions=false
+  list_versions=true
 
   for arg in "$@"; do
     case $arg in
       version=*)
         version="${arg#version=}"
+        shift
+        ;;
+      fallback_version=*)
+        fallback_version="${arg#fallback_version=}"
+        shift
+        ;;
+      plugin_installed=*)
+        plugin_installed="${arg#plugin_installed=}"
         shift
         ;;
       installed=*)
@@ -43,6 +55,14 @@ add_asdf_python_calls() {
         venv="${arg#venv=}"
         shift
         ;;
+      cache_versions=*)
+        cache_versions="${arg#cache_versions=}"
+        shift
+        ;;
+      list_versions=*)
+        list_versions="${arg#list_versions=}"
+        shift
+        ;;
       *)
         echo "Unknown argument: $arg"
         return 1
@@ -51,51 +71,42 @@ add_asdf_python_calls() {
   done
 
   if [ "$version" = "latest" ]; then
-    version="3.12.2"
+    version="3.12.3"
+  fi
+
+  if [ "$cache_versions" = "true" ] || [ "$cache_versions" = "expired" ]; then
+    if [ "$cache_versions" = "true" ]; then
+      date=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+    else
+      # This allows to support GNU date but also BSD date
+      date=$(date -u +"%Y-%m-%dT%H:%M:%SZ" -d "300 days ago" 2>/dev/null ||
+             date -u -v-300d +"%Y-%m-%dT%H:%M:%SZ")
+    fi
+    mkdir -p "${HOME}/.cache/omni"
+    perl -pe 's/{{ UPDATED_AT }}/'"${date}"'/g' "${PROJECT_DIR}/tests/fixtures/asdf_operation_cache.json" > "${HOME}/.cache/omni/asdf_operation.json"
   fi
 
   add_command asdf update
-  add_command asdf plugin list
-  add_command asdf plugin add python
-  add_command asdf plugin update python
-  add_command asdf list all python <<EOF
-2.5.1
-2.5.2
-2.5.3
-2.5.4
-2.5.5
-2.5.6
-2.6.0
-2.6.1
-2.6.2
-2.6.3
-2.6.4
-2.6.5
-2.6.6
-2.6.7
-2.6.8
-2.6.9
-3.10.11
-3.10.12
-3.10.13
-3.10.14
-3.11.0
-3.11-dev
-3.11.1
-3.11.2
-3.11.3
-3.11.4
-3.11.5
-3.11.6
-3.11.7
-3.11.8
-3.12.0
-3.12-dev
-3.12.1
-3.12.2
-3.13.0a5
-3.13-dev
+
+  if [ "$plugin_installed" = "true" ]; then
+    add_command asdf plugin list
+    add_command asdf plugin add python
+  else
+    add_command asdf plugin list <<EOF
+python
 EOF
+  fi
+
+  if [ "$list_versions" = "true" ]; then
+    add_command asdf plugin update python
+    add_command asdf list all python <"${PROJECT_DIR}/tests/fixtures/python-versions.txt"
+  elif [ "$list_versions" = "fail-update" ]; then
+    add_command asdf plugin update python exit=1
+  elif [ "$list_versions" = "fail" ]; then
+    add_command asdf plugin update python
+    add_command asdf list all python exit=1
+  fi
+
   if [ "$installed" = "true" ]; then
     if [ "$others_installed" = "false" ]; then
       installed_versions="${version}"
@@ -108,6 +119,7 @@ EOF
 
   else
     if [ "$others_installed" = "false" ]; then
+      installed_versions=""
       add_command asdf list python "${version}" exit=1
     else
       installed_versions=$(echo "${others_installed}" | tr ',' '\n' | sort -u)
@@ -115,7 +127,24 @@ EOF
 $(for v in ${installed_versions}; do echo "  ${v}"; done)
 EOF
     fi
-    add_command asdf install python "${version}"
+    if [ "$installed" = "fail" ]; then
+      add_command asdf install python "${version}" exit=1 <<EOF
+stderr:Error installing python ${version}
+EOF
+      add_command asdf list python <<EOF
+$(for v in ${installed_versions}; do echo "  ${v}"; done)
+EOF
+
+      if [ -n "${fallback_version}" ]; then
+        # Replace version by the fallback version here!
+        version="${fallback_version}"
+        add_command asdf list python "${version}" exit=0 <<EOF
+  ${version}
+EOF
+      fi
+    else
+      add_command asdf install python "${version}"
+    fi
   fi
 
   if [ "$venv" = "true" ]; then
@@ -278,6 +307,102 @@ EOF
 }
 
 # bats test_tags=omni:up,omni:up:python,omni:up:python:brew
+@test "omni up python operation (latest) using brew for dependencies (plugin already installed)" {
+  cat > .omni.yaml <<EOF
+up:
+  - python
+EOF
+
+  add_brew_python_calls
+  add_asdf_python_calls plugin_installed=true
+
+  run omni up --trust 3>&-
+  echo "STATUS: $status"
+  echo "OUTPUT: $output"
+  [ "$status" -eq 0 ]
+}
+
+# bats test_tags=omni:up,omni:up:python,omni:up:python:brew
+@test "omni up python operation (latest) using brew for dependencies (install fail fallback to matching installed version)" {
+  cat > .omni.yaml <<EOF
+up:
+  - python
+EOF
+
+  add_brew_python_calls
+  add_asdf_python_calls installed=fail others_installed="3.11.6,3.11.8" fallback_version=3.11.8
+
+  run omni up --trust 3>&-
+  echo "STATUS: $status"
+  echo "OUTPUT: $output"
+  [ "$status" -eq 0 ]
+}
+
+# bats test_tags=omni:up,omni:up:python,omni:up:python:brew
+@test "omni up python operation (latest) using brew for dependencies (cache versions hit)" {
+  cat > .omni.yaml <<EOF
+up:
+  - python
+EOF
+
+  add_brew_python_calls
+  add_asdf_python_calls cache_versions=true list_versions=false
+
+  run omni up --trust 3>&-
+  echo "STATUS: $status"
+  echo "OUTPUT: $output"
+  [ "$status" -eq 0 ]
+}
+
+# bats test_tags=omni:up,omni:up:python,omni:up:python:brew
+@test "omni up python operation (latest) using brew for dependencies (cache versions expired)" {
+  cat > .omni.yaml <<EOF
+up:
+  - python
+EOF
+
+  add_brew_python_calls
+  add_asdf_python_calls cache_versions=expired
+
+  run omni up --trust 3>&-
+  echo "STATUS: $status"
+  echo "OUTPUT: $output"
+  [ "$status" -eq 0 ]
+}
+
+# bats test_tags=omni:up,omni:up:python,omni:up:python:brew
+@test "omni up python operation (latest) using brew for dependencies (cache versions expired but list versions fail)" {
+  cat > .omni.yaml <<EOF
+up:
+  - python
+EOF
+
+  add_brew_python_calls
+  add_asdf_python_calls cache_versions=expired list_versions=fail
+
+  run omni up --trust 3>&-
+  echo "STATUS: $status"
+  echo "OUTPUT: $output"
+  [ "$status" -eq 0 ]
+}
+
+# bats test_tags=omni:up,omni:up:python,omni:up:python:brew
+@test "omni up python operation (latest) using brew for dependencies (cache versions expired but plugin update fail)" {
+  cat > .omni.yaml <<EOF
+up:
+  - python
+EOF
+
+  add_brew_python_calls
+  add_asdf_python_calls cache_versions=expired list_versions=fail-update
+
+  run omni up --trust 3>&-
+  echo "STATUS: $status"
+  echo "OUTPUT: $output"
+  [ "$status" -eq 0 ]
+}
+
+# bats test_tags=omni:up,omni:up:python,omni:up:python:brew
 @test "omni up python operation (*) using brew for dependencies" {
   cat > .omni.yaml <<EOF
 up:
@@ -349,7 +474,7 @@ EOF
 EOF
 
   add_brew_python_calls
-  add_asdf_python_calls version=3.11.8
+  add_asdf_python_calls version=3.11.9
 
   run omni up --trust 3>&-
   echo "STATUS: $status"
@@ -365,7 +490,7 @@ up:
 EOF
 
   add_brew_python_calls
-  add_asdf_python_calls version=3.11.8
+  add_asdf_python_calls version=3.11.9
 
   run omni up --trust 3>&-
   echo "STATUS: $status"
@@ -381,12 +506,28 @@ up:
 EOF
 
   add_brew_python_calls
-  add_asdf_python_calls version=3.11.8
+  add_asdf_python_calls version=3.11.9
 
   run omni up --trust 3>&-
   echo "STATUS: $status"
   echo "OUTPUT: $output"
   [ "$status" -eq 0 ]
+}
+
+# bats test_tags=omni:up,omni:up:python,omni:up:python:brew
+@test "omni up python operation (2) using brew for dependencies (install fail does not fallback when no matching version installed)" {
+  cat > .omni.yaml <<EOF
+up:
+  - python: 2
+EOF
+
+  add_brew_python_calls
+  add_asdf_python_calls version=2.7.18 venv=false installed=fail others_installed="3.11.6,3.11.8"
+
+  run omni up --trust 3>&-
+  echo "STATUS: $status"
+  echo "OUTPUT: $output"
+  [ "$status" -eq 1 ]
 }
 
 # bats test_tags=omni:up,omni:up:python,omni:up:python:brew
@@ -397,7 +538,7 @@ up:
 EOF
 
   add_brew_python_calls
-  add_asdf_python_calls version=2.6.9 venv=false
+  add_asdf_python_calls version=2.7.18 venv=false
 
   run omni up --trust 3>&-
   echo "STATUS: $status"
@@ -413,7 +554,7 @@ up:
 EOF
 
   add_brew_python_calls
-  add_asdf_python_calls version=2.6.9 venv=false
+  add_asdf_python_calls version=2.7.18 venv=false
 
   run omni up --trust 3>&-
   echo "STATUS: $status"
