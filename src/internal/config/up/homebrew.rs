@@ -588,6 +588,8 @@ impl HomebrewTap {
         let progress_handler = progress_handler
             .subhandler(&format!("{} {}: ", "tap".underline(), self.name).light_yellow());
 
+        // TODO: we should update the tap manually in case people have their homebrew
+        //       upgrades disabled.
         if self.is_tapped() {
             self.update_cache(&progress_handler);
             if self.was_handled.set(HomebrewHandled::Noop).is_err() {
@@ -1337,7 +1339,17 @@ impl HomebrewInstall {
 
                 Ok(true)
             }
-            Err(err) => Err(err),
+            Err(err) => {
+                if options.fail_on_upgrade {
+                    Err(err)
+                } else {
+                    if let Some(progress_handler) = progress_handler {
+                        progress_handler.progress(format!("failed to upgrade: {}", err).red())
+                    }
+
+                    Ok(false)
+                }
+            }
         }
     }
 
