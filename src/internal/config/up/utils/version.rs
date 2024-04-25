@@ -5,7 +5,7 @@ use node_semver::Version as semverVersion;
 use serde::Deserialize;
 use serde::Serialize;
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone, PartialOrd, Eq, PartialEq)]
 pub struct VersionParser {
     original: String,
     prefix: Option<String>,
@@ -15,6 +15,15 @@ pub struct VersionParser {
 impl ToString for VersionParser {
     fn to_string(&self) -> String {
         self.original.clone()
+    }
+}
+
+impl Ord for VersionParser {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        match self.prefix.cmp(&other.prefix) {
+            std::cmp::Ordering::Equal => self.version.cmp(&other.version),
+            ordering => ordering,
+        }
     }
 }
 

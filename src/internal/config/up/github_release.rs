@@ -23,6 +23,7 @@ use crate::internal::config::up::utils::force_remove_dir_all;
 use crate::internal::config::up::utils::ProgressHandler;
 use crate::internal::config::up::utils::UpProgressHandler;
 use crate::internal::config::up::utils::VersionMatcher;
+use crate::internal::config::up::utils::VersionParser;
 use crate::internal::config::up::UpError;
 use crate::internal::config::up::UpOptions;
 use crate::internal::config::ConfigValue;
@@ -990,8 +991,10 @@ impl UpConfigGithubRelease {
 
         let version = versions
             .iter()
+            .filter_map(|version| VersionParser::parse(version))
+            .sorted()
             .rev()
-            .find(|version| matcher.matches(version))
+            .find(|version| matcher.matches(&version.to_string()))
             .ok_or_else(|| {
                 UpError::Exec(format!(
                     "no matching release found for {} {}",
@@ -999,7 +1002,7 @@ impl UpConfigGithubRelease {
                 ))
             })?;
 
-        Ok(version.clone())
+        Ok(version.to_string())
     }
 
     fn release_version_path(&self, version: &str) -> PathBuf {
