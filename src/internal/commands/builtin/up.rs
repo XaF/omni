@@ -56,6 +56,7 @@ use crate::omni_warning;
 #[derive(Debug, Clone)]
 struct UpCommandArgs {
     cache_enabled: bool,
+    fail_on_upgrade: bool,
     clone_suggested: UpCommandArgsCloneSuggestedOptions,
     trust: UpCommandArgsTrustOptions,
     update_repository: bool,
@@ -76,6 +77,11 @@ impl UpCommandArgs {
             .arg(
                 clap::Arg::new("no-cache")
                     .long("no-cache")
+                    .action(clap::ArgAction::SetTrue),
+            )
+            .arg(
+                clap::Arg::new("fail-on-upgrade")
+                    .long("fail-on-upgrade")
                     .action(clap::ArgAction::SetTrue),
             )
             .arg(
@@ -215,6 +221,7 @@ impl UpCommandArgs {
 
         Self {
             cache_enabled: !*matches.get_one::<bool>("no-cache").unwrap_or(&false),
+            fail_on_upgrade: *matches.get_one::<bool>("fail-on-upgrade").unwrap_or(&false),
             clone_suggested,
             trust,
             prompt,
@@ -1179,6 +1186,18 @@ impl BuiltinCommand for UpCommand {
                     required: false,
                 },
                 SyntaxOptArg {
+                    name: "--fail-on-upgrade".to_string(),
+                    desc: Some(
+                        concat!(
+                            "If provided, will fail the operation if a resource failed to ",
+                            "upgrade, even if a currently-existing version can satisfy the dependencies ",
+                            "\x1B[90m(default: no)\x1B[0m",
+                        )
+                        .to_string(),
+                    ),
+                    required: false,
+                },
+                SyntaxOptArg {
                     name: "--bootstrap".to_string(),
                     desc: Some(
                         concat!(
@@ -1425,7 +1444,9 @@ impl BuiltinCommand for UpCommand {
         if has_up_config {
             let up_config = up_config.unwrap();
             if self.is_up() {
-                let options = UpOptions::new().cache(self.cli_args().cache_enabled);
+                let options = UpOptions::new()
+                    .cache(self.cli_args().cache_enabled)
+                    .fail_on_upgrade(self.cli_args().fail_on_upgrade);
                 if let Err(err) = up_config.up(&options) {
                     omni_error!(format!("issue while setting repo up: {}", err));
                     exit(1);

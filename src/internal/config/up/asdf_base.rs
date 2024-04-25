@@ -981,7 +981,7 @@ impl UpConfigAsdfBase {
 
         // Try installing the version found
         let mut install_version = self.install_version(&version, options, progress_handler);
-        if install_version.is_err() {
+        if install_version.is_err() && !options.fail_on_upgrade {
             // If we get here and there is an issue installing the version,
             // list all installed versions and check if one of those could
             // fit the requirement, in which case we can fallback to it

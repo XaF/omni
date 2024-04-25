@@ -703,7 +703,7 @@ impl UpConfigGithubRelease {
 
         // Try installing the release found
         let mut download_release = self.download_release(options, &release, progress_handler);
-        if download_release.is_err() {
+        if download_release.is_err() && !options.fail_on_upgrade {
             // If we get here and there is an issue downloading the release,
             // list all installed versions and check if one of those could
             // fit the requirement, in which case we can fallback to it
