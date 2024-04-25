@@ -264,9 +264,13 @@ omni - omnipotent tool (v$version)
 
 Sets up or tear down a repository depending on its up configuration
 
-Usage: omni down [--no-cache] [--bootstrap] [--clone-suggested] [--prompt] [--prompt-all] [--trust] [--update-repository] [--update-user-config]
+Usage: omni down [--no-cache] [--fail-on-upgrade] [--bootstrap] [--clone-suggested] [--prompt] [--prompt-all] [--trust] [--update-repository] [--update-user-config]
 
   --no-cache            Whether we should disable the cache while running the command
+                        (default: no)
+
+  --fail-on-upgrade     If provided, will fail the operation if a resource failed to upgrade,
+                        even if a currently-existing version can satisfy the dependencies
                         (default: no)
 
   --bootstrap           Same as using --update-user-config --clone-suggested; if any of the
@@ -395,9 +399,13 @@ omni - omnipotent tool (v$version)
 
 Sets up or tear down a repository depending on its up configuration
 
-Usage: omni up [--no-cache] [--bootstrap] [--clone-suggested] [--prompt] [--prompt-all] [--trust] [--update-repository] [--update-user-config]
+Usage: omni up [--no-cache] [--fail-on-upgrade] [--bootstrap] [--clone-suggested] [--prompt] [--prompt-all] [--trust] [--update-repository] [--update-user-config]
 
   --no-cache            Whether we should disable the cache while running the command
+                        (default: no)
+
+  --fail-on-upgrade     If provided, will fail the operation if a resource failed to upgrade,
+                        even if a currently-existing version can satisfy the dependencies
                         (default: no)
 
   --bootstrap           Same as using --update-user-config --clone-suggested; if any of the
