@@ -22,6 +22,8 @@ use crate::internal::config::up::utils::cleanup_path;
 use crate::internal::config::up::utils::force_remove_dir_all;
 use crate::internal::config::up::utils::ProgressHandler;
 use crate::internal::config::up::utils::UpProgressHandler;
+use crate::internal::config::up::utils::VersionMatcher;
+use crate::internal::config::up::utils::VersionParser;
 use crate::internal::config::up::UpError;
 use crate::internal::config::up::UpOptions;
 use crate::internal::config::ConfigValue;
@@ -573,14 +575,7 @@ impl UpConfigGithubRelease {
             return;
         }
 
-        let release_version_path = match self.release_version_path() {
-            Ok(release_version_path) => release_version_path,
-            Err(err) => {
-                progress_handler
-                    .error_with_message(format!("failed to get release version path: {}", err));
-                return;
-            }
-        };
+        let release_version_path = self.release_version_path(version);
 
         if let Err(err) =
             UpEnvironmentsCache::exclusive(|up_env| up_env.add_path(&wd_id, release_version_path))
@@ -621,38 +616,7 @@ impl UpConfigGithubRelease {
             return Err(UpError::Config("repository is required".to_string()));
         }
 
-        let releases = self.list_releases(options, progress_handler)?;
-        let release = match self.resolve_release(&releases) {
-            Ok(release) => release,
-            Err(err) => {
-                // If the release is not fresh of now, and we failed to
-                // resolve the release, we should try to refresh the
-                // release list and try again
-                if options.read_cache && !releases.is_fresh() {
-                    progress_handler.progress("no matching release found in cache".to_string());
-
-                    let releases = self.list_releases(
-                        &UpOptions {
-                            read_cache: false,
-                            ..options.clone()
-                        },
-                        progress_handler,
-                    )?;
-
-                    self.resolve_release(&releases).map_err(|err| {
-                        progress_handler.error_with_message(err.message());
-                        err
-                    })?
-                } else {
-                    progress_handler.error_with_message(err.message());
-                    return Err(err);
-                }
-            }
-        };
-
-        progress_handler.progress(format!("found release {}", release.tag_name.light_yellow()));
-
-        let installed = self.download_release(options, &release, progress_handler)?;
+        let installed = self.resolve_and_download_release(options, progress_handler)?;
 
         self.update_cache(progress_handler);
 
@@ -699,6 +663,86 @@ impl UpConfigGithubRelease {
         progress_handler.success_with_message("github release dependencies cleaned".light_green());
 
         Ok(())
+    }
+
+    fn resolve_and_download_release(
+        &self,
+        options: &UpOptions,
+        progress_handler: &UpProgressHandler,
+    ) -> Result<bool, UpError> {
+        let releases = self.list_releases(options, progress_handler)?;
+        let release = match self.resolve_release(&releases) {
+            Ok(release) => release,
+            Err(err) => {
+                // If the release is not fresh of now, and we failed to
+                // resolve the release, we should try to refresh the
+                // release list and try again
+                if options.read_cache && !releases.is_fresh() {
+                    progress_handler.progress("no matching release found in cache".to_string());
+
+                    let releases = self.list_releases(
+                        &UpOptions {
+                            read_cache: false,
+                            ..options.clone()
+                        },
+                        progress_handler,
+                    )?;
+
+                    self.resolve_release(&releases).map_err(|err| {
+                        progress_handler.error_with_message(err.message());
+                        err
+                    })?
+                } else {
+                    progress_handler.error_with_message(err.message());
+                    return Err(err);
+                }
+            }
+        };
+
+        let mut version = release.version();
+
+        // Try installing the release found
+        let mut download_release = self.download_release(options, &release, progress_handler);
+        if download_release.is_err() {
+            // If we get here and there is an issue downloading the release,
+            // list all installed versions and check if one of those could
+            // fit the requirement, in which case we can fallback to it
+            let installed_versions = self.list_installed_versions(progress_handler)?;
+            match self.resolve_version(&installed_versions) {
+                Ok(installed_version) => {
+                    progress_handler.progress(format!(
+                        "falling back to {} {}",
+                        self.repository,
+                        installed_version.light_yellow(),
+                    ));
+
+                    version = installed_version;
+                    download_release = Ok(false);
+                }
+                Err(_err) => {}
+            }
+        }
+
+        if let Ok(downloaded) = &download_release {
+            self.actual_version.set(version.to_string()).map_err(|_| {
+                let errmsg = "failed to set actual version".to_string();
+                UpError::Exec(errmsg)
+            })?;
+
+            if self
+                .was_handled
+                .set(if *downloaded {
+                    GithubReleaseHandled::Handled
+                } else {
+                    GithubReleaseHandled::Noop
+                })
+                .is_err()
+            {
+                unreachable!("failed to set was_handled");
+            }
+        }
+
+        download_release
     }
 
     fn list_releases(
@@ -896,33 +940,75 @@ impl UpConfigGithubRelease {
     fn resolve_release(&self, releases: &GithubReleases) -> Result<GithubReleaseVersion, UpError> {
         let version = self.version.clone().unwrap_or_else(|| "latest".to_string());
 
-        let (version, release) = releases
+        let (_version, release) = releases
             .get(&version, self.prerelease, self.build, self.binary)
             .ok_or_else(|| {
                 let errmsg = format!(
                     "no matching release found for {} {}",
-                    self.repository, version
+                    self.repository, version,
                 );
                 UpError::Exec(errmsg)
             })?;
 
-        self.actual_version.set(version.to_string()).map_err(|_| {
-            let errmsg = "failed to set actual version".to_string();
-            UpError::Exec(errmsg)
-        })?;
-
         Ok(release)
     }
 
-    fn release_version_path(&self) -> Result<PathBuf, UpError> {
-        let version = self
-            .actual_version
-            .get()
-            .ok_or_else(|| UpError::Exec("version not set".to_string()))?;
+    fn list_installed_versions(
+        &self,
+        _progress_handler: &dyn ProgressHandler,
+    ) -> Result<Vec<String>, UpError> {
+        let release_path = github_releases_bin_path().join(&self.repository);
 
-        Ok(github_releases_bin_path()
+        if !release_path.exists() {
+            return Ok(vec![]);
+        }
+
+        let installed_versions = std::fs::read_dir(&release_path)
+            .map_err(|err| {
+                let errmsg = format!("failed to read directory: {}", err);
+                UpError::Exec(errmsg)
+            })?
+            .filter_map(|entry| {
+                entry.ok().and_then(|entry| {
+                    if entry.file_type().ok()?.is_dir() {
+                        entry.file_name().into_string().ok()
+                    } else {
+                        None
+                    }
+                })
+            })
+            .collect();
+
+        Ok(installed_versions)
+    }
+
+    fn resolve_version(&self, versions: &[String]) -> Result<String, UpError> {
+        let match_version = self.version.clone().unwrap_or_else(|| "latest".to_string());
+        let mut matcher = VersionMatcher::new(&match_version);
+        matcher.prerelease(self.prerelease);
+        matcher.build(self.build);
+        matcher.prefix(true);
+
+        let version = versions
+            .iter()
+            .filter_map(|version| VersionParser::parse(version))
+            .sorted()
+            .rev()
+            .find(|version| matcher.matches(&version.to_string()))
+            .ok_or_else(|| {
+                UpError::Exec(format!(
+                    "no matching release found for {} {}",
+                    self.repository, match_version,
+                ))
+            })?;
+
+        Ok(version.to_string())
+    }
+
+    fn release_version_path(&self, version: &str) -> PathBuf {
+        github_releases_bin_path()
             .join(&self.repository)
-            .join(version))
+            .join(version)
     }
 
     fn download_release(
@@ -931,20 +1017,13 @@ impl UpConfigGithubRelease {
         release: &GithubReleaseVersion,
         progress_handler: &dyn ProgressHandler,
     ) -> Result<bool, UpError> {
-        let install_path = self.release_version_path()?;
-        let version = match self.actual_version.get() {
-            Some(version) => version.to_string(),
-            None => "unknown".to_string(),
-        };
+        let version = release.version();
+        let install_path = self.release_version_path(&version);
 
         if options.read_cache && install_path.exists() && install_path.is_dir() {
             progress_handler.progress(
                 format!("downloaded {} {} (cached)", self.repository, version).light_black(),
             );
-
-            if self.was_handled.set(GithubReleaseHandled::Noop).is_err() {
-                unreachable!("failed to set was_handled");
-            }
 
             return Ok(false);
         }
@@ -1126,10 +1205,6 @@ impl UpConfigGithubRelease {
             self.repository.light_yellow(),
             version.light_yellow()
         ));
-
-        if self.was_handled.set(GithubReleaseHandled::Handled).is_err() {
-            unreachable!("failed to set was_handled");
-        }
 
         Ok(true)
     }
