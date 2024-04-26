@@ -14,6 +14,8 @@ use git_url_parse::GitUrl;
 use is_terminal::IsTerminal;
 use lazy_static::lazy_static;
 use once_cell::sync::OnceCell;
+use petname::Generator;
+use petname::Petnames;
 use time::OffsetDateTime;
 
 use crate::internal::config::parser::PathEntryConfig;
@@ -766,7 +768,7 @@ impl WorkDirEnv {
     }
 
     fn generate_id() -> String {
-        let petname_id = petname::petname(3, "-");
+        let petname_id = Petnames::default().generate_one(3, "-").expect("no names");
         format!("{}:{:016x}", petname_id, Self::machine_id_hash(&petname_id))
     }
 
