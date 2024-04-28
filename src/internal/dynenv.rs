@@ -1,6 +1,5 @@
 use std::collections::HashMap;
 use std::collections::HashSet;
-use std::path::PathBuf;
 
 use blake3::Hasher;
 use itertools::Itertools;
@@ -15,7 +14,7 @@ use crate::internal::config;
 use crate::internal::config::parser::EnvOperationEnum;
 use crate::internal::config::up::asdf_tool_path;
 use crate::internal::config::up::utils::get_config_mod_times;
-use crate::internal::env::data_home;
+use crate::internal::env::shims_dir;
 use crate::internal::env::user_home;
 use crate::internal::user_interface::StringColor;
 use crate::internal::workdir;
@@ -34,6 +33,12 @@ pub fn update_dynamic_env_for_command<T: ToString>(path: T) {
 fn remove_wd_config_modtime_var(export_mode: DynamicEnvExportMode) {
     let mut dynenvdata = DynamicEnvData::new();
     dynenvdata.env_unset_var(WD_CONFIG_MODTIME_VAR);
+    dynenvdata.export(export_mode);
+}
+
+fn remove_shims_dir_from_path(export_mode: DynamicEnvExportMode) {
+    let mut dynenvdata = DynamicEnvData::new();
+    dynenvdata.remove_all_from_list("PATH", shims_dir().to_str().unwrap());
     dynenvdata.export(export_mode);
 }
 
@@ -153,6 +158,10 @@ fn check_workdir_config_updated(
 }
 
 pub fn update_dynamic_env(options: &DynamicEnvExportOptions) {
+    if !options.keep_shims {
+        remove_shims_dir_from_path(options.mode.clone());
+    }
+
     let cache = UpEnvironmentsCache::get();
     let mut current_env = DynamicEnv::from_env(cache.clone());
     let mut expected_env = DynamicEnv::new_with_path(options.path.clone(), cache.clone());
@@ -166,7 +175,7 @@ pub fn update_dynamic_env(options: &DynamicEnvExportOptions) {
     }
 
     current_env.undo(options.mode.clone());
-    expected_env.apply(options.mode.clone());
+    expected_env.apply(options.mode.clone(), options.keep_shims);
 
     if !options.is_quiet() {
         match (current_env.id(), expected_env.id()) {
@@ -234,6 +243,7 @@ fn print_update(status: &str) {
 pub struct DynamicEnvExportOptions {
     mode: DynamicEnvExportMode,
     quiet: bool,
+    keep_shims: bool,
     path: Option<String>,
 }
 
@@ -247,6 +257,11 @@ impl DynamicEnvExportOptions {
 
     pub fn quiet(mut self, quiet: bool) -> Self {
         self.quiet = quiet;
+        self
+    }
+
+    pub fn keep_shims(mut self, keep_shims: bool) -> Self {
+        self.keep_shims = keep_shims;
         self
     }
 
@@ -393,7 +408,7 @@ impl DynamicEnv {
         format!("{:016x}", self.id())
     }
 
-    pub fn apply(&mut self, export_mode: DynamicEnvExportMode) {
+    pub fn apply(&mut self, export_mode: DynamicEnvExportMode, keep_shims: bool) {
         let mut envsetter = DynamicEnvSetter::new();
 
         let mut up_env = None;
@@ -439,9 +454,10 @@ impl DynamicEnv {
                 }
             }
 
-            // Remove the shims directory from the PATH
-            let shims_dir = PathBuf::from(data_home()).join("shims");
-            envsetter.remove_from_list("PATH", shims_dir.to_str().unwrap());
+            if !keep_shims {
+                // Remove the shims directory from the PATH
+                envsetter.remove_all_from_list("PATH", shims_dir().to_str().unwrap());
+            }
 
             // Add the requested paths
             for path in up_env.paths.iter().rev() {
@@ -628,6 +644,8 @@ enum DynamicEnvOperation {
     AppendToList(String, String),
     /// Remove a value from a list, using ':' as separator
     RemoveFromList(String, String),
+    /// Remove all occurrences of a value from a list, using ':' as separator
+    RemoveAllFromList(String, String),
     /// Remove values from a list by a function, using ':' as separator;
     /// the function should return a list of values to remove
     RemoveFromListByFn(String, Box<dyn Fn() -> Vec<String>>),
@@ -703,6 +721,13 @@ impl DynamicEnvSetter {
         ));
     }
 
+    fn remove_all_from_list(&mut self, key: &str, value: &str) {
+        self.operations.push(DynamicEnvOperation::RemoveAllFromList(
+            key.to_string(),
+            value.to_string(),
+        ));
+    }
+
     fn remove_from_list_by_fn<F>(&mut self, key: &str, f: F)
     where
         F: Fn() -> Vec<String> + 'static,
@@ -744,6 +769,9 @@ impl DynamicEnvSetter {
                 }
                 DynamicEnvOperation::RemoveFromList(key, value) => {
                     data.remove_from_list(key, value);
+                }
+                DynamicEnvOperation::RemoveAllFromList(key, value) => {
+                    data.remove_all_from_list(key, value);
                 }
                 DynamicEnvOperation::RemoveFromListByFn(key, f) => {
                     let values_to_remove = f();
@@ -960,13 +988,13 @@ impl DynamicEnvData {
     }
 
     fn remove_from_list(&mut self, key: &str, value: &str) {
-        if !self.lists.contains_key(key) {
-            self.lists.insert(key.to_string(), Vec::new());
-        }
-
         if let Some(prev) = self.env_get_var(key) {
             let mut prev = prev.split(':').collect::<Vec<&str>>();
             if let Some(index) = prev.iter().position(|&r| r == value) {
+                if !self.lists.contains_key(key) {
+                    self.lists.insert(key.to_string(), Vec::new());
+                }
+
                 self.lists.get_mut(key).unwrap().push(DynamicEnvListValue {
                     operation: DynamicEnvListOperation::Del,
                     value: value.to_string(),
@@ -976,6 +1004,39 @@ impl DynamicEnvData {
                 prev.remove(index);
                 self.env_set_var(key, &prev.join(":"));
             }
+        };
+    }
+
+    fn remove_all_from_list(&mut self, key: &str, value: &str) {
+        if let Some(prev) = self.env_get_var(key) {
+            let mut prev = prev.split(':').collect::<Vec<&str>>();
+            let indexes = prev
+                .iter()
+                .enumerate()
+                .filter(|(_, &r)| r == value)
+                .map(|(i, _)| i)
+                .collect::<Vec<usize>>();
+
+            // Exit early if the value is not in the list
+            if indexes.is_empty() {
+                return;
+            }
+
+            if !self.lists.contains_key(key) {
+                self.lists.insert(key.to_string(), Vec::new());
+            }
+
+            for index in indexes.iter().rev() {
+                self.lists.get_mut(key).unwrap().push(DynamicEnvListValue {
+                    operation: DynamicEnvListOperation::Del,
+                    value: value.to_string(),
+                    index: *index,
+                });
+
+                prev.remove(*index);
+            }
+
+            self.env_set_var(key, &prev.join(":"));
         };
     }
 

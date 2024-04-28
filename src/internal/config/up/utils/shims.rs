@@ -25,14 +25,12 @@ pub fn handle_shims() {
         None => return,
     };
 
-    // Load the current path environment variable
-    let path_env = env::var("PATH").unwrap_or_else(|_| "".to_string());
-
     // Check if argv0 is a path, or if it is just a binary name called from the PATH
     let path = if argv0.contains('/') {
         abs_path(&argv0)
     } else {
-        path_env
+        env::var("PATH")
+            .unwrap_or_else(|_| "".to_string())
             .split(':')
             .map(|path| PathBuf::from(path).join(&argv0))
             .find(|path| path.is_file())
@@ -53,14 +51,6 @@ pub fn handle_shims() {
 
     // Load the dynamic environment for the current directory
     update_dynamic_env_for_command(".");
-
-    // Make sure that the PATH does not contain the shims directory
-    let path_env = path_env
-        .split(':')
-        .filter(|path| !PathBuf::from(path).starts_with(shims_dir()))
-        .collect::<Vec<_>>()
-        .join(":");
-    env::set_var("PATH", path_env);
 
     // Resolve the binary full path
     let binary_path = match which::which(&binary) {
