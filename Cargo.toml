@@ -21,8 +21,13 @@ path = "src/main.rs"
 [build-dependencies]
 time = { version = "0.3.36", features = ["serde-well-known"] }
 
+[dev-dependencies]
+mockito = "1.4.0"
+temp-env = "0.3.6"
+
 [dependencies]
 blake3 = "1.5.1"
+cfg-if = "1.0.0"
 clap = "4.5.4"
 ctrlc = { version = "3.4.4", features = ["termination"] }
 duct = "0.13.6"

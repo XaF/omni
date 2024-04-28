@@ -39,145 +39,6 @@ lazy_static! {
     static ref WORKDIR_ENV: Mutex<WorkDirEnvByPath> = Mutex::new(WorkDirEnvByPath::new());
 
     #[derive(Debug)]
-    static ref HOME: String = std::env::var("HOME").expect("Failed to determine user's home directory");
-
-    #[derive(Debug)]
-    static ref XDG_CONFIG_HOME: String = match std::env::var("XDG_CONFIG_HOME") {
-        Ok(xdg_config_home)
-            if !xdg_config_home.is_empty() && xdg_config_home.starts_with('/') =>
-            {
-                xdg_config_home
-            }
-        _ => {
-            format!("{}/.config", user_home())
-            }
-    };
-
-    #[derive(Debug)]
-    static ref CONFIG_HOME: String = match std::env::var("OMNI_CONFIG_HOME") {
-        Ok(config_home)
-            if !config_home.is_empty()
-                && (config_home.starts_with('/') || config_home.starts_with("~/")) =>
-            {
-                if let Some(path_in_home) = config_home.strip_prefix("~/") {
-                    format!("{}/{}", user_home(), path_in_home)
-                } else {
-                    config_home
-                }
-            }
-        _ => {
-            format!("{}/omni", xdg_config_home())
-        }
-    };
-
-    #[derive(Debug)]
-    static ref XDG_DATA_HOME: String = match std::env::var("XDG_DATA_HOME") {
-        Ok(xdg_data_home) if !xdg_data_home.is_empty() && xdg_data_home.starts_with('/') => {
-            xdg_data_home
-        }
-        _ => {
-            format!("{}/.local/share", user_home())
-        }
-    };
-
-    #[derive(Debug)]
-    static ref DATA_HOME: String = match std::env::var("OMNI_DATA_HOME") {
-        Ok(data_home)
-            if !data_home.is_empty()
-                && (data_home.starts_with('/') || data_home.starts_with("~/")) =>
-            {
-                if let Some(path_in_home) = data_home.strip_prefix("~/") {
-                    format!("{}/{}", user_home(), path_in_home)
-                } else {
-                    data_home
-                }
-            }
-        _ => {
-            format!("{}/omni", xdg_data_home())
-        }
-    };
-
-    #[derive(Debug)]
-    static ref SHIMS_DIR: PathBuf = {
-        PathBuf::from(data_home()).join("shims")
-    };
-
-    #[derive(Debug)]
-    static ref XDG_CACHE_HOME: String = match std::env::var("XDG_CACHE_HOME") {
-        Ok(xdg_cache_home) if !xdg_cache_home.is_empty() && xdg_cache_home.starts_with('/') => {
-            xdg_cache_home
-        }
-        _ => {
-            format!("{}/.cache", user_home())
-        }
-    };
-
-    #[derive(Debug)]
-    static ref CACHE_HOME: String = match std::env::var("OMNI_CACHE_HOME") {
-        Ok(cache_home)
-            if !(cache_home.is_empty()
-                || (!cache_home.starts_with('/') && !cache_home.starts_with("~/"))) =>
-            {
-                if let Some(path_in_home) = cache_home.strip_prefix("~/") {
-                    format!("{}/{}", user_home(), path_in_home)
-                } else {
-                    cache_home
-                }
-            }
-        _ => {
-            format!("{}/omni", xdg_cache_home())
-        }
-    };
-
-    #[derive(Debug)]
-    static ref OMNIPATH: Vec<String> = {
-        let mut omnipath = Vec::new();
-        let mut omnipath_seen = HashSet::new();
-        if let Ok(omnipath_str) = std::env::var("OMNIPATH") {
-            for path in omnipath_str.split(':') {
-                if !path.is_empty() && omnipath_seen.insert(path.to_string()) {
-                    omnipath.push(path.to_string());
-                }
-            }
-        }
-        omnipath
-    };
-
-    #[derive(Debug)]
-    static ref OMNI_GIT: Option<String> = {
-        if let Ok(omni_git) = std::env::var("OMNI_GIT") {
-            if !omni_git.is_empty() && omni_git.starts_with('/') {
-                return Some(omni_git);
-            }
-        }
-        None
-    };
-
-    #[derive(Debug)]
-    static ref OMNI_ORG: Vec<OrgConfig> = {
-        let mut omni_org = Vec::new();
-        if let Ok(omni_org_str) = std::env::var("OMNI_ORG") {
-            for path in omni_org_str.split(',') {
-                if !path.is_empty() {
-                    omni_org.push(OrgConfig::from_str(path));
-                }
-            }
-        }
-        omni_org
-    };
-
-    #[derive(Debug)]
-    static ref OMNI_CMD_FILE: Option<String> = {
-        let mut omni_cmd_file = None;
-        if let Ok(omni_cmd_file_str) = std::env::var("OMNI_CMD_FILE") {
-            if !omni_cmd_file_str.is_empty() {
-                omni_cmd_file = Some(omni_cmd_file_str);
-            }
-        }
-        omni_cmd_file
-    };
-
-    #[derive(Debug)]
     static ref INTERACTIVE_SHELL: bool = std::io::stdout().is_terminal();
 
     #[derive(Debug)]
@@ -375,52 +236,281 @@ pub fn workdir_or_init<T: AsRef<str>>(path: T) -> Result<WorkDirEnv, String> {
     Ok(wd)
 }
 
-pub fn user_home() -> String {
-    (*HOME).to_string()
+fn compute_user_home() -> String {
+    std::env::var("HOME").expect("Failed to determine user's home directory")
 }
 
-pub fn xdg_config_home() -> String {
-    (*XDG_CONFIG_HOME).to_string()
+fn compute_xdg_config_home() -> String {
+    match std::env::var("XDG_CONFIG_HOME") {
+        Ok(xdg_config_home) if !xdg_config_home.is_empty() && xdg_config_home.starts_with('/') => {
+            xdg_config_home
+        }
+        _ => {
+            format!("{}/.config", user_home())
+        }
+    }
 }
 
-pub fn config_home() -> String {
-    (*CONFIG_HOME).to_string()
+fn compute_config_home() -> String {
+    match std::env::var("OMNI_CONFIG_HOME") {
+        Ok(config_home)
+            if !config_home.is_empty()
+                && (config_home.starts_with('/') || config_home.starts_with("~/")) =>
+        {
+            if let Some(path_in_home) = config_home.strip_prefix("~/") {
+                format!("{}/{}", user_home(), path_in_home)
+            } else {
+                config_home
+            }
+        }
+        _ => {
+            format!("{}/omni", xdg_config_home())
+        }
+    }
 }
 
-pub fn xdg_data_home() -> String {
-    (*XDG_DATA_HOME).to_string()
+fn compute_xdg_data_home() -> String {
+    match std::env::var("XDG_DATA_HOME") {
+        Ok(xdg_data_home) if !xdg_data_home.is_empty() && xdg_data_home.starts_with('/') => {
+            xdg_data_home
+        }
+        _ => {
+            format!("{}/.local/share", user_home())
+        }
+    }
 }
 
-pub fn data_home() -> String {
-    (*DATA_HOME).to_string()
+fn compute_data_home() -> String {
+    match std::env::var("OMNI_DATA_HOME") {
+        Ok(data_home)
+            if !data_home.is_empty()
+                && (data_home.starts_with('/') || data_home.starts_with("~/")) =>
+        {
+            if let Some(path_in_home) = data_home.strip_prefix("~/") {
+                format!("{}/{}", user_home(), path_in_home)
+            } else {
+                data_home
+            }
+        }
+        _ => {
+            format!("{}/omni", xdg_data_home())
+        }
+    }
 }
 
-pub fn shims_dir() -> PathBuf {
-    (*SHIMS_DIR).clone()
+fn compute_shims_dir() -> PathBuf {
+    PathBuf::from(data_home()).join("shims")
 }
 
-pub fn xdg_cache_home() -> String {
-    (*XDG_CACHE_HOME).to_string()
+fn compute_xdg_cache_home() -> String {
+    match std::env::var("XDG_CACHE_HOME") {
+        Ok(xdg_cache_home) if !xdg_cache_home.is_empty() && xdg_cache_home.starts_with('/') => {
+            xdg_cache_home
+        }
+        _ => {
+            format!("{}/.cache", user_home())
+        }
+    }
 }
 
-pub fn cache_home() -> String {
-    (*CACHE_HOME).to_string()
+fn compute_cache_home() -> String {
+    match std::env::var("OMNI_CACHE_HOME") {
+        Ok(cache_home)
+            if !(cache_home.is_empty()
+                || (!cache_home.starts_with('/') && !cache_home.starts_with("~/"))) =>
+        {
+            if let Some(path_in_home) = cache_home.strip_prefix("~/") {
+                format!("{}/{}", user_home(), path_in_home)
+            } else {
+                cache_home
+            }
+        }
+        _ => {
+            format!("{}/omni", xdg_cache_home())
+        }
+    }
 }
 
-pub fn omnipath_env() -> Vec<String> {
-    (*OMNIPATH).clone()
+fn compute_omnipath_env() -> Vec<String> {
+    let mut omnipath = Vec::new();
+    let mut omnipath_seen = HashSet::new();
+    if let Ok(omnipath_str) = std::env::var("OMNIPATH") {
+        for path in omnipath_str.split(':') {
+            if !path.is_empty() && omnipath_seen.insert(path.to_string()) {
+                omnipath.push(path.to_string());
+            }
+        }
+    }
+    omnipath
 }
 
-pub fn omni_git_env() -> Option<String> {
-    (*OMNI_GIT).clone()
+fn compute_omni_git_env() -> Option<String> {
+    if let Ok(omni_git) = std::env::var("OMNI_GIT") {
+        if !omni_git.is_empty() && omni_git.starts_with('/') {
+            return Some(omni_git);
+        }
+    }
+    None
 }
 
-pub fn omni_org_env() -> Vec<OrgConfig> {
-    (*OMNI_ORG).clone()
+fn compute_omni_org_env() -> Vec<OrgConfig> {
+    let mut omni_org = Vec::new();
+    if let Ok(omni_org_str) = std::env::var("OMNI_ORG") {
+        for path in omni_org_str.split(',') {
+            if !path.is_empty() {
+                omni_org.push(OrgConfig::from_str(path));
+            }
+        }
+    }
+    omni_org
 }
 
-pub fn omni_cmd_file() -> Option<String> {
-    (*OMNI_CMD_FILE).clone()
+fn compute_omni_cmd_file() -> Option<String> {
+    let mut omni_cmd_file = None;
+    if let Ok(omni_cmd_file_str) = std::env::var("OMNI_CMD_FILE") {
+        if !omni_cmd_file_str.is_empty() {
+            omni_cmd_file = Some(omni_cmd_file_str);
+        }
+    }
+    omni_cmd_file
+}
+
+cfg_if::cfg_if! {
+    if #[cfg(test)] {
+        pub fn user_home() -> String {
+            compute_user_home()
+        }
+
+        pub fn xdg_config_home() -> String {
+            compute_xdg_config_home()
+        }
+
+        pub fn config_home() -> String {
+            compute_config_home()
+        }
+
+        pub fn xdg_data_home() -> String {
+            compute_xdg_data_home()
+        }
+
+        pub fn data_home() -> String {
+            compute_data_home()
+        }
+
+        pub fn shims_dir() -> PathBuf {
+            compute_shims_dir()
+        }
+
+        pub fn xdg_cache_home() -> String {
+            compute_xdg_cache_home()
+        }
+
+        pub fn cache_home() -> String {
+            compute_cache_home()
+        }
+
+        pub fn omnipath_env() -> Vec<String> {
+            compute_omnipath_env()
+        }
+
+        pub fn omni_git_env() -> Option<String> {
+            compute_omni_git_env()
+        }
+
+        pub fn omni_org_env() -> Vec<OrgConfig> {
+            compute_omni_org_env()
+        }
+
+        pub fn omni_cmd_file() -> Option<String> {
+            compute_omni_cmd_file()
+        }
+    } else {
+        lazy_static! {
+            #[derive(Debug)]
+            static ref HOME: String = compute_user_home();
+
+            #[derive(Debug)]
+            static ref XDG_CONFIG_HOME: String = compute_xdg_config_home();
+
+            #[derive(Debug)]
+            static ref CONFIG_HOME: String = compute_config_home();
+
+            #[derive(Debug)]
+            static ref XDG_DATA_HOME: String = compute_xdg_data_home();
+
+            #[derive(Debug)]
+            static ref DATA_HOME: String = compute_data_home();
+
+            #[derive(Debug)]
+            static ref SHIMS_DIR: PathBuf = compute_shims_dir();
+
+            #[derive(Debug)]
+            static ref XDG_CACHE_HOME: String = compute_xdg_cache_home();
+
+            #[derive(Debug)]
+            static ref CACHE_HOME: String = compute_cache_home();
+
+            #[derive(Debug)]
+            static ref OMNIPATH: Vec<String> = compute_omnipath_env();
+
+            #[derive(Debug)]
+            static ref OMNI_GIT: Option<String> = compute_omni_git_env();
+
+            #[derive(Debug)]
+            static ref OMNI_ORG: Vec<OrgConfig> = compute_omni_org_env();
+
+            #[derive(Debug)]
+            static ref OMNI_CMD_FILE: Option<String> = compute_omni_cmd_file();
+        }
+
+        pub fn user_home() -> String {
+            (*HOME).to_string()
+        }
+
+        pub fn xdg_config_home() -> String {
+            (*XDG_CONFIG_HOME).to_string()
+        }
+
+        pub fn config_home() -> String {
+            (*CONFIG_HOME).to_string()
+        }
+
+        pub fn xdg_data_home() -> String {
+            (*XDG_DATA_HOME).to_string()
+        }
+
+        pub fn data_home() -> String {
+            (*DATA_HOME).to_string()
+        }
+
+        pub fn shims_dir() -> PathBuf {
+            (*SHIMS_DIR).clone()
+        }
+
+        pub fn xdg_cache_home() -> String {
+            (*XDG_CACHE_HOME).to_string()
+        }
+
+        pub fn cache_home() -> String {
+            (*CACHE_HOME).to_string()
+        }
+
+        pub fn omnipath_env() -> Vec<String> {
+            (*OMNIPATH).clone()
+        }
+
+        pub fn omni_git_env() -> Option<String> {
+            (*OMNI_GIT).clone()
+        }
+
+        pub fn omni_org_env() -> Vec<OrgConfig> {
+            (*OMNI_ORG).clone()
+        }
+
+        pub fn omni_cmd_file() -> Option<String> {
+            (*OMNI_CMD_FILE).clone()
+        }
+    }
 }
 
 pub fn shell_integration_is_loaded() -> bool {

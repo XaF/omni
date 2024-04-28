@@ -6,10 +6,15 @@ use std::path::PathBuf;
 use std::process::Command as ProcessCommand;
 
 use itertools::Itertools;
-use once_cell::sync::Lazy;
 use once_cell::sync::OnceCell;
 use serde::Deserialize;
 use serde::Serialize;
+
+#[cfg(not(test))]
+use once_cell::sync::Lazy;
+
+#[cfg(test)]
+use mockito;
 
 use crate::internal::cache::utils as cache_utils;
 use crate::internal::cache::CacheObject;
@@ -31,11 +36,20 @@ use crate::internal::env::data_home;
 use crate::internal::user_interface::StringColor;
 use crate::internal::workdir;
 
-static GITHUB_RELEASES_BIN_PATH: Lazy<PathBuf> =
-    Lazy::new(|| PathBuf::from(data_home()).join("ghreleases"));
+const GITHUB_API_URL: &str = "https://api.github.com";
 
-fn github_releases_bin_path() -> PathBuf {
-    GITHUB_RELEASES_BIN_PATH.clone()
+cfg_if::cfg_if! {
+    if #[cfg(test)] {
+        fn github_releases_bin_path() -> PathBuf {
+            PathBuf::from(data_home()).join("ghreleases")
+        }
+    } else {
+        static GITHUB_RELEASES_BIN_PATH: Lazy<PathBuf> = Lazy::new(|| PathBuf::from(data_home()).join("ghreleases"));
+
+        fn github_releases_bin_path() -> PathBuf {
+            GITHUB_RELEASES_BIN_PATH.clone()
+        }
+    }
 }
 
 #[derive(Debug, Deserialize, Clone, Default)]
@@ -858,10 +872,7 @@ impl UpConfigGithubRelease {
     ) -> Result<GithubReleases, UpError> {
         // Use https://api.github.com/repos/<owner>/<repo>/releases to
         // list the available releases
-        let api_url = self
-            .api_url
-            .clone()
-            .unwrap_or("https://api.github.com".to_string());
+        let api_url = self.api_url.clone().unwrap_or(GITHUB_API_URL.to_string());
         let releases_url = format!("{}/repos/{}/releases", api_url, self.repository);
 
         let mut headers = reqwest::header::HeaderMap::new();
@@ -1054,6 +1065,27 @@ impl UpConfigGithubRelease {
                 UpError::Exec(errmsg)
             })?;
 
+            // Check if the download was successful
+            let status = response.status();
+            if !status.is_success() {
+                let contents = response.text().map_err(|err| {
+                    let errmsg = format!("failed to read response: {}", err);
+                    progress_handler.error_with_message(errmsg.clone());
+                    UpError::Exec(errmsg)
+                })?;
+
+                // Try parsing the error message from the body, and default to
+                // the body if we can't parse it
+                let errmsg = match GithubApiError::from_json(&contents) {
+                    Ok(gherr) => gherr.message,
+                    Err(_) => contents.clone(),
+                };
+
+                let errmsg = format!("failed to download: {} ({})", errmsg, status);
+                progress_handler.error_with_message(errmsg.to_string());
+                return Err(UpError::Exec(errmsg));
+            }
+
             // Write the file to disk
             let mut file = OpenOptions::new()
                 .write(true)
@@ -1179,7 +1211,16 @@ impl UpConfigGithubRelease {
             }
 
             // Copy the binary to the install path
-            std::fs::copy(source_path, target_path).map_err(|err| {
+            let copy = std::fs::copy(source_path, &target_path);
+            if copy.is_err() || !target_path.exists() {
+                let err = if let Err(err) = copy {
+                    err
+                } else {
+                    std::io::Error::new(
+                        std::io::ErrorKind::NotFound,
+                        format!("target file not found after copy"),
+                    )
+                };
                 let errmsg = format!("failed to copy {}: {}", binary_name, err);
                 progress_handler.error_with_message(errmsg.clone());
 
@@ -1188,8 +1229,8 @@ impl UpConfigGithubRelease {
                 // behind
                 let _ = force_remove_dir_all(&install_path);
 
-                UpError::Exec(errmsg)
-            })?;
+                return Err(UpError::Exec(errmsg));
+            }
 
             binary_found = true;
         }
@@ -1226,5 +1267,581 @@ struct GithubApiError {
 impl GithubApiError {
     pub fn from_json(json: &str) -> Result<Self, serde_json::Error> {
         serde_json::from_str(json)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    mod multi_from_config_value {
+        use super::*;
+
+        #[test]
+        fn empty() {
+            let yaml = "";
+            let config_value = ConfigValue::from_str(yaml).expect("failed to create config value");
+            let config = UpConfigGithubReleases::from_config_value(Some(&config_value));
+            assert_eq!(config.releases.len(), 0);
+        }
+
+        #[test]
+        fn str() {
+            let yaml = "owner/repo";
+            let config_value = ConfigValue::from_str(yaml).expect("failed to create config value");
+            let config = UpConfigGithubReleases::from_config_value(Some(&config_value));
+            assert_eq!(config.releases.len(), 1);
+            assert_eq!(config.releases[0].repository, "owner/repo");
+            assert_eq!(config.releases[0].version, None);
+            assert_eq!(config.releases[0].prerelease, false);
+            assert_eq!(config.releases[0].build, false);
+            assert_eq!(config.releases[0].binary, true);
+            assert_eq!(config.releases[0].api_url, None);
+        }
+
+        #[test]
+        fn object_single() {
+            let yaml = r#"{"repository": "owner/repo"}"#;
+            let config_value = ConfigValue::from_str(yaml).expect("failed to create config value");
+            let config = UpConfigGithubReleases::from_config_value(Some(&config_value));
+            assert_eq!(config.releases.len(), 1);
+            assert_eq!(config.releases[0].repository, "owner/repo");
+            assert_eq!(config.releases[0].version, None);
+            assert_eq!(config.releases[0].prerelease, false);
+            assert_eq!(config.releases[0].build, false);
+            assert_eq!(config.releases[0].binary, true);
+            assert_eq!(config.releases[0].api_url, None);
+        }
+
+        #[test]
+        fn object_multi() {
+            let yaml = r#"{"owner/repo": "1.2.3", "owner2/repo2": {"version": "2.3.4", "prerelease": true, "build": true, "binary": false, "api_url": "https://gh.example.com"}, "owner3/repo3": {}}"#;
+            let config_value = ConfigValue::from_str(yaml).expect("failed to create config value");
+            let config = UpConfigGithubReleases::from_config_value(Some(&config_value));
+            assert_eq!(config.releases.len(), 3);
+
+            assert_eq!(config.releases[0].repository, "owner/repo");
+            assert_eq!(config.releases[0].version, Some("1.2.3".to_string()));
+            assert_eq!(config.releases[0].prerelease, false);
+            assert_eq!(config.releases[0].build, false);
+            assert_eq!(config.releases[0].binary, true);
+            assert_eq!(config.releases[0].api_url, None);
+
+            assert_eq!(config.releases[1].repository, "owner2/repo2");
+            assert_eq!(config.releases[1].version, Some("2.3.4".to_string()));
+            assert_eq!(config.releases[1].prerelease, true);
+            assert_eq!(config.releases[1].build, true);
+            assert_eq!(config.releases[1].binary, false);
+            assert_eq!(
+                config.releases[1].api_url,
+                Some("https://gh.example.com".to_string())
+            );
+
+            assert_eq!(config.releases[2].repository, "owner3/repo3");
+            assert_eq!(config.releases[2].version, None);
+            assert_eq!(config.releases[2].prerelease, false);
+            assert_eq!(config.releases[2].build, false);
+            assert_eq!(config.releases[2].binary, true);
+            assert_eq!(config.releases[2].api_url, None);
+        }
+
+        #[test]
+        fn list_multi() {
+            let yaml = r#"["owner/repo", {"repository": "owner2/repo2", "version": "2.3.4", "prerelease": true, "build": true, "binary": false, "api_url": "https://gh.example.com"}, {"owner3/repo3": "3.4.5"}, {"owner4/repo4": {"version": "4.5.6"}}]"#;
+            let config_value = ConfigValue::from_str(yaml).expect("failed to create config value");
+            let config = UpConfigGithubReleases::from_config_value(Some(&config_value));
+            assert_eq!(config.releases.len(), 4);
+
+            assert_eq!(config.releases[0].repository, "owner/repo");
+            assert_eq!(config.releases[0].version, None);
+            assert_eq!(config.releases[0].prerelease, false);
+            assert_eq!(config.releases[0].build, false);
+            assert_eq!(config.releases[0].binary, true);
+            assert_eq!(config.releases[0].api_url, None);
+
+            assert_eq!(config.releases[1].repository, "owner2/repo2");
+            assert_eq!(config.releases[1].version, Some("2.3.4".to_string()));
+            assert_eq!(config.releases[1].prerelease, true);
+            assert_eq!(config.releases[1].build, true);
+            assert_eq!(config.releases[1].binary, false);
+            assert_eq!(
+                config.releases[1].api_url,
+                Some("https://gh.example.com".to_string())
+            );
+
+            assert_eq!(config.releases[2].repository, "owner3/repo3");
+            assert_eq!(config.releases[2].version, Some("3.4.5".to_string()));
+            assert_eq!(config.releases[2].prerelease, false);
+            assert_eq!(config.releases[2].build, false);
+            assert_eq!(config.releases[2].binary, true);
+            assert_eq!(config.releases[2].api_url, None);
+
+            assert_eq!(config.releases[3].repository, "owner4/repo4");
+            assert_eq!(config.releases[3].version, Some("4.5.6".to_string()));
+            assert_eq!(config.releases[3].prerelease, false);
+            assert_eq!(config.releases[3].build, false);
+            assert_eq!(config.releases[3].binary, true);
+            assert_eq!(config.releases[3].api_url, None);
+        }
+    }
+
+    mod single_from_config_value {
+        use super::*;
+
+        #[test]
+        fn str() {
+            let yaml = "owner/repo";
+            let config_value = ConfigValue::from_str(yaml).expect("failed to create config value");
+            let config = UpConfigGithubRelease::from_config_value(Some(&config_value));
+            assert_eq!(config.repository, "owner/repo");
+            assert_eq!(config.version, None);
+            assert_eq!(config.prerelease, false);
+            assert_eq!(config.build, false);
+            assert_eq!(config.binary, true);
+            assert_eq!(config.api_url, None);
+        }
+
+        #[test]
+        fn object() {
+            let yaml = r#"{"repository": "owner/repo"}"#;
+            let config_value = ConfigValue::from_str(yaml).expect("failed to create config value");
+            let config = UpConfigGithubRelease::from_config_value(Some(&config_value));
+            assert_eq!(config.repository, "owner/repo");
+            assert_eq!(config.version, None);
+            assert_eq!(config.prerelease, false);
+            assert_eq!(config.build, false);
+            assert_eq!(config.binary, true);
+            assert_eq!(config.api_url, None);
+        }
+
+        #[test]
+        fn object_repo_alias() {
+            let yaml = r#"{"repo": "owner/repo"}"#;
+            let config_value = ConfigValue::from_str(yaml).expect("failed to create config value");
+            let config = UpConfigGithubRelease::from_config_value(Some(&config_value));
+            assert_eq!(config.repository, "owner/repo");
+            assert_eq!(config.version, None);
+            assert_eq!(config.prerelease, false);
+            assert_eq!(config.build, false);
+            assert_eq!(config.binary, true);
+            assert_eq!(config.api_url, None);
+        }
+
+        #[test]
+        fn with_all_values() {
+            let yaml = r#"{"repository": "owner/repo", "version": "1.2.3", "prerelease": true, "build": true, "binary": false, "api_url": "https://gh.example.com"}"#;
+            let config_value = ConfigValue::from_str(yaml).expect("failed to create config value");
+            let config = UpConfigGithubRelease::from_config_value(Some(&config_value));
+            assert_eq!(config.repository, "owner/repo");
+            assert_eq!(config.version, Some("1.2.3".to_string()));
+            assert_eq!(config.prerelease, true);
+            assert_eq!(config.build, true);
+            assert_eq!(config.binary, false);
+            assert_eq!(config.api_url, Some("https://gh.example.com".to_string()));
+        }
+    }
+
+    mod up {
+        use super::*;
+
+        use crate::internal::self_updater::compatible_release_arch;
+        use crate::internal::self_updater::compatible_release_os;
+
+        fn run_with_env<F>(envs: &[(String, Option<String>)], closure: F)
+        where
+            F: FnOnce(),
+        {
+            let tempdir = tempfile::Builder::new()
+                .prefix("omni_tests.")
+                .tempdir()
+                .expect("failed to create temp dir");
+
+            let run_env: Vec<(String, Option<String>)> = vec![
+                ("XDG_DATA_HOME".into(), None),
+                ("XDG_CONFIG_HOME".into(), None),
+                ("XDG_CACHE_HOME".into(), None),
+                ("XDG_RUNTIME_DIR".into(), None),
+                ("OMNI_DATA_HOME".into(), None),
+                ("OMNI_CACHE_HOME".into(), None),
+                ("OMNI_CMD_FILE".into(), None),
+                ("HOMEBREW_PREFIX".into(), None),
+                (
+                    "HOME".into(),
+                    Some(tempdir.path().join("home").to_string_lossy().to_string()),
+                ),
+                (
+                    "PATH".into(),
+                    Some(format!(
+                        "{}:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
+                        tempdir.path().join("bin").to_string_lossy()
+                    )),
+                ),
+            ]
+            .into_iter()
+            .chain(envs.into_iter().cloned())
+            .collect();
+
+            temp_env::with_vars(run_env, closure);
+        }
+
+        #[test]
+        fn latest_release_binary() {
+            test_download_release(
+                TestOptions::default().version("v1.2.3"),
+                UpConfigGithubRelease {
+                    repository: "owner/repo".to_string(),
+                    ..UpConfigGithubRelease::default()
+                },
+            );
+        }
+
+        #[test]
+        fn latest_release_binary_with_prerelease() {
+            test_download_release(
+                TestOptions::default().version("v2.0.0-alpha"),
+                UpConfigGithubRelease {
+                    repository: "owner/repo".to_string(),
+                    prerelease: true,
+                    ..UpConfigGithubRelease::default()
+                },
+            );
+        }
+
+        #[test]
+        fn specific_release_binary_1_major() {
+            test_download_release(
+                TestOptions::default().version("v1.2.3"),
+                UpConfigGithubRelease {
+                    repository: "owner/repo".to_string(),
+                    version: Some("1".to_string()),
+                    ..UpConfigGithubRelease::default()
+                },
+            );
+        }
+
+        #[test]
+        fn specific_release_binary_1_1_minor() {
+            test_download_release(
+                TestOptions::default().version("v1.1.9"),
+                UpConfigGithubRelease {
+                    repository: "owner/repo".to_string(),
+                    version: Some("1.1".to_string()),
+                    ..UpConfigGithubRelease::default()
+                },
+            );
+        }
+
+        #[test]
+        fn specific_release_binary_1_2_2_full() {
+            test_download_release(
+                TestOptions::default().version("v1.2.2"),
+                UpConfigGithubRelease {
+                    repository: "owner/repo".to_string(),
+                    version: Some("1.2.2".to_string()),
+                    ..UpConfigGithubRelease::default()
+                },
+            );
+        }
+
+        #[test]
+        fn different_prefix() {
+            test_download_release(
+                TestOptions::default().version("prefix-1.2.0"),
+                UpConfigGithubRelease {
+                    repository: "owner/repo".to_string(),
+                    version: Some("1.2.0".to_string()),
+                    ..UpConfigGithubRelease::default()
+                },
+            );
+        }
+
+        #[test]
+        fn non_standard_version() {
+            test_download_release(
+                TestOptions::default().version("nonstandard"),
+                UpConfigGithubRelease {
+                    repository: "owner/repo".to_string(),
+                    version: Some("nonstandard".to_string()),
+                    ..UpConfigGithubRelease::default()
+                },
+            );
+        }
+
+        #[test]
+        fn more_than_one_asset() {
+            test_download_release(
+                TestOptions::default().version("twoassets").assets(2),
+                UpConfigGithubRelease {
+                    repository: "owner/repo".to_string(),
+                    version: Some("twoassets".to_string()),
+                    ..UpConfigGithubRelease::default()
+                },
+            );
+        }
+
+        #[test]
+        fn fails_if_binary_is_false_and_only_binaries() {
+            test_download_release(
+                TestOptions::default(),
+                UpConfigGithubRelease {
+                    repository: "owner/repo".to_string(),
+                    version: None,
+                    binary: false,
+                    ..UpConfigGithubRelease::default()
+                },
+            );
+        }
+
+        #[test]
+        fn fails_if_no_assets() {
+            test_download_release(
+                TestOptions::default(),
+                UpConfigGithubRelease {
+                    repository: "owner/repo".to_string(),
+                    version: Some("noassets".to_string()),
+                    ..UpConfigGithubRelease::default()
+                },
+            );
+        }
+
+        #[test]
+        fn fails_if_no_matching_assets() {
+            test_download_release(
+                TestOptions::default(),
+                UpConfigGithubRelease {
+                    repository: "owner/repo".to_string(),
+                    version: Some("nomatchingassets".to_string()),
+                    ..UpConfigGithubRelease::default()
+                },
+            );
+        }
+
+        #[derive(Default)]
+        struct TestOptions {
+            expected_version: Option<String>,
+            assets: usize,
+        }
+
+        impl TestOptions {
+            fn version(mut self, version: &str) -> Self {
+                self.expected_version = Some(version.to_string());
+                if self.assets == 0 {
+                    self.assets = 1;
+                }
+                self
+            }
+
+            fn assets(mut self, assets: usize) -> Self {
+                self.assets = assets;
+                self
+            }
+        }
+
+        fn test_download_release(test: TestOptions, config: UpConfigGithubRelease) {
+            run_with_env(&vec![], || {
+                let mut mock_server = mockito::Server::new();
+                let api_url = mock_server.url();
+
+                let config = UpConfigGithubRelease {
+                    api_url: Some(api_url.to_string()),
+                    ..config
+                };
+
+                let current_arch = compatible_release_arch()
+                    .into_iter()
+                    .next()
+                    .expect("no compatible arch");
+                let current_os = compatible_release_os()
+                    .into_iter()
+                    .next()
+                    .expect("no compatible os");
+
+                let list_releases_body = format!(
+                    r#"[
+                    {{
+                        "name": "Release 2.0.0-alpha",
+                        "tag_name": "v2.0.0-alpha",
+                        "draft": false,
+                        "prerelease": true,
+                        "assets": [
+                            {{
+                                "name": "asset1_{arch}_{os}",
+                                "browser_download_url": "{url}/download/v2.0.0-alpha/asset1"
+                            }}
+                        ]
+                    }},
+                    {{
+                        "name": "Release 1.2.3",
+                        "tag_name": "v1.2.3",
+                        "draft": false,
+                        "prerelease": false,
+                        "assets": [
+                            {{
+                                "name": "asset1_{arch}_{os}",
+                                "browser_download_url": "{url}/download/v1.2.3/asset1"
+                            }}
+                        ]
+                    }},
+                    {{
+                        "name": "Release 1.2.2",
+                        "tag_name": "v1.2.2",
+                        "draft": false,
+                        "prerelease": false,
+                        "assets": [
+                            {{
+                                "name": "asset1_{arch}_{os}",
+                                "browser_download_url": "{url}/download/v1.2.2/asset1"
+                            }}
+                        ]
+                    }},
+                    {{
+                        "name": "Release 1.2.0",
+                        "tag_name": "prefix-1.2.0",
+                        "draft": false,
+                        "prerelease": false,
+                        "assets": [
+                            {{
+                                "name": "asset1_{arch}_{os}",
+                                "browser_download_url": "{url}/download/prefix-1.2.0/asset1"
+                            }}
+                        ]
+                    }},
+                    {{
+                        "name": "Release nonstandard",
+                        "tag_name": "nonstandard",
+                        "draft": false,
+                        "prerelease": false,
+                        "assets": [
+                            {{
+                                "name": "asset1_{arch}_{os}",
+                                "browser_download_url": "{url}/download/nonstandard/asset1"
+                            }}
+                        ]
+                    }},
+                    {{
+                        "name": "Release noassets",
+                        "tag_name": "noassets",
+                        "draft": false,
+                        "prerelease": false,
+                        "assets": []
+                    }},
+                    {{
+                        "name": "Release nomatchingassets",
+                        "tag_name": "nomatchingassets",
+                        "draft": false,
+                        "prerelease": false,
+                        "assets": [
+                            {{
+                                "name": "asset1",
+                                "browser_download_url": "{url}/download/nomatchingassets/asset1"
+                            }}
+                        ]
+                    }},
+                    {{
+                        "name": "Release twoassets",
+                        "tag_name": "twoassets",
+                        "draft": false,
+                        "prerelease": false,
+                        "assets": [
+                            {{
+                                "name": "asset1_{arch}_{os}",
+                                "browser_download_url": "{url}/download/twoassets/asset1"
+                            }},
+                            {{
+                                "name": "asset2_{arch}_{os}",
+                                "browser_download_url": "{url}/download/twoassets/asset2"
+                            }}
+                        ]
+                    }},
+                    {{
+                        "name": "Release 1.1.9",
+                        "tag_name": "v1.1.9",
+                        "draft": false,
+                        "prerelease": false,
+                        "assets": [
+                            {{
+                                "name": "asset1_{arch}_{os}",
+                                "browser_download_url": "{url}/download/v1.1.9/asset1"
+                            }}
+                        ]
+                    }}
+                ]"#,
+                    url = mock_server.url(),
+                    arch = current_arch,
+                    os = current_os
+                );
+
+                let mock_list_releases = mock_server
+                    .mock("GET", "/repos/owner/repo/releases")
+                    .with_status(200)
+                    .with_body(list_releases_body)
+                    .create();
+
+                let mock_downloads = (1..=test.assets)
+                    .into_iter()
+                    .map(|asset_id| {
+                        eprintln!("Setting up asset id {}", asset_id);
+                        mock_server
+                            .mock(
+                                "GET",
+                                format!(
+                                    "/download/{}/asset{}",
+                                    test.expected_version.clone().unwrap(),
+                                    asset_id
+                                )
+                                .as_str(),
+                            )
+                            .with_status(200)
+                            .with_body(format!("asset{} contents", asset_id))
+                            .create()
+                    })
+                    .collect::<Vec<_>>();
+
+                let options = UpOptions::default().cache_disabled();
+                let progress_handler = UpProgressHandler::new(None);
+
+                let result = config.up(&options, &progress_handler);
+
+                assert!(if test.expected_version.is_some() {
+                    result.is_ok()
+                } else {
+                    result.is_err()
+                });
+
+                // Check the mocks have been called
+                mock_list_releases.assert();
+                mock_downloads.iter().for_each(|mock| mock.assert());
+
+                for asset_id in 1..=test.assets {
+                    // Check the binary file exists
+                    let expected_bin = github_releases_bin_path()
+                        .join("owner/repo")
+                        .join(test.expected_version.clone().unwrap())
+                        .join(format!("asset{}", asset_id));
+                    if !expected_bin.exists() {
+                        // Use walkdir to print all the tree under github_releases_bin_path()
+                        let tree = walkdir::WalkDir::new(github_releases_bin_path())
+                            .into_iter()
+                            .flatten()
+                            .map(|entry| entry.path().display().to_string())
+                            .collect::<Vec<String>>()
+                            .join("\n");
+                        panic!(
+                            "binary file not found at {}\nExisting paths:\n{}",
+                            expected_bin.display(),
+                            tree
+                        );
+                    }
+
+                    // Check the file is executable
+                    let metadata = expected_bin.metadata().expect("failed to get metadata");
+                    assert_eq!(
+                        metadata.permissions().mode() & 0o111,
+                        0o111,
+                        "file is not executable"
+                    );
+                }
+            });
+        }
     }
 }

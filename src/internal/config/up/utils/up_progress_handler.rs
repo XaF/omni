@@ -28,11 +28,18 @@ impl<'a> UpProgressHandler<'a> {
         if self.handler.get().is_some() || self.parent.is_some() {
             return false;
         }
+
+        #[cfg(not(test))]
         let boxed_handler: Box<dyn ProgressHandler> = if shell_is_interactive() {
             Box::new(SpinnerProgressHandler::new(desc, self.step))
         } else {
             Box::new(PrintProgressHandler::new(desc, self.step))
         };
+
+        #[cfg(test)]
+        let boxed_handler: Box<dyn ProgressHandler> =
+            Box::new(PrintProgressHandler::new(desc, self.step));
+
         if self.handler.set(boxed_handler).is_err() {
             panic!("failed to set progress handler");
         }
