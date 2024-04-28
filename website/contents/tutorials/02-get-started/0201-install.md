@@ -2,6 +2,9 @@
 description: How to install omni and get ready to use it
 ---
 
+import Tabs from '@theme/Tabs';
+import TabItem from '@theme/TabItem';
+
 # Installation
 
 Omni's installation requires to [get omni itself](#get-omni), and [setup its shell integration](#setting-up-the-shell-integration).
