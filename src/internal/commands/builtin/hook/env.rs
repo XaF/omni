@@ -15,6 +15,7 @@ use crate::omni_error;
 #[derive(Debug, Clone)]
 struct HookEnvCommandArgs {
     quiet: bool,
+    keep_shims: bool,
     shell: Shell,
 }
 
@@ -31,6 +32,11 @@ impl HookEnvCommandArgs {
                 clap::Arg::new("quiet")
                     .short('q')
                     .long("quiet")
+                    .action(clap::ArgAction::SetTrue),
+            )
+            .arg(
+                clap::Arg::new("keep-shims")
+                    .long("keep-shims")
                     .action(clap::ArgAction::SetTrue),
             )
             .try_get_matches_from(&parse_argv);
@@ -67,8 +73,13 @@ impl HookEnvCommandArgs {
             .map(Shell::from_str)
             .unwrap_or_else(Shell::from_env);
         let quiet = *matches.get_one::<bool>("quiet").unwrap_or(&false);
+        let keep_shims = *matches.get_one::<bool>("keep-shims").unwrap_or(&false);
 
-        Self { shell, quiet }
+        Self {
+            shell,
+            quiet,
+            keep_shims,
+        }
     }
 }
 
@@ -124,17 +135,30 @@ impl BuiltinCommand for HookEnvCommand {
     fn syntax(&self) -> Option<CommandSyntax> {
         Some(CommandSyntax {
             usage: None,
-            parameters: vec![SyntaxOptArg {
-                name: "--quiet".to_string(),
-                desc: Some(
-                    concat!(
-                        "Suppress the output of the hook showing information about the ",
-                        "dynamic environment update."
-                    )
-                    .to_string(),
-                ),
-                required: false,
-            }],
+            parameters: vec![
+                SyntaxOptArg {
+                    name: "--quiet".to_string(),
+                    desc: Some(
+                        concat!(
+                            "Suppress the output of the hook showing information about the ",
+                            "dynamic environment update."
+                        )
+                        .to_string(),
+                    ),
+                    required: false,
+                },
+                SyntaxOptArg {
+                    name: "--keep-shims".to_string(),
+                    desc: Some(
+                        concat!(
+                            "Keep the shims directory in the PATH. This is useful for instance ",
+                            "if you are used to launch your IDE from the terminal."
+                        )
+                        .to_string(),
+                    ),
+                    required: false,
+                },
+            ],
         })
     }
 
@@ -152,6 +176,7 @@ impl BuiltinCommand for HookEnvCommand {
             Some(export_mode) => {
                 DynamicEnvExportOptions::new(export_mode)
                     .quiet(self.cli_args().quiet)
+                    .keep_shims(self.cli_args().keep_shims)
                     .apply();
                 report_update_error();
                 exit(0);

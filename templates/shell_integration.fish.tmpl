@@ -1,10 +1,4 @@
-{% if SHIMS_ONLY -%}
-set -l omni_shims_path {{ OMNI_DATA_HOME }}/shims
-if not contains $omni_shims_path $PATH
-    set -l PATH $omni_shims_path $PATH
-    set -gx PATH $PATH
-end
-{%- else -%}
+{% if not SHIMS_ONLY -%}
 # This function is used to run the omni command, and then operate on
 # the requested shell changes from the command (changing current
 # working directory, environment, etc.); this is why we require using
@@ -104,20 +98,20 @@ complete -c {{alias.alias}} -a "(_omni_complete_fish)" -f
 
 # Setup the prompt hook to load the dynamic environment
 function __omni_hook --on-event fish_prompt --on-variable PWD
-    OMNI_SHELL=fish OMNI_SHELL_PPID=$fish_pid {{OMNI_BIN}} hook env fish \
+    OMNI_SHELL=fish OMNI_SHELL_PPID=$fish_pid {{OMNI_BIN}} hook env{% if KEEP_SHIMS %} --keep-shims{% endif %} fish \
         | while read line
             eval "$line" 2>/dev/null
         end
 end
 
-# If we are not in an interactive shell, we will add the
-# shims directory to the PATH, so that the dynamic
-# environment can be used in non-interactive shells
-if status is-interactive
-    set -l omni_shims_path {{ OMNI_DATA_HOME }}/shims
-    if not contains $omni_shims_path $PATH
-        set -l PATH $omni_shims_path $PATH
-        set -gx PATH $PATH
-    end
+{% endif -%}
+# Add the shims directory to the PATH, so that the dynamic
+# environment can be used in non-interactive shells.
+# This will automatically be removed from the PATH when the
+# dynamic environment is loaded, allowing to favor it over
+# the shims
+set -l omni_shims_path {{ OMNI_SHIMS }}
+if not contains $omni_shims_path $PATH
+    set -l PATH $omni_shims_path $PATH
+    set -gx PATH $PATH
 end
-{%- endif -%}

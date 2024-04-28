@@ -12,6 +12,7 @@ use crate::internal::config::CommandSyntax;
 use crate::internal::config::SyntaxOptArg;
 use crate::internal::env::current_exe;
 use crate::internal::env::data_home;
+use crate::internal::env::shims_dir;
 use crate::internal::env::Shell;
 use crate::internal::user_interface::StringColor;
 use crate::omni_error;
@@ -22,6 +23,8 @@ struct HookInitCommandArgs {
     aliases: Vec<String>,
     command_aliases: Vec<InitHookAlias>,
     shims: bool,
+    keep_shims: bool,
+    print_shims_path: bool,
 }
 
 impl HookInitCommandArgs {
@@ -52,6 +55,23 @@ impl HookInitCommandArgs {
                     .action(clap::ArgAction::SetTrue)
                     .conflicts_with("aliases")
                     .conflicts_with("command_aliases"),
+            )
+            .arg(
+                clap::Arg::new("keep-shims")
+                    .long("keep-shims")
+                    .action(clap::ArgAction::SetTrue)
+                    .conflicts_with("aliases")
+                    .conflicts_with("command_aliases")
+                    .conflicts_with("shims"),
+            )
+            .arg(
+                clap::Arg::new("print-shims-path")
+                    .long("print-shims-path")
+                    .action(clap::ArgAction::SetTrue)
+                    .conflicts_with("aliases")
+                    .conflicts_with("command_aliases")
+                    .conflicts_with("shims")
+                    .conflicts_with("keep-shims"),
             )
             .try_get_matches_from(&parse_argv);
 
@@ -128,12 +148,18 @@ impl HookInitCommandArgs {
         );
 
         let shims = *matches.get_one::<bool>("shims").unwrap_or(&false);
+        let keep_shims = *matches.get_one::<bool>("keep-shims").unwrap_or(&false);
+        let print_shims_path = *matches
+            .get_one::<bool>("print-shims-path")
+            .unwrap_or(&false);
 
         Self {
             shell,
             aliases,
             command_aliases,
             shims,
+            keep_shims,
+            print_shims_path,
         }
     }
 }
@@ -253,6 +279,23 @@ impl BuiltinCommand for HookInitCommand {
                     required: false,
                 },
                 SyntaxOptArg {
+                    name: "--keep-shims-in-path".to_string(),
+                    desc: Some(concat!(
+                        "Prevent the dynamic environment from removing the shims directory from the PATH. ",
+                        "This can be useful if you are used to launch your IDE from the terminal and do ",
+                        "not have other means to load the shims in its environment."
+                    ).to_string()),
+                    required: false,
+                },
+                SyntaxOptArg {
+                    name: "--print-shims-path".to_string(),
+                    desc: Some(concat!(
+                        "Print the path to the shims directory and exit. This should not be ",
+                        "used to eval in a shell environment."
+                    ).to_string()),
+                    required: false,
+                },
+                SyntaxOptArg {
                     name: "shell".to_string(),
                     desc: Some(
                         "Which shell to initialize omni for. Can be one of bash, zsh or fish."
@@ -270,6 +313,11 @@ impl BuiltinCommand for HookInitCommand {
 
     fn exec(&self, argv: Vec<String>) {
         let args = HookInitCommandArgs::parse(argv);
+
+        if args.print_shims_path {
+            println!("{}", shims_dir().display());
+            exit(0);
+        }
 
         match args.shell.as_str() {
             "bash" => dump_integration(
@@ -311,16 +359,13 @@ fn dump_integration(args: HookInitCommandArgs, integration: &[u8]) {
     let integration = String::from_utf8_lossy(integration).to_string();
 
     let mut context = Context::new();
-    context.insert(
-        "OMNI_BIN",
-        &escape(std::borrow::Cow::Borrowed(
-            current_exe().to_string_lossy().as_ref(),
-        )),
-    );
+    context.insert("OMNI_BIN", &escape(current_exe().to_string_lossy()));
     context.insert("OMNI_DATA_HOME", &escape(data_home().into()));
+    context.insert("OMNI_SHIMS", &escape(shims_dir().to_string_lossy()));
     context.insert("OMNI_ALIASES", &args.aliases);
     context.insert("OMNI_COMMAND_ALIASES", &args.command_aliases);
     context.insert("SHIMS_ONLY", &args.shims);
+    context.insert("KEEP_SHIMS", &args.keep_shims);
 
     let result = Tera::one_off(&integration, &context, false)
         .expect("failed to render integration template");

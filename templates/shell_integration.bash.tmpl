@@ -1,8 +1,4 @@
-{% if SHIMS_ONLY -%}
-if [[ ":$PATH:" != *":{{ OMNI_DATA_HOME }}/shims:"* ]]; then
-	export PATH="{{ OMNI_DATA_HOME }}/shims:$PATH"
-fi
-{%- else -%}
+{% if not SHIMS_ONLY -%}
 # This function is used to run the omni command, and then operate on
 # the requested shell changes from the command (changing current
 # working directory, environment, etc.); this is why we require using
@@ -143,7 +139,7 @@ fi
 # Prepare omni's hook
 __omni_hook() {
 	local ppid=$$
-	eval "$(OMNI_SHELL_PPID="${ppid}" "{{ OMNI_BIN }}" hook env "${@}")"
+	eval "$(OMNI_SHELL_PPID="${ppid}" "{{ OMNI_BIN }}" hook env{% if KEEP_SHIMS %} --keep-shims{% endif %} "${@}")"
 }
 
 
@@ -159,11 +155,12 @@ __omni_hook() {
 	${PROMPT_COMMAND}"
 }
 
-
-# If we are not in an interactive shell, we will add the
-# shims directory to the PATH, so that the dynamic
-# environment can be used in non-interactive shells
-if [[ $- != *i* ]] && [[ ":$PATH:" != *":{{ OMNI_DATA_HOME }}/shims:"* ]]; then
-	export PATH="{{ OMNI_DATA_HOME }}/shims:$PATH"
+{% endif -%}
+# Add the shims directory to the PATH, so that the dynamic
+# environment can be used in non-interactive shells.
+# This will automatically be removed from the PATH when the
+# dynamic environment is loaded, allowing to favor it over
+# the shims
+if [[ ":$PATH:" != *":{{ OMNI_SHIMS }}:"* ]]; then
+	export PATH="{{ OMNI_SHIMS }}:$PATH"
 fi
-{%- endif -%}
