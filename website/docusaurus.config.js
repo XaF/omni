@@ -184,11 +184,15 @@ const config = {
       },
       prism: {
         additionalLanguages: [
-          'rust',
-          'yaml',
+          'bash',
           'json',
+          'lisp',
+          'lua',
           'makefile',
+          'rust',
           'shell-session',
+          'vim',
+          'yaml',
         ],
         magicComments: [
           {

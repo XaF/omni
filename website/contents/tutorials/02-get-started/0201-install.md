@@ -2,6 +2,9 @@
 description: How to install omni and get ready to use it
 ---
 
+import Tabs from '@theme/Tabs';
+import TabItem from '@theme/TabItem';
+
 # Installation
 
 Omni's installation requires to [get omni itself](#get-omni), and [setup its shell integration](#setting-up-the-shell-integration).
@@ -79,11 +82,23 @@ cp target/release/omni /usr/local/bin/
 
 Omni depends on a shell integration to be fully functional. To enable it, you will have to add one of the following lines to your shell's configuration file:
 
-```bash
-eval "$(omni hook init bash)"    # for bash
-eval "$(omni hook init zsh)"     # for zsh
-omni hook init fish | source     # for fish
-```
+<Tabs groupId="shells">
+  <TabItem value="bash" label="bash" default>
+    ```bash
+    eval "$(omni hook init bash)"
+    ```
+  </TabItem>
+  <TabItem value="zsh" label="zsh">
+    ```bash
+    eval "$(omni hook init zsh)"
+    ```
+  </TabItem>
+  <TabItem value="fish" label="fish">
+    ```bash
+    omni hook init fish | source
+    ```
+  </TabItem>
+</Tabs>
 
 Don't forget to restart your shell or run `source <path_to_rc_file>` for the changes to take effect.
 
