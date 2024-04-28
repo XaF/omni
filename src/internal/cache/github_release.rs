@@ -24,13 +24,15 @@ use crate::internal::self_updater::compatible_release_os;
 const GITHUB_RELEASE_CACHE_NAME: &str = "github_release_operation";
 
 lazy_static! {
-    static ref OS_REGEX: Regex =
-        match Regex::new(&format!(r"(?i)\b({})\b", compatible_release_os().join("|"))) {
-            Ok(os_re) => os_re,
-            Err(err) => panic!("failed to create OS regex: {}", err),
-        };
+    static ref OS_REGEX: Regex = match Regex::new(&format!(
+        r"(?i)(\b|_)({})(\b|_)",
+        compatible_release_os().join("|")
+    )) {
+        Ok(os_re) => os_re,
+        Err(err) => panic!("failed to create OS regex: {}", err),
+    };
     static ref ARCH_REGEX: Regex = match Regex::new(&format!(
-        r"(?i)\b({})\b",
+        r"(?i)(\b|_)({})(\b|_)",
         compatible_release_arch().join("|")
     )) {
         Ok(arch_re) => arch_re,
@@ -295,10 +297,15 @@ impl GithubReleases {
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct GithubReleaseVersion {
+    #[serde(default, skip_serializing_if = "String::is_empty")]
     pub tag_name: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
     pub name: String,
+    #[serde(default)]
     pub draft: bool,
+    #[serde(default)]
     pub prerelease: bool,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub assets: Vec<GithubReleaseAsset>,
 }
 
@@ -310,10 +317,15 @@ impl GithubReleaseVersion {
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct GithubReleaseAsset {
+    #[serde(default, skip_serializing_if = "String::is_empty")]
     pub name: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
     pub browser_download_url: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
     pub state: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
     pub content_type: String,
+    #[serde(default)]
     pub size: u64,
 }
 
@@ -347,8 +359,8 @@ impl GithubReleaseAsset {
 
     pub fn clean_name(&self, version: &str) -> String {
         let name = self.name.clone();
-        let name = OS_REGEX.replace_all(&name, "");
-        let name = ARCH_REGEX.replace_all(&name, "");
+        let name = OS_REGEX.replace_all(&name, "$1$3");
+        let name = ARCH_REGEX.replace_all(&name, "$1$3");
         let name = name.replace(version, "");
         let name = SEPARATOR_MID_REGEX.replace_all(&name, "-");
         let name = SEPARATOR_END_REGEX.replace_all(&name, "");

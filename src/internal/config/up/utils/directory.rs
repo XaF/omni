@@ -60,6 +60,8 @@ pub fn force_remove_dir_all<P: AsRef<Path>>(path: P) -> std::io::Result<()> {
                 if err.kind() == std::io::ErrorKind::PermissionDenied {
                     set_writeable_recursive(path)?;
                     std::fs::remove_dir_all(path)?;
+                } else if err.kind() == std::io::ErrorKind::NotFound {
+                    // Ignore not found errors
                 } else {
                     return Err(err);
                 }
