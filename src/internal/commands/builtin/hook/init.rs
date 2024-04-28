@@ -359,9 +359,9 @@ fn dump_integration(args: HookInitCommandArgs, integration: &[u8]) {
     let integration = String::from_utf8_lossy(integration).to_string();
 
     let mut context = Context::new();
-    context.insert("OMNI_BIN", &escape(current_exe().to_string_lossy().into()));
+    context.insert("OMNI_BIN", &escape(current_exe().to_string_lossy()));
     context.insert("OMNI_DATA_HOME", &escape(data_home().into()));
-    context.insert("OMNI_SHIMS", &escape(shims_dir().to_string_lossy().into()));
+    context.insert("OMNI_SHIMS", &escape(shims_dir().to_string_lossy()));
     context.insert("OMNI_ALIASES", &args.aliases);
     context.insert("OMNI_COMMAND_ALIASES", &args.command_aliases);
     context.insert("SHIMS_ONLY", &args.shims);
