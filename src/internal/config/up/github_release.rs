@@ -173,7 +173,10 @@ impl UpConfigGithubReleases {
                 )
                 .light_yellow(),
             );
-            release.up(options, &subhandler)?;
+            release.up(options, &subhandler).map_err(|err| {
+                progress_handler.error();
+                err
+            })?;
         }
 
         progress_handler.success_with_message(self.get_up_message());
@@ -913,7 +916,7 @@ impl UpConfigGithubRelease {
             }
         };
 
-        let response = client.get(releases_url).send().map_err(|err| {
+        let response = client.get(&releases_url).send().map_err(|err| {
             let errmsg = format!("failed to get releases: {}", err);
             progress_handler.error_with_message(errmsg.clone());
             UpError::Exec(errmsg)
@@ -934,7 +937,7 @@ impl UpConfigGithubRelease {
                 Err(_) => contents.clone(),
             };
 
-            let errmsg = format!("{} ({})", errmsg, status);
+            let errmsg = format!("{}: {} ({})", releases_url, errmsg, status);
             progress_handler.error_with_message(errmsg.to_string());
             return Err(UpError::Exec(errmsg));
         }
