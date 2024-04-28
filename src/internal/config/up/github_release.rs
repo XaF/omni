@@ -1218,7 +1218,7 @@ impl UpConfigGithubRelease {
                 } else {
                     std::io::Error::new(
                         std::io::ErrorKind::NotFound,
-                        format!("target file not found after copy"),
+                        "target file not found after copy".to_string(),
                     )
                 };
                 let errmsg = format!("failed to copy {}: {}", binary_name, err);
