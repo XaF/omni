@@ -2,6 +2,7 @@ use std::collections::BTreeMap;
 use std::collections::BTreeSet;
 use std::io;
 
+use globset::Glob;
 use lazy_static::lazy_static;
 use regex::Regex;
 use serde::Deserialize;
@@ -176,6 +177,126 @@ impl GithubReleaseInstalled {
     }
 }
 
+#[derive(Debug, Serialize, Deserialize, Clone, Default)]
+pub struct GithubReleasesSelector {
+    pub version: String,
+    pub prerelease: bool,
+    pub build: bool,
+    pub binary: bool,
+    pub asset_name: Option<String>,
+    pub skip_arch_matching: bool,
+    pub skip_os_matching: bool,
+}
+
+impl GithubReleasesSelector {
+    pub fn new(version: &str) -> Self {
+        Self {
+            version: version.to_string(),
+            ..Self::default()
+        }
+    }
+
+    pub fn prerelease(mut self, prerelease: bool) -> Self {
+        self.prerelease = prerelease;
+        self
+    }
+
+    pub fn build(mut self, build: bool) -> Self {
+        self.build = build;
+        self
+    }
+
+    pub fn binary(mut self, binary: bool) -> Self {
+        self.binary = binary;
+        self
+    }
+
+    pub fn asset_name(mut self, asset_name: Option<String>) -> Self {
+        self.asset_name = asset_name;
+        self
+    }
+
+    pub fn skip_arch_matching(mut self, skip_arch_matching: bool) -> Self {
+        self.skip_arch_matching = skip_arch_matching;
+        self
+    }
+
+    pub fn skip_os_matching(mut self, skip_os_matching: bool) -> Self {
+        self.skip_os_matching = skip_os_matching;
+        self
+    }
+
+    fn asset_matches(&self, asset: &GithubReleaseAsset) -> bool {
+        if let Some((asset_type, _)) = asset.file_type() {
+            if asset_type.is_binary() && !self.binary {
+                return false;
+            }
+        } else {
+            return false;
+        }
+
+        if let Some(ref patterns) = self.asset_name {
+            let patterns = patterns.split('\n').collect::<Vec<&str>>();
+
+            let mut has_positive_pattern = false;
+            let mut matched = false;
+
+            for pattern in patterns {
+                if pattern.is_empty() {
+                    continue;
+                }
+
+                let (should_match, pattern) = if pattern.starts_with('!') {
+                    (false, &pattern[1..])
+                } else {
+                    has_positive_pattern = true;
+                    (true, pattern)
+                };
+
+                let glob = match Glob::new(pattern) {
+                    Ok(glob) => glob.compile_matcher(),
+                    Err(_) => continue,
+                };
+
+                if glob.is_match(&asset.name) {
+                    if should_match {
+                        matched = true;
+                        break;
+                    } else {
+                        return false;
+                    }
+                }
+            }
+
+            // Fail right away if we have any positive pattern
+            // and none of them matched
+            if !matched && has_positive_pattern {
+                return false;
+            }
+        }
+
+        let asset_name = asset.name.to_lowercase();
+
+        if !self.skip_os_matching
+            && compatible_release_os()
+                .into_iter()
+                .all(|os| !asset_name.contains(&os))
+        {
+            return false;
+        }
+
+        if !self.skip_arch_matching
+            && compatible_release_arch()
+                .into_iter()
+                .all(|arch| !asset_name.contains(&arch))
+        {
+            return false;
+        }
+
+        true
+    }
+}
+
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct GithubReleases {
     pub releases: Vec<GithubReleaseVersion>,
@@ -205,16 +326,10 @@ impl GithubReleases {
         self.fetched_at + duration < OffsetDateTime::now_utc()
     }
 
-    pub fn get(
-        &self,
-        version: &str,
-        prerelease: bool,
-        build: bool,
-        binary: bool,
-    ) -> Option<(String, GithubReleaseVersion)> {
-        let mut matcher = VersionMatcher::new(version);
-        matcher.prerelease(prerelease);
-        matcher.build(build);
+    pub fn get(&self, selector: GithubReleasesSelector) -> Option<(String, GithubReleaseVersion)> {
+        let mut matcher = VersionMatcher::new(&selector.version);
+        matcher.prerelease(selector.prerelease);
+        matcher.build(selector.build);
         // We also always authorize `prefix` because we don't know what
         // the prefix is going to be, `v` or anything else
         matcher.prefix(true);
@@ -228,7 +343,7 @@ impl GithubReleases {
                 }
 
                 // Discard pre-releases if needed
-                if !prerelease && release.prerelease {
+                if !selector.prerelease && release.prerelease {
                     return None;
                 }
 
@@ -245,35 +360,7 @@ impl GithubReleases {
                 let assets = release
                     .assets
                     .iter()
-                    .filter(|asset| {
-                        if let Some((asset_type, _)) = asset.file_type() {
-                            if asset_type.is_binary() && !binary {
-                                return false;
-                            }
-                        } else {
-                            return false;
-                        }
-
-                        let asset_name = asset.name.to_lowercase();
-
-                        let compatible_release_os = compatible_release_os();
-                        if compatible_release_os
-                            .iter()
-                            .all(|os| !asset_name.contains(os))
-                        {
-                            return false;
-                        }
-
-                        let compatible_release_arch = compatible_release_arch();
-                        if compatible_release_arch
-                            .iter()
-                            .all(|arch| !asset_name.contains(arch))
-                        {
-                            return false;
-                        }
-
-                        true
-                    })
+                    .filter(|asset| selector.asset_matches(&asset))
                     .cloned()
                     .collect::<Vec<GithubReleaseAsset>>();
 

@@ -1692,6 +1692,7 @@ dependencies = [
  "git-url-parse",
  "git2",
  "glob",
+ "globset",
  "humantime",
  "imara-diff",
  "indicatif",

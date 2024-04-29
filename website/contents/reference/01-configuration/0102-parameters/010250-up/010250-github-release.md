@@ -36,6 +36,9 @@ This does not support using authentication yet, and thus will only work for publ
 | `prerelease` | boolean | Whether to download a prerelease version or only match stable releases; this will also apply to versions with prerelease specification, e.g. `1.2.3-alpha` *(default: `false`)* |
 | `build` | boolean | Whether to download a version with build specification, e.g. `1.2.3+build` *(default: `false`)* |
 | `binary` | boolean | Whether to download an asset that is not archived and consider it a binary file *(default: `true`)* |
+| `asset_name` | string | The name of the asset to download from the release. All assets matching this pattern _and_ the current platform and architecture (unless skipped) will be downloaded. It can take glob patterns, e.g. `*.tar.gz` or `special-asset-*`. It can take multiple patterns at once, one per line, and accepts positive and negative (starting by `!`) patterns. The first matching pattern returns (whether negative or positive). If not set, will be similar as being set to `*` |
+| `skip_os_matching` | boolean | Whether to skip the OS matching when downloading assets. If set to `true`, this will download all assets regardless of the OS *(default: `false`)* |
+| `skip_arch_matching` | boolean | Whether to skip the architecture matching when downloading assets. If set to `true`, this will download all assets regardless of the architecture *(default: `false`)* |
 | `api_url` | string | The URL of the GitHub API to use, useful to use GitHub Enterprise (e.g. `https://github.example.com/api/v3`); defaults to `https://api.github.com` |
 
 ### Version handling
@@ -121,6 +124,19 @@ up:
       - XaF/omni: 1.2.3
       - repository: omnicli/omni
         version: 4.5.6
+
+  # Will only download *.tar.gz assets, even if other assets
+  # are matching the current OS and arch
+  - github-release:
+      repository: XaF/omni
+      asset_name: "*.tar.gz"
+
+  # Will download assets even if OS and arch are not matching
+  - github-release:
+      repository: XaF/omni
+      asset_name: "cross-platform-binary"
+      skip_os_matching: true
+      skip_arch_matching: true
 ```
 
 ## Dynamic environment

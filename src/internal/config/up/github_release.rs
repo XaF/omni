@@ -16,6 +16,7 @@ use once_cell::sync::Lazy;
 #[cfg(test)]
 use mockito;
 
+use crate::internal::cache::github_release::GithubReleasesSelector;
 use crate::internal::cache::utils as cache_utils;
 use crate::internal::cache::CacheObject;
 use crate::internal::cache::GithubReleaseOperationCache;
@@ -438,6 +439,32 @@ struct UpConfigGithubRelease {
     )]
     pub binary: bool,
 
+    /// The name of the asset to download from the release. All
+    /// assets matching this pattern _and_ the current platform
+    /// and architecture will be downloaded. It can take glob
+    /// patterns, e.g. `*.tar.gz` or `special-asset-*`. If not
+    /// set, will be similar as being set to `*`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub asset_name: Option<String>,
+
+    /// Whether to skip the OS matching when downloading the
+    /// release. This is useful when the release is not
+    /// platform-specific and you want to download it anyway.
+    #[serde(
+        default = "cache_utils::set_false",
+        skip_serializing_if = "cache_utils::is_false"
+    )]
+    pub skip_os_matching: bool,
+
+    /// Whether to skip the architecture matching when downloading
+    /// the release. This is useful when the release is not
+    /// architecture-specific and you want to download it anyway.
+    #[serde(
+        default = "cache_utils::set_false",
+        skip_serializing_if = "cache_utils::is_false"
+    )]
+    pub skip_arch_matching: bool,
+
     /// The URL of the GitHub API; this is only required if downloading
     /// using Github Enterprise. By default, this is set to the public
     /// GitHub API URL (https://api.github.com). If you are using
@@ -461,6 +488,9 @@ impl Default for UpConfigGithubRelease {
             prerelease: false,
             build: false,
             binary: true,
+            asset_name: None,
+            skip_os_matching: false,
+            skip_arch_matching: false,
             api_url: None,
             actual_version: OnceCell::new(),
             was_handled: OnceCell::new(),
@@ -552,6 +582,20 @@ impl UpConfigGithubRelease {
             .map(|v| v.as_bool())
             .unwrap_or(None)
             .unwrap_or(true);
+        let asset_name = table
+            .get("asset_name")
+            .map(|v| v.as_str_forced())
+            .unwrap_or(None);
+        let skip_os_matching = table
+            .get("skip_os_matching")
+            .map(|v| v.as_bool())
+            .unwrap_or(None)
+            .unwrap_or(false);
+        let skip_arch_matching = table
+            .get("skip_arch_matching")
+            .map(|v| v.as_bool())
+            .unwrap_or(None)
+            .unwrap_or(false);
         let api_url = table
             .get("api_url")
             .map(|v| v.as_str_forced())
@@ -563,6 +607,9 @@ impl UpConfigGithubRelease {
             prerelease,
             build,
             binary,
+            asset_name,
+            skip_os_matching,
+            skip_arch_matching,
             api_url,
             ..UpConfigGithubRelease::default()
         }
@@ -955,7 +1002,15 @@ impl UpConfigGithubRelease {
         let version = self.version.clone().unwrap_or_else(|| "latest".to_string());
 
         let (_version, release) = releases
-            .get(&version, self.prerelease, self.build, self.binary)
+            .get(
+                GithubReleasesSelector::new(&version)
+                    .prerelease(self.prerelease)
+                    .build(self.build)
+                    .binary(self.binary)
+                    .asset_name(self.asset_name.clone())
+                    .skip_os_matching(self.skip_os_matching)
+                    .skip_arch_matching(self.skip_arch_matching),
+            )
             .ok_or_else(|| {
                 let errmsg = format!(
                     "no matching release found for {} {}",
