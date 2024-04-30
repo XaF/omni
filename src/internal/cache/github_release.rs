@@ -246,8 +246,8 @@ impl GithubReleasesSelector {
                     continue;
                 }
 
-                let (should_match, pattern) = if pattern.starts_with('!') {
-                    (false, &pattern[1..])
+                let (should_match, pattern) = if let Some(pattern) = pattern.strip_prefix('!') {
+                    (false, pattern)
                 } else {
                     has_positive_pattern = true;
                     (true, pattern)
@@ -360,7 +360,7 @@ impl GithubReleases {
                 let assets = release
                     .assets
                     .iter()
-                    .filter(|asset| selector.asset_matches(&asset))
+                    .filter(|asset| selector.asset_matches(asset))
                     .cloned()
                     .collect::<Vec<GithubReleaseAsset>>();
 
