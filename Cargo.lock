@@ -1953,9 +1953,9 @@ dependencies = [
 
 [[package]]
 name = "petname"
-version = "2.0.1"
+version = "2.0.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ad71f62a838ff8a8b5921d31a560073d2f7825576ffce54585e9862613813377"
+checksum = "9cd31dcfdbbd7431a807ef4df6edd6473228e94d5c805e8cf671227a21bad068"
 dependencies = [
  "anyhow",
  "clap",
