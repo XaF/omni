@@ -39,7 +39,15 @@ lazy_static! {
     static ref WORKDIR_ENV: Mutex<WorkDirEnvByPath> = Mutex::new(WorkDirEnvByPath::new());
 
     #[derive(Debug)]
-    static ref INTERACTIVE_SHELL: bool = std::io::stdout().is_terminal();
+    static ref INTERACTIVE_SHELL: bool = {
+        if let Ok(noninteractive) = std::env::var("OMNI_NONINTERACTIVE") {
+            if !noninteractive.is_empty() {
+                return false;
+            }
+        }
+
+        std::io::stdout().is_terminal()
+    };
 
     #[derive(Debug)]
     static ref CURRENT_SHELL: Shell = Shell::from_env();
