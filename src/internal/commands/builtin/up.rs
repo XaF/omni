@@ -174,7 +174,7 @@ impl UpCommandArgs {
             } else if bootstrap {
                 UpCommandArgsCloneSuggestedOptions::Ask
             } else {
-                UpCommandArgsCloneSuggestedOptions::No
+                UpCommandArgsCloneSuggestedOptions::Unset
             };
 
         let trust = if let Some(trust) = matches.get_one::<String>("trust") {
@@ -216,7 +216,7 @@ impl UpCommandArgs {
             } else if bootstrap {
                 UpCommandArgsUpdateUserConfigOptions::Ask
             } else {
-                UpCommandArgsUpdateUserConfigOptions::No
+                UpCommandArgsUpdateUserConfigOptions::Unset
             };
 
         Self {
@@ -235,11 +235,13 @@ impl UpCommandArgs {
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Default)]
 enum UpCommandArgsCloneSuggestedOptions {
     Yes,
     Ask,
     No,
+    #[default]
+    Unset,
 }
 
 impl FromStr for UpCommandArgsCloneSuggestedOptions {
@@ -252,6 +254,18 @@ impl FromStr for UpCommandArgsCloneSuggestedOptions {
             "no" => Ok(Self::No),
             _ => Err(()),
         }
+    }
+}
+
+impl UpCommandArgsCloneSuggestedOptions {
+    fn should_suggest(&self) -> bool {
+        matches!(self, Self::Yes) || (matches!(self, Self::Ask) && shell_is_interactive())
+    }
+
+    fn auto_bootstrap(&self) -> bool {
+        matches!(self, Self::Unset)
+            && shell_is_interactive()
+            && global_config().up_command.auto_bootstrap
     }
 }
 
@@ -277,11 +291,13 @@ impl FromStr for UpCommandArgsTrustOptions {
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Default)]
 enum UpCommandArgsUpdateUserConfigOptions {
     Yes,
     Ask,
     No,
+    #[default]
+    Unset,
 }
 
 impl FromStr for UpCommandArgsUpdateUserConfigOptions {
@@ -294,6 +310,18 @@ impl FromStr for UpCommandArgsUpdateUserConfigOptions {
             "no" => Ok(Self::No),
             _ => Err(()),
         }
+    }
+}
+
+impl UpCommandArgsUpdateUserConfigOptions {
+    fn should_suggest(&self) -> bool {
+        matches!(self, Self::Yes) || (matches!(self, Self::Ask) && shell_is_interactive())
+    }
+
+    fn auto_bootstrap(&self) -> bool {
+        matches!(self, Self::Unset)
+            && shell_is_interactive()
+            && global_config().up_command.auto_bootstrap
     }
 }
 
@@ -388,29 +416,24 @@ impl UpCommand {
         true
     }
 
-    fn auto_bootstrap(&self) -> bool {
-        let gconfig = global_config();
-        gconfig.up_command.auto_bootstrap
-    }
-
     fn should_suggest_config(&self) -> bool {
-        match self.cli_args().update_user_config {
-            UpCommandArgsUpdateUserConfigOptions::Yes => true,
-            UpCommandArgsUpdateUserConfigOptions::Ask => shell_is_interactive(),
-            UpCommandArgsUpdateUserConfigOptions::No => false,
-        }
+        self.cli_args().update_user_config.should_suggest()
     }
 
     fn should_suggest_clone(&self) -> bool {
-        match self.cli_args().clone_suggested {
-            UpCommandArgsCloneSuggestedOptions::Yes => true,
-            UpCommandArgsCloneSuggestedOptions::Ask => shell_is_interactive(),
-            UpCommandArgsCloneSuggestedOptions::No => false,
-        }
+        self.cli_args().clone_suggested.should_suggest()
+    }
+
+    fn auto_bootstrap_config(&self) -> bool {
+        self.cli_args().update_user_config.auto_bootstrap()
+    }
+
+    fn auto_bootstrap_clone(&self) -> bool {
+        self.cli_args().clone_suggested.auto_bootstrap()
     }
 
     fn suggest_config(&self, suggest_config: ConfigValue) {
-        if !self.should_suggest_config() && !self.auto_bootstrap() {
+        if !self.should_suggest_config() && !self.auto_bootstrap_config() {
             return;
         }
 
@@ -601,7 +624,7 @@ impl UpCommand {
     }
 
     fn suggest_clone(&self) {
-        if !self.should_suggest_clone() && !self.auto_bootstrap() {
+        if !self.should_suggest_clone() && !self.auto_bootstrap_clone() {
             return;
         }
 
@@ -1338,7 +1361,7 @@ impl BuiltinCommand for UpCommand {
                     "suggest_config",
                     suggest_config_fingerprint,
                 ) {
-                    if self.auto_bootstrap() {
+                    if self.auto_bootstrap_config() {
                         suggest_config = Some(suggest_config_value);
                     } else {
                         suggest_config_updated = true;
@@ -1363,7 +1386,7 @@ impl BuiltinCommand for UpCommand {
                     "suggest_clone",
                     suggest_clone_fingerprint,
                 ) {
-                    if self.auto_bootstrap() {
+                    if self.auto_bootstrap_clone() {
                         suggest_clone = true;
                     } else {
                         suggest_clone_updated = true;
