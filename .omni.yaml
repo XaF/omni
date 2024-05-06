@@ -74,6 +74,12 @@ commands:
       # Reset Cargo.toml
       git checkout Cargo.toml
 
+  lint:
+    desc: Runs the linter
+    run: |
+      # cargo fmt -- --check
+      cargo clippy --all-features
+
   test:
     desc: Runs the tests
     run: |

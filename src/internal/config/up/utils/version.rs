@@ -12,9 +12,9 @@ pub struct VersionParser {
     version: semverVersion,
 }
 
-impl ToString for VersionParser {
-    fn to_string(&self) -> String {
-        self.original.clone()
+impl std::fmt::Display for VersionParser {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.original)
     }
 }
 

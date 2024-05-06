@@ -850,17 +850,17 @@ impl ConfigValue {
             }
         }
 
-        if key.ends_with("__toappend") {
-            *key = key.strip_suffix("__toappend").unwrap().to_owned();
+        if let Some(real_key) = key.strip_suffix("__toappend") {
+            *key = real_key.to_string();
             return ConfigExtendStrategy::Append;
-        } else if key.ends_with("__toprepend") {
-            *key = key.strip_suffix("__toprepend").unwrap().to_owned();
+        } else if let Some(real_key) = key.strip_suffix("__toprepend") {
+            *key = real_key.to_string();
             return ConfigExtendStrategy::Prepend;
-        } else if key.ends_with("__toreplace") {
-            *key = key.strip_suffix("__toreplace").unwrap().to_owned();
+        } else if let Some(real_key) = key.strip_suffix("__toreplace") {
+            *key = real_key.to_string();
             return ConfigExtendStrategy::Replace;
-        } else if key.ends_with("__ifnone") {
-            *key = key.strip_suffix("__ifnone").unwrap().to_owned();
+        } else if let Some(real_key) = key.strip_suffix("__ifnone") {
+            *key = real_key.to_string();
             return ConfigExtendStrategy::Keep;
         }
 

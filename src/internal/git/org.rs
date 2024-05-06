@@ -1226,10 +1226,10 @@ impl Repo {
     }
 }
 
-impl ToString for Repo {
-    fn to_string(&self) -> String {
+impl std::fmt::Display for Repo {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         if self.host.is_none() || self.owner.is_none() || self.name.is_empty() {
-            return String::new();
+            return write!(f, "");
         }
 
         let mut repo = String::new();
@@ -1272,6 +1272,6 @@ impl ToString for Repo {
             repo.push_str(".git");
         }
 
-        repo
+        write!(f, "{}", repo)
     }
 }

@@ -76,6 +76,7 @@ fn enable_colors() -> bool {
     std::io::stdout().is_terminal() || std::io::stderr().is_terminal()
 }
 
+#[allow(dead_code)]
 pub trait StringColor {
     fn colorize(&self, color_code: &str) -> String;
     fn force_colorize(&self, color_code: &str) -> String;

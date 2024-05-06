@@ -430,7 +430,7 @@ impl BuiltinCommand for TidyCommand {
             ));
 
             for repository in repositories.iter() {
-                eprintln!("{}", repository.to_string());
+                eprintln!("{}", repository);
             }
 
             omni_info!(format!("use {} to organize them", "--yes".light_blue()));
@@ -518,11 +518,7 @@ impl BuiltinCommand for TidyCommand {
 
             if moved.is_empty() {
                 for repository in repos_to_organize.iter() {
-                    printstr(format!(
-                        "{} Skipping {}",
-                        "[✘]".light_red(),
-                        repository.to_string(),
-                    ));
+                    printstr(format!("{} Skipping {}", "[✘]".light_red(), repository,));
                     if let Some(pb) = progress_bar.as_ref() {
                         pb.inc(1)
                     }
@@ -754,11 +750,7 @@ impl TidyGitRepo {
             return false;
         }
 
-        println(format!(
-            "{} Moved {}",
-            "[✔]".light_green(),
-            self.to_string(),
-        ));
+        println(format!("{} Moved {}", "[✔]".light_green(), self,));
 
         self.edit_config(&println);
 
@@ -881,14 +873,14 @@ impl Hash for TidyGitRepo {
     }
 }
 
-impl ToString for TidyGitRepo {
-    fn to_string(&self) -> String {
+impl std::fmt::Display for TidyGitRepo {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         let mut s = String::new();
 
         if self.organized {
             // s.push_str(&format!("{} {}", "✓", self.current_path.to_str().unwrap()));
             s.push_str(self.current_path.to_str().unwrap());
-            return s.light_green();
+            return write!(f, "{}", s.light_green());
         }
 
         s.push_str(&self.current_path.to_str().unwrap().light_red());
@@ -903,6 +895,6 @@ impl ToString for TidyGitRepo {
             s.push_str(&" \u{26A0}\u{FE0F}".light_yellow()); // small warning sign in UTF-8
         }
 
-        s.light_yellow()
+        write!(f, "{}", s.light_yellow())
     }
 }

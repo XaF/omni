@@ -190,7 +190,7 @@ impl PathEntryConfig {
             } else {
                 self.full_path = new_full_path;
                 self.package = None;
-                self.path = self.full_path.clone();
+                self.path.clone_from(&self.full_path);
 
                 return true;
             }
