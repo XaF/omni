@@ -325,16 +325,9 @@ pub enum EnvOperationEnum {
     Suffix,
 }
 
-impl ToString for EnvOperationEnum {
-    fn to_string(&self) -> String {
-        match self {
-            EnvOperationEnum::Set => "set".to_string(),
-            EnvOperationEnum::Prepend => "prepend".to_string(),
-            EnvOperationEnum::Append => "append".to_string(),
-            EnvOperationEnum::Remove => "remove".to_string(),
-            EnvOperationEnum::Prefix => "prefix".to_string(),
-            EnvOperationEnum::Suffix => "suffix".to_string(),
-        }
+impl std::fmt::Display for EnvOperationEnum {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        write!(f, "{}", std::str::from_utf8(self.as_bytes()).unwrap())
     }
 }
 

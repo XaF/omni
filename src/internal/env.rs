@@ -932,9 +932,9 @@ pub enum Shell {
     Unknown(String),
 }
 
-impl ToString for Shell {
-    fn to_string(&self) -> String {
-        self.to_str().to_string()
+impl std::fmt::Display for Shell {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        write!(f, "{}", self.to_str())
     }
 }
 

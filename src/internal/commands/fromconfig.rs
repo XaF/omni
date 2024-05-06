@@ -43,7 +43,7 @@ impl ConfigCommand {
 
             let mut aliases = Vec::new();
             if parent_aliases.is_empty() {
-                aliases = command_details.aliases.clone();
+                aliases.clone_from(&command_details.aliases);
             } else {
                 for parent_alias in parent_aliases[1..].iter() {
                     aliases.push(format!("{} {}", parent_alias, command_name));
@@ -56,7 +56,7 @@ impl ConfigCommand {
             }
 
             let mut command_details = command_details.clone();
-            command_details.aliases = aliases.clone();
+            command_details.aliases.clone_from(&aliases);
 
             all_commands.push(Self::new(name.clone(), command_details.clone()));
 

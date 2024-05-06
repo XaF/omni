@@ -13,9 +13,6 @@ use serde::Serialize;
 #[cfg(not(test))]
 use once_cell::sync::Lazy;
 
-#[cfg(test)]
-use mockito;
-
 use crate::internal::cache::github_release::GithubReleasesSelector;
 use crate::internal::cache::utils as cache_utils;
 use crate::internal::cache::CacheObject;
@@ -1351,9 +1348,9 @@ mod tests {
             assert_eq!(config.releases.len(), 1);
             assert_eq!(config.releases[0].repository, "owner/repo");
             assert_eq!(config.releases[0].version, None);
-            assert_eq!(config.releases[0].prerelease, false);
-            assert_eq!(config.releases[0].build, false);
-            assert_eq!(config.releases[0].binary, true);
+            assert!(!config.releases[0].prerelease);
+            assert!(!config.releases[0].build);
+            assert!(config.releases[0].binary);
             assert_eq!(config.releases[0].api_url, None);
         }
 
@@ -1365,9 +1362,9 @@ mod tests {
             assert_eq!(config.releases.len(), 1);
             assert_eq!(config.releases[0].repository, "owner/repo");
             assert_eq!(config.releases[0].version, None);
-            assert_eq!(config.releases[0].prerelease, false);
-            assert_eq!(config.releases[0].build, false);
-            assert_eq!(config.releases[0].binary, true);
+            assert!(!config.releases[0].prerelease);
+            assert!(!config.releases[0].build);
+            assert!(config.releases[0].binary);
             assert_eq!(config.releases[0].api_url, None);
         }
 
@@ -1380,16 +1377,16 @@ mod tests {
 
             assert_eq!(config.releases[0].repository, "owner/repo");
             assert_eq!(config.releases[0].version, Some("1.2.3".to_string()));
-            assert_eq!(config.releases[0].prerelease, false);
-            assert_eq!(config.releases[0].build, false);
-            assert_eq!(config.releases[0].binary, true);
+            assert!(!config.releases[0].prerelease);
+            assert!(!config.releases[0].build);
+            assert!(config.releases[0].binary);
             assert_eq!(config.releases[0].api_url, None);
 
             assert_eq!(config.releases[1].repository, "owner2/repo2");
             assert_eq!(config.releases[1].version, Some("2.3.4".to_string()));
-            assert_eq!(config.releases[1].prerelease, true);
-            assert_eq!(config.releases[1].build, true);
-            assert_eq!(config.releases[1].binary, false);
+            assert!(config.releases[1].prerelease);
+            assert!(config.releases[1].build);
+            assert!(!config.releases[1].binary);
             assert_eq!(
                 config.releases[1].api_url,
                 Some("https://gh.example.com".to_string())
@@ -1397,9 +1394,9 @@ mod tests {
 
             assert_eq!(config.releases[2].repository, "owner3/repo3");
             assert_eq!(config.releases[2].version, None);
-            assert_eq!(config.releases[2].prerelease, false);
-            assert_eq!(config.releases[2].build, false);
-            assert_eq!(config.releases[2].binary, true);
+            assert!(!config.releases[2].prerelease);
+            assert!(!config.releases[2].build);
+            assert!(config.releases[2].binary);
             assert_eq!(config.releases[2].api_url, None);
         }
 
@@ -1412,16 +1409,16 @@ mod tests {
 
             assert_eq!(config.releases[0].repository, "owner/repo");
             assert_eq!(config.releases[0].version, None);
-            assert_eq!(config.releases[0].prerelease, false);
-            assert_eq!(config.releases[0].build, false);
-            assert_eq!(config.releases[0].binary, true);
+            assert!(!config.releases[0].prerelease);
+            assert!(!config.releases[0].build);
+            assert!(config.releases[0].binary);
             assert_eq!(config.releases[0].api_url, None);
 
             assert_eq!(config.releases[1].repository, "owner2/repo2");
             assert_eq!(config.releases[1].version, Some("2.3.4".to_string()));
-            assert_eq!(config.releases[1].prerelease, true);
-            assert_eq!(config.releases[1].build, true);
-            assert_eq!(config.releases[1].binary, false);
+            assert!(config.releases[1].prerelease);
+            assert!(config.releases[1].build);
+            assert!(!config.releases[1].binary);
             assert_eq!(
                 config.releases[1].api_url,
                 Some("https://gh.example.com".to_string())
@@ -1429,16 +1426,16 @@ mod tests {
 
             assert_eq!(config.releases[2].repository, "owner3/repo3");
             assert_eq!(config.releases[2].version, Some("3.4.5".to_string()));
-            assert_eq!(config.releases[2].prerelease, false);
-            assert_eq!(config.releases[2].build, false);
-            assert_eq!(config.releases[2].binary, true);
+            assert!(!config.releases[2].prerelease);
+            assert!(!config.releases[2].build);
+            assert!(config.releases[2].binary);
             assert_eq!(config.releases[2].api_url, None);
 
             assert_eq!(config.releases[3].repository, "owner4/repo4");
             assert_eq!(config.releases[3].version, Some("4.5.6".to_string()));
-            assert_eq!(config.releases[3].prerelease, false);
-            assert_eq!(config.releases[3].build, false);
-            assert_eq!(config.releases[3].binary, true);
+            assert!(!config.releases[3].prerelease);
+            assert!(!config.releases[3].build);
+            assert!(config.releases[3].binary);
             assert_eq!(config.releases[3].api_url, None);
         }
     }
@@ -1453,9 +1450,9 @@ mod tests {
             let config = UpConfigGithubRelease::from_config_value(Some(&config_value));
             assert_eq!(config.repository, "owner/repo");
             assert_eq!(config.version, None);
-            assert_eq!(config.prerelease, false);
-            assert_eq!(config.build, false);
-            assert_eq!(config.binary, true);
+            assert!(!config.prerelease);
+            assert!(!config.build);
+            assert!(config.binary);
             assert_eq!(config.api_url, None);
         }
 
@@ -1466,9 +1463,9 @@ mod tests {
             let config = UpConfigGithubRelease::from_config_value(Some(&config_value));
             assert_eq!(config.repository, "owner/repo");
             assert_eq!(config.version, None);
-            assert_eq!(config.prerelease, false);
-            assert_eq!(config.build, false);
-            assert_eq!(config.binary, true);
+            assert!(!config.prerelease);
+            assert!(!config.build);
+            assert!(config.binary);
             assert_eq!(config.api_url, None);
         }
 
@@ -1479,9 +1476,9 @@ mod tests {
             let config = UpConfigGithubRelease::from_config_value(Some(&config_value));
             assert_eq!(config.repository, "owner/repo");
             assert_eq!(config.version, None);
-            assert_eq!(config.prerelease, false);
-            assert_eq!(config.build, false);
-            assert_eq!(config.binary, true);
+            assert!(!config.prerelease);
+            assert!(!config.build);
+            assert!(config.binary);
             assert_eq!(config.api_url, None);
         }
 
@@ -1492,9 +1489,9 @@ mod tests {
             let config = UpConfigGithubRelease::from_config_value(Some(&config_value));
             assert_eq!(config.repository, "owner/repo");
             assert_eq!(config.version, Some("1.2.3".to_string()));
-            assert_eq!(config.prerelease, true);
-            assert_eq!(config.build, true);
-            assert_eq!(config.binary, false);
+            assert!(config.prerelease);
+            assert!(config.build);
+            assert!(!config.binary);
             assert_eq!(config.api_url, Some("https://gh.example.com".to_string()));
         }
     }
@@ -1536,7 +1533,7 @@ mod tests {
                 ),
             ]
             .into_iter()
-            .chain(envs.into_iter().cloned())
+            .chain(envs.iter().cloned())
             .collect();
 
             temp_env::with_vars(run_env, closure);
@@ -1696,7 +1693,7 @@ mod tests {
         }
 
         fn test_download_release(test: TestOptions, config: UpConfigGithubRelease) {
-            run_with_env(&vec![], || {
+            run_with_env(&[], || {
                 let mut mock_server = mockito::Server::new();
                 let api_url = mock_server.url();
 
@@ -1836,7 +1833,6 @@ mod tests {
                     .create();
 
                 let mock_downloads = (1..=test.assets)
-                    .into_iter()
                     .map(|asset_id| {
                         eprintln!("Setting up asset id {}", asset_id);
                         mock_server

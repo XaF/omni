@@ -28,7 +28,7 @@ pub struct RepositoriesCache {
 
 impl RepositoriesCache {
     pub fn has_trusted(&self, repository: &str) -> bool {
-        self.trusted.contains(&repository.to_string())
+        self.trusted.contains(repository)
     }
 
     pub fn add_trusted(&mut self, repository: &str) -> bool {
@@ -73,7 +73,7 @@ impl RepositoriesCache {
             return false;
         }
 
-        if self.fingerprints.get(repository).is_none() {
+        if !self.fingerprints.contains_key(repository) {
             if fingerprint == 0 {
                 return false;
             }

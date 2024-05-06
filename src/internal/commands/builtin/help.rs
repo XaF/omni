@@ -246,7 +246,7 @@ impl HelpCommand {
             }
 
             if idx == 0 || category != cur_category {
-                cur_category = category.clone();
+                cur_category.clone_from(&category);
                 let new_category = if let Some(category) = category {
                     let mut cat_elems = category.clone();
                     let last_elem = cat_elems.pop().expect("Category should not be empty");
