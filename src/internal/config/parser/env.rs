@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 use std::ops::Deref;
+use std::path::PathBuf;
 
 use itertools::Itertools;
 use serde::Deserialize;
@@ -156,11 +157,18 @@ impl EnvOperationConfig {
                 // to determine the current scope.
                 if value_type == "path" {
                     match config_value.get_source() {
-                        ConfigSource::File(path) => Some(
-                            abs_path_from_path(&value, Some(path))
+                        ConfigSource::File(path) => {
+                            let parent_path = PathBuf::from(path)
+                                .parent()
+                                .expect("config file path has no parent")
                                 .to_string_lossy()
-                                .to_string(),
-                        ),
+                                .to_string();
+                            Some(
+                                abs_path_from_path(&value, Some(&parent_path))
+                                    .to_string_lossy()
+                                    .to_string(),
+                            )
+                        }
                         // Unsupported source type for the "path" value type
                         _ => Some(value.to_string()),
                     }
