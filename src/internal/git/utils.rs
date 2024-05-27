@@ -142,7 +142,7 @@ pub fn package_path_from_git_url(git_url: &GitUrl) -> Option<PathBuf> {
     }
 
     let package_path =
-        format_path_with_template(package_root_path().as_str(), git_url, &PACKAGE_PATH_FORMAT);
+        format_path_with_template(package_root_path().as_str(), git_url, PACKAGE_PATH_FORMAT);
 
     Some(package_path)
 }
