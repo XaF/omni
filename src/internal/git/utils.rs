@@ -10,7 +10,6 @@ use tokio::time::timeout;
 use url::ParseError;
 use url::Url;
 
-use crate::internal::config;
 use crate::internal::config::parser::PathEntryConfig;
 use crate::internal::env::data_home;
 use crate::internal::git_env;
@@ -86,21 +85,7 @@ pub fn full_git_url_parse(url: &str) -> Result<GitUrl, <GitUrl as FromStr>::Err>
     Ok(git_url)
 }
 
-pub fn format_path(worktree: &str, git_url: &GitUrl) -> PathBuf {
-    // Get the configured path format
-    let path_format = config(".").repo_path_format.clone();
-
-    format_path_with_template(worktree, git_url, path_format)
-}
-
-pub fn format_path_with_data(worktree: &str, host: &str, owner: &str, repo: &str) -> PathBuf {
-    // Get the configured path format
-    let path_format = config(".").repo_path_format.clone();
-
-    format_path_with_template_and_data(worktree, host, owner, repo, path_format)
-}
-
-pub fn format_path_with_template(worktree: &str, git_url: &GitUrl, path_format: String) -> PathBuf {
+pub fn format_path_with_template(worktree: &str, git_url: &GitUrl, path_format: &str) -> PathBuf {
     let git_url = git_url.clone();
     format_path_with_template_and_data(
         worktree,
@@ -116,12 +101,13 @@ pub fn format_path_with_template_and_data(
     host: &str,
     owner: &str,
     repo: &str,
-    path_format: String,
+    path_format: &str,
 ) -> PathBuf {
     // Create a path object
     let mut path = PathBuf::from(worktree.to_string());
 
     // Replace %{host}, #{owner}, and %{repo} with the actual values
+    let path_format = path_format.to_string();
     let path_format = path_format.replace("%{host}", host);
     let path_format = path_format.replace("%{org}", owner);
     let path_format = path_format.replace("%{repo}", repo);
@@ -155,11 +141,8 @@ pub fn package_path_from_git_url(git_url: &GitUrl) -> Option<PathBuf> {
         return None;
     }
 
-    let package_path = format_path_with_template(
-        package_root_path().as_str(),
-        git_url,
-        PACKAGE_PATH_FORMAT.to_string(),
-    );
+    let package_path =
+        format_path_with_template(package_root_path().as_str(), git_url, PACKAGE_PATH_FORMAT);
 
     Some(package_path)
 }

@@ -584,8 +584,7 @@ fn question_repo_path_format(worktree: String) -> (String, bool) {
 
         if !found {
             let git_url = full_git_url_parse("https://github.com/xaf/omni").unwrap();
-            let example =
-                format_path_with_template(&worktree, &git_url, current_repo_path_format.clone());
+            let example = format_path_with_template(&worktree, &git_url, &current_repo_path_format);
             let example_str = example.to_string_lossy().to_string();
 
             choices.insert(
@@ -942,6 +941,7 @@ fn question_org(worktree: &str) -> (Vec<OrgConfig>, bool) {
                 handle: org.clone(),
                 trusted,
                 worktree: worktree.cloned(),
+                repo_path_format: None,
             }
         })
         .collect();
