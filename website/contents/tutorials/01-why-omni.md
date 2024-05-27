@@ -11,6 +11,8 @@ It is even more challenging to do that in a growing organization, with every ind
 Omni addresses these pain points by simplifying dependency definitions, enabling single-command repository setups, and facilitating command discoverability across cloned repositories.
 It standardizes command access, automates global command updates, and streamlines onboarding with a single repository serving as a centralized entry point.
 
+<iframe width="560" height="315" src="https://www.youtube-nocookie.com/embed/b5f2VmBKl_Y?si=qKHTHjE6wXmOQ9Wi" title="YouTube video player" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" referrerpolicy="strict-origin-when-cross-origin" allowfullscreen></iframe>
+
 ## Omnipotent: power at your fingertips
 
 Omni was designed from the ground up to empower you. It simplifies the process of wrapping any set of commands and provides a consistent interface to interact with them. With omni, you can write any commands, make them available in one or many git repositories, and let omni take care of the rest. Say goodbye to the complexities of managing multiple commands, scripts, aliases and welcome a seamless and unified experience.
