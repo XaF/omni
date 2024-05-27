@@ -30,6 +30,7 @@ impl UpConfigNodejs {
     pub fn from_config_value(config_value: Option<&ConfigValue>) -> Self {
         let mut asdf_base = UpConfigAsdfBase::from_config_value("nodejs", config_value);
         asdf_base.add_detect_version_func(detect_version_from_package_json);
+        asdf_base.add_detect_version_func(detect_version_from_nvmrc);
 
         Self { asdf_base }
     }
@@ -80,4 +81,25 @@ fn detect_version_from_package_json(_tool_name: String, path: PathBuf) -> Option
     }
 
     None
+}
+
+fn detect_version_from_nvmrc(_tool_name: String, path: PathBuf) -> Option<String> {
+    if path
+        .to_str()
+        .unwrap()
+        .to_string()
+        .contains("/node_modules/")
+    {
+        return None;
+    }
+
+    let version_file_path = path.join(".nvmrc");
+    if !version_file_path.exists() || version_file_path.is_dir() {
+        return None;
+    }
+
+    match std::fs::read_to_string(version_file_path) {
+        Ok(version) => Some(version.trim().to_string()),
+        Err(_) => None,
+    }
 }
