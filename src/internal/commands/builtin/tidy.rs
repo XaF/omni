@@ -21,7 +21,7 @@ use crate::internal::config::CommandSyntax;
 use crate::internal::config::ConfigSource;
 use crate::internal::config::SyntaxOptArg;
 use crate::internal::env::shell_is_interactive;
-use crate::internal::git::format_path;
+use crate::internal::git::format_path_with_template;
 use crate::internal::git::package_path_from_handle;
 use crate::internal::git::package_root_path;
 use crate::internal::git::path_entry_config;
@@ -712,7 +712,11 @@ impl TidyGitRepo {
                     {
                         let config = config(".");
                         let worktree = config.worktree();
-                        let repo_path = format_path(&worktree, &repo_url);
+                        let repo_path = format_path_with_template(
+                            &worktree,
+                            &repo_url,
+                            &config.repo_path_format,
+                        );
                         expected_path = Some(repo_path);
                     }
                 }

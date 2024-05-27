@@ -18,12 +18,12 @@ use crate::internal::config::config;
 use crate::internal::config::OrgConfig;
 use crate::internal::env::omni_org_env;
 use crate::internal::env::shell_is_interactive;
-use crate::internal::git::format_path;
 use crate::internal::git::package_path_from_handle;
 use crate::internal::git::package_root_path;
 use crate::internal::git::safe_git_url_parse;
 use crate::internal::git::safe_normalize_url;
-use crate::internal::git::utils::format_path_with_data;
+use crate::internal::git::utils::format_path_with_template;
+use crate::internal::git::utils::format_path_with_template_and_data;
 use crate::internal::git_env;
 use crate::internal::user_interface::colors::StringColor;
 use crate::omni_print;
@@ -219,11 +219,12 @@ impl OrgLoader {
             for org in self.orgs.iter() {
                 // Prepare a regex for the path so we can extract the host, owner,
                 // and repo from a matching path
-                let regex_path = format_path_with_data(
+                let regex_path = format_path_with_template_and_data(
                     &org.worktree(),
                     "(?P<host>[^/]+)",
                     "(?P<owner>[^/]+)",
                     "(?P<repo>[^/]+)",
+                    &org.repo_path_format(),
                 );
 
                 match (&parsed.host, &parsed.owner) {
@@ -233,11 +234,12 @@ impl OrgLoader {
                                 worktree: org.worktree(),
                                 match_start: SearchEntryMatchStart::Host,
                                 regex_path: regex_path.clone(),
-                                glob_path: format_path_with_data(
+                                glob_path: format_path_with_template_and_data(
                                     &org.worktree(),
                                     search_host,
                                     search_owner,
                                     format!("{}*", parsed.name).as_str(),
+                                    &org.repo_path_format(),
                                 ),
                             });
                         }
@@ -248,11 +250,12 @@ impl OrgLoader {
                                 worktree: org.worktree(),
                                 match_start: SearchEntryMatchStart::Host,
                                 regex_path: regex_path.clone(),
-                                glob_path: format_path_with_data(
+                                glob_path: format_path_with_template_and_data(
                                     &org.worktree(),
                                     search_owner,
                                     format!("{}*", parsed.name).as_str(),
                                     "*",
+                                    &org.repo_path_format(),
                                 ),
                             });
                         }
@@ -261,11 +264,12 @@ impl OrgLoader {
                                 worktree: org.worktree(),
                                 match_start: SearchEntryMatchStart::Owner,
                                 regex_path: regex_path.clone(),
-                                glob_path: format_path_with_data(
+                                glob_path: format_path_with_template_and_data(
                                     &org.worktree(),
                                     "*",
                                     search_owner,
                                     format!("{}*", parsed.name).as_str(),
+                                    &org.repo_path_format(),
                                 ),
                             });
                         }
@@ -276,11 +280,12 @@ impl OrgLoader {
                                 worktree: org.worktree(),
                                 match_start: SearchEntryMatchStart::Host,
                                 regex_path: regex_path.clone(),
-                                glob_path: format_path_with_data(
+                                glob_path: format_path_with_template_and_data(
                                     &org.worktree(),
                                     format!("{}*", parsed.name).as_str(),
                                     "*",
                                     "*",
+                                    &org.repo_path_format(),
                                 ),
                             });
                         }
@@ -289,11 +294,12 @@ impl OrgLoader {
                                 worktree: org.worktree(),
                                 match_start: SearchEntryMatchStart::Owner,
                                 regex_path: regex_path.clone(),
-                                glob_path: format_path_with_data(
+                                glob_path: format_path_with_template_and_data(
                                     &org.worktree(),
                                     "*",
                                     format!("{}*", parsed.name).as_str(),
                                     "*",
+                                    &org.repo_path_format(),
                                 ),
                             });
                         }
@@ -302,11 +308,12 @@ impl OrgLoader {
                                 worktree: org.worktree(),
                                 match_start: SearchEntryMatchStart::Repo,
                                 regex_path: regex_path.clone(),
-                                glob_path: format_path_with_data(
+                                glob_path: format_path_with_template_and_data(
                                     &org.worktree(),
                                     "*",
                                     "*",
                                     format!("{}*", parsed.name).as_str(),
+                                    &org.repo_path_format(),
                                 ),
                             });
                         }
@@ -824,20 +831,28 @@ impl Org {
     }
 
     pub fn worktree(&self) -> String {
-        if let Some(worktree) = self.config.worktree.clone() {
-            worktree
-        } else {
-            config(".").worktree()
+        match &self.config.worktree {
+            Some(worktree) => worktree.clone(),
+            None => config(".").worktree(),
+        }
+    }
+
+    pub fn repo_path_format(&self) -> String {
+        match &self.config.repo_path_format {
+            Some(repo_path_format) => repo_path_format.clone(),
+            None => config(".").repo_path_format,
         }
     }
 
     pub fn get_repo_path(&self, repo: &str) -> Option<PathBuf> {
         // Get the repo git url
-        let git_url = self.get_repo_git_url(repo);
-        git_url.as_ref()?;
-        let git_url = git_url.unwrap();
+        let git_url = self.get_repo_git_url(repo)?;
 
-        Some(format_path(&self.worktree(), &git_url))
+        Some(format_path_with_template(
+            &self.worktree(),
+            &git_url,
+            &self.repo_path_format(),
+        ))
     }
 
     pub fn is_default(&self) -> bool {

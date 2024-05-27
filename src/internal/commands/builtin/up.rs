@@ -38,7 +38,7 @@ use crate::internal::config::ConfigLoader;
 use crate::internal::config::ConfigValue;
 use crate::internal::config::SyntaxOptArg;
 use crate::internal::env::shell_is_interactive;
-use crate::internal::git::format_path;
+use crate::internal::git::format_path_with_template;
 use crate::internal::git::package_path_from_git_url;
 use crate::internal::git::path_entry_config;
 use crate::internal::git::safe_git_url_parse;
@@ -767,7 +767,11 @@ impl UpCommand {
                         repo = Some(RepositoryToClone {
                             suggested_by: vec![repo_id.clone()],
                             clone_url: clone_url.clone(),
-                            clone_path: format_path(&worktree, &clone_url),
+                            clone_path: format_path_with_template(
+                                &worktree,
+                                &clone_url,
+                                &config.repo_path_format,
+                            ),
                             package_path: package_path_from_git_url(&clone_url),
                             clone_args: repo_config.args.clone(),
                             clone_as_package: repo_config.clone_as_package(),
