@@ -9,6 +9,8 @@ pub struct OrgConfig {
     pub trusted: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub worktree: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub repo_path_format: Option<String>,
 }
 
 impl Default for OrgConfig {
@@ -17,6 +19,7 @@ impl Default for OrgConfig {
             handle: "".to_string(),
             trusted: false,
             worktree: None,
+            repo_path_format: None,
         }
     }
 }
@@ -30,6 +33,7 @@ impl OrgConfig {
             handle,
             trusted: true,
             worktree,
+            repo_path_format: None,
         }
     }
 
@@ -45,6 +49,7 @@ impl OrgConfig {
             handle: config_value.get_as_str("handle").unwrap().to_string(),
             trusted: config_value.get_as_bool("trusted").unwrap_or(false),
             worktree: config_value.get_as_str("worktree"),
+            repo_path_format: config_value.get_as_str("repo_path_format"),
         }
     }
 }

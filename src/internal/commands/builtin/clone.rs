@@ -21,7 +21,7 @@ use crate::internal::config::CommandSyntax;
 use crate::internal::config::SyntaxOptArg;
 use crate::internal::env::omni_cmd_file;
 use crate::internal::env::shell_is_interactive;
-use crate::internal::git::format_path;
+use crate::internal::git::format_path_with_template;
 use crate::internal::git::package_path_from_git_url;
 use crate::internal::git::safe_git_url_parse;
 use crate::internal::git::ORG_LOADER;
@@ -207,7 +207,8 @@ impl CloneCommand {
                 {
                     let config = config(".");
                     let worktree = config.worktree();
-                    let clone_path = format_path(&worktree, &clone_url);
+                    let clone_path =
+                        format_path_with_template(&worktree, &clone_url, &config.repo_path_format);
                     let clone_path = if clone_as_package {
                         if let Some(clone_path) = package_path_from_git_url(&clone_url) {
                             clone_path
