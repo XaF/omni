@@ -224,9 +224,6 @@ impl AskPassListener {
                 UpError::Exec(format!("failed to render askpass script: {:?}", err))
             })?;
 
-            println!("SCRIPT: {}", script);
-            std::process::exit(1);
-
             // Write the script to the file
             if let Err(err) = std::fs::write(&askpass_path, script) {
                 return Err(UpError::Exec(

@@ -39,7 +39,7 @@ get_password_gui() {
 		prompt="$prompt_base"
 	    fi
 
-	    output=$(osascript <<EOF | tee -a /tmp/omni.log
+	    output=$(osascript <<EOF
 		set dialogResult to (\
 		    display dialog "{{ prompt }}" \
 		    with title "Omni Password Request ({{ TOOL }})" \
@@ -68,13 +68,12 @@ get_password_gui() {
 	    exit_code=$(echo "$output" | cut -d' ' -f1)
 	    [ -z "$exit_code" ] && exit 1
 
-	    output=$(echo "$output" | cut -d' ' -f2-)
-	    [ -n "$output" ] && echo "$output"
-
 	    if [ $exit_code -eq 37 ] && [ "$show_details" = false ]; then
 		show_details=true
 		use_osascript "$@"
 	    else
+		output=$(echo "$output" | cut -d' ' -f2-)
+		[ -n "$output" ] && echo "$output"
 		exit $exit_code
 	    fi
 	}
