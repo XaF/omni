@@ -212,7 +212,7 @@ fn command_str(command: &TokioCommand) -> String {
     for arg in command.get_args() {
         let mut arg = arg.to_string_lossy().to_string();
         if arg.contains(' ') {
-            arg = format!("\"{}\"", arg.replace("\"", "\\\""));
+            arg = format!("\"{}\"", arg.replace('"', "\\\""));
         }
         command_arr.push(arg);
     }
