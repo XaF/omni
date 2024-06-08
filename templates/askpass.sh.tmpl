@@ -4,7 +4,11 @@
 # of password requests during omni operations. It is not meant to be
 # run directly by the user.
 
-{% if not INTERACTIVE or PREFER_GUI -%}
+{% if not INTERACTIVE and not ENABLE_GUI -%}
+exit 1
+{%- endif %}
+
+{% if ENABLE_GUI and (not INTERACTIVE or PREFER_GUI) -%}
 get_password_gui() {
     if [[ -z "$OMNI_SUBCOMMAND" ]]; then
 	echo "This was not called from omni" >&2
@@ -96,11 +100,13 @@ get_password_cli() {
 }
 {%- endif %}
 
-{% if INTERACTIVE -%}
-{%   if PREFER_GUI -%}
-get_password_gui
-{%   endif -%}
-get_password_cli
+{% if INTERACTIVE and PREFER_GUI -%}
+{%   set functions = ["get_password_gui", "get_password_cli"] -%}
+{% elif INTERACTIVE and not PREFER_GUI -%}
+{%   set functions = ["get_password_cli", "get_password_gui"] -%}
 {% else -%}
-get_password_gui
-{%- endif -%}
+{%   set functions = ["get_password_gui"] -%}
+{% endif -%}
+{% for function in functions -%}
+{{ function }}
+{% endfor %}

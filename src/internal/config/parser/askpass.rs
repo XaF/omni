@@ -7,6 +7,7 @@ use crate::internal::config::ConfigValue;
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct AskPassConfig {
     pub enabled: bool,
+    pub enable_gui: bool,
     pub prefer_gui: bool,
 }
 
@@ -14,6 +15,7 @@ impl Default for AskPassConfig {
     fn default() -> Self {
         Self {
             enabled: Self::DEFAULT_ENABLED,
+            enable_gui: Self::DEFAULT_ENABLE_GUI,
             prefer_gui: Self::DEFAULT_PREFER_GUI,
         }
     }
@@ -21,6 +23,7 @@ impl Default for AskPassConfig {
 
 impl AskPassConfig {
     const DEFAULT_ENABLED: bool = true;
+    const DEFAULT_ENABLE_GUI: bool = true;
     const DEFAULT_PREFER_GUI: bool = false;
 
     pub(super) fn from_config_value(config_value: Option<ConfigValue>) -> Self {
@@ -38,6 +41,9 @@ impl AskPassConfig {
             enabled: config_value
                 .get_as_bool("enabled")
                 .unwrap_or(Self::DEFAULT_ENABLED),
+            enable_gui: config_value
+                .get_as_bool("enable_gui")
+                .unwrap_or(Self::DEFAULT_ENABLE_GUI),
             prefer_gui: config_value
                 .get_as_bool("prefer_gui")
                 .unwrap_or(Self::DEFAULT_PREFER_GUI),
