@@ -31,7 +31,7 @@ get_password_gui() {
 	use_osascript() {
 	    local output exit_code buttons
 
-	    if [ "$show_details" = true ] || [ -n "$*" ]; then
+	    if [ "$show_details" = true ]{% if TOOL == "ssh" %} || [ -n "$*" ]{% endif %}; then
 		buttons='{"Cancel", "Ok"}'
 		prompt="$prompt_details"
 	    else
