@@ -185,9 +185,9 @@ pub fn filter_escape_multiline_command(
     let mut escaped: String = value.to_string();
     for _ in 0..times {
         escaped = escaped
-            .replace("\\", "\\\\")
-            .replace("\n", "\\n")
-            .replace("\"", "\\\"");
+            .replace('\\', "\\\\")
+            .replace('\n', "\\n")
+            .replace('"', "\\\"");
     }
     Ok(tera::Value::String(escaped))
 }
