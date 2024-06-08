@@ -207,7 +207,11 @@ impl AskPassListener {
         );
         context.insert("SOCKET_PATH", socket_path.to_string_lossy().as_ref());
         context.insert("INTERACTIVE", &shell_is_interactive());
-        context.insert("PREFER_GUI", &config.askpass.prefer_gui);
+        context.insert(
+            "PREFER_GUI",
+            &(config.askpass.prefer_gui && config.askpass.enable_gui),
+        );
+        context.insert("ENABLE_GUI", &config.askpass.enable_gui);
         context.insert("COMMAND", command);
 
         // Render the script for all the required askpass tools
