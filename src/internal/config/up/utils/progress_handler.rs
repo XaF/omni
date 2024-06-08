@@ -79,7 +79,8 @@ async fn async_get_output(
     process_command: &mut TokioCommand,
     run_config: RunConfig,
 ) -> std::io::Result<std::process::Output> {
-    let mut listener = match AskPassListener::new(&run_config).await {
+    let mut listener = match AskPassListener::new(&command_str(process_command), &run_config).await
+    {
         Ok(listener) => listener,
         Err(err) => {
             return Err(std::io::Error::new(
@@ -204,6 +205,20 @@ async fn async_timeout(run_config: &RunConfig) -> Option<()> {
     }
 }
 
+fn command_str(command: &TokioCommand) -> String {
+    let command = command.as_std();
+    let mut command_arr = vec![];
+    command_arr.push(command.get_program().to_string_lossy().to_string());
+    for arg in command.get_args() {
+        let mut arg = arg.to_string_lossy().to_string();
+        if arg.contains(' ') {
+            arg = format!("\"{}\"", arg.replace('"', "\\\""));
+        }
+        command_arr.push(arg);
+    }
+    command_arr.join(" ")
+}
+
 async fn async_run_progress_readblocks<F>(
     process_command: &mut TokioCommand,
     handler_fn: F,
@@ -212,7 +227,7 @@ async fn async_run_progress_readblocks<F>(
 where
     F: Fn(Option<String>, Option<String>, Option<bool>),
 {
-    let mut listener = AskPassListener::new(&run_config).await?;
+    let mut listener = AskPassListener::new(&command_str(process_command), &run_config).await?;
     listener.set_process_env(process_command).await;
 
     if let Ok(mut command) = process_command.spawn() {

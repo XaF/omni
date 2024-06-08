@@ -9,7 +9,6 @@ use serde::Serialize;
 use shell_escape::escape;
 use tempfile::TempDir;
 use tera::Context;
-use tera::Tera;
 use tokio::io::AsyncBufReadExt;
 use tokio::io::AsyncReadExt;
 use tokio::io::AsyncWriteExt;
@@ -20,6 +19,7 @@ use tokio::net::UnixStream;
 use tokio::process::Command as TokioCommand;
 
 use crate::internal::config::global_config;
+use crate::internal::config::template::render_askpass_template;
 use crate::internal::config::up::utils::force_remove_dir_all;
 use crate::internal::config::up::utils::RunConfig;
 use crate::internal::config::up::UpError;
@@ -166,7 +166,7 @@ impl AskPassListener {
             .join(format!("{}-askpass.sh", tool.to_lowercase()))
     }
 
-    pub async fn new(run_config: &RunConfig) -> Result<Self, UpError> {
+    pub async fn new(command: &str, run_config: &RunConfig) -> Result<Self, UpError> {
         if !run_config.askpass() {
             return Ok(Self::default());
         }
@@ -208,9 +208,7 @@ impl AskPassListener {
         context.insert("SOCKET_PATH", socket_path.to_string_lossy().as_ref());
         context.insert("INTERACTIVE", &shell_is_interactive());
         context.insert("PREFER_GUI", &config.askpass.prefer_gui);
-
-        // Prepare the template
-        let template = include_str!("../../../../../templates/askpass.sh.tmpl");
+        context.insert("COMMAND", command);
 
         // Render the script for all the required askpass tools
         for tool in &needs_askpass {
@@ -222,7 +220,7 @@ impl AskPassListener {
             context.insert("TOOL", tool);
 
             // Render the script
-            let script = Tera::one_off(template, &context, false).map_err(|err| {
+            let script = render_askpass_template(&context).map_err(|err| {
                 UpError::Exec(format!("failed to render askpass script: {:?}", err))
             })?;
 

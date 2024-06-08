@@ -6,6 +6,7 @@ use std::sync::RwLock;
 use git_url_parse::GitUrl;
 use serde::Deserialize;
 use serde::Serialize;
+use tera::Tera;
 
 use crate::internal::cache::utils::CacheObject;
 use crate::internal::cache::PromptsCache;
@@ -83,6 +84,21 @@ pub fn tera_render_error_message(err: tera::Error) -> String {
     errmsg
 }
 
+pub fn render_askpass_template(context: &tera::Context) -> Result<String, tera::Error> {
+    let template_str = include_str!("../../../templates/askpass.sh.tmpl");
+
+    let mut template = Tera::default();
+    template.add_raw_template("askpass", template_str)?;
+    template.register_filter("escape_multiline_command", filter_escape_multiline_command);
+
+    if let Some(template_name) = template.templates.keys().next() {
+        let rendered = template.render(template_name, context)?;
+        return Ok(rendered);
+    }
+
+    Ok("".to_string())
+}
+
 pub fn render_config_template(
     template: &tera::Tera,
     context: &tera::Context,
@@ -146,4 +162,32 @@ pub fn make_partial_resolve_fn(
             }
         },
     )
+}
+
+pub fn filter_escape_multiline_command(
+    value: &tera::Value,
+    options: &HashMap<String, tera::Value>,
+) -> Result<tera::Value, tera::Error> {
+    let value = match value {
+        tera::Value::String(value) => value,
+        tera::Value::Number(_) | tera::Value::Bool(_) => return Ok(value.clone()),
+        _ => return Err("escape_multiline_command: value is not a string".into()),
+    };
+
+    let times = match options.get("times") {
+        Some(value) => match value {
+            tera::Value::Number(value) => value.as_u64().unwrap_or(1),
+            _ => return Err("escape_multiline_command: times is not a number".into()),
+        },
+        None => 1,
+    };
+
+    let mut escaped: String = value.to_string();
+    for _ in 0..times {
+        escaped = escaped
+            .replace('\\', "\\\\")
+            .replace('\n', "\\n")
+            .replace('"', "\\\"");
+    }
+    Ok(tera::Value::String(escaped))
 }
