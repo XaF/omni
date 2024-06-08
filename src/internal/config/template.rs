@@ -177,7 +177,7 @@ pub fn filter_escape_multiline_command(
     let times = match options.get("times") {
         Some(value) => match value {
             tera::Value::Number(value) => value.as_u64().unwrap_or(1),
-            _ => return Err("escape_double_quotes: times is not a number".into()),
+            _ => return Err("escape_multiline_command: times is not a number".into()),
         },
         None => 1,
     };
