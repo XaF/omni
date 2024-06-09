@@ -1333,9 +1333,21 @@ impl BuiltinCommand for UpCommand {
         }
 
         if !self.update_repository() {
-            // Nothing more to do if we tried updating and the
-            // repo was already up to date
-            exit(0);
+            if let (Some(wd_id), Some(git_commit)) = (wd.id(), git_env(".").commit()) {
+                if RepositoriesCache::get().check_fingerprint(
+                    &wd_id,
+                    "head_commit",
+                    fingerprint(&git_commit),
+                ) {
+                    // Nothing more to do if we tried updating and the
+                    // repo was already up to date, since the head commit
+                    // fingerprint is the same
+                    exit(0);
+                }
+            } else {
+                // If we're not in a repository, we stop here
+                exit(0);
+            }
         }
 
         let cfg = config(".");
@@ -1478,6 +1490,14 @@ impl BuiltinCommand for UpCommand {
                     omni_error!(format!("issue while setting repo up: {}", err));
                     exit(1);
                 }
+
+                if let (Some(wd_id), Some(git_commit)) = (wd.id(), git_env(".").commit()) {
+                    if let Err(err) = RepositoriesCache::exclusive(|repos| {
+                        repos.update_fingerprint(&wd_id, "head_commit", fingerprint(&git_commit))
+                    }) {
+                        omni_warning!(format!("failed to update cache: {}", err));
+                    }
+                }
             } else if let Err(err) = up_config.down() {
                 omni_error!(format!("issue while tearing repo down: {}", err));
                 exit(1);
@@ -1515,6 +1535,8 @@ impl BuiltinCommand for UpCommand {
     fn autocomplete(&self, _comp_cword: usize, _argv: Vec<String>) -> Result<(), ()> {
         println!("--bootstrap");
         println!("--clone-suggested");
+        println!("--fail-on-upgrade");
+        println!("--no-cache");
         println!("--prompt");
         println!("--prompt-all");
         println!("--trust");

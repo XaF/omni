@@ -571,6 +571,7 @@ pub struct GitRepoEnv {
     in_repo: bool,
     root: Option<String>,
     origin: Option<String>,
+    commit: Option<String>,
     id: OnceCell<Option<String>>,
 }
 
@@ -580,6 +581,7 @@ impl GitRepoEnv {
             in_repo: false,
             root: None,
             origin: None,
+            commit: None,
             id: OnceCell::new(),
         };
 
@@ -588,15 +590,20 @@ impl GitRepoEnv {
             Err(_) => return git_repo_env,
         };
 
-        let mut git_repo_root = None;
-        if let Some(workdir) = repository.workdir() {
-            if let Some(root_dir) = workdir.to_str() {
-                git_repo_root = Some(root_dir.strip_suffix('/').unwrap_or(root_dir).to_string());
+        git_repo_env.in_repo = true;
+
+        if let Ok(head) = repository.head() {
+            if let Ok(head_commit) = head.peel_to_commit() {
+                git_repo_env.commit = Some(head_commit.id().to_string());
             }
         }
 
-        git_repo_env.in_repo = true;
-        git_repo_env.root = git_repo_root;
+        if let Some(workdir) = repository.workdir() {
+            if let Some(root_dir) = workdir.to_str() {
+                git_repo_env.root =
+                    Some(root_dir.strip_suffix('/').unwrap_or(root_dir).to_string());
+            }
+        }
 
         if let Ok(remote) = repository.find_remote("origin") {
             if let Some(url) = remote.url() {
@@ -670,6 +677,13 @@ impl GitRepoEnv {
     pub fn origin(&self) -> Option<&str> {
         match &self.origin {
             Some(origin) => Some(origin.as_str()),
+            None => None,
+        }
+    }
+
+    pub fn commit(&self) -> Option<&str> {
+        match &self.commit {
+            Some(commit) => Some(commit.as_str()),
             None => None,
         }
     }
