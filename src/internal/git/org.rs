@@ -766,6 +766,7 @@ impl<'a> From<&'a mut PathScore> for String {
 
 #[derive(Debug, Clone)]
 pub enum OrgError {
+    #[allow(dead_code)]
     InvalidHandle(&'static str),
 }
 
@@ -784,9 +785,7 @@ impl Org {
     pub fn new(config: OrgConfig) -> Result<Self, OrgError> {
         let parsed_url = safe_normalize_url(&config.handle);
         if parsed_url.is_err() {
-            return Err(OrgError::InvalidHandle(
-                "Invalid org handle: url parsing failed",
-            ));
+            return Err(OrgError::InvalidHandle("url parsing failed"));
         }
         let mut parsed_url = parsed_url.unwrap();
         if parsed_url.scheme().is_empty() || parsed_url.scheme() == "file" {
@@ -795,10 +794,10 @@ impl Org {
 
         if let Some(host) = parsed_url.host_str() {
             if !config.handle.starts_with(parsed_url.scheme()) && !host.contains('.') {
-                return Err(OrgError::InvalidHandle("Invalid org handle: invalid host"));
+                return Err(OrgError::InvalidHandle("invalid host"));
             }
         } else {
-            return Err(OrgError::InvalidHandle("Invalid org handle: no host"));
+            return Err(OrgError::InvalidHandle("no host"));
         }
 
         let mut owner = None;
