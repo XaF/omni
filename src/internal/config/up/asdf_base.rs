@@ -1326,5 +1326,7 @@ fn detect_version_from_tool_version_file(tool_name: String, path: PathBuf) -> Op
 pub struct AsdfToolUpVersion {
     pub version: String,
     pub dirs: BTreeSet<String>,
+
+    #[allow(dead_code)]
     pub installed: bool,
 }
