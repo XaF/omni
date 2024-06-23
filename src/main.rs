@@ -4,6 +4,7 @@ use std::process::exit;
 mod internal;
 use internal::command_loader;
 use internal::commands::base::BuiltinCommand;
+use internal::commands::loader::set_lookup_local_first;
 use internal::commands::HookEnvCommand;
 use internal::commands::HookInitCommand;
 use internal::commands::HookUuidCommand;
@@ -20,6 +21,7 @@ use internal::StringColor;
 #[derive(Debug, Clone)]
 struct MainArgs {
     only_check_exists: bool,
+    lookup_local_commands_first: bool,
     args: Vec<String>,
 }
 
@@ -80,6 +82,18 @@ impl MainArgs {
                     .conflicts_with("update")
                     .conflicts_with("update-and-log-on-error")
                     .conflicts_with("version"),
+            )
+            .arg(
+                clap::Arg::new("local")
+                    .long("local")
+                    .short('l')
+                    .conflicts_with("askpass")
+                    .conflicts_with("exists")
+                    .conflicts_with("help")
+                    .conflicts_with("update")
+                    .conflicts_with("update-and-log-on-error")
+                    .conflicts_with("version")
+                    .action(clap::ArgAction::SetTrue),
             )
             .arg(
                 clap::Arg::new("args")
@@ -156,6 +170,7 @@ impl MainArgs {
 
         Self {
             only_check_exists: *matches.get_one::<bool>("exists").unwrap_or(&false),
+            lookup_local_commands_first: *matches.get_one::<bool>("local").unwrap_or(&false),
             args,
         }
     }
@@ -207,6 +222,14 @@ fn run_omni_subcommand(parsed: &MainArgs) {
             parsed.args.join(" ")
         );
         exit(1);
+    }
+
+    if parsed.lookup_local_commands_first {
+        set_lookup_local_first();
+
+        // Set an environment variable to let subcommands know that
+        // we're in local mode
+        env::set_var("OMNI_LOCAL_LOOKUP", "1");
     }
 
     if !parsed.only_check_exists {

@@ -157,6 +157,14 @@ impl PathEntryConfig {
         PathBuf::from(&self.full_path).starts_with(&path_entry.full_path)
     }
 
+    pub fn starts_with_path(&self, path: PathBuf) -> bool {
+        if !self.is_valid() {
+            return false;
+        }
+
+        PathBuf::from(&self.full_path).starts_with(&path)
+    }
+
     pub fn includes_path(&self, path: PathBuf) -> bool {
         if !self.is_valid() {
             return false;
