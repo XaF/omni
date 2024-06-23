@@ -99,7 +99,7 @@ impl PathCommand {
                     }
                 }
 
-                return None;
+                None
             })
             .collect::<Vec<String>>();
 

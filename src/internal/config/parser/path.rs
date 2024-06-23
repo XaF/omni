@@ -162,7 +162,7 @@ impl PathEntryConfig {
             return false;
         }
 
-        PathBuf::from(&self.full_path).starts_with(&path)
+        PathBuf::from(&self.full_path).starts_with(path)
     }
 
     pub fn includes_path(&self, path: PathBuf) -> bool {
