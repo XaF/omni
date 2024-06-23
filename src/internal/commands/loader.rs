@@ -31,6 +31,16 @@ use crate::internal::env::shell_is_interactive;
 use crate::internal::user_interface::colors::StringColor;
 use crate::omni_info;
 
+static LOOKUP_LOCAL_FIRST: OnceLock<bool> = OnceLock::new();
+
+fn lookup_local_first() -> bool {
+    *LOOKUP_LOCAL_FIRST.get_or_init(|| false)
+}
+
+pub fn set_lookup_local_first() {
+    let _ = LOOKUP_LOCAL_FIRST.set(true);
+}
+
 fn command_loader_per_path() -> &'static Mutex<CommandLoaderPerPath> {
     static COMMAND_LOADER_PER_PATH: OnceLock<Mutex<CommandLoaderPerPath>> = OnceLock::new();
     COMMAND_LOADER_PER_PATH.get_or_init(|| Mutex::new(CommandLoaderPerPath::new()))
@@ -115,6 +125,15 @@ impl CommandLoader {
         // Look for all commands in the configuration
         for command in ConfigCommand::all() {
             add_fn(Command::FromConfig(command));
+        }
+
+        // Look for all commands in the path that would be
+        // available locally if the flag is set to lookup for
+        // local commands first
+        if lookup_local_first() {
+            for command in PathCommand::local() {
+                add_fn(Command::FromPath(command));
+            }
         }
 
         // Look for all commands in the path

@@ -5,6 +5,7 @@ use std::io::BufRead;
 use std::io::BufReader;
 use std::os::unix::process::CommandExt;
 use std::path::Path;
+use std::path::PathBuf;
 use std::process::Command as ProcessCommand;
 
 use once_cell::sync::OnceCell;
@@ -13,9 +14,15 @@ use serde::Serialize;
 use walkdir::WalkDir;
 
 use crate::internal::commands::path::omnipath;
+use crate::internal::config;
+use crate::internal::config::config_loader;
 use crate::internal::config::utils::is_executable;
 use crate::internal::config::CommandSyntax;
+use crate::internal::config::ConfigExtendOptions;
+use crate::internal::config::OmniConfig;
 use crate::internal::config::SyntaxOptArg;
+use crate::internal::git::package_path_from_handle;
+use crate::internal::workdir;
 
 #[derive(Debug, Clone)]
 pub struct PathCommand {
@@ -27,10 +34,83 @@ pub struct PathCommand {
 
 impl PathCommand {
     pub fn all() -> Vec<Self> {
+        Self::aggregate_commands_from_path(&omnipath())
+    }
+
+    pub fn local() -> Vec<Self> {
+        // Check if we are in a work directory
+        let workdir = workdir(".");
+        let (wd_id, wd_root) = match (workdir.id(), workdir.root()) {
+            (Some(id), Some(root)) => (id, root),
+            _ => return vec![],
+        };
+
+        // Since we're prioritizing local, we want to make sure we consider
+        // the local suggestions for the configuration; this means we will
+        // handle suggested configuration even if not applied globally before
+        // going over the omnipath.
+        let cfg = config(".");
+        let suggest_config_value = cfg.suggest_config.config();
+        let local_config = if suggest_config_value.is_null() {
+            cfg
+        } else {
+            let mut local_config = config_loader(".").raw_config.clone();
+            local_config.extend(
+                suggest_config_value.clone(),
+                ConfigExtendOptions::new(),
+                vec![],
+            );
+            OmniConfig::from_config_value(&local_config)
+        };
+
+        // Get the package and worktree paths for the current repo
+        // TODO: make it work from a package path to include existing
+        //       paths from the worktree too
+        let worktree_path = Some(PathBuf::from(wd_root));
+        let package_path = package_path_from_handle(&wd_id);
+        let expected_path = PathBuf::from(wd_root);
+
+        // Now we can extract the different values that would be applied to
+        // the path that are actually matching the current work directory;
+        // note we will consider both path that are matching the current work
+        // directory but also convert any path that would match the package
+        // path for the same work directory.
+        let local_paths = local_config
+            .path
+            .prepend
+            .iter()
+            .chain(local_config.path.append.iter())
+            .filter_map(|path_entry| {
+                if !path_entry.is_valid() {
+                    return None;
+                }
+
+                let pathbuf = PathBuf::from(&path_entry.full_path);
+
+                if let Some(worktree_path) = &worktree_path {
+                    if let Ok(suffix) = pathbuf.strip_prefix(worktree_path) {
+                        return Some(expected_path.join(suffix).to_string_lossy().to_string());
+                    }
+                }
+
+                if let Some(package_path) = &package_path {
+                    if let Ok(suffix) = pathbuf.strip_prefix(package_path) {
+                        return Some(expected_path.join(suffix).to_string_lossy().to_string());
+                    }
+                }
+
+                None
+            })
+            .collect::<Vec<String>>();
+
+        Self::aggregate_commands_from_path(&local_paths)
+    }
+
+    fn aggregate_commands_from_path(paths: &Vec<String>) -> Vec<Self> {
         let mut all_commands: Vec<PathCommand> = Vec::new();
         let mut known_sources: HashMap<String, usize> = HashMap::new();
 
-        for path in &omnipath() {
+        for path in paths {
             // Aggregate all the files first, since WalkDir does not sort the list
             let mut files_to_process = Vec::new();
             for entry in WalkDir::new(path).follow_links(true).into_iter().flatten() {

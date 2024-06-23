@@ -4,6 +4,8 @@ description: Environment variables that can be used with omni
 
 # Environment variables
 
+## Writeable
+
 Omni supports a number of environment variables for its configuration. Setting those will generally override equivalent configuration options or precede them.
 
 | Variable                | Type | Description                                                            |
@@ -16,3 +18,8 @@ Omni supports a number of environment variables for its configuration. Setting t
 | `OMNI_ORG` | comma-delimited list of strings | Prepend organizations to be considered by omni. e.g.: `OMNI_ORG="git@github.com:XaF,github.com/XaF"`. See [parameters/org](parameters/org#environment) for more details. |
 | `OMNI_SKIP_SELF_UPDATE` | `string` | Disables self updates when set to anything but an empty string, even if it should have triggered. It is recommended to either set to `1` or empty/unset. |
 | `OMNI_SKIP_UPDATE` | `string` | Disables omnipath and self updates when set to anything but an empty string, even if it should have triggered. It is recommended to either set to `1` or empty/unset. |
+
+## Read-only
+
+| Variable                | Type | Description                                                            |
+| `OMNI_LOCAL_LOOKUP` | `boolean` | When using `omni --local` to prioritize local commands lookup over global ones, this variable will be set to `true`. It is not used by omni in any way, but can be used by scripts to determine if omni is running in local mode. |
