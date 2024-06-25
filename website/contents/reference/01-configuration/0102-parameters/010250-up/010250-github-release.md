@@ -14,7 +14,7 @@ For this to work properly for a GitHub release, it will need to:
 Omni will download all the assets matching the current OS and architecture, extract them and move all the found binary files to a known location to be loaded in the repository environment.
 
 :::note
-This does not support using authentication yet, and thus will only work for public repositories for now.
+This supports authenticated requests using [the `gh` command line interface](https://cli.github.com/) if it is installed and authenticated, which allows for a higher rate limit and access to private repositories, as well as GitHub Enterprise instances.
 :::
 
 ## Alternative names
