@@ -3,7 +3,9 @@ use std::collections::BTreeSet;
 use std::io;
 
 use globset::Glob;
+use itertools::Itertools;
 use lazy_static::lazy_static;
+use regex::escape as regex_escape;
 use regex::Regex;
 use serde::Deserialize;
 use serde::Serialize;
@@ -18,6 +20,7 @@ use crate::internal::cache::utils::Empty;
 use crate::internal::cache::CacheObject;
 use crate::internal::config::global_config;
 use crate::internal::config::up::utils::VersionMatcher;
+use crate::internal::config::up::utils::VersionParser;
 use crate::internal::env::now as omni_now;
 use crate::internal::self_updater::compatible_release_arch;
 use crate::internal::self_updater::compatible_release_os;
@@ -186,6 +189,9 @@ pub struct GithubReleasesSelector {
     pub asset_name: Option<String>,
     pub skip_arch_matching: bool,
     pub skip_os_matching: bool,
+    pub checksum_lookup: bool,
+    pub checksum_algorithm: Option<String>,
+    pub checksum_asset_name: Option<String>,
 }
 
 impl GithubReleasesSelector {
@@ -226,6 +232,21 @@ impl GithubReleasesSelector {
         self
     }
 
+    pub fn checksum_lookup(mut self, checksum_lookup: bool) -> Self {
+        self.checksum_lookup = checksum_lookup;
+        self
+    }
+
+    pub fn checksum_algorithm(mut self, checksum_algorithm: Option<String>) -> Self {
+        self.checksum_algorithm = checksum_algorithm;
+        self
+    }
+
+    pub fn checksum_asset_name(mut self, checksum_asset_name: Option<String>) -> Self {
+        self.checksum_asset_name = checksum_asset_name;
+        self
+    }
+
     fn asset_matches(&self, asset: &GithubReleaseAsset) -> bool {
         if let Some((asset_type, _)) = asset.file_type() {
             if asset_type.is_binary() && !self.binary {
@@ -236,41 +257,7 @@ impl GithubReleasesSelector {
         }
 
         if let Some(ref patterns) = self.asset_name {
-            let patterns = patterns.split('\n').collect::<Vec<&str>>();
-
-            let mut has_positive_pattern = false;
-            let mut matched = false;
-
-            for pattern in patterns {
-                if pattern.is_empty() {
-                    continue;
-                }
-
-                let (should_match, pattern) = if let Some(pattern) = pattern.strip_prefix('!') {
-                    (false, pattern)
-                } else {
-                    has_positive_pattern = true;
-                    (true, pattern)
-                };
-
-                let glob = match Glob::new(pattern) {
-                    Ok(glob) => glob.compile_matcher(),
-                    Err(_) => continue,
-                };
-
-                if glob.is_match(&asset.name) {
-                    if should_match {
-                        matched = true;
-                        break;
-                    } else {
-                        return false;
-                    }
-                }
-            }
-
-            // Fail right away if we have any positive pattern
-            // and none of them matched
-            if !matched && has_positive_pattern {
+            if !Self::matches_glob_patterns(patterns, &asset.name) {
                 return false;
             }
         }
@@ -294,6 +281,187 @@ impl GithubReleasesSelector {
         }
 
         true
+    }
+
+    fn matches_glob_patterns(patterns: &str, value: &str) -> bool {
+        let patterns = patterns.split('\n').collect::<Vec<&str>>();
+
+        let mut has_positive_pattern = false;
+        let mut matched = false;
+
+        for pattern in patterns {
+            if pattern.is_empty() {
+                continue;
+            }
+
+            let (should_match, pattern) = if let Some(pattern) = pattern.strip_prefix('!') {
+                (false, pattern)
+            } else {
+                has_positive_pattern = true;
+                (true, pattern)
+            };
+
+            let glob = match Glob::new(pattern) {
+                Ok(glob) => glob.compile_matcher(),
+                Err(_) => continue,
+            };
+
+            if glob.is_match(value) {
+                if should_match {
+                    matched = true;
+                    break;
+                } else {
+                    return false;
+                }
+            }
+        }
+
+        // Fail right away if we have any positive pattern
+        // and none of them matched
+        if !matched && has_positive_pattern {
+            return false;
+        }
+
+        true
+    }
+
+    fn assets_with_checksums(&self, assets: &[GithubReleaseAsset]) -> Vec<GithubReleaseAsset> {
+        let mut matching_assets = assets
+            .iter()
+            .filter(|asset| self.asset_matches(asset))
+            .cloned()
+            .collect();
+
+        if !self.checksum_lookup {
+            return matching_assets;
+        }
+
+        let search_assets = assets
+            .iter()
+            .filter(|asset| {
+                (asset.content_type == "application/octet-stream"
+                    || asset.content_type == "text/plain"
+                    || asset.content_type.starts_with("text/plain;"))
+                    && !matching_assets.iter().any(|a| a.name == asset.name)
+            })
+            .cloned()
+            .collect::<Vec<GithubReleaseAsset>>();
+
+        let (search_assets, guessing) =
+            if let Some(ref checksum_asset_name) = self.checksum_asset_name {
+                // If there is a pattern, we will only look for that pattern
+                let search_assets = search_assets
+                    .iter()
+                    .filter(|asset| Self::matches_glob_patterns(checksum_asset_name, &asset.name))
+                    .cloned()
+                    .collect::<Vec<GithubReleaseAsset>>();
+
+                (search_assets, false)
+            } else {
+                (search_assets, true)
+            };
+
+        for asset in &mut matching_assets {
+            let asset_without_ext = match asset.file_type() {
+                Some((_, prefix)) => prefix,
+                None => asset.name.clone(),
+            };
+
+            if !guessing {
+                if search_assets.len() == 1 {
+                    asset.checksum_asset = Some(Box::new(search_assets.first().cloned().unwrap()));
+                    continue;
+                }
+
+                let with_asset_name = search_assets
+                    .iter()
+                    .filter(|a| a.name.starts_with(&asset.name))
+                    .cloned()
+                    .collect::<Vec<GithubReleaseAsset>>();
+                if with_asset_name.len() == 1 {
+                    asset.checksum_asset =
+                        Some(Box::new(with_asset_name.first().cloned().unwrap()));
+                    continue;
+                }
+
+                let with_asset_name_without_ext = search_assets
+                    .iter()
+                    .filter(|a| a.name.starts_with(&asset_without_ext))
+                    .cloned()
+                    .collect::<Vec<GithubReleaseAsset>>();
+                if with_asset_name_without_ext.len() == 1 {
+                    asset.checksum_asset = Some(Box::new(
+                        with_asset_name_without_ext.first().cloned().unwrap(),
+                    ));
+                    continue;
+                }
+
+                // Not found with the provided parameter, let's go to the next asset
+                continue;
+            }
+
+            // If no pattern was provided, we will look at potential usual filename patterns
+            // for checksum files; such as:
+            // - <asset_name>.<algorithm>
+            // - <asset_name>.<algorithm>.txt
+            // - <asset_name>.<algorithm>.sum
+            // - <asset_name>_checksum.<algorithm>
+            // - <asset_name>_checksum.txt
+            // - <asset_name>-<algorithm>.txt
+            // - <algorithm>.txt
+            // - <algorithm>sum.txt
+
+            let algorithms = if let Some(ref checksum_algorithm) = self.checksum_algorithm {
+                vec![checksum_algorithm.as_str()]
+            } else {
+                vec!["md5", "sha1", "sha256", "sha384", "sha512"]
+            };
+
+            let regex_name = format!(
+                r"(\b|_)({}|{})(\b|_)",
+                regex_escape(&asset_without_ext),
+                regex_escape(&asset.name),
+            );
+            let regex_algorithm = format!(
+                r"(\b|_)({}|check)(sums?)?(\b|_)",
+                algorithms.iter().map(|a| regex_escape(a)).join("|"),
+            );
+
+            if let (Ok(regex_name), Ok(regex_algorithm)) =
+                (Regex::new(&regex_name), Regex::new(&regex_algorithm))
+            {
+                if let Some(checksum_asset) = search_assets
+                    .iter()
+                    .find(|a| regex_name.is_match(&a.name) && regex_algorithm.is_match(&a.name))
+                {
+                    asset.checksum_asset = Some(Box::new(checksum_asset.clone()));
+                    continue;
+                }
+            }
+
+            // Now try to find checksum files that are not named after the asset
+            // but might contain checksums for multiple files
+
+            let regex_checksums = format!(
+                r"^(({0})(sums?)(\.txt)?|checksums?\.(txt|{0}))$",
+                algorithms.iter().map(|a| regex_escape(a)).join("|"),
+            );
+
+            if let Ok(regex_checksums) = Regex::new(&regex_checksums) {
+                if let Some(checksum_asset) = search_assets
+                    .iter()
+                    .find(|a| regex_checksums.is_match(&a.name))
+                {
+                    asset.checksum_asset = Some(Box::new(checksum_asset.clone()));
+                    continue;
+                }
+            }
+
+            // If we get here, we didn't find any checksum file for the current asset
+        }
+
+        // Return the assets
+        matching_assets
     }
 }
 
@@ -357,13 +525,11 @@ impl GithubReleases {
 
                 // Check that we have one matching asset for the current
                 // platform and architecture, that is either a .zip or .tar.gz
-                let assets = release
-                    .assets
-                    .iter()
-                    .filter(|asset| selector.asset_matches(asset))
-                    .cloned()
-                    .collect::<Vec<GithubReleaseAsset>>();
+                // and find its checksum file if available
 
+                // Try and find all the checksum files for the current release
+                // depending on the checksums configuration
+                let assets = selector.assets_with_checksums(&release.assets);
                 if assets.is_empty() {
                     return None;
                 }
@@ -378,7 +544,7 @@ impl GithubReleases {
 
                 Some((release_version, release))
             })
-            .max_by(|(version_a, _), (version_b, _)| version_a.cmp(version_b))
+            .max_by(|(version_a, _), (version_b, _)| VersionParser::compare(version_a, version_b))
     }
 }
 
@@ -414,6 +580,8 @@ pub struct GithubReleaseAsset {
     pub content_type: String,
     #[serde(default)]
     pub size: u64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub checksum_asset: Option<Box<GithubReleaseAsset>>,
 }
 
 impl GithubReleaseAsset {

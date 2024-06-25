@@ -1,18 +1,28 @@
 use std::collections::HashMap;
 use std::fs::OpenOptions;
 use std::io;
+use std::io::BufRead;
+use std::io::BufReader;
 use std::os::unix::fs::PermissionsExt;
+use std::path::Path;
 use std::path::PathBuf;
 use std::process::Command as ProcessCommand;
 
 use itertools::Itertools;
+use md5::Md5;
 use once_cell::sync::OnceCell;
 use serde::Deserialize;
 use serde::Serialize;
+use sha1::Sha1;
+use sha2::Digest;
+use sha2::Sha256;
+use sha2::Sha384;
+use sha2::Sha512;
 
 #[cfg(not(test))]
 use once_cell::sync::Lazy;
 
+use crate::internal::cache::github_release::GithubReleaseAsset;
 use crate::internal::cache::github_release::GithubReleasesSelector;
 use crate::internal::cache::utils as cache_utils;
 use crate::internal::cache::CacheObject;
@@ -470,6 +480,15 @@ struct UpConfigGithubRelease {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub api_url: Option<String>,
 
+    /// The checksum configuration for the downloaded release
+    /// assets. This is useful to ensure that the downloaded
+    /// assets are not tampered with.
+    #[serde(
+        default,
+        skip_serializing_if = "GithubReleaseChecksumConfig::is_default"
+    )]
+    pub checksum: GithubReleaseChecksumConfig,
+
     #[serde(default, skip)]
     pub actual_version: OnceCell<String>,
 
@@ -489,6 +508,7 @@ impl Default for UpConfigGithubRelease {
             skip_os_matching: false,
             skip_arch_matching: false,
             api_url: None,
+            checksum: GithubReleaseChecksumConfig::default(),
             actual_version: OnceCell::new(),
             was_handled: OnceCell::new(),
         }
@@ -597,6 +617,7 @@ impl UpConfigGithubRelease {
             .get("api_url")
             .map(|v| v.as_str_forced())
             .unwrap_or(None);
+        let checksum = GithubReleaseChecksumConfig::from_config_value(table.get("checksum"));
 
         UpConfigGithubRelease {
             repository,
@@ -608,6 +629,7 @@ impl UpConfigGithubRelease {
             skip_os_matching,
             skip_arch_matching,
             api_url,
+            checksum,
             ..UpConfigGithubRelease::default()
         }
     }
@@ -1006,7 +1028,10 @@ impl UpConfigGithubRelease {
                     .binary(self.binary)
                     .asset_name(self.asset_name.clone())
                     .skip_os_matching(self.skip_os_matching)
-                    .skip_arch_matching(self.skip_arch_matching),
+                    .skip_arch_matching(self.skip_arch_matching)
+                    .checksum_lookup(self.checksum.is_enabled())
+                    .checksum_algorithm(self.checksum.algorithm.clone().map(|a| a.to_string()))
+                    .checksum_asset_name(self.checksum.asset_name.clone()),
             )
             .ok_or_else(|| {
                 let errmsg = format!(
@@ -1077,6 +1102,182 @@ impl UpConfigGithubRelease {
             .join(version)
     }
 
+    fn download_asset(
+        &self,
+        asset_name: &str,
+        asset_url: &str,
+        asset_path: &Path,
+        progress_handler: &dyn ProgressHandler,
+    ) -> Result<std::fs::File, UpError> {
+        progress_handler.progress(format!("downloading {}", asset_name.light_yellow()));
+
+        // Download the asset
+        let mut response = reqwest::blocking::get(asset_url).map_err(|err| {
+            let errmsg = format!("failed to download {}: {}", asset_name, err);
+            progress_handler.error_with_message(errmsg.clone());
+            UpError::Exec(errmsg)
+        })?;
+
+        // Check if the download was successful
+        let status = response.status();
+        if !status.is_success() {
+            let contents = response.text().map_err(|err| {
+                let errmsg = format!("failed to read response: {}", err);
+                progress_handler.error_with_message(errmsg.clone());
+                UpError::Exec(errmsg)
+            })?;
+
+            // Try parsing the error message from the body, and default to
+            // the body if we can't parse it
+            let errmsg = match GithubApiError::from_json(&contents) {
+                Ok(gherr) => gherr.message,
+                Err(_) => contents.clone(),
+            };
+
+            let errmsg = format!("failed to download: {} ({})", errmsg, status);
+            progress_handler.error_with_message(errmsg.to_string());
+            return Err(UpError::Exec(errmsg));
+        }
+
+        // Write the file to disk
+        let mut file = OpenOptions::new()
+            .write(true)
+            .create(true)
+            .truncate(true)
+            .open(asset_path)
+            .map_err(|err| {
+                let errmsg = format!("failed to open {}: {}", asset_name, err);
+                progress_handler.error_with_message(errmsg.clone());
+                UpError::Exec(errmsg)
+            })?;
+
+        io::copy(&mut response, &mut file).map_err(|err| {
+            let errmsg = format!("failed to write {}: {}", asset_name, err);
+            progress_handler.error_with_message(errmsg.clone());
+            UpError::Exec(errmsg)
+        })?;
+
+        Ok(file)
+    }
+
+    fn validate_checksum(
+        &self,
+        asset: &GithubReleaseAsset,
+        tmp_dir_path: &Path,
+        progress_handler: &dyn ProgressHandler,
+    ) -> Result<(), UpError> {
+        if !self.checksum.is_enabled() {
+            return Ok(());
+        }
+
+        let asset_name = asset.name.clone();
+        let asset_path = tmp_dir_path.join(&asset_name);
+
+        let checksum_value = if let Some(checksum_value) = &self.checksum.value {
+            checksum_value.clone()
+        } else if let Some(checksum_asset) = &asset.checksum_asset {
+            let checksum_asset_name = checksum_asset.name.clone();
+            let checksum_asset_path = tmp_dir_path.join(&checksum_asset_name);
+
+            // Download the checksum assets but only if it does not exist
+            if !checksum_asset_path.exists() {
+                self.download_asset(
+                    &checksum_asset_name,
+                    &checksum_asset.browser_download_url,
+                    &checksum_asset_path,
+                    progress_handler,
+                )?;
+            }
+
+            // Find the checksum value from the file, either by finding a line
+            // in the file that ends with the asset name, preceeded by spaces or
+            // tabs, or if not found, if the file only contains a unique hash
+            let checksum_file = std::fs::File::open(&checksum_asset_path).map_err(|err| {
+                let errmsg = format!("failed to open {}: {}", checksum_asset_name, err);
+                progress_handler.error_with_message(errmsg.clone());
+                UpError::Exec(errmsg)
+            })?;
+            let checksum_reader = BufReader::new(checksum_file);
+
+            let mut file_lines = 0;
+            let mut unique_hash = None;
+            let mut matching_hash = None;
+            for line in checksum_reader.lines().map_while(|line| line.ok()) {
+                file_lines += 1;
+                let trim_line = line.trim();
+                if trim_line.ends_with(format!(" {}", asset_name).as_str())
+                    || trim_line.ends_with(format!("\t{}", asset_name).as_str())
+                {
+                    matching_hash = Some(trim_line.split_whitespace().next().unwrap().to_string());
+                    break;
+                } else if !trim_line.contains(' ') && !trim_line.contains('\t') {
+                    unique_hash = Some(trim_line.to_string());
+                }
+            }
+
+            let checksum_value = if matching_hash.is_some() {
+                matching_hash
+            } else if unique_hash.is_some() && file_lines == 1 {
+                unique_hash
+            } else {
+                None
+            };
+
+            // If we had an asset file to check against, but we couldn't find
+            // the checksum for that asset, raise an error since we can't validate
+            // the asset
+            if checksum_value.is_none() {
+                let errmsg = format!(
+                    "checksum not found in {}: {}",
+                    checksum_asset_name, asset_name
+                );
+                progress_handler.error_with_message(errmsg.clone());
+                return Err(UpError::Exec(errmsg));
+            }
+
+            checksum_value.unwrap()
+        } else {
+            return Ok(());
+        };
+
+        // If we have any value to check against, let's validate the checksum
+        let checksum_algorithm = if let Some(checksum_algorithm) = &self.checksum.algorithm {
+            checksum_algorithm.clone()
+        } else if let Some(checksum_algorithm) =
+            GithubReleaseChecksumAlgorithm::from_hash(&checksum_value)
+        {
+            checksum_algorithm
+        } else {
+            let errmsg = format!("checksum algorithm not found for {}", checksum_value);
+            progress_handler.error_with_message(errmsg.clone());
+            return Err(UpError::Exec(errmsg));
+        };
+
+        progress_handler.progress(format!(
+            "validating checksum for {}",
+            asset_name.light_yellow()
+        ));
+
+        let file_checksum = checksum_algorithm
+            .compute_file_hash(&asset_path)
+            .map_err(|err| {
+                let errmsg = format!("failed to compute checksum for {}: {}", asset_name, err);
+                progress_handler.error_with_message(errmsg.clone());
+                UpError::Exec(errmsg)
+            })?;
+
+        if file_checksum != checksum_value {
+            let errmsg = format!(
+                "checksum mismatch for {}: expected {} but got {}",
+                asset_name, checksum_value, file_checksum
+            );
+            progress_handler.error_with_message(errmsg.clone());
+            return Err(UpError::Exec(errmsg));
+        }
+
+        Ok(())
+    }
+
     fn download_release(
         &self,
         options: &UpOptions,
@@ -1107,57 +1308,28 @@ impl UpConfigGithubRelease {
         // and download them all
         let mut binary_found = false;
         for asset in &release.assets {
+            // Raise an error if the checksum is required but no asset was
+            // found to validate the checksum against
+            if self.checksum.is_enabled()
+                && self.checksum.is_required()
+                && self.checksum.value.is_none()
+                && asset.checksum_asset.is_none()
+            {
+                let errmsg = format!("could not find checksum file for {}", asset.name);
+                progress_handler.error_with_message(errmsg.clone());
+                return Err(UpError::Exec(errmsg));
+            }
+
             let asset_name = asset.name.clone();
             let asset_url = asset.browser_download_url.clone();
             let asset_path = tmp_dir.path().join(&asset_name);
 
-            progress_handler.progress(format!("downloading {}", asset_name.light_yellow()));
-
             // Download the asset
-            let mut response = reqwest::blocking::get(&asset_url).map_err(|err| {
-                let errmsg = format!("failed to download {}: {}", asset_name, err);
-                progress_handler.error_with_message(errmsg.clone());
-                UpError::Exec(errmsg)
-            })?;
+            let file =
+                self.download_asset(&asset_name, &asset_url, &asset_path, progress_handler)?;
 
-            // Check if the download was successful
-            let status = response.status();
-            if !status.is_success() {
-                let contents = response.text().map_err(|err| {
-                    let errmsg = format!("failed to read response: {}", err);
-                    progress_handler.error_with_message(errmsg.clone());
-                    UpError::Exec(errmsg)
-                })?;
-
-                // Try parsing the error message from the body, and default to
-                // the body if we can't parse it
-                let errmsg = match GithubApiError::from_json(&contents) {
-                    Ok(gherr) => gherr.message,
-                    Err(_) => contents.clone(),
-                };
-
-                let errmsg = format!("failed to download: {} ({})", errmsg, status);
-                progress_handler.error_with_message(errmsg.to_string());
-                return Err(UpError::Exec(errmsg));
-            }
-
-            // Write the file to disk
-            let mut file = OpenOptions::new()
-                .write(true)
-                .create(true)
-                .truncate(true)
-                .open(asset_path.clone())
-                .map_err(|err| {
-                    let errmsg = format!("failed to open {}: {}", asset_name, err);
-                    progress_handler.error_with_message(errmsg.clone());
-                    UpError::Exec(errmsg)
-                })?;
-
-            io::copy(&mut response, &mut file).map_err(|err| {
-                let errmsg = format!("failed to write {}: {}", asset_name, err);
-                progress_handler.error_with_message(errmsg.clone());
-                UpError::Exec(errmsg)
-            })?;
+            // Validate the checksum if required
+            self.validate_checksum(asset, tmp_dir.path(), progress_handler)?;
 
             // Get the parsed asset name
             let (asset_type, target_dir) = asset.file_type().ok_or_else(|| {
@@ -1309,6 +1481,192 @@ impl UpConfigGithubRelease {
         match self.was_handled.get() {
             Some(handled) => handled.clone(),
             None => GithubReleaseHandled::Unhandled,
+        }
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone, Default)]
+struct GithubReleaseChecksumConfig {
+    /// Whether checksum verification is enabled; if set to
+    /// `false`, checksum verification will be skipped.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    enabled: Option<bool>,
+
+    /// Whether checksum verification is required; if set to
+    /// `false`, checksum verification will be best effort, while
+    /// if set to `true`, failing to verify the checksum will
+    /// result in an error.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    required: Option<bool>,
+
+    /// The checksum algorithm to use for the downloaded release
+    /// assets. This can be one of the following: `md5`, `sha1`,
+    /// `sha256`, `sha384`, `sha512`. If not set, no checksum
+    /// verification will be performed.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    algorithm: Option<GithubReleaseChecksumAlgorithm>,
+
+    /// The static checksum value to compare against the downloaded
+    /// release assets.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    value: Option<String>,
+
+    /// The name of the asset containing the checksum value to
+    /// compare against the downloaded release assets.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    asset_name: Option<String>,
+}
+
+impl GithubReleaseChecksumConfig {
+    pub fn is_default(&self) -> bool {
+        self.enabled.is_none()
+            && self.required.is_none()
+            && self.algorithm.is_none()
+            && self.value.is_none()
+            && self.asset_name.is_none()
+    }
+
+    pub fn from_config_value(config_value: Option<&ConfigValue>) -> Self {
+        let config_value = match config_value {
+            Some(config_value) => config_value,
+            None => return GithubReleaseChecksumConfig::default(),
+        };
+
+        if let Some(table) = config_value.as_table() {
+            Self::from_table(&table)
+        } else if let Some(string) = config_value.as_str() {
+            GithubReleaseChecksumConfig {
+                value: Some(string.to_string()),
+                ..GithubReleaseChecksumConfig::default()
+            }
+        } else {
+            GithubReleaseChecksumConfig::default()
+        }
+    }
+
+    fn from_table(table: &HashMap<String, ConfigValue>) -> Self {
+        let enabled = table.get("enabled").map(|v| v.as_bool()).unwrap_or(None);
+        let required = table.get("required").map(|v| v.as_bool()).unwrap_or(None);
+        let algorithm = table
+            .get("algorithm")
+            .map(|v| v.as_str_forced())
+            .unwrap_or(None)
+            .map(|v| GithubReleaseChecksumAlgorithm::from_str(&v))
+            .unwrap_or(None);
+        let value = table
+            .get("value")
+            .map(|v| v.as_str_forced())
+            .unwrap_or(None);
+        let asset_name = table
+            .get("asset_name")
+            .map(|v| v.as_str_forced())
+            .unwrap_or(None);
+
+        GithubReleaseChecksumConfig {
+            enabled,
+            required,
+            algorithm,
+            value,
+            asset_name,
+        }
+    }
+
+    fn is_enabled(&self) -> bool {
+        self.enabled.unwrap_or(true)
+    }
+
+    fn is_required(&self) -> bool {
+        self.required.unwrap_or(
+            self.algorithm.is_some() || self.value.is_some() || self.asset_name.is_some(),
+        )
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+enum GithubReleaseChecksumAlgorithm {
+    #[serde(rename = "md5")]
+    Md5,
+    #[serde(rename = "sha1")]
+    Sha1,
+    #[serde(rename = "sha256")]
+    Sha256,
+    #[serde(rename = "sha384")]
+    Sha384,
+    #[serde(rename = "sha512")]
+    Sha512,
+}
+
+impl std::fmt::Display for GithubReleaseChecksumAlgorithm {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.to_str())
+    }
+}
+
+impl GithubReleaseChecksumAlgorithm {
+    pub fn from_hash(hash: &str) -> Option<Self> {
+        match hash.len() {
+            32 => Some(GithubReleaseChecksumAlgorithm::Md5),
+            40 => Some(GithubReleaseChecksumAlgorithm::Sha1),
+            64 => Some(GithubReleaseChecksumAlgorithm::Sha256),
+            96 => Some(GithubReleaseChecksumAlgorithm::Sha384),
+            128 => Some(GithubReleaseChecksumAlgorithm::Sha512),
+            _ => None,
+        }
+    }
+
+    pub fn from_str(algorithm: &str) -> Option<Self> {
+        match algorithm.to_lowercase().as_str() {
+            "md5" => Some(GithubReleaseChecksumAlgorithm::Md5),
+            "sha1" => Some(GithubReleaseChecksumAlgorithm::Sha1),
+            "sha256" => Some(GithubReleaseChecksumAlgorithm::Sha256),
+            "sha384" => Some(GithubReleaseChecksumAlgorithm::Sha384),
+            "sha512" => Some(GithubReleaseChecksumAlgorithm::Sha512),
+            _ => None,
+        }
+    }
+
+    pub fn to_str(&self) -> &str {
+        match self {
+            GithubReleaseChecksumAlgorithm::Md5 => "md5",
+            GithubReleaseChecksumAlgorithm::Sha1 => "sha1",
+            GithubReleaseChecksumAlgorithm::Sha256 => "sha256",
+            GithubReleaseChecksumAlgorithm::Sha384 => "sha384",
+            GithubReleaseChecksumAlgorithm::Sha512 => "sha512",
+        }
+    }
+
+    pub fn compute_file_hash(&self, path: &PathBuf) -> io::Result<String> {
+        match self {
+            GithubReleaseChecksumAlgorithm::Md5 => {
+                let mut hasher = Md5::new();
+                let mut file = std::fs::File::open(path)?;
+                std::io::copy(&mut file, &mut hasher)?;
+                Ok(format!("{:x}", hasher.finalize()))
+            }
+            GithubReleaseChecksumAlgorithm::Sha1 => {
+                let mut hasher = Sha1::new();
+                let mut file = std::fs::File::open(path)?;
+                std::io::copy(&mut file, &mut hasher)?;
+                Ok(format!("{:x}", hasher.finalize()))
+            }
+            GithubReleaseChecksumAlgorithm::Sha256 => {
+                let mut hasher = Sha256::new();
+                let mut file = std::fs::File::open(path)?;
+                std::io::copy(&mut file, &mut hasher)?;
+                Ok(format!("{:x}", hasher.finalize()))
+            }
+            GithubReleaseChecksumAlgorithm::Sha384 => {
+                let mut hasher = Sha384::new();
+                let mut file = std::fs::File::open(path)?;
+                std::io::copy(&mut file, &mut hasher)?;
+                Ok(format!("{:x}", hasher.finalize()))
+            }
+            GithubReleaseChecksumAlgorithm::Sha512 => {
+                let mut hasher = Sha512::new();
+                let mut file = std::fs::File::open(path)?;
+                std::io::copy(&mut file, &mut hasher)?;
+                Ok(format!("{:x}", hasher.finalize()))
+            }
         }
     }
 }
