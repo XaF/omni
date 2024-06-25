@@ -42,7 +42,7 @@ impl VersionParser {
             (Some(a_version), Some(b_version)) => a_version.cmp(&b_version),
             (Some(_), None) => std::cmp::Ordering::Greater,
             (None, Some(_)) => std::cmp::Ordering::Less,
-            (None, None) => a_str.cmp(&b_str),
+            (None, None) => a_str.cmp(b_str),
         }
     }
 

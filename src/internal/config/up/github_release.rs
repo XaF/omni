@@ -4,6 +4,7 @@ use std::io;
 use std::io::BufRead;
 use std::io::BufReader;
 use std::os::unix::fs::PermissionsExt;
+use std::path::Path;
 use std::path::PathBuf;
 use std::process::Command as ProcessCommand;
 
@@ -1105,7 +1106,7 @@ impl UpConfigGithubRelease {
         &self,
         asset_name: &str,
         asset_url: &str,
-        asset_path: &PathBuf,
+        asset_path: &Path,
         progress_handler: &dyn ProgressHandler,
     ) -> Result<std::fs::File, UpError> {
         progress_handler.progress(format!("downloading {}", asset_name.light_yellow()));
@@ -1143,7 +1144,7 @@ impl UpConfigGithubRelease {
             .write(true)
             .create(true)
             .truncate(true)
-            .open(asset_path.clone())
+            .open(asset_path)
             .map_err(|err| {
                 let errmsg = format!("failed to open {}: {}", asset_name, err);
                 progress_handler.error_with_message(errmsg.clone());
@@ -1162,7 +1163,7 @@ impl UpConfigGithubRelease {
     fn validate_checksum(
         &self,
         asset: &GithubReleaseAsset,
-        tmp_dir_path: &PathBuf,
+        tmp_dir_path: &Path,
         progress_handler: &dyn ProgressHandler,
     ) -> Result<(), UpError> {
         if !self.checksum.is_enabled() {
@@ -1201,7 +1202,7 @@ impl UpConfigGithubRelease {
             let mut file_lines = 0;
             let mut unique_hash = None;
             let mut matching_hash = None;
-            for line in checksum_reader.lines().filter_map(|line| line.ok()) {
+            for line in checksum_reader.lines().map_while(|line| line.ok()) {
                 file_lines += 1;
                 let trim_line = line.trim();
                 if trim_line.ends_with(format!(" {}", asset_name).as_str())
@@ -1209,7 +1210,7 @@ impl UpConfigGithubRelease {
                 {
                     matching_hash = Some(trim_line.split_whitespace().next().unwrap().to_string());
                     break;
-                } else if !trim_line.contains(" ") && !trim_line.contains("\t") {
+                } else if !trim_line.contains(' ') && !trim_line.contains('\t') {
                     unique_hash = Some(trim_line.to_string());
                 }
             }
@@ -1328,7 +1329,7 @@ impl UpConfigGithubRelease {
                 self.download_asset(&asset_name, &asset_url, &asset_path, progress_handler)?;
 
             // Validate the checksum if required
-            self.validate_checksum(&asset, &tmp_dir.path().to_path_buf(), progress_handler)?;
+            self.validate_checksum(asset, &tmp_dir.path(), progress_handler)?;
 
             // Get the parsed asset name
             let (asset_type, target_dir) = asset.file_type().ok_or_else(|| {
@@ -1484,7 +1485,7 @@ impl UpConfigGithubRelease {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone, Default)]
 struct GithubReleaseChecksumConfig {
     /// Whether checksum verification is enabled; if set to
     /// `false`, checksum verification will be skipped.
@@ -1514,18 +1515,6 @@ struct GithubReleaseChecksumConfig {
     /// compare against the downloaded release assets.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     asset_name: Option<String>,
-}
-
-impl Default for GithubReleaseChecksumConfig {
-    fn default() -> Self {
-        GithubReleaseChecksumConfig {
-            enabled: None,
-            required: None,
-            algorithm: None,
-            value: None,
-            asset_name: None,
-        }
-    }
 }
 
 impl GithubReleaseChecksumConfig {
@@ -1607,9 +1596,9 @@ enum GithubReleaseChecksumAlgorithm {
     Sha512,
 }
 
-impl ToString for GithubReleaseChecksumAlgorithm {
-    fn to_string(&self) -> String {
-        self.to_str().to_string()
+impl std::fmt::Display for GithubReleaseChecksumAlgorithm {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.to_str())
     }
 }
 
@@ -1650,31 +1639,31 @@ impl GithubReleaseChecksumAlgorithm {
         match self {
             GithubReleaseChecksumAlgorithm::Md5 => {
                 let mut hasher = Md5::new();
-                let mut file = std::fs::File::open(&path)?;
+                let mut file = std::fs::File::open(path)?;
                 std::io::copy(&mut file, &mut hasher)?;
                 Ok(format!("{:x}", hasher.finalize()))
             }
             GithubReleaseChecksumAlgorithm::Sha1 => {
                 let mut hasher = Sha1::new();
-                let mut file = std::fs::File::open(&path)?;
+                let mut file = std::fs::File::open(path)?;
                 std::io::copy(&mut file, &mut hasher)?;
                 Ok(format!("{:x}", hasher.finalize()))
             }
             GithubReleaseChecksumAlgorithm::Sha256 => {
                 let mut hasher = Sha256::new();
-                let mut file = std::fs::File::open(&path)?;
+                let mut file = std::fs::File::open(path)?;
                 std::io::copy(&mut file, &mut hasher)?;
                 Ok(format!("{:x}", hasher.finalize()))
             }
             GithubReleaseChecksumAlgorithm::Sha384 => {
                 let mut hasher = Sha384::new();
-                let mut file = std::fs::File::open(&path)?;
+                let mut file = std::fs::File::open(path)?;
                 std::io::copy(&mut file, &mut hasher)?;
                 Ok(format!("{:x}", hasher.finalize()))
             }
             GithubReleaseChecksumAlgorithm::Sha512 => {
                 let mut hasher = Sha512::new();
-                let mut file = std::fs::File::open(&path)?;
+                let mut file = std::fs::File::open(path)?;
                 std::io::copy(&mut file, &mut hasher)?;
                 Ok(format!("{:x}", hasher.finalize()))
             }

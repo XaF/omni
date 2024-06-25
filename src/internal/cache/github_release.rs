@@ -306,7 +306,7 @@ impl GithubReleasesSelector {
                 Err(_) => continue,
             };
 
-            if glob.is_match(&value) {
+            if glob.is_match(value) {
                 if should_match {
                     matched = true;
                     break;
