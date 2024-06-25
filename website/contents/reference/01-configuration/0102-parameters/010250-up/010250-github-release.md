@@ -11,7 +11,7 @@ For this to work properly for a GitHub release, it will need to:
 - Have a file name that contains hints about the OS it was built for (e.g. `linux`, `darwin`, ...)
 - Have a file name that contains hints about the architecture it was built for (e.g. `amd64`, `arm64`, ...)
 
-Omni will download all the assets matching the current OS and architecture, extract them and move all the found binary files to a known location to be loaded in the repository environment.
+Omni will download all the assets matching the current OS and architecture, verify checksums, extract them and move all the found binary files to a known location to be loaded in the repository environment.
 
 :::note
 This supports authenticated requests using [the `gh` command line interface](https://cli.github.com/) if it is installed and authenticated, which allows for a higher rate limit and access to private repositories, as well as GitHub Enterprise instances.
