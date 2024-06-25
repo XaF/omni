@@ -37,6 +37,15 @@ impl VersionParser {
     const MAJOR_MINOR_PATCH_REGEX: &'static str =
         r"^(?P<major>\d+)(?:\.(?P<minor>\d+)(?:\.(?P<patch>\d+))?)?(?P<suffix>.*)?$";
 
+    pub fn compare(a_str: &str, b_str: &str) -> std::cmp::Ordering {
+        match (VersionParser::parse(a_str), VersionParser::parse(b_str)) {
+            (Some(a_version), Some(b_version)) => a_version.cmp(&b_version),
+            (Some(_), None) => std::cmp::Ordering::Greater,
+            (None, Some(_)) => std::cmp::Ordering::Less,
+            (None, None) => a_str.cmp(&b_str),
+        }
+    }
+
     pub fn parse(version_string: &str) -> Option<Self> {
         // Find the first digit in the version string
         let first_digit = match version_string.chars().position(|c| c.is_ascii_digit()) {
@@ -518,5 +527,34 @@ mod tests {
             "{} should match 1.2.3-alpha+build with matcher with prerelease+build enabled",
             version,
         );
+    }
+
+    #[test]
+    fn version_parser_compare() {
+        let values = vec![
+            "v0.0.9",
+            "v0.0.11",
+            "awesome",
+            "v0.0.1",
+            "v0.0.9-rc1",
+            "v0.0.9-beta",
+            "v0.0.9-alpha",
+            "v0.0.9-alpha.2",
+        ];
+        let expected = vec![
+            "awesome",
+            "v0.0.1",
+            "v0.0.9-alpha",
+            "v0.0.9-alpha.2",
+            "v0.0.9-beta",
+            "v0.0.9-rc1",
+            "v0.0.9",
+            "v0.0.11",
+        ];
+
+        let mut actual = values.clone();
+        actual.sort_by(|a, b| VersionParser::compare(a, b));
+
+        assert_eq!(actual, expected);
     }
 }

@@ -40,6 +40,17 @@ This does not support using authentication yet, and thus will only work for publ
 | `skip_os_matching` | boolean | Whether to skip the OS matching when downloading assets. If set to `true`, this will download all assets regardless of the OS *(default: `false`)* |
 | `skip_arch_matching` | boolean | Whether to skip the architecture matching when downloading assets. If set to `true`, this will download all assets regardless of the architecture *(default: `false`)* |
 | `api_url` | string | The URL of the GitHub API to use, useful to use GitHub Enterprise (e.g. `https://github.example.com/api/v3`); defaults to `https://api.github.com` |
+| `checksum` | object | The configuration to verify the checksum of the downloaded asset; see [checksum configuration](#checksum-configuration) below |
+
+### Checksum configuration
+
+| Parameter        | Type      | Description                                           |
+|------------------|-----------|-------------------------------------------------------|
+| `enabled` | boolean | Whether to verify the checksum of the downloaded asset; if set to `true`, the checksum will be verified and the operation will fail if the checksum is not valid *(default: `true`)* |
+| `required` | boolean | Whether the checksum verification is required; if set to `true`, the operation will fail if the checksum cannot be verified *(default: `false`)* |
+| `algorithm` | string | The algorithm to use to verify the checksum; can be `md5`, `sha1`, `sha256`, `sha384`, or `sha512`; if not set, will try to automatically detect the algorithm based on the checksum length |
+| `value` | string | The value of the checksum to verify the downloaded asset against; if not set, will try to automatically find the asset containing the checksum in the GitHub release |
+| `asset_name` | string | The name of the asset containing the checksum to verify the downloaded asset against. It can take glob patterns, e.g. `*.md5` or `checksum-*`. It can take multiple patterns at once, one per line, and accepts positive and negative (starting by `!`) patterns. The first matching pattern returns (whether negative or positive). If not set, will be similar as being set to `*` |
 
 ### Version handling
 
