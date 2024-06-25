@@ -1329,7 +1329,7 @@ impl UpConfigGithubRelease {
                 self.download_asset(&asset_name, &asset_url, &asset_path, progress_handler)?;
 
             // Validate the checksum if required
-            self.validate_checksum(asset, &tmp_dir.path(), progress_handler)?;
+            self.validate_checksum(asset, tmp_dir.path(), progress_handler)?;
 
             // Get the parsed asset name
             let (asset_type, target_dir) = asset.file_type().ok_or_else(|| {
