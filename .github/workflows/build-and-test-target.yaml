@@ -202,7 +202,6 @@ jobs:
 
     steps:
       - name: Install os/container dependencies
-        shell: bash
         run: |
           if command -v brew >/dev/null; then
             brew install parallel
