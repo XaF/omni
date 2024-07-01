@@ -562,11 +562,16 @@ impl DynamicEnv {
                         envsetter.unset_value("PYTHONHOME");
                         envsetter.prepend_to_list("PATH", &format!("{}/bin", tool_prefix));
                     }
-                    // "nodejs" => {
-                    // envsetter.set_value("NVM_DIR", "$HOME/.nvm");
-                    // envsetter.set_value("NVM_BIN", "$NVM_DIR/versions/node/$NODE_VERSION/bin");
-                    // envsetter.set_value("NODE_VERSION", &toolversion.version);
-                    // }
+                    "nodejs" => {
+                        envsetter.set_value("NODE_VERSION", &version);
+                        envsetter.prepend_to_list("PATH", &format!("{}/bin", tool_prefix));
+
+                        // Handle the isolated NPM prefix
+                        if let Some(data_path) = &toolversion.data_path {
+                            envsetter.set_value("npm_config_prefix", data_path);
+                            envsetter.prepend_to_list("PATH", &format!("{}/bin", data_path));
+                        };
+                    }
                     _ => {
                         envsetter.prepend_to_list("PATH", &format!("{}/bin", tool_prefix));
                     }

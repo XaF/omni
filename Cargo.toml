@@ -54,7 +54,6 @@ num-integer = "0.1.46"
 num-traits = "0.2.18"
 once_cell = "1.19.0"
 openssl = { version = "0.10", features = ["vendored"] }
-package-json = "0.4.0"
 path-clean = "1.0.1"
 pathdiff = "0.2.1"
 petname = "2.0.2"
