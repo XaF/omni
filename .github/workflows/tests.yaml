@@ -63,6 +63,7 @@ jobs:
               - 'website/contents/**'
             core:
               - '.github/workflows/build.yaml'
+              - '.github/workflows/build-and-test-target.yaml'
               - '.github/workflows/tests.yaml'
               - 'Cargo.lock'
               - 'Cargo.toml'
