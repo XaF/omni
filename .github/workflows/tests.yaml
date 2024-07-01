@@ -123,6 +123,7 @@ jobs:
     with:
       git_sha: ${{ github.sha }}
       release_version: ${{ needs.prepare-release-version.outputs.release_version }}
+      sign: false
 
 
   rust-clippy-analysis:
