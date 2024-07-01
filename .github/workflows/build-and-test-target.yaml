@@ -27,6 +27,10 @@ on:
       extra_test_containers:
         description: JSON list of containers to run tests with (extra)
         type: string
+      sign:
+        description: Whether to sign the artifact
+        type: boolean
+        default: true
 
   # Allows to run this workflow manually from the Actions tab
   workflow_dispatch:
@@ -52,6 +56,10 @@ on:
       extra_test_containers:
         description: JSON list of containers to run tests with (extra)
         type: string
+      sign:
+        description: Whether to sign the artifact
+        type: boolean
+        default: true
 
 
 env:
@@ -100,13 +108,17 @@ jobs:
         if: contains(inputs.target, 'musl')
 
       - name: Install Cosign
+        if: inputs.sign
         uses: sigstore/cosign-installer@v3.5.0
 
       - name: Check cosign version
+        if: inputs.sign
+        shell: bash
         run: |
           cosign version
 
       - name: Override Cargo.toml and Cargo.lock version
+        shell: bash
         run: |
           perl -i -pe 's/^version = "0\.0\.0-git"$/version = "${{ inputs.release_version }}"/' Cargo.toml
           perl -i -pe 's/^version = "0\.0\.0-git"$/version = "${{ inputs.release_version }}"/' Cargo.lock
@@ -141,11 +153,14 @@ jobs:
             cd -
 
       - name: Generate SHA-256 checksum
+        shell: bash
         run: |
           sha256sum=$(command -v sha256sum || echo "shasum --algorithm 256")
           $sha256sum ${{ env.BUILD_FILENAME }}.tar.gz | tee -a ${{ env.BUILD_FILENAME }}.sha256
 
       - name: Sign (keyless) the artifact
+        if: inputs.sign
+        shell: bash
         run: |
           cosign sign-blob \
             --yes \
@@ -163,6 +178,7 @@ jobs:
 
       - name: Prepare test matrix
         if: inputs.run_tests
+        shell: bash
         run: |
           binary_tests=$(echo '[{"os": "${{ inputs.os }}"}]' | jq '. + '"$(echo '${{ inputs.extra_test_containers || '[]' }}' | jq '. | map({"os": "${{ inputs.os }}", "container": .})')")
           echo "BINARY_TESTS=$(echo "$binary_tests" | jq --compact-output)" | tee -a "$GITHUB_ENV"
@@ -186,6 +202,7 @@ jobs:
 
     steps:
       - name: Install os/container dependencies
+        shell: bash
         run: |
           if command -v brew >/dev/null; then
             brew install parallel
@@ -207,6 +224,7 @@ jobs:
 
       - name: Disable safe.directory
         if: matrix.container != ''
+        shell: bash
         run: |
           git config --global --add safe.directory '*'
 
@@ -222,9 +240,12 @@ jobs:
           $sha256sum --check "${{ env.BUILD_FILENAME }}.sha256"
 
       - name: Install Cosign
+        if: inputs.sign
         uses: sigstore/cosign-installer@v3.5.0
 
       - name: Verify signature
+        if: inputs.sign
+        shell: bash
         run: |
           cosign verify-blob \
             --signature ${{ env.BUILD_FILENAME }}-keyless.sig \
