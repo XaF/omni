@@ -159,6 +159,18 @@ impl HomebrewOperationCache {
         self.updated();
     }
 
+    pub fn updated_tap(&mut self, tap_name: &str) {
+        self.update_cache.updated_homebrew_tap(tap_name);
+        self.updated();
+    }
+
+    pub fn should_update_tap(&self, tap_name: &str) -> bool {
+        self.update_cache.should_update_homebrew_tap(
+            tap_name,
+            Duration::from_secs(global_config().cache.homebrew.tap_update_expire),
+        )
+    }
+
     pub fn updated_install(
         &mut self,
         install_name: &str,
@@ -335,6 +347,8 @@ pub struct HomebrewOperationUpdateCache {
     pub homebrew: HomebrewOperationUpdateCacheHomebrew,
     #[serde(default = "HashMap::new", skip_serializing_if = "HashMap::is_empty")]
     pub install: HashMap<String, HomebrewOperationUpdateCacheInstall>,
+    #[serde(default = "HashMap::new", skip_serializing_if = "HashMap::is_empty")]
+    pub tap: HashMap<String, HomebrewOperationUpdateCacheTap>,
 }
 
 impl HomebrewOperationUpdateCache {
@@ -342,6 +356,7 @@ impl HomebrewOperationUpdateCache {
         Self {
             homebrew: HomebrewOperationUpdateCacheHomebrew::new(),
             install: HashMap::new(),
+            tap: HashMap::new(),
         }
     }
 
@@ -410,6 +425,17 @@ impl HomebrewOperationUpdateCache {
         }
     }
 
+    pub fn updated_homebrew_tap(&mut self, tap_name: &str) {
+        let key = tap_name.to_string();
+        if let Some(tap) = self.tap.get_mut(&key) {
+            tap.updated_at = OffsetDateTime::now_utc();
+        } else {
+            let mut tap = HomebrewOperationUpdateCacheTap::new();
+            tap.updated_at = OffsetDateTime::now_utc();
+            self.tap.insert(tap_name.to_string(), tap);
+        }
+    }
+
     pub fn updated_homebrew_install(
         &mut self,
         install_name: &str,
@@ -434,6 +460,15 @@ impl HomebrewOperationUpdateCache {
     ) {
         let key = self.install_key(install_name, install_version, is_cask);
         self.install.remove(&key);
+    }
+
+    pub fn should_update_homebrew_tap(&self, tap_name: &str, expire_after: Duration) -> bool {
+        let key = tap_name.to_string();
+        if let Some(tap) = self.tap.get(&key) {
+            (tap.updated_at + expire_after) < OffsetDateTime::now_utc()
+        } else {
+            true
+        }
     }
 
     pub fn should_update_homebrew_install(
@@ -549,5 +584,29 @@ impl Empty for HomebrewOperationUpdateCacheInstall {
         self.updated_at == utils::origin_of_time()
             && self.checked_at == utils::origin_of_time()
             && self.bin_paths.is_none()
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct HomebrewOperationUpdateCacheTap {
+    #[serde(
+        default = "utils::origin_of_time",
+        with = "time::serde::rfc3339",
+        skip_serializing_if = "utils::is_origin_of_time"
+    )]
+    pub updated_at: OffsetDateTime,
+}
+
+impl HomebrewOperationUpdateCacheTap {
+    pub fn new() -> Self {
+        Self {
+            updated_at: utils::origin_of_time(),
+        }
+    }
+}
+
+impl Empty for HomebrewOperationUpdateCacheTap {
+    fn is_empty(&self) -> bool {
+        self.updated_at == utils::origin_of_time()
     }
 }

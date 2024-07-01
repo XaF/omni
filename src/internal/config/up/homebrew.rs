@@ -14,6 +14,7 @@ use crate::internal::cache::CacheObject;
 use crate::internal::cache::HomebrewInstalled;
 use crate::internal::cache::HomebrewOperationCache;
 use crate::internal::cache::UpEnvironmentsCache;
+use crate::internal::config::up::utils::get_command_output;
 use crate::internal::config::up::utils::run_progress;
 use crate::internal::config::up::utils::ProgressHandler;
 use crate::internal::config::up::utils::RunConfig;
@@ -65,7 +66,7 @@ impl UpConfigHomebrew {
                 )
                 .light_yellow(),
             );
-            tap.up(&subhandler)?;
+            tap.up(options, &subhandler)?;
         }
 
         let num_installs = self.install.len();
@@ -584,30 +585,30 @@ impl HomebrewTap {
         }
     }
 
-    fn up(&self, progress_handler: &UpProgressHandler) -> Result<(), UpError> {
+    fn up(&self, options: &UpOptions, progress_handler: &UpProgressHandler) -> Result<(), UpError> {
         let progress_handler = progress_handler
             .subhandler(&format!("{} {}: ", "tap".underline(), self.name).light_yellow());
 
-        // TODO: we should update the tap manually in case people have their homebrew
-        //       upgrades disabled.
-        if self.is_tapped() {
-            self.update_cache(&progress_handler);
-            if self.was_handled.set(HomebrewHandled::Noop).is_err() {
-                unreachable!("failed to set was_handled (tap: {})", self.name);
+        let is_tapped = self.is_tapped();
+        match self.tap(options, &progress_handler, is_tapped) {
+            Ok(did_something) => {
+                let (was_handled, message) = match (is_tapped, did_something) {
+                    (true, true) => (HomebrewHandled::Updated, "updated".light_green()),
+                    (true, false) => (HomebrewHandled::Noop, "up to date (cached)".light_black()),
+                    (false, _) => (HomebrewHandled::Handled, "tapped".light_green()),
+                };
+                if self.was_handled.set(was_handled).is_err() {
+                    unreachable!("failed to set was_handled (install: {})", self.name);
+                }
+                self.update_cache(&progress_handler);
+                progress_handler.success_with_message(message);
+                Ok(())
             }
-            progress_handler.success_with_message("already tapped".light_black());
-            return Ok(());
+            Err(err) => {
+                progress_handler.error_with_message(err.to_string());
+                Err(err)
+            }
         }
-
-        if let Err(err) = self.tap(&progress_handler, true) {
-            progress_handler.error();
-            return Err(err);
-        }
-
-        self.update_cache(&progress_handler);
-        progress_handler.success();
-
-        Ok(())
     }
 
     fn down(&self, progress_handler: &UpProgressHandler) -> Result<(), UpError> {
@@ -628,12 +629,16 @@ impl HomebrewTap {
             return Err(UpError::HomebrewTapInUse);
         }
 
-        if let Err(err) = self.tap(&progress_handler, false) {
+        if let Err(err) = self.untap(&progress_handler) {
             progress_handler.error();
             return Err(err);
         }
 
-        progress_handler.success();
+        if self.was_handled.set(HomebrewHandled::Handled).is_err() {
+            unreachable!("failed to set was_handled (tap: {})", self.name);
+        }
+
+        progress_handler.success_with_message("untapped".light_green());
 
         Ok(())
     }
@@ -655,27 +660,143 @@ impl HomebrewTap {
         false
     }
 
-    fn tap(&self, progress_handler: &UpProgressHandler, tap: bool) -> Result<(), UpError> {
-        let mut brew_tap = TokioCommand::new("brew");
-        if tap {
-            brew_tap.arg("tap");
+    fn update_tap(
+        &self,
+        options: &UpOptions,
+        progress_handler: &UpProgressHandler,
+    ) -> Result<bool, UpError> {
+        if options.read_cache && !HomebrewOperationCache::get().should_update_tap(&self.name) {
+            progress_handler.progress("already up to date".light_black());
+            return Ok(false);
+        }
+
+        progress_handler.progress("updating tap".to_string());
+
+        // Get the path to the tap repository
+        let mut brew_repo = TokioCommand::new("brew");
+        brew_repo.arg("--repo");
+        brew_repo.arg(&self.name);
+        brew_repo.stdout(std::process::Stdio::piped());
+        brew_repo.stderr(std::process::Stdio::piped());
+
+        let output = get_command_output(&mut brew_repo, RunConfig::new());
+        let brew_repo_path = match output {
+            Err(err) => {
+                let msg = format!("failed to get tap repository path: {}", err);
+                progress_handler.error_with_message(msg.clone());
+                return Err(UpError::Exec(msg));
+            }
+            Ok(output) if !output.status.success() => {
+                let msg = format!(
+                    "failed to get tap repository path: {}",
+                    String::from_utf8(output.stderr)
+                        .unwrap()
+                        .replace('\n', " ")
+                        .trim()
+                );
+                progress_handler.error_with_message(msg.clone());
+                return Err(UpError::Exec(msg));
+            }
+            Ok(output) => {
+                let output = String::from_utf8(output.stdout).unwrap().trim().to_string();
+                PathBuf::from(output)
+            }
+        };
+
+        // Now run `git pull` in the tap repository
+        let mut git_pull = TokioCommand::new("git");
+        git_pull.arg("pull");
+        git_pull.current_dir(brew_repo_path);
+        git_pull.stdout(std::process::Stdio::piped());
+        git_pull.stderr(std::process::Stdio::piped());
+
+        let output = get_command_output(&mut brew_repo, RunConfig::new().with_askpass());
+        match output {
+            Err(err) => {
+                let msg = format!("git pull failed: {}", err);
+                Err(UpError::Exec(msg))
+            }
+            Ok(output) if !output.status.success() => {
+                let msg = format!(
+                    "git pull failed: {}",
+                    String::from_utf8(output.stderr)
+                        .unwrap()
+                        .replace('\n', " ")
+                        .trim()
+                );
+                Err(UpError::Exec(msg))
+            }
+            Ok(output) => {
+                let output = String::from_utf8(output.stdout).unwrap().trim().to_string();
+                let output_lines = output.lines().collect::<Vec<&str>>();
+
+                if output_lines.len() == 1 && output_lines[0].contains("Already up to date.") {
+                    Ok(false)
+                } else {
+                    Ok(true)
+                }
+            }
+        }
+    }
+
+    fn tap(
+        &self,
+        options: &UpOptions,
+        progress_handler: &UpProgressHandler,
+        is_tapped: bool,
+    ) -> Result<bool, UpError> {
+        let result = if is_tapped {
+            self.update_tap(options, progress_handler)
         } else {
-            brew_tap.arg("untap");
-        }
-        brew_tap.arg(&self.name);
+            let mut brew_tap = TokioCommand::new("brew");
+            brew_tap.arg("tap");
+            brew_tap.arg(&self.name);
 
-        if let Some(url) = &self.url {
-            brew_tap.arg(url);
-        }
+            if let Some(url) = &self.url {
+                brew_tap.arg(url);
+            }
 
-        brew_tap.stdout(std::process::Stdio::piped());
-        brew_tap.stderr(std::process::Stdio::piped());
+            brew_tap.stdout(std::process::Stdio::piped());
+            brew_tap.stderr(std::process::Stdio::piped());
 
-        let result = run_progress(&mut brew_tap, Some(progress_handler), RunConfig::default());
-        if result.is_ok() && self.was_handled.set(HomebrewHandled::Handled).is_err() {
-            unreachable!("failed to set was_handled (tap: {})", self.name);
+            match run_progress(&mut brew_tap, Some(progress_handler), RunConfig::default()) {
+                Ok(_) => Ok(true),
+                Err(err) => Err(err),
+            }
+        };
+
+        match result {
+            Ok(true) if options.write_cache => {
+                // Update the cache
+                if let Err(err) = HomebrewOperationCache::exclusive(|cache| {
+                    cache.updated_tap(&self.name);
+                    true
+                }) {
+                    return Err(UpError::Cache(err.to_string()));
+                }
+
+                result
+            }
+            Err(err) if !options.fail_on_upgrade => {
+                progress_handler.progress(format!("failed to update: {}", err).red());
+                Ok(false)
+            }
+            _ => result,
         }
-        result
+    }
+
+    fn untap(&self, progress_handler: &UpProgressHandler) -> Result<(), UpError> {
+        let mut brew_untap = TokioCommand::new("brew");
+        brew_untap.arg("untap");
+        brew_untap.arg(&self.name);
+        brew_untap.stdout(std::process::Stdio::piped());
+        brew_untap.stderr(std::process::Stdio::piped());
+
+        run_progress(
+            &mut brew_untap,
+            Some(progress_handler),
+            RunConfig::default(),
+        )
     }
 
     fn was_handled(&self) -> bool {
@@ -1314,6 +1435,8 @@ impl HomebrewInstall {
         }
         brew_install.arg(self.package_id());
 
+        brew_install.env("HOMEBREW_NO_AUTO_UPDATE", "1");
+        brew_install.env("HOMEBREW_NO_INSTALL_UPGRADE", "1");
         brew_install.stdout(std::process::Stdio::piped());
         brew_install.stderr(std::process::Stdio::piped());
 
