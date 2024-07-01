@@ -45,7 +45,7 @@ is-terminal = "0.4.12"
 itertools = "0.13.0"
 lazy_static = "1.4.0"
 libz-sys = { version = "1.1.16", features = ["static"] }
-machine-uid = "0.5.1"
+machine-uid = "0.5.2"
 md-5 = "0.10.6"
 node-semver = "2.1.0"
 normalize-path = "0.2.1"
