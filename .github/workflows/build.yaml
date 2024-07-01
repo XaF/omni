@@ -12,6 +12,10 @@ on:
       release_version:
         description: The release version to use for the build
         type: string
+      sign:
+        description: Whether to sign the artifact
+        type: boolean
+        default: true
     outputs:
       release_version:
         description: The release version that was used for the build
@@ -26,6 +30,10 @@ on:
       release_version:
         description: The release version to use for the build
         type: string
+      sign:
+        description: Whether to sign the artifact
+        type: boolean
+        default: true
 
 
 concurrency:
@@ -68,3 +76,4 @@ jobs:
       suffix: ${{ matrix.suffix }}
       run_tests: ${{ matrix.run_tests }}
       extra_test_containers: ${{ matrix.extra_test_containers }}
+      sign: ${{ inputs.sign }}
