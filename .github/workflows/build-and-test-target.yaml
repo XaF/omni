@@ -146,9 +146,9 @@ jobs:
           $sha256sum ${{ env.BUILD_FILENAME }}.tar.gz | tee -a ${{ env.BUILD_FILENAME }}.sha256
 
       - name: Sign (keyless) the artifact
-        if: inputs.run_tests
         run: |
           cosign sign-blob \
+            --yes \
             --oidc-issuer https://token.actions.githubusercontent.com \
             --output-signature ${{ env.BUILD_FILENAME }}-keyless.sig \
             --output-certificate ${{ env.BUILD_FILENAME }}-keyless.pem \
