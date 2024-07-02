@@ -232,13 +232,17 @@ fn setup_individual_npm_prefix(
                 }
             };
 
+            // Load the environment for that directory
+            update_dynamic_env_for_command(actual_dir.to_str().unwrap());
+
+            // Install the engines
             for (engine, version_range) in pkgfile.engines.iter() {
                 if engine == "node" || engine == "iojs" {
                     continue;
                 }
 
-                // Load the environment for that directory
-                update_dynamic_env_for_command(actual_dir.to_str().unwrap());
+                progress_handler
+                    .progress(format!("installing {} version {}", engine, version_range));
 
                 // Install the engine using directly the provided version range
                 let mut npm_install = TokioCommand::new("npm");
@@ -263,6 +267,39 @@ fn setup_individual_npm_prefix(
                     return Err(UpError::Exec(msg));
                 }
             }
+
+            // Install the packages
+            let engines_slice: Vec<String> = pkgfile.engines.keys().cloned().collect();
+            let install_engines = PackageInstallEngine::all_sorted(&actual_dir, &engines_slice);
+            let install_engine = install_engines.first().unwrap();
+
+            if which::which(install_engine.name()).is_err() {
+                progress_handler.progress(format!(
+                    "skipping package installation: {} not found",
+                    install_engine.name(),
+                ));
+                continue;
+            }
+
+            progress_handler.progress(format!(
+                "installing packages with {}",
+                install_engine.name(),
+            ));
+
+            let mut pkg_install = install_engine.install_command();
+            pkg_install.current_dir(&actual_dir);
+
+            let result = run_progress(
+                &mut pkg_install,
+                Some(progress_handler),
+                RunConfig::default(),
+            );
+
+            if let Err(e) = result {
+                let msg = format!("failed to install packages: {}", e);
+                progress_handler.error_with_message(msg.clone());
+                return Err(UpError::Exec(msg));
+            }
         }
     }
 
@@ -276,4 +313,63 @@ fn setup_individual_npm_prefix(
 struct PackageJson {
     #[serde(default, skip_serializing_if = "HashMap::is_empty")]
     engines: HashMap<String, String>,
+}
+
+#[derive(Debug)]
+enum PackageInstallEngine {
+    Pnpm,
+    Yarn,
+    Npm,
+}
+
+impl PackageInstallEngine {
+    fn all() -> Vec<Self> {
+        vec![Self::Pnpm, Self::Yarn, Self::Npm]
+    }
+
+    fn all_sorted(path: &PathBuf, engines: &[String]) -> Vec<Self> {
+        let mut sorted = Self::all();
+        sorted.sort_by(|a, b| b.weight(path, engines).cmp(&a.weight(path, engines)));
+        sorted
+    }
+
+    fn name(&self) -> String {
+        match self {
+            Self::Npm => "npm".to_string(),
+            Self::Yarn => "yarn".to_string(),
+            Self::Pnpm => "pnpm".to_string(),
+        }
+    }
+
+    fn lock_file(&self) -> String {
+        match self {
+            Self::Npm => "package-lock.json".to_string(),
+            Self::Yarn => "yarn.lock".to_string(),
+            Self::Pnpm => "pnpm-lock.yaml".to_string(),
+        }
+    }
+
+    fn weight(&self, path: &PathBuf, engines: &[String]) -> u8 {
+        let mut weight = 0;
+
+        if engines.contains(&self.name()) {
+            weight += 1;
+        }
+
+        let lock_path = path.join(&self.lock_file());
+        if lock_path.exists() && !lock_path.is_dir() {
+            weight += 2;
+        }
+
+        weight
+    }
+
+    fn install_command(&self) -> TokioCommand {
+        let mut cmd = TokioCommand::new(self.name());
+        cmd.arg("install");
+        cmd.stdout(std::process::Stdio::piped());
+        cmd.stderr(std::process::Stdio::piped());
+
+        cmd
+    }
 }
