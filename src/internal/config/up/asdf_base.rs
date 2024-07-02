@@ -382,8 +382,8 @@ impl UpConfigAsdfBase {
 
     fn update_cache(&self, progress_handler: &dyn ProgressHandler) {
         let workdir = workdir(".");
-        let repo_id = match workdir.id() {
-            Some(repo_id) => repo_id,
+        let wd_id = match workdir.id() {
+            Some(wd_id) => wd_id,
             None => return,
         };
         let version = match self.version() {
@@ -394,12 +394,7 @@ impl UpConfigAsdfBase {
         progress_handler.progress("updating cache".to_string());
 
         if let Err(err) = AsdfOperationCache::exclusive(|asdf_cache| {
-            asdf_cache.add_installed(
-                &repo_id,
-                &self.tool,
-                &version,
-                self.tool_real_name.as_deref(),
-            )
+            asdf_cache.add_installed(&wd_id, &self.tool, &version, self.tool_real_name.as_deref())
         }) {
             progress_handler.progress(format!("failed to update tool cache: {}", err));
             return;
@@ -412,7 +407,7 @@ impl UpConfigAsdfBase {
             }
 
             up_env.add_version(
-                &repo_id,
+                &wd_id,
                 &self.tool,
                 self.tool_real_name.as_deref(),
                 &version,

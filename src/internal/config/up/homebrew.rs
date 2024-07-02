@@ -679,7 +679,7 @@ impl HomebrewTap {
         brew_repo.stdout(std::process::Stdio::piped());
         brew_repo.stderr(std::process::Stdio::piped());
 
-        let output = get_command_output(&mut brew_repo, RunConfig::new());
+        let output = get_command_output(&mut brew_repo, RunConfig::default());
         let brew_repo_path = match output {
             Err(err) => {
                 let msg = format!("failed to get tap repository path: {}", err);
