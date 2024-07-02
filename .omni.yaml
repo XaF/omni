@@ -1,13 +1,6 @@
 up:
   - rust
   - node: auto
-  - custom:
-      name: Install yarn & dependencies
-      dir: website
-      meet: |
-        npm install -g yarn
-        yarn
-      unmeet: rm -rf node_modules
 
 commands:
   create-tag:
