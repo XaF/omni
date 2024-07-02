@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::path::Path;
 use std::path::PathBuf;
 use std::str::FromStr;
 
@@ -327,9 +328,10 @@ impl PackageInstallEngine {
         vec![Self::Pnpm, Self::Yarn, Self::Npm]
     }
 
-    fn all_sorted(path: &PathBuf, engines: &[String]) -> Vec<Self> {
+    fn all_sorted(path: &Path, engines: &[String]) -> Vec<Self> {
         let mut sorted = Self::all();
-        sorted.sort_by(|a, b| b.weight(path, engines).cmp(&a.weight(path, engines)));
+        sorted.sort_by_key(|a| a.weight(path, engines));
+        sorted.reverse();
         sorted
     }
 
@@ -349,14 +351,14 @@ impl PackageInstallEngine {
         }
     }
 
-    fn weight(&self, path: &PathBuf, engines: &[String]) -> u8 {
+    fn weight(&self, path: &Path, engines: &[String]) -> u8 {
         let mut weight = 0;
 
         if engines.contains(&self.name()) {
             weight += 1;
         }
 
-        let lock_path = path.join(&self.lock_file());
+        let lock_path = path.join(self.lock_file());
         if lock_path.exists() && !lock_path.is_dir() {
             weight += 2;
         }
