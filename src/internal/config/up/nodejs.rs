@@ -160,7 +160,7 @@ fn setup_individual_npm_prefix(
         let npm_prefix = data_path
             .join(&tool)
             .join(&version.version)
-            .join(&npm_prefix_dir);
+            .join(npm_prefix_dir);
 
         npm_prefix.to_string_lossy().to_string()
     };
@@ -213,11 +213,10 @@ fn setup_individual_npm_prefix(
             let package_json_str = match std::fs::read_to_string(&package_json_path) {
                 Ok(package_json_str) => package_json_str,
                 Err(err) => {
-                    progress_handler
-                        .progress(format!("failed to read package.json: {}", err.to_string()));
+                    progress_handler.progress(format!("failed to read package.json: {}", err));
                     return Err(UpError::Exec(format!(
                         "failed to read package.json: {}",
-                        err.to_string()
+                        err
                     )));
                 }
             };
@@ -225,11 +224,10 @@ fn setup_individual_npm_prefix(
             let pkgfile: PackageJson = match serde_json::from_str(&package_json_str) {
                 Ok(pkgfile) => pkgfile,
                 Err(err) => {
-                    progress_handler
-                        .progress(format!("failed to parse package.json: {}", err.to_string()));
+                    progress_handler.progress(format!("failed to parse package.json: {}", err));
                     return Err(UpError::Exec(format!(
                         "failed to parse package.json: {}",
-                        err.to_string()
+                        err
                     )));
                 }
             };
