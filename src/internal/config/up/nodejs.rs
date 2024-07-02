@@ -233,7 +233,7 @@ fn setup_individual_npm_prefix(
             };
 
             for (engine, version_range) in pkgfile.engines.iter() {
-                if engine == "node" {
+                if engine == "node" || engine == "iojs" {
                     continue;
                 }
 
