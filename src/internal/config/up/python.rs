@@ -1,4 +1,3 @@
-use std::collections::BTreeSet;
 use std::path::PathBuf;
 
 use normalize_path::NormalizePath;
@@ -28,19 +27,48 @@ use crate::internal::ConfigValue;
 const MIN_VERSION_VENV: Version = Version::new(3, 3, 0);
 // const MIN_VERSION_VIRTUALENV: Version = Version::new(2, 6, 0);
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
-struct UpConfigPythonSerialized {
-    version: String,
-    #[serde(skip_serializing_if = "BTreeSet::is_empty")]
-    dirs: BTreeSet<String>,
-    #[serde(skip_serializing_if = "Vec::is_empty")]
-    pip: Vec<String>,
+#[derive(Debug, Serialize, Deserialize, Clone, Default)]
+pub struct UpConfigPythonParams {
+    #[serde(default, rename = "pip", skip_serializing_if = "Vec::is_empty")]
+    pip_files: Vec<String>,
+    #[serde(default, skip)]
+    pip_auto: bool,
+}
+
+impl UpConfigPythonParams {
+    pub fn from_config_value(config_value: Option<&ConfigValue>) -> Self {
+        let mut pip_files = Vec::new();
+        let mut pip_auto = false;
+
+        if let Some(config_value) = config_value {
+            if let Some(config_value) = config_value.get_as_array("pip") {
+                for file_path in config_value {
+                    if let Some(file_path) = file_path.as_str_forced() {
+                        pip_files.push(file_path.to_string());
+                    }
+                }
+            } else if let Some(file_path) = config_value.get_as_str_forced("pip") {
+                if file_path == "auto" {
+                    pip_auto = true;
+                } else {
+                    pip_files.push(file_path.to_string());
+                }
+            }
+        }
+
+        Self {
+            pip_files,
+            pip_auto,
+        }
+    }
 }
 
 #[derive(Debug, Deserialize, Clone)]
 pub struct UpConfigPython {
+    #[serde(skip)]
     pub asdf_base: UpConfigAsdfBase,
-    pub pip: Vec<String>,
+    #[serde(skip)]
+    pub params: UpConfigPythonParams,
 }
 
 impl Serialize for UpConfigPython {
@@ -48,13 +76,25 @@ impl Serialize for UpConfigPython {
     where
         S: ::serde::ser::Serializer,
     {
-        let serialized = UpConfigPythonSerialized {
-            version: self.asdf_base.version.clone(),
-            dirs: self.asdf_base.dirs.clone(),
-            pip: self.pip.clone(),
-        };
+        // Serialize object into serde_json::Value
+        let mut asdf_base = serde_json::to_value(&self.asdf_base).unwrap();
 
-        serialized.serialize(serializer)
+        // Serialize the params object
+        let mut params = serde_json::to_value(&self.params).unwrap();
+
+        // If params.pip_auto is true, set the pip field to "auto"
+        if self.params.pip_auto {
+            params["pip"] = serde_json::Value::String("auto".to_string());
+        }
+
+        // Merge the params object into the base object
+        asdf_base
+            .as_object_mut()
+            .unwrap()
+            .extend(params.as_object().unwrap().clone());
+
+        // Serialize the object
+        asdf_base.serialize(serializer)
     }
 }
 
@@ -64,20 +104,9 @@ impl UpConfigPython {
         asdf_base.add_post_install_func(setup_python_venv);
         asdf_base.add_post_install_func(setup_python_pip);
 
-        let mut pip = Vec::new();
-        if let Some(config_value) = config_value {
-            if let Some(config_value) = config_value.get_as_array("pip") {
-                for file_path in config_value {
-                    if let Some(file_path) = file_path.as_str_forced() {
-                        pip.push(file_path.to_string());
-                    }
-                }
-            } else if let Some(file_path) = config_value.get_as_str_forced("pip") {
-                pip.push(file_path.to_string());
-            }
-        };
+        let params = UpConfigPythonParams::from_config_value(config_value);
 
-        Self { asdf_base, pip }
+        Self { asdf_base, params }
     }
 
     pub fn up(
@@ -258,29 +287,12 @@ fn setup_python_pip(
     requested_version: String,
     versions: Vec<AsdfToolUpVersion>,
 ) -> Result<(), UpError> {
-    let config_value = if let Some(config_value) = config_value {
-        config_value
-    } else {
-        return Ok(());
-    };
+    let params = UpConfigPythonParams::from_config_value(config_value.as_ref());
+    let mut pip_auto = params.pip_auto;
 
-    let mut pip_auto = false;
-    let mut pip_files = Vec::new();
-    if let Some(config_value) = config_value.get_as_array("pip") {
-        for file_path in config_value {
-            if let Some(file_path) = file_path.as_str_forced() {
-                pip_files.push(file_path.to_string());
-            }
-        }
-    } else if let Some(file_path) = config_value.get_as_str_forced("pip") {
-        if file_path == "auto" {
-            pip_auto = true;
-        } else {
-            pip_files.push(file_path.to_string());
-        }
-    }
-
-    if pip_files.is_empty() && !pip_auto {
+    // TODO: should we default set pip_auto to true if no pip_files are specified?
+    //       if yes, this should come with an option to disable it entirely too
+    if params.pip_files.is_empty() && !pip_auto {
         if requested_version == "auto" {
             pip_auto = true;
         } else {
@@ -317,7 +329,7 @@ fn setup_python_pip(
             }
         } else {
             // Otherwise, use the specified files
-            for pip_file in &pip_files {
+            for pip_file in &params.pip_files {
                 setup_python_pip_file(progress_handler, PathBuf::from(pip_file))?
             }
         }
