@@ -134,28 +134,20 @@ impl BuiltinCommand for ConfigTrustCommand {
         Some(CommandSyntax {
             usage: None,
             parameters: vec![
-                SyntaxOptArg {
-                    name: "--check".to_string(),
-                    desc: Some(
-                        concat!(
-                            "Check the trust status of the repository instead of changing it ",
-                            "\x1B[90m(default: false)\x1B[0m",
-                        )
-                        .to_string(),
+                SyntaxOptArg::new_option_with_desc(
+                    "--check",
+                    concat!(
+                        "Check the trust status of the repository instead of changing it ",
+                        "\x1B[90m(default: false)\x1B[0m",
                     ),
-                    required: false,
-                },
-                SyntaxOptArg {
-                    name: "repo".to_string(),
-                    desc: Some(
-                        concat!(
-                            "The repository to trust or untrust ",
-                            "\x1B[90m(default: current)\x1B[0m",
-                        )
-                        .to_string(),
+                ),
+                SyntaxOptArg::new_option_with_desc(
+                    "repo",
+                    concat!(
+                        "The repository to trust or untrust ",
+                        "\x1B[90m(default: current)\x1B[0m",
                     ),
-                    required: false,
-                },
+                ),
             ],
         })
     }

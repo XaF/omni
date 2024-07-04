@@ -293,38 +293,27 @@ impl BuiltinCommand for TidyCommand {
         Some(CommandSyntax {
             usage: None,
             parameters: vec![
-                SyntaxOptArg {
-                    name: "--yes".to_string(),
-                    desc: Some(
-                        "Do not ask for confirmation before organizing repositories".to_string(),
+                SyntaxOptArg::new_option_with_desc(
+                    "--yes",
+                    "Do not ask for confirmation before organizing repositories",
+                ),
+                SyntaxOptArg::new_option_with_desc(
+                    "--search-path",
+                    concat!(
+                        "Extra path to search git repositories to tidy up ",
+                        "(repeat as many times as you need)",
                     ),
-                    required: false,
-                },
-                SyntaxOptArg {
-                    name: "--search-path".to_string(),
-                    desc: Some(
-                        concat!(
-                            "Extra path to search git repositories to tidy up ",
-                            "(repeat as many times as you need)",
-                        )
-                        .to_string(),
+                ),
+                SyntaxOptArg::new_option_with_desc(
+                    "--up-all",
+                    concat!(
+                        "Run \x1B[3momni up\x1B[0m in all the repositories ",
+                        "with an omni configuration; any argument passed to the ",
+                        "\x1B[3mtidy\x1B[0m command after \x1B[3m--\x1B[0m will ",
+                        "be passed to \x1B[3momni up\x1B[0m (e.g. ",
+                        "\x1B[3momni tidy --up-all -- --update-repository\x1B[0m)",
                     ),
-                    required: false,
-                },
-                SyntaxOptArg {
-                    name: "--up-all".to_string(),
-                    desc: Some(
-                        concat!(
-                            "Run \x1B[3momni up\x1B[0m in all the repositories ",
-                            "with an omni configuration; any argument passed to the ",
-                            "\x1B[3mtidy\x1B[0m command after \x1B[3m--\x1B[0m will ",
-                            "be passed to \x1B[3momni up\x1B[0m (e.g. ",
-                            "\x1B[3momni tidy --up-all -- --update-repository\x1B[0m)",
-                        )
-                        .to_string(),
-                    ),
-                    required: false,
-                },
+                ),
             ],
         })
     }

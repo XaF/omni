@@ -232,16 +232,10 @@ impl Command {
 
         if let Some(syntax) = self.syntax() {
             if let Some(syntax_usage) = syntax.usage {
-                usage += &format!(" {}", syntax_usage);
+                usage += &format!(" {}", syntax_usage.cyan());
             } else if !syntax.parameters.is_empty() {
                 for param in syntax.parameters {
-                    let param_usage = if param.required {
-                        format!(" <{}>", param.name)
-                    } else {
-                        format!(" [{}]", param.name)
-                    }
-                    .cyan();
-                    usage += &param_usage;
+                    usage += &format!(" {}", param.usage().cyan());
                 }
             }
         }

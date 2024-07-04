@@ -134,6 +134,7 @@ async fn async_get_output(
                 match stdout_line {
                     Ok(Some(line)) => {
                         stdout_vec.extend_from_slice(line.as_bytes());
+                        stdout_vec.push(b'\n');
                     }
                     Ok(None) => break,  // End of stdout stream
                     Err(err) => {
@@ -146,6 +147,7 @@ async fn async_get_output(
                 match stderr_line {
                     Ok(Some(line)) => {
                         stderr_vec.extend_from_slice(line.as_bytes());
+                        stderr_vec.push(b'\n');
                     }
                     Ok(None) => break,  // End of stderr stream
                     Err(err) => {

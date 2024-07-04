@@ -1,0 +1,12 @@
+usage: foo [-h]
+
+options:
+  -h, --help  show this help message and exit
+
+This epilog
+spans multiple lines.
+
+  this line is indented.
+    and also this.
+
+Now this should be a separate paragraph.

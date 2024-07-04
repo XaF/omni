@@ -3,6 +3,7 @@ use std::collections::HashMap;
 use serde::Deserialize;
 use serde::Serialize;
 
+use crate::internal::cache::utils as cache_utils;
 use crate::internal::config::ConfigScope;
 use crate::internal::config::ConfigSource;
 use crate::internal::config::ConfigValue;
@@ -93,7 +94,7 @@ impl CommandDefinition {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
 pub struct CommandSyntax {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub usage: Option<String>,
@@ -173,21 +174,151 @@ impl CommandSyntax {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Default)]
 pub struct SyntaxOptArg {
     pub name: String,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub alt_names: Vec<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub placeholder: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub desc: Option<String>,
+    #[serde(skip_serializing_if = "cache_utils::is_false")]
     pub required: bool,
 }
 
 impl SyntaxOptArg {
+    /// Split a string over a separator, but ignore the separator if it is inside brackets
+    /// (i.e. '{' and '}', or '[' and ']', or '(' and ')')
+    fn bg_smart_split(s: &str, sep: char, max_splits: Option<usize>) -> Vec<&str> {
+        let mut parts = vec![];
+        let mut brackets = vec![];
+        let mut start = 0;
+
+        for (i, c) in s.char_indices() {
+            if c == '{' || c == '[' || c == '(' {
+                brackets.push(c);
+            } else if c == '}' || c == ']' || c == ')' {
+                if let Some(last_bracket) = brackets.last() {
+                    if (c == '}' && *last_bracket == '{')
+                        || (c == ']' && *last_bracket == '[')
+                        || (c == ')' && *last_bracket == '(')
+                    {
+                        brackets.pop();
+                    }
+                }
+            } else if c == sep && brackets.is_empty() {
+                parts.push(&s[start..i]);
+                start = i + 1;
+
+                if let Some(max_splits) = max_splits {
+                    if parts.len() + 1 == max_splits {
+                        break;
+                    }
+                }
+            }
+        }
+
+        parts.push(&s[start..]);
+        parts
+    }
+
+    fn smart_split(s: &str, sep: char) -> Vec<String> {
+        Self::bg_smart_split(s, sep, None)
+            .iter()
+            .map(|part| part.to_string())
+            .collect()
+    }
+
+    fn smart_splitn(s: &str, n: usize, sep: char) -> Vec<String> {
+        Self::bg_smart_split(s, sep, Some(n))
+            .iter()
+            .map(|part| part.to_string())
+            .collect()
+    }
+
     pub fn new(name: String, desc: Option<String>, required: bool) -> Self {
+        let mut alt_names = vec![];
+        let mut placeholder = None;
+
+        // Split the name over commas
+        let split_names = Self::smart_split(&name, ',');
+        for split_name in split_names {
+            // Remove leading and trailing whitespaces
+            let split_name = split_name.trim();
+
+            // Split over space
+            let mut parts = Self::smart_splitn(&split_name, 2, ' ').into_iter();
+
+            // Get the first part, which is the name, and add it to the alt_names
+            let cur_name = parts.next().unwrap();
+            alt_names.push(cur_name.to_string());
+
+            // If there is a second part, it is the placeholder, so if the
+            // placeholder is not already set, set it
+            if placeholder.is_none() {
+                if let Some(placeholder_str) = parts.next() {
+                    placeholder = Some(placeholder_str.to_string());
+                }
+            }
+        }
+
+        // Pop the first element of alt_names and set it as the name
+        let name = if !alt_names.is_empty() {
+            alt_names.remove(0)
+        } else {
+            name
+        };
+
         Self {
             name,
+            alt_names,
+            placeholder,
             desc,
             required,
         }
+    }
+
+    pub fn new_option_with_desc(name: &str, desc: &str) -> Self {
+        Self::new(name.to_string(), Some(desc.to_string()), false)
+    }
+
+    pub fn new_required_with_desc(name: &str, desc: &str) -> Self {
+        Self::new(name.to_string(), Some(desc.to_string()), true)
+    }
+
+    pub fn usage(&self) -> String {
+        let mut usage = self.name.clone();
+        if let Some(placeholder) = &self.placeholder {
+            usage.push(' ');
+            usage.push_str(placeholder);
+        }
+
+        if !self.required {
+            usage = format!("[{}]", usage);
+        } else if self.is_positional() {
+            usage = format!("<{}>", usage);
+        }
+
+        usage
+    }
+
+    pub fn long_usage(&self) -> String {
+        let mut all_names = vec![self.name.clone()];
+        all_names.extend(self.alt_names.clone());
+
+        if let Some(placeholder) = &self.placeholder {
+            all_names = all_names
+                .iter()
+                .map(|name| format!("{} {}", name, placeholder))
+                .collect();
+        }
+
+        all_names.join(", ")
+    }
+
+    pub fn is_positional(&self) -> bool {
+        !self.name.starts_with('-')
     }
 
     pub(super) fn from_config_value(
@@ -233,10 +364,190 @@ impl SyntaxOptArg {
             name = config_value.as_str().unwrap();
         }
 
-        Some(Self {
-            name,
-            desc,
-            required: required.unwrap_or(false),
-        })
+        Some(Self::new(name, desc, required.unwrap_or(false)))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_syntaxoptarg_simple_option_with_desc() {
+        let actual = SyntaxOptArg::new_option_with_desc("name", "desc");
+        let expected = SyntaxOptArg {
+            name: "name".to_string(),
+            alt_names: vec![],
+            placeholder: None,
+            desc: Some("desc".to_string()),
+            required: false,
+        };
+
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn test_syntaxoptarg_simple_required_with_desc() {
+        let actual = SyntaxOptArg::new_required_with_desc("name", "desc");
+        let expected = SyntaxOptArg {
+            name: "name".to_string(),
+            alt_names: vec![],
+            placeholder: None,
+            desc: Some("desc".to_string()),
+            required: true,
+        };
+
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn test_syntaxoptarg_complex_option_with_desc() {
+        let actual = SyntaxOptArg::new_option_with_desc("{opt1, opt2}", "desc");
+        let expected = SyntaxOptArg {
+            name: "{opt1, opt2}".to_string(),
+            alt_names: vec![],
+            placeholder: None,
+            desc: Some("desc".to_string()),
+            required: false,
+        };
+
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn test_syntaxoptarg_option_with_simple_placeholder() {
+        let actual = SyntaxOptArg::new_option_with_desc("--opt OPT", "desc");
+        let expected = SyntaxOptArg {
+            name: "--opt".to_string(),
+            alt_names: vec![],
+            placeholder: Some("OPT".to_string()),
+            desc: Some("desc".to_string()),
+            required: false,
+        };
+
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn test_syntaxoptarg_option_with_complex_placeholder() {
+        let actual = SyntaxOptArg::new_option_with_desc("--opt {val1, val2}", "desc");
+        let expected = SyntaxOptArg {
+            name: "--opt".to_string(),
+            alt_names: vec![],
+            placeholder: Some("{val1, val2}".to_string()),
+            desc: Some("desc".to_string()),
+            required: false,
+        };
+
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn test_syntaxoptarg_option_with_alt_name() {
+        let actual = SyntaxOptArg::new_option_with_desc("--opt1, --opt2", "desc");
+        let expected = SyntaxOptArg {
+            name: "--opt1".to_string(),
+            alt_names: vec!["--opt2".to_string()],
+            placeholder: None,
+            desc: Some("desc".to_string()),
+            required: false,
+        };
+
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn test_syntaxoptarg_option_with_alt_names() {
+        let actual = SyntaxOptArg::new_option_with_desc("--opt1, --opt2,-o", "desc");
+        let expected = SyntaxOptArg {
+            name: "--opt1".to_string(),
+            alt_names: vec!["--opt2".to_string(), "-o".to_string()],
+            placeholder: None,
+            desc: Some("desc".to_string()),
+            required: false,
+        };
+
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn test_syntaxoptarg_option_with_alt_names_and_same_placeholders() {
+        let actual = SyntaxOptArg::new_option_with_desc("--opt1 OPT, --opt2 OPT,-o OPT", "desc");
+        let expected = SyntaxOptArg {
+            name: "--opt1".to_string(),
+            alt_names: vec!["--opt2".to_string(), "-o".to_string()],
+            placeholder: Some("OPT".to_string()),
+            desc: Some("desc".to_string()),
+            required: false,
+        };
+
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn test_syntaxoptarg_option_with_alt_names_and_one_placeholders() {
+        let actual = SyntaxOptArg::new_option_with_desc("--opt1, --opt2,-o OPT", "desc");
+        let expected = SyntaxOptArg {
+            name: "--opt1".to_string(),
+            alt_names: vec!["--opt2".to_string(), "-o".to_string()],
+            placeholder: Some("OPT".to_string()),
+            desc: Some("desc".to_string()),
+            required: false,
+        };
+
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn test_syntaxoptarg_option_with_alt_names_and_different_placeholders() {
+        let actual = SyntaxOptArg::new_option_with_desc("--opt1 OPT1, --opt2 OPT2,-o OPT3", "desc");
+        let expected = SyntaxOptArg {
+            name: "--opt1".to_string(),
+            alt_names: vec!["--opt2".to_string(), "-o".to_string()],
+            placeholder: Some("OPT1".to_string()),
+            desc: Some("desc".to_string()),
+            required: false,
+        };
+
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn test_syntaxoptarg_option_usage() {
+        let opt = SyntaxOptArg {
+            name: "--opt".to_string(),
+            alt_names: vec!["--opt2".to_string(), "-o".to_string()],
+            placeholder: Some("OPT".to_string()),
+            desc: Some("desc".to_string()),
+            required: false,
+        };
+
+        assert_eq!(opt.usage(), "[--opt OPT]");
+    }
+
+    #[test]
+    fn test_syntaxoptarg_required_usage() {
+        let opt = SyntaxOptArg {
+            name: "--opt".to_string(),
+            alt_names: vec!["--opt2".to_string(), "-o".to_string()],
+            placeholder: Some("OPT".to_string()),
+            desc: Some("desc".to_string()),
+            required: true,
+        };
+
+        assert_eq!(opt.usage(), "--opt OPT");
+    }
+
+    #[test]
+    fn test_syntaxoptarg_positional_usage() {
+        let opt = SyntaxOptArg {
+            name: "opt".to_string(),
+            alt_names: vec![],
+            placeholder: None,
+            desc: Some("desc".to_string()),
+            required: true,
+        };
+
+        assert_eq!(opt.usage(), "<opt>");
     }
 }

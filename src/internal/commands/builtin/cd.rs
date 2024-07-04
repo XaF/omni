@@ -240,44 +240,30 @@ impl BuiltinCommand for CdCommand {
         Some(CommandSyntax {
             usage: None,
             parameters: vec![
-                SyntaxOptArg {
-                    name: "--locate".to_string(),
-                    desc: Some(
-                        concat!(
-                            "If provided, will only return the path to the repository instead of switching ",
-                            "directory to it. When this flag is passed, interactions are also disabled, ",
-                            "as it is assumed to be used for command line purposes. ",
-                            "This will exit with 0 if the repository is found, 1 otherwise.",
-                        )
-                        .to_string()
+                SyntaxOptArg::new_option_with_desc(
+                    "--locate",
+                    concat!(
+                        "If provided, will only return the path to the repository instead of switching ",
+                        "directory to it. When this flag is passed, interactions are also disabled, ",
+                        "as it is assumed to be used for command line purposes. ",
+                        "This will exit with 0 if the repository is found, 1 otherwise.",
                     ),
-                    required: false,
-                },
-                SyntaxOptArg {
-                    name: "--[no-]include-packages".to_string(),
-                    desc: Some(
-                        concat!(
-                            "If provided, will include (or not include) packages when running the command; ",
-                            "this defaults to including packages when using \x1B[3m--locate\x1B[0m, ",
-                            "and not including packages otherwise.",
-                        )
-                        .to_string()
+                ),
+                SyntaxOptArg::new_option_with_desc(
+                    "--[no-]include-packages",
+                    concat!(
+                        "If provided, will include (or not include) packages when running the command; ",
+                        "this defaults to including packages when using \x1B[3m--locate\x1B[0m, ",
+                        "and not including packages otherwise.",
                     ),
-                    required: false,
-                },
-                SyntaxOptArg {
-                    name: "repo".to_string(),
-                    desc: Some(
-                        concat!(
-                            "The name of the repo to change directory to; this can be in the format <org>/<repo>, ",
-                            "or just <repo>, in which case the repo will be searched for in all the organizations, ",
-                            "trying to use \x1B[3mOMNI_ORG\x1B[0m if it is set, and then trying all the other ",
-                            "organizations alphabetically.",
-                        )
-                        .to_string()
+                ),
+                SyntaxOptArg::new_option_with_desc(
+                    "repo",
+                    concat!(
+                        "The name of the repo to change directory to; this can be in the format <org>/<repo>, ",
+                        "or just <repo>, in which case the repo will be searched for in all the organizations.",
                     ),
-                    required: false,
-                },
+                ),
             ],
         })
     }

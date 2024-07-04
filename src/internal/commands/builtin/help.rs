@@ -158,19 +158,19 @@ impl HelpCommand {
 
         if let Some(syntax) = command.syntax() {
             if !syntax.parameters.is_empty() {
-                // Make a single vector with contents from both syntax.arguments and syntax.options
                 let longest = syntax
                     .parameters
                     .iter()
-                    .map(|arg| arg.name.len())
+                    .map(|arg| arg.long_usage().len())
                     .max()
                     .unwrap_or(0);
                 let ljust = std::cmp::max(longest + 2, 15);
                 let join_str = format!("\n  {}", " ".repeat(ljust));
 
                 for arg in syntax.parameters.iter() {
-                    let missing_just = ljust - arg.name.len();
-                    let str_name = format!("  {}{}", arg.name.cyan(), " ".repeat(missing_just));
+                    let long_usage = arg.long_usage();
+                    let missing_just = ljust - long_usage.len();
+                    let str_name = format!("  {}{}", long_usage.cyan(), " ".repeat(missing_just));
                     let help = if let Some(desc) = &arg.desc {
                         wrap_text(&strip_colors_if_needed(desc), max_width - ljust)
                             .join(join_str.as_str())
@@ -379,16 +379,8 @@ impl BuiltinCommand for HelpCommand {
         Some(CommandSyntax {
             usage: None,
             parameters: vec![
-                SyntaxOptArg {
-                    name: "--unfold".to_string(),
-                    desc: Some("Show all subcommands".to_string()),
-                    required: false,
-                },
-                SyntaxOptArg {
-                    name: "command".to_string(),
-                    desc: Some("The command to get help for".to_string()),
-                    required: false,
-                },
+                SyntaxOptArg::new_option_with_desc("unfold", "Show all subcommands"),
+                SyntaxOptArg::new_option_with_desc("command", "The command for which to show help"),
             ],
         })
     }

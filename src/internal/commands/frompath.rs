@@ -13,6 +13,8 @@ use serde::Deserialize;
 use serde::Serialize;
 use walkdir::WalkDir;
 
+use crate::internal::commands::help_parser::ParsedCommandHelp;
+use crate::internal::commands::help_parser::PathCommandHelpParser;
 use crate::internal::commands::path::omnipath;
 use crate::internal::config;
 use crate::internal::config::config_loader;
@@ -218,12 +220,37 @@ impl PathCommand {
     }
 
     pub fn help(&self) -> Option<String> {
-        self.file_details().and_then(|details| details.help.clone())
+        let details = match self.file_details() {
+            Some(details) => details,
+            None => return None,
+        };
+
+        if details.help.is_some() {
+            return details.help.clone();
+        }
+
+        if let Some(parsed_help) = &details.parsed_help(&self.source) {
+            return parsed_help.desc.clone();
+        }
+
+        None
     }
 
     pub fn syntax(&self) -> Option<CommandSyntax> {
-        self.file_details()
-            .and_then(|details| details.syntax.clone())
+        let details = match self.file_details() {
+            Some(details) => details,
+            None => return None,
+        };
+
+        if details.syntax.is_some() {
+            return details.syntax.clone();
+        }
+
+        if let Some(parsed_help) = &details.parsed_help(&self.source) {
+            return parsed_help.syntax.clone();
+        }
+
+        None
     }
 
     pub fn category(&self) -> Option<Vec<String>> {
@@ -286,6 +313,10 @@ pub struct PathCommandFileDetails {
     autocompletion: bool,
     #[serde(default, deserialize_with = "deserialize_syntax")]
     syntax: Option<CommandSyntax>,
+    #[serde(default)]
+    help_parser: Option<PathCommandHelpParser>,
+    #[serde(skip)]
+    parsed_help: OnceCell<Option<ParsedCommandHelp>>,
 }
 
 fn deserialize_category<'de, D>(deserializer: D) -> Result<Option<Vec<String>>, D::Error>
@@ -387,6 +418,7 @@ impl PathCommandFileDetails {
     pub fn from_source_file(path: &str) -> Option<Self> {
         let mut autocompletion = false;
         let mut category = None;
+        let mut help_parser = None;
         let mut help_lines = Vec::new();
 
         let mut parameters: Vec<SyntaxOptArg> = vec![];
@@ -427,6 +459,13 @@ impl PathCommandFileDetails {
                     .trim()
                     .to_lowercase();
                 autocompletion = completion == "true";
+            } else if line.starts_with("# help_parser:") {
+                let help_parser_str = line
+                    .strip_prefix("# help_parser:")
+                    .unwrap()
+                    .trim()
+                    .to_lowercase();
+                help_parser = PathCommandHelpParser::from_str(&help_parser_str);
             } else if line.starts_with("# help:") {
                 reading_help = true;
                 let help_line =
@@ -487,7 +526,18 @@ impl PathCommandFileDetails {
             help: Some(help_lines.join("\n")),
             autocompletion,
             syntax,
+            help_parser,
+            parsed_help: OnceCell::new(),
         })
+    }
+
+    fn parsed_help(&self, source: &str) -> Option<&ParsedCommandHelp> {
+        self.parsed_help
+            .get_or_init(|| match &self.help_parser {
+                Some(parser) => parser.call_and_parse(source),
+                None => None,
+            })
+            .as_ref()
     }
 }
 

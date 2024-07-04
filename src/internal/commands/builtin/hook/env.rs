@@ -136,28 +136,20 @@ impl BuiltinCommand for HookEnvCommand {
         Some(CommandSyntax {
             usage: None,
             parameters: vec![
-                SyntaxOptArg {
-                    name: "--quiet".to_string(),
-                    desc: Some(
-                        concat!(
-                            "Suppress the output of the hook showing information about the ",
-                            "dynamic environment update."
-                        )
-                        .to_string(),
+                SyntaxOptArg::new_option_with_desc(
+                    "--quiet",
+                    concat!(
+                        "Suppress the output of the hook showing information about the ",
+                        "dynamic environment update."
                     ),
-                    required: false,
-                },
-                SyntaxOptArg {
-                    name: "--keep-shims".to_string(),
-                    desc: Some(
-                        concat!(
-                            "Keep the shims directory in the PATH. This is useful for instance ",
-                            "if you are used to launch your IDE from the terminal."
-                        )
-                        .to_string(),
+                ),
+                SyntaxOptArg::new_option_with_desc(
+                    "--keep-shims",
+                    concat!(
+                        "Keep the shims directory in the PATH. This is useful for instance ",
+                        "if you are used to launch your IDE from the terminal."
                     ),
-                    required: false,
-                },
+                ),
             ],
         })
     }

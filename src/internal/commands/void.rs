@@ -49,16 +49,11 @@ impl VoidCommand {
         Some(CommandSyntax {
             usage: None,
             parameters: vec![
-                SyntaxOptArg {
-                    name: "subcommand".to_string(),
-                    desc: Some("Subcommand to be called".to_string()),
-                    required: true,
-                },
-                SyntaxOptArg {
-                    name: "options...".to_string(),
-                    desc: Some("Options to pass to the subcommand".to_string()),
-                    required: false,
-                },
+                SyntaxOptArg::new_required_with_desc("subcommand", "Subcommand to be called"),
+                SyntaxOptArg::new_option_with_desc(
+                    "options...",
+                    "Options to pass to the subcommand",
+                ),
             ],
         })
     }

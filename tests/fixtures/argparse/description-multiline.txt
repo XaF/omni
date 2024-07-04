@@ -1,0 +1,18 @@
+usage: foo [-h] [--dummy DUMMY]
+
+This description
+spans multiple lines.
+
+  this line is indented.
+    and also this.
+
+Now this should be a separate paragraph.
+
+options:
+  -h, --help     show this help message and exit
+
+  This group description
+  
+  spans multiple lines.
+
+  --dummy DUMMY

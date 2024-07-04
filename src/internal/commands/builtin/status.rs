@@ -353,51 +353,24 @@ impl BuiltinCommand for StatusCommand {
         Some(CommandSyntax {
             usage: None,
             parameters: vec![
-                SyntaxOptArg {
-                    name: "--shell-integration".to_string(),
-                    desc: Some("Show if the shell integration is loaded or not.".to_string()),
-                    required: false,
-                },
-                SyntaxOptArg {
-                    name: "--config".to_string(),
-                    desc: Some(
-                        "Show the configuration that omni is using for the current directory. This is not shown by default."
-                            .to_string(),
+                SyntaxOptArg::new_option_with_desc(
+                    "--shell-integration",
+                    "Show if the shell integration is loaded or not.",
+                ),
+                SyntaxOptArg::new_option_with_desc(
+                    "--config",
+                    concat!(
+                        "Show the configuration that omni is using for the current directory. ",
+                        "This is not shown by default.",
                     ),
-                    required: false,
-                },
-                SyntaxOptArg {
-                    name: "--config-files".to_string(),
-                    desc: Some(
-                        "Show the configuration files that omni is loading for the current directory."
-                            .to_string(),
-                    ),
-                    required: false,
-                },
-                SyntaxOptArg {
-                    name: "--worktree".to_string(),
-                    desc: Some(
-                        "Show the default worktree."
-                            .to_string(),
-                    ),
-                    required: false,
-                },
-                SyntaxOptArg {
-                    name: "--orgs".to_string(),
-                    desc: Some(
-                        "Show the organizations."
-                            .to_string(),
-                    ),
-                    required: false,
-                },
-                SyntaxOptArg {
-                    name: "--path".to_string(),
-                    desc: Some(
-                        "Show the current omnipath."
-                            .to_string(),
-                    ),
-                    required: false,
-                },
+                ),
+                SyntaxOptArg::new_option_with_desc(
+                    "--config-files",
+                    "Show the configuration files that omni is loading for the current directory.",
+                ),
+                SyntaxOptArg::new_option_with_desc("--worktree", "Show the default worktree."),
+                SyntaxOptArg::new_option_with_desc("--orgs", "Show the organizations."),
+                SyntaxOptArg::new_option_with_desc("--path", "Show the current omnipath."),
             ],
         })
     }

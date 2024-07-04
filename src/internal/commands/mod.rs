@@ -14,6 +14,8 @@ mod frommakefile;
 
 mod frompath;
 
+mod help_parser;
+
 pub(crate) mod loader;
 pub(crate) use loader::command_loader;
 

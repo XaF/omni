@@ -36,16 +36,11 @@ impl BuiltinCommand for HookCommand {
         Some(CommandSyntax {
             usage: None,
             parameters: vec![
-                SyntaxOptArg {
-                    name: "hook".to_string(),
-                    desc: Some("Which hook to call".to_string()),
-                    required: true,
-                },
-                SyntaxOptArg {
-                    name: "options...".to_string(),
-                    desc: Some("Any options to pass to the hook.".to_string()),
-                    required: false,
-                },
+                SyntaxOptArg::new_required_with_desc("hook", "Which hook to call"),
+                SyntaxOptArg::new_option_with_desc(
+                    "options...",
+                    "Any options to pass to the hook.",
+                ),
             ],
         })
     }

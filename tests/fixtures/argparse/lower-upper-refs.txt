@@ -1,0 +1,6 @@
+usage: basic [-h] [-d D] [-D D]
+
+options:
+  -h, --help  show this help message and exit
+  -d D
+  -D D

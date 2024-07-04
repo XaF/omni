@@ -1,0 +1,7 @@
+usage: positional-arg [-h] x
+
+positional arguments:
+  x           arg
+
+options:
+  -h, --help  show this help message and exit

@@ -1,0 +1,10 @@
+usage: positional-argument [-h] [--meerkat] meerkat
+
+argparse tester
+
+positional arguments:
+  meerkat     meerkat argument
+
+options:
+  -h, --help  show this help message and exit
+  --meerkat   meerkat flag

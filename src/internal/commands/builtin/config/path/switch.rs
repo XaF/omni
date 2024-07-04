@@ -173,31 +173,23 @@ impl BuiltinCommand for ConfigPathSwitchCommand {
         Some(CommandSyntax {
             usage: None,
             parameters: vec![
-                SyntaxOptArg {
-                    name: "--<source>".to_string(),
-                    desc: Some(
-                        concat!(
-                            "The source to use for the repository; this can be either ",
-                            "\x1B[1m--package\x1B[0m or \x1B[1m--worktree\x1B[0m, or will ",
-                            "toggle between the two if not specified.\n",
-                        )
-                        .to_string()
+                SyntaxOptArg::new_option_with_desc(
+                    "--<source>",
+                    concat!(
+                        "The source to use for the repository; this can be either ",
+                        "\x1B[1m--package\x1B[0m or \x1B[1m--worktree\x1B[0m, or will ",
+                        "toggle between the two if not specified.\n",
                     ),
-                    required: false,
-                },
-                SyntaxOptArg {
-                    name: "repo".to_string(),
-                    desc: Some(
-                        concat!(
-                            "The name of the repository to switch the source from; this can be in the format ",
-                            "<org>/<repo>, or just <repo>. If the repository is not provided, the current ",
-                            "repository will be used, or the command will fail if not in a repository. If ",
-                            "the repo is not found in the omnipath, the command will fail.\n",
-                        )
-                        .to_string()
+                ),
+                SyntaxOptArg::new_option_with_desc(
+                    "repo",
+                    concat!(
+                        "The name of the repository to switch the source from; this can be in the format ",
+                        "<org>/<repo>, or just <repo>. If the repository is not provided, the current ",
+                        "repository will be used, or the command will fail if not in a repository. If ",
+                        "the repo is not found in the omnipath, the command will fail.\n",
                     ),
-                    required: false,
-                },
+                ),
             ],
         })
     }

@@ -185,26 +185,19 @@ impl BuiltinCommand for ConfigBootstrapCommand {
         Some(CommandSyntax {
             usage: None,
             parameters: vec![
-                SyntaxOptArg {
-                    name: "--worktree".to_string(),
-                    desc: Some("Bootstrap the main worktree location".to_string()),
-                    required: false,
-                },
-                SyntaxOptArg {
-                    name: "--repo-path-format".to_string(),
-                    desc: Some("Bootstrap the repository path format".to_string()),
-                    required: false,
-                },
-                SyntaxOptArg {
-                    name: "--organizations".to_string(),
-                    desc: Some("Bootstrap the organizations".to_string()),
-                    required: false,
-                },
-                SyntaxOptArg {
-                    name: "--shell".to_string(),
-                    desc: Some("Bootstrap the shell integration".to_string()),
-                    required: false,
-                },
+                SyntaxOptArg::new_option_with_desc(
+                    "--worktree",
+                    "Bootstrap the main worktree location",
+                ),
+                SyntaxOptArg::new_option_with_desc(
+                    "--repo-path-format",
+                    "Bootstrap the repository path format",
+                ),
+                SyntaxOptArg::new_option_with_desc(
+                    "--organizations",
+                    "Bootstrap the organizations",
+                ),
+                SyntaxOptArg::new_option_with_desc("--shell", "Bootstrap the shell integration"),
             ],
         })
     }

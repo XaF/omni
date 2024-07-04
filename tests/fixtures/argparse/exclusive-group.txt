@@ -1,0 +1,22 @@
+usage: prog [-h] [--root] [--foo | --bar] root {first,f,second} ...
+
+argparse tester
+
+positional arguments:
+  root
+
+options:
+  -h, --help        show this help message and exit
+  --root            root flag
+
+Exclusive:
+  this is an exclusive group
+
+  --foo             foo
+  --bar             bar
+
+sub-parser-a:
+  sub parsers A
+
+  {first,f,second}
+    first (f)       a-first-help

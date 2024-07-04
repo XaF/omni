@@ -1201,109 +1201,73 @@ impl BuiltinCommand for UpCommand {
         Some(CommandSyntax {
             usage: None,
             parameters: vec![
-                SyntaxOptArg {
-                    name: "--no-cache".to_string(),
-                    desc: Some(
-                        concat!(
-                            "Whether we should disable the cache while running the command ",
-                            "\x1B[90m(default: no)\x1B[0m",
-                        )
-                        .to_string(),
+                SyntaxOptArg::new_option_with_desc(
+                    "--no-cache",
+                    concat!(
+                        "Whether we should disable the cache while running the command ",
+                        "\x1B[90m(default: no)\x1B[0m",
                     ),
-                    required: false,
-                },
-                SyntaxOptArg {
-                    name: "--fail-on-upgrade".to_string(),
-                    desc: Some(
-                        concat!(
-                            "If provided, will fail the operation if a resource failed to ",
-                            "upgrade, even if a currently-existing version can satisfy the dependencies ",
-                            "\x1B[90m(default: no)\x1B[0m",
-                        )
-                        .to_string(),
+                ),
+                SyntaxOptArg::new_option_with_desc(
+                    "--fail-on-upgrade",
+                    concat!(
+                        "If provided, will fail the operation if a resource failed to ",
+                        "upgrade, even if a currently-existing version can satisfy the dependencies ",
+                        "\x1B[90m(default: no)\x1B[0m",
                     ),
-                    required: false,
-                },
-                SyntaxOptArg {
-                    name: "--bootstrap".to_string(),
-                    desc: Some(
-                        concat!(
-                            "Same as using \x1B[1m--update-user-config --clone-suggested\x1B[0m; if ",
-                            "any of the options are directly provided, they will take precedence over ",
-                            "the default values of the options",
-                        )
-                        .to_string(),
+                ),
+                SyntaxOptArg::new_option_with_desc(
+                    "--bootstrap",
+                    concat!(
+                        "Same as using \x1B[1m--update-user-config --clone-suggested\x1B[0m; if ",
+                        "any of the options are directly provided, they will take precedence over ",
+                        "the default values of the options",
                     ),
-                    required: false,
-                },
-                SyntaxOptArg {
-                    name: "--clone-suggested".to_string(),
-                    desc: Some(
-                        concat!(
-                            "Whether we should clone suggested repositories found in the configuration ",
-                            "of the repository if any (yes/ask/no) ",
-                            "\x1B[90m(default: no)\x1B[0m",
-                        )
-                        .to_string(),
+                ),
+                SyntaxOptArg::new_option_with_desc(
+                    "--clone-suggested",
+                    concat!(
+                        "Whether we should clone suggested repositories found in the configuration ",
+                        "of the repository if any (yes/ask/no) ",
+                        "\x1B[90m(default: no)\x1B[0m",
                     ),
-                    required: false,
-                },
-                SyntaxOptArg {
-                    name: "--prompt".to_string(),
-                    desc: Some(
-                        concat!(
-                            "Trigger prompts for the given prompt ids, specified as arguments, as ",
-                            "well as the currently unanswered prompts",
-                        )
-                        .to_string(),
+                ),
+                SyntaxOptArg::new_option_with_desc(
+                    "--prompt",
+                    concat!(
+                        "Trigger prompts for the given prompt ids, specified as arguments, as ",
+                        "well as the currently unanswered prompts",
                     ),
-                    required: false,
-                },
-                SyntaxOptArg {
-                    name: "--prompt-all".to_string(),
-                    desc: Some(
-                        concat!(
-                            "Trigger all prompts for the current work directory, even if they have ",
-                            "already been answered",
-                        )
-                        .to_string(),
+                ),
+                SyntaxOptArg::new_option_with_desc(
+                    "--prompt-all",
+                    concat!(
+                        "Trigger all prompts for the current work directory, even if they have ",
+                        "already been answered",
                     ),
-                    required: false,
-                },
-                SyntaxOptArg {
-                    name: "--trust".to_string(),
-                    desc: Some(
-                        "Define how to trust the repository (always/yes/no) to run the command"
-                            .to_string(),
+                ),
+                SyntaxOptArg::new_option_with_desc(
+                    "--trust",
+                    "Define how to trust the repository (always/yes/no) to run the command",
+                ),
+                SyntaxOptArg::new_option_with_desc(
+                    "--update-repository",
+                    concat!(
+                        "Whether we should update the repository before running the command; ",
+                        "if the repository is already up to date, the rest of the process will ",
+                        "be skipped \x1B[90m(default: no)\x1B[0m",
                     ),
-                    required: false,
-                },
-                SyntaxOptArg {
-                    name: "--update-repository".to_string(),
-                    desc: Some(
-                        concat!(
-                            "Whether we should update the repository before running the command; ",
-                            "if the repository is already up to date, the rest of the process will ",
-                            "be skipped \x1B[90m(default: no)\x1B[0m",
-                        )
-                        .to_string(),
+                ),
+                SyntaxOptArg::new_option_with_desc(
+                    "--update-user-config",
+                    concat!(
+                        "Whether we should handle suggestions found in the configuration of ",
+                        "the repository if any (yes/ask/no); When using \x1B[3mup\x1B[0m, the ",
+                        "\x1B[3msuggest_config\x1B[0m configuration will be copied to the home ",
+                        "directory of the user to be loaded on every omni call ",
+                        "\x1B[90m(default: no)\x1B[0m",
                     ),
-                    required: false,
-                },
-                SyntaxOptArg {
-                    name: "--update-user-config".to_string(),
-                    desc: Some(
-                        concat!(
-                            "Whether we should handle suggestions found in the configuration of ",
-                            "the repository if any (yes/ask/no); When using \x1B[3mup\x1B[0m, the ",
-                            "\x1B[3msuggest_config\x1B[0m configuration will be copied to the home ",
-                            "directory of the user to be loaded on every omni call ",
-                            "\x1B[90m(default: no)\x1B[0m",
-                        )
-                        .to_string(),
-                    ),
-                    required: false,
-                },
+                ),
             ],
         })
     }

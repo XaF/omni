@@ -247,33 +247,22 @@ impl BuiltinCommand for ScopeCommand {
         Some(CommandSyntax {
             usage: None,
             parameters: vec![
-                SyntaxOptArg {
-                    name: "repo".to_string(),
-                    desc: Some(
-                        concat!(
-                            "The name of the repo to run commands in the context of; this ",
-                            "can be in the format <org>/<repo>, or just <repo>, in which case ",
-                            "the repo will be searched for in all the organizations, trying ",
-                            "to use \x1B[3mOMNI_ORG\x1B[0m if it is set, and then trying all ",
-                            "the other organizations alphabetically."
-                        )
-                        .to_string(),
+                SyntaxOptArg::new_required_with_desc(
+                    "repo",
+                    concat!(
+                        "The name of the repo to run commands in the context of; this ",
+                        "can be in the format <org>/<repo>, or just <repo>, in which case ",
+                        "the repo will be searched for in all the organizations."
                     ),
-                    required: true,
-                },
-                SyntaxOptArg {
-                    name: "command".to_string(),
-                    desc: Some(
-                        "The omni command to run in the context of the specified repository."
-                            .to_string(),
-                    ),
-                    required: true,
-                },
-                SyntaxOptArg {
-                    name: "options...".to_string(),
-                    desc: Some("Any options to pass to the omni command.".to_string()),
-                    required: false,
-                },
+                ),
+                SyntaxOptArg::new_required_with_desc(
+                    "command",
+                    "The omni command to run in the context of the specified repository.",
+                ),
+                SyntaxOptArg::new_option_with_desc(
+                    "options...",
+                    "Any options to pass to the omni command.",
+                ),
             ],
         })
     }

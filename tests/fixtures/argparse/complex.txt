@@ -1,0 +1,28 @@
+usage: complex [-h] [--root] [--no-help] [--outdir out_dir] [--in-dir IN_DIR]
+               [--foo | --bar]
+               {first,f,second,third} ...
+
+argparse tester
+
+options:
+  -h, --help            show this help message and exit
+  --root                root flag
+  --no-help
+  --outdir out_dir, -o out_dir
+                        output directory
+  --in-dir IN_DIR, -i IN_DIR
+                        input directory
+
+Exclusive:
+  this is an exclusive group
+
+  --foo                 foo
+  --bar                 bar
+
+sub-parser-a:
+  sub parsers A
+
+  {first,f,second,third}
+    first (f)           a-first-help
+
+test epilog
