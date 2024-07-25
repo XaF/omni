@@ -13,9 +13,11 @@ use serde::Deserialize;
 use serde::Serialize;
 use walkdir::WalkDir;
 
+use crate::internal::commands::base::BuiltinCommand;
 use crate::internal::commands::help_parser::ParsedCommandHelp;
 use crate::internal::commands::help_parser::PathCommandHelpParser;
 use crate::internal::commands::path::omnipath;
+use crate::internal::commands::HelpCommand;
 use crate::internal::config;
 use crate::internal::config::config_loader;
 use crate::internal::config::utils::is_executable;
@@ -260,12 +262,23 @@ impl PathCommand {
 
     pub fn exec(&self, argv: Vec<String>, called_as: Option<Vec<String>>) {
         // Get the source of the command as called
-        let source = called_as.map_or(self.source.clone(), |called_as| {
+        let source = called_as.clone().map_or(self.source.clone(), |called_as| {
             self.aliases
                 .get(&called_as)
                 .cloned()
                 .unwrap_or(self.source.clone())
         });
+
+        // If the help_parser is set and the argv contains `--help` or `-h`
+        // we will instead send the command to the help command
+        if argv.iter().any(|arg| arg == "--help" || arg == "-h") {
+            if let Some(details) = self.file_details() {
+                if details.help_parser.is_some() {
+                    HelpCommand::new().exec(called_as.unwrap_or(self.name.clone()));
+                    unreachable!("Help command should have exited");
+                }
+            }
+        }
 
         // Execute the command
         let mut command = ProcessCommand::new(source);
