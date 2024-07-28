@@ -305,7 +305,7 @@ impl HelpCommand {
                 .collect::<Vec<(String, usize)>>();
 
             // Prepare the help contents
-            let help_vec = wrap_text(&strip_colors_if_needed(&command.help_short()), help_just);
+            let help_vec = wrap_text(&strip_colors_if_needed(command.help_short()), help_just);
 
             // Prepare the help message to print for this command
             let empty_str = "".to_string();

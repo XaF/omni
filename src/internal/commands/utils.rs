@@ -145,7 +145,7 @@ pub fn file_auto_complete(p: String) -> Completions<String> {
                 }
 
                 if used_tilde {
-                    if let Ok(suffix) = path.strip_prefix(&user_home()) {
+                    if let Ok(suffix) = path.strip_prefix(user_home()) {
                         path = PathBuf::from("~").join(suffix);
                     }
                 }
