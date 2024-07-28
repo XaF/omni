@@ -204,12 +204,12 @@ pub struct UpConfigAsdfBase {
     /// The functions will be called with the following parameters:
     /// - tool: the name of the tool
     /// - path: the path currently being searched
-    /// The functions should return the version of the tool if found, or None
-    /// if not found.
-    /// The functions will be called in order, and the first one to return a
-    /// version will be used.
-    /// If no function returns a version, the version will be considered not
-    /// found.
+    ///   The functions should return the version of the tool if found, or None
+    ///   if not found.
+    ///   The functions will be called in order, and the first one to return a
+    ///   version will be used.
+    ///   If no function returns a version, the version will be considered not
+    ///   found.
     #[serde(skip)]
     detect_version_funcs: Vec<DetectVersionFunc>,
 

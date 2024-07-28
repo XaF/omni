@@ -635,7 +635,7 @@ impl OrgLoader {
 
         // Check if any matching value is a perfect match
         for found in all_repos.iter() {
-            let git = git_env(&found.abspath.to_string_lossy());
+            let git = git_env(found.abspath.to_string_lossy());
 
             let origin = match git.origin() {
                 Some(origin) => origin,
