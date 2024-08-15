@@ -41,7 +41,7 @@ globset = "0.4.14"
 humantime = "2.1.0"
 imara-diff = "0.1.6"
 indicatif = "0.17.8"
-is-terminal = "0.4.12"
+is-terminal = "0.4.13"
 itertools = "0.13.0"
 lazy_static = "1.4.0"
 libz-sys = { version = "1.1.19", features = ["static"] }
