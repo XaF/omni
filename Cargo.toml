@@ -28,7 +28,7 @@ temp-env = "0.3.6"
 [dependencies]
 blake3 = "1.5.3"
 cfg-if = "1.0.0"
-clap = "4.5.14"
+clap = "4.5.16"
 ctrlc = { version = "3.4.5", features = ["termination"] }
 duct = "0.13.6"
 flate2 = "1.0.30"
