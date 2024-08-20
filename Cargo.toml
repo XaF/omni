@@ -26,7 +26,7 @@ mockito = "1.5.0"
 temp-env = "0.3.6"
 
 [dependencies]
-blake3 = "1.5.3"
+blake3 = "1.5.4"
 cfg-if = "1.0.0"
 clap = "4.5.16"
 ctrlc = { version = "3.4.5", features = ["termination"] }
