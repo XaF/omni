@@ -81,4 +81,4 @@ url = "2.5.2"
 uuid = { version = "1.10.0", features = ["v4", "fast-rng"] }
 walkdir = "2.4.0"
 which = "6.0.2"
-zip-extract = "0.2.0"
+zip-extract = "0.2.1"
