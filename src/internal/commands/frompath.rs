@@ -20,6 +20,7 @@ use crate::internal::commands::path::omnipath;
 use crate::internal::commands::HelpCommand;
 use crate::internal::config;
 use crate::internal::config::config_loader;
+use crate::internal::config::global_config;
 use crate::internal::config::utils::is_executable;
 use crate::internal::config::CommandSyntax;
 use crate::internal::config::ConfigExtendOptions;
@@ -27,6 +28,7 @@ use crate::internal::config::OmniConfig;
 use crate::internal::config::SyntaxOptArg;
 use crate::internal::git::package_path_from_handle;
 use crate::internal::workdir;
+use crate::internal::workdir::is_trusted;
 
 #[derive(Debug, Clone)]
 pub struct PathCommand {
@@ -433,6 +435,7 @@ impl PathCommandFileDetails {
         let mut category = None;
         let mut help_parser = None;
         let mut help_lines = Vec::new();
+        let parsed_help = OnceCell::new();
 
         let mut parameters: Vec<SyntaxOptArg> = vec![];
 
@@ -533,14 +536,34 @@ impl PathCommandFileDetails {
             syntax.as_mut().unwrap().parameters = parameters;
         }
 
-        // // Return the file details
+        if help_parser.is_some() {
+            // Check if the help parser is enabled in the configuration
+            let enable_parser = if global_config().path_commands.help_parser {
+                // If the directory is not trusted, init the parsed help to None
+                // so that we don't run an untrusted command to show the help
+                match std::fs::canonicalize(path) {
+                    Ok(path) => is_trusted(&path.to_string_lossy().to_string()),
+                    Err(_) => false,
+                }
+            } else {
+                false
+            };
+
+            if !enable_parser {
+                if parsed_help.set(None).is_err() {
+                    unreachable!("Parsed help should not be set");
+                }
+            }
+        }
+
+        // Return the file details
         Some(PathCommandFileDetails {
             category,
             help: Some(help_lines.join("\n")),
             autocompletion,
             syntax,
             help_parser,
-            parsed_help: OnceCell::new(),
+            parsed_help,
         })
     }
 

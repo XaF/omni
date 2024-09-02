@@ -14,6 +14,7 @@ use crate::internal::config::parser::ConfigCommandsConfig;
 use crate::internal::config::parser::EnvConfig;
 use crate::internal::config::parser::MakefileCommandsConfig;
 use crate::internal::config::parser::MatchSkipPromptIfConfig;
+use crate::internal::config::parser::PathCommandsConfig;
 use crate::internal::config::parser::PathConfig;
 use crate::internal::config::parser::PathRepoUpdatesConfig;
 use crate::internal::config::parser::PromptsConfig;
@@ -65,6 +66,7 @@ pub struct OmniConfig {
     pub org: Vec<OrgConfig>,
     pub path: PathConfig,
     pub path_repo_updates: PathRepoUpdatesConfig,
+    pub path_commands: PathCommandsConfig,
     #[serde(skip_serializing_if = "PromptsConfig::is_empty")]
     pub prompts: PromptsConfig,
     #[serde(skip_serializing_if = "String::is_empty")]
@@ -135,6 +137,7 @@ impl OmniConfig {
             path_repo_updates: PathRepoUpdatesConfig::from_config_value(
                 config_value.get("path_repo_updates"),
             ),
+            path_commands: PathCommandsConfig::from_config_value(config_value.get("path_commands")),
             prompts: PromptsConfig::from_config_value(config_value.get("prompts")),
             repo_path_format: config_value
                 .get_as_str("repo_path_format")

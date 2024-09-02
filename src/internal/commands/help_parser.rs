@@ -31,6 +31,7 @@ impl PathCommandHelpParser {
     pub fn call_and_parse(&self, source: &str) -> Option<ParsedCommandHelp> {
         let mut help_cmd = TokioCommand::new(source);
         help_cmd.arg("--help");
+        help_cmd.env("OMNI_HELP_PARSER", "1");
         help_cmd.stdout(std::process::Stdio::piped());
         help_cmd.stderr(std::process::Stdio::piped());
 
@@ -39,26 +40,8 @@ impl PathCommandHelpParser {
         update_dynamic_env_for_command(".");
 
         match output {
-            Err(err) => {
-                // TODO: remove DEBUG
-                eprintln!(
-                    "Failed to get help for command: {}, error: {:?}",
-                    source, err
-                );
-                None
-            }
-            Ok(output) if !output.status.success() => {
-                // TODO: remove DEBUG
-                let msg = format!(
-                    "--help failed: {}",
-                    String::from_utf8(output.stderr)
-                        .unwrap()
-                        .replace('\n', " ")
-                        .trim()
-                );
-                eprintln!("{}", msg);
-                None
-            }
+            Err(err) => None,
+            Ok(output) if !output.status.success() => None,
             Ok(output) => {
                 let output = String::from_utf8(output.stdout).unwrap().to_string();
                 self.parse(&output)

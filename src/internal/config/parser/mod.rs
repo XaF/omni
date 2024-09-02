@@ -47,6 +47,9 @@ pub(crate) use path::PathEntryConfig;
 mod path_repo_updates;
 pub(crate) use path_repo_updates::PathRepoUpdatesConfig;
 
+mod path_commands;
+pub(crate) use path_commands::PathCommandsConfig;
+
 mod prompts;
 pub(crate) use prompts::PromptsConfig;
 
