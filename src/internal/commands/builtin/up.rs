@@ -30,6 +30,7 @@ use crate::internal::config::up::utils::PrintProgressHandler;
 use crate::internal::config::up::utils::ProgressHandler;
 use crate::internal::config::up::utils::RunConfig;
 use crate::internal::config::up::utils::SpinnerProgressHandler;
+use crate::internal::config::up::utils::SyncUpdateOperation;
 use crate::internal::config::up::UpConfig;
 use crate::internal::config::up::UpOptions;
 use crate::internal::config::CommandSyntax;
@@ -1168,6 +1169,30 @@ impl UpCommand {
 
         updated
     }
+
+    fn handle_sync_operation(&self, operation: SyncUpdateOperation, options: &UpOptions) {
+        if let Some(mut sync_file) = options.lock_file {
+            if let Err(err) = operation.dump_to_file(&mut sync_file) {
+                omni_error!(format!("failed to write sync file: {}", err));
+            }
+        }
+
+        match operation {
+            SyncUpdateOperation::Exit(exit_code) => exit(exit_code),
+            SyncUpdateOperation::OmniWarning(message) => {
+                omni_warning!(message);
+            }
+            SyncUpdateOperation::OmniError(message) => {
+                omni_error!(message);
+            }
+            SyncUpdateOperation::OmniInfo(message) => {
+                omni_info!(message);
+            }
+            SyncUpdateOperation::Progress(progress) => {
+                panic!("unexpected progress message: {:?}", progress)
+            }
+        }
+    }
 }
 
 impl BuiltinCommand for UpCommand {
@@ -1454,6 +1479,22 @@ impl BuiltinCommand for UpCommand {
             exit(1);
         }
 
+        // Lock the update process to avoid running it multiple times in parallel
+        let lock_file = match workdir(".").lock_update() {
+            Ok(Some(lock_file)) => lock_file,
+            Ok(None) => {
+                // Nothing to do here, the update was done somewhere else in parallel
+                exit(0);
+            }
+            Err(err) => {
+                omni_error!(format!("{}", err));
+                exit(1);
+            }
+        };
+
+        // Prepare the options for the up command
+        let options = UpOptions::new().lock_file(&lock_file);
+
         // No matter what's happening after, we want a clean cache for that
         // repository, as we're rebuilding the up environment from scratch
         UpConfig::clear_cache();
@@ -1473,34 +1514,63 @@ impl BuiltinCommand for UpCommand {
                     false
                 }
             }) {
-                omni_warning!(format!("failed to update cache: {}", err));
+                self.handle_sync_operation(
+                    SyncUpdateOperation::OmniWarning(format!(
+                        "failed to update environment cache: {}",
+                        err
+                    )),
+                    &options,
+                );
             } else if env_vars.is_some() {
-                omni_info!(format!("Repository environment configured"));
+                self.handle_sync_operation(
+                    SyncUpdateOperation::OmniInfo("Repository environment configured".to_string()),
+                    &options,
+                );
             }
         }
 
         // If it has an up configuration, handle it
         if has_up_config {
             let up_config = up_config.unwrap();
+
             if self.is_up() {
-                let options = UpOptions::new()
+                let options = options
+                    .clone()
                     .cache(self.cli_args().cache_enabled)
                     .fail_on_upgrade(self.cli_args().fail_on_upgrade);
                 if let Err(err) = up_config.up(&options) {
-                    omni_error!(format!("issue while setting repo up: {}", err));
-                    exit(1);
+                    self.handle_sync_operation(
+                        SyncUpdateOperation::OmniError(format!(
+                            "issue while setting repo up: {}",
+                            err
+                        )),
+                        &options,
+                    );
+                    self.handle_sync_operation(SyncUpdateOperation::Exit(1), &options);
                 }
 
                 if let (Some(wd_id), Some(git_commit)) = (wd.id(), git_env(".").commit()) {
                     if let Err(err) = RepositoriesCache::exclusive(|repos| {
                         repos.update_fingerprint(&wd_id, "head_commit", fingerprint(&git_commit))
                     }) {
-                        omni_warning!(format!("failed to update cache: {}", err));
+                        self.handle_sync_operation(
+                            SyncUpdateOperation::OmniWarning(format!(
+                                "failed to update cache: {}",
+                                err
+                            )),
+                            &options,
+                        );
                     }
                 }
-            } else if let Err(err) = up_config.down() {
-                omni_error!(format!("issue while tearing repo down: {}", err));
-                exit(1);
+            } else if let Err(err) = up_config.down(&options) {
+                self.handle_sync_operation(
+                    SyncUpdateOperation::OmniError(format!(
+                        "issue while tearing repo down: {}",
+                        err
+                    )),
+                    &options,
+                );
+                self.handle_sync_operation(SyncUpdateOperation::Exit(1), &options);
             }
         }
 
@@ -1514,18 +1584,24 @@ impl BuiltinCommand for UpCommand {
 
         if let Some(wd_id) = wd.id() {
             if suggest_config_updated || suggest_clone_updated {
-                omni_info!(format!(
-                    "configuration suggestions for {} have an update",
-                    wd_id.light_blue(),
-                ));
-                omni_info!(format!(
-                    "run {} to get the latest suggestions",
-                    "omni up --bootstrap".light_yellow(),
-                ));
+                self.handle_sync_operation(
+                    SyncUpdateOperation::OmniInfo(format!(
+                        "configuration suggestions for {} have an update",
+                        wd_id.light_blue(),
+                    )),
+                    &options,
+                );
+                self.handle_sync_operation(
+                    SyncUpdateOperation::OmniInfo(format!(
+                        "run {} to get the latest suggestions",
+                        "omni up --bootstrap".light_yellow(),
+                    )),
+                    &options,
+                );
             }
         }
 
-        exit(0);
+        self.handle_sync_operation(SyncUpdateOperation::Exit(0), &options);
     }
 
     fn autocompletion(&self) -> bool {

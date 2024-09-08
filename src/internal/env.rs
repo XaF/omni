@@ -8,6 +8,7 @@ use std::process::exit;
 use std::sync::Mutex;
 
 use blake3::Hasher;
+use fs4::FileExt;
 use gethostname::gethostname;
 use git2::Repository;
 use git_url_parse::GitUrl;
@@ -18,8 +19,10 @@ use petname::Generator;
 use petname::Petnames;
 use time::OffsetDateTime;
 
+use crate::internal::config::global_config;
 use crate::internal::config::parser::PathEntryConfig;
 use crate::internal::config::up::utils::force_remove_dir_all;
+use crate::internal::config::up::utils::SyncUpdateListener;
 use crate::internal::config::OrgConfig;
 use crate::internal::dynenv::DynamicEnvExportMode;
 use crate::internal::git::id_from_git_url;
@@ -934,6 +937,71 @@ impl WorkDirEnv {
         let hash_u64 = u64::from_le_bytes(hash_bytes.as_bytes()[..8].try_into().unwrap());
 
         hash_u64
+    }
+
+    pub fn lock_update(self) -> Result<Option<std::fs::File>, std::io::Error> {
+        // Make sure the cache directory for up operations exists
+        let main_cache_dir_path = PathBuf::from(global_config().cache.path.clone());
+        let cache_dir_path = main_cache_dir_path.join("up");
+        if !cache_dir_path.exists() {
+            std::fs::create_dir_all(&cache_dir_path)?;
+        }
+
+        // Try to get the id and root, or raise error
+        let id = self.id().ok_or_else(|| {
+            std::io::Error::new(std::io::ErrorKind::NotFound, "workdir id not found")
+        })?;
+
+        let root = self.root().ok_or_else(|| {
+            std::io::Error::new(std::io::ErrorKind::NotFound, "workdir root not found")
+        })?;
+
+        // Set random bytes as the separator, that couldn't be part of the strings above
+        let separator = [0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00];
+
+        // Use a hashing function to generate a unique identifier for the workdir,
+        // using the workdir id and the workdir path, so that the same workdir in
+        // the same location cannot be updated twice at the same time, but the same
+        // workdir in two different locations can (e.g. a package and a worktree,
+        // or two clones of the same repo...)
+        let mut hasher = blake3::Hasher::new();
+        hasher.update(id.as_bytes());
+        hasher.update(&separator);
+        hasher.update(root.as_bytes());
+        let workdir_unique_id = hasher.finalize().to_hex()[..64].to_string();
+
+        // The cache path is that id, in the up cache directory
+        let cache_path = cache_dir_path.join(workdir_unique_id);
+
+        // Open the cache file in read/write/create mode, so it gets created if it does not exist
+        let mut file = OpenOptions::new()
+            .read(true)
+            .write(true)
+            .create(true)
+            .truncate(false)
+            .open(cache_path)?;
+
+        // Try to acquire an exclusive lock on the file
+        match file.try_lock_exclusive() {
+            Ok(_file_lock) => {
+                eprintln!("lock acquired");
+
+                // Now that we have the lock, truncate the file contents
+                file.set_len(0)?;
+                file.flush()?;
+
+                Ok(Some(file))
+            }
+            Err(_) => {
+                // If we can't acquire the lock, it means that another process is updating the workdir
+                // at the same time, so we will wait on the update to finish while streaming the
+                // file contents, and return None to indicate that the update was already done
+                let mut listener = SyncUpdateListener::new();
+                listener.follow(&file)?;
+
+                Ok(None)
+            }
+        }
     }
 }
 

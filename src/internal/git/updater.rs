@@ -5,7 +5,7 @@ use std::io::Write;
 use std::path::Path;
 use std::path::PathBuf;
 use std::process::exit;
-use std::process::Command;
+use std::process::Command as StdCommand;
 use std::sync::mpsc;
 use std::thread;
 use std::time::Duration;
@@ -17,6 +17,7 @@ use tokio::process::Command as TokioCommand;
 
 use crate::internal::cache::CacheObject;
 use crate::internal::cache::OmniPathCache;
+use crate::internal::commands::base::Command;
 use crate::internal::commands::path::global_omnipath_entries;
 use crate::internal::config::global_config;
 use crate::internal::config::up::utils::get_command_output;
@@ -80,11 +81,15 @@ fn should_update() -> bool {
     require_update
 }
 
-pub fn auto_update_async(current_command_path: Option<PathBuf>) {
+pub fn auto_update_async(called_command: &Command) {
     let mut options = UpdateOptions::default();
-    if let Some(current_command_path) = current_command_path {
-        options.add_sync_path(&current_command_path);
+
+    if called_command.requires_sync_update() && called_command.has_source() {
+        let called_command_path_str = called_command.source();
+        let called_command_path = Path::new(&called_command_path_str);
+        options.add_sync_path(&called_command_path);
     }
+
     update(&options);
 }
 
@@ -264,7 +269,7 @@ pub fn report_update_error() {
 }
 
 pub fn trigger_background_update(skip_paths: HashSet<PathBuf>) -> bool {
-    let mut command = Command::new(current_exe());
+    let mut command = StdCommand::new(current_exe());
     command.arg("--update-and-log-on-error");
     command.stdin(std::process::Stdio::null());
     command.stdout(std::process::Stdio::null());

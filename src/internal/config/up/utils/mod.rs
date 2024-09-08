@@ -28,6 +28,8 @@ pub(crate) mod spinner_progress_handler;
 pub(crate) use spinner_progress_handler::SpinnerProgressHandler;
 
 pub(crate) mod up_progress_handler;
+pub(crate) use up_progress_handler::SyncUpdateListener;
+pub(crate) use up_progress_handler::SyncUpdateOperation;
 pub(crate) use up_progress_handler::UpProgressHandler;
 
 pub(crate) mod version;

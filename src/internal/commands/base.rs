@@ -479,4 +479,9 @@ impl Command {
 
         std::cmp::Ordering::Equal
     }
+
+    pub fn requires_sync_update(&self) -> bool {
+        // TODO: Implement this to delegate to the command types as needed
+        false
+    }
 }
