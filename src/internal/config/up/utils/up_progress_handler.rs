@@ -474,6 +474,7 @@ impl Display for SyncUpdateInit {
 /// enable to know if a command needs to go over the suggestions or if
 /// nothing is left to do after synchronizing with a running process.
 #[derive(Debug, Serialize, Deserialize, PartialEq, Eq, Clone, Hash)]
+#[serde(rename_all = "snake_case")]
 pub enum SyncUpdateInitOption {
     SuggestConfig,
     SuggestClone,

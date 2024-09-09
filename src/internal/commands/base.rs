@@ -481,7 +481,9 @@ impl Command {
     }
 
     pub fn requires_sync_update(&self) -> bool {
-        // TODO: Implement this to delegate to the command types as needed
-        false
+        match self {
+            Command::FromPath(command) => command.requires_sync_update(),
+            _ => false,
+        }
     }
 }

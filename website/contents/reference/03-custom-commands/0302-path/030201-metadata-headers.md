@@ -62,6 +62,17 @@ This can be provided as follows:
 
 Which would instruct omni to forward autocompletion requests to the path command. See [autocompletion](autocompletion) for how to handle autocompletion in a path command.
 
+### `sync_update`
+
+The sync update header indicates that if the repository requires an update, it should be done synchronously before running the command. This is particularly useful if the command depends on some environment setup from the repository that could change often. Any other value than `true` is ignored and will be considered as `false`, as is done by default.
+
+This can be provided as follows:
+```bash
+# sync_update: true
+```
+
+Which would instruct omni to update the repository synchronously before running the command, if an update is required.
+
 ### `arg`
 
 The `arg` header allows to define arguments that the command takes. These are not being parsed by omni, but will be shown when running `omni help <command>`. When using the `arg` header, you need to define the argument name or format, and the description/help for that argument.
