@@ -1,4 +1,5 @@
 use std::collections::BTreeMap;
+use std::collections::HashSet;
 use std::fmt::Display;
 use std::io::BufRead;
 use std::io::Write;
@@ -254,6 +255,7 @@ pub struct SyncUpdateListener<'a> {
     current_handler: Option<UpProgressHandler<'a>>,
     current_handler_id: Option<String>,
     seen_init: bool,
+    missing_options: bool,
 }
 
 impl SyncUpdateListener<'_> {
@@ -263,6 +265,7 @@ impl SyncUpdateListener<'_> {
             current_handler: None,
             current_handler_id: None,
             seen_init: false,
+            missing_options: false,
         }
     }
 
@@ -282,7 +285,8 @@ impl SyncUpdateListener<'_> {
                 if let Ok(line) = line {
                     if let Err(err) = self.handle_line(&line) {
                         match err {
-                            SyncUpdateError::MismatchedInit(..) => {
+                            SyncUpdateError::MismatchedInit(..)
+                            | SyncUpdateError::MissingInitOptions => {
                                 return Err(err);
                             }
                             _ => {
@@ -317,6 +321,7 @@ impl SyncUpdateListener<'_> {
                     if expected_init != &init {
                         return Err(SyncUpdateError::MismatchedInit(init, expected_init.clone()));
                     }
+                    self.missing_options = !expected_init.options_difference(&init).is_empty();
                 }
                 omni_info!(format!(
                     "attaching to running {} operation",
@@ -324,6 +329,9 @@ impl SyncUpdateListener<'_> {
                 ));
             }
             SyncUpdateOperation::Exit(exit_code) => {
+                if self.missing_options && exit_code == 0 {
+                    return Err(SyncUpdateError::MissingInitOptions);
+                }
                 exit(exit_code);
             }
             SyncUpdateOperation::OmniError(error) => {
@@ -362,6 +370,10 @@ impl SyncUpdateListener<'_> {
     }
 }
 
+/// An operation that is sent to indicate the progress of the operation.
+/// This will allow to replicate operations happening in the main process
+/// to the attaching process, giving the same sense of progress to the user
+/// even if his command is attaching to a background-running one.
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum SyncUpdateOperation {
@@ -391,18 +403,50 @@ impl SyncUpdateOperation {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize, PartialEq, Eq, Clone)]
+/// An initial operation that is sent to indicate which command we are
+/// running. This will allow to know if we are running an `up` or `down`
+/// command, and if we are running an `up` command, which options were
+/// passed to it.
+#[derive(Debug, Serialize, Deserialize, Clone)]
 #[serde(rename_all = "snake_case")]
 pub enum SyncUpdateInit {
-    Up(Option<String>),
-    Down,
+    Up(Option<String>, HashSet<SyncUpdateInitOption>, bool),
+    Down(bool),
 }
 
 impl SyncUpdateInit {
     pub fn name(&self) -> &str {
         match self {
             SyncUpdateInit::Up(..) => "up",
-            SyncUpdateInit::Down => "down",
+            SyncUpdateInit::Down(..) => "down",
+        }
+    }
+
+    pub fn options(&self) -> HashSet<SyncUpdateInitOption> {
+        match self {
+            SyncUpdateInit::Up(_commit, options, ..) => options.clone(),
+            SyncUpdateInit::Down(..) => HashSet::new(),
+        }
+    }
+
+    pub fn options_difference(&self, other: &SyncUpdateInit) -> HashSet<SyncUpdateInitOption> {
+        self.options()
+            .difference(&other.options())
+            .cloned()
+            .collect()
+    }
+}
+
+impl PartialEq for SyncUpdateInit {
+    fn eq(&self, other: &Self) -> bool {
+        // For Up, we don't care about the options, just the commit
+        match (self, other) {
+            (
+                SyncUpdateInit::Up(commit1, _options1, cache1),
+                SyncUpdateInit::Up(commit2, _options2, cache2),
+            ) => commit1 == commit2 && cache1 == cache2,
+            (SyncUpdateInit::Down(cache1), SyncUpdateInit::Down(cache2)) => cache1 == cache2,
+            _ => false,
         }
     }
 }
@@ -410,13 +454,34 @@ impl SyncUpdateInit {
 impl Display for SyncUpdateInit {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            SyncUpdateInit::Up(None) => write!(f, "up"),
-            SyncUpdateInit::Up(Some(commit)) => write!(f, "up (commit: {})", commit),
-            SyncUpdateInit::Down => write!(f, "down"),
+            SyncUpdateInit::Up(None, options, _) if options.is_empty() => write!(f, "up"),
+            SyncUpdateInit::Up(None, options, _) => {
+                write!(f, "up (options: {:?})", options)
+            }
+            SyncUpdateInit::Up(Some(commit), options, _) if options.is_empty() => {
+                write!(f, "up (commit: {})", commit)
+            }
+            SyncUpdateInit::Up(Some(commit), options, _) => {
+                write!(f, "up (commit: {}, options: {:?})", commit, options)
+            }
+            SyncUpdateInit::Down(_) => write!(f, "down"),
         }
     }
 }
 
+/// A set of options for the `SyncUpdateInit::Up` variant, that allows
+/// to indicate which options were passed to the `up` command. This will
+/// enable to know if a command needs to go over the suggestions or if
+/// nothing is left to do after synchronizing with a running process.
+#[derive(Debug, Serialize, Deserialize, PartialEq, Eq, Clone, Hash)]
+pub enum SyncUpdateInitOption {
+    SuggestConfig,
+    SuggestClone,
+}
+
+/// A progress update that is sent to indicate the progress of the
+/// operation. This will allow to show a progress bar or a spinner
+/// in the terminal, and to show the progress of the operation.
 #[derive(Debug, Serialize, Deserialize)]
 pub struct SyncUpdateProgress {
     #[serde(rename = "id", skip_serializing_if = "str::is_empty")]
@@ -447,6 +512,9 @@ impl SyncUpdateProgress {
     }
 }
 
+/// An action that is sent to indicate the progress of the operation.
+/// This will allow to update the shown progress bar or spinner in the
+/// terminal.
 #[derive(Debug)]
 pub enum SyncUpdateProgressAction {
     Progress(String),

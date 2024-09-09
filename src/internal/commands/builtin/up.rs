@@ -31,6 +31,7 @@ use crate::internal::config::up::utils::ProgressHandler;
 use crate::internal::config::up::utils::RunConfig;
 use crate::internal::config::up::utils::SpinnerProgressHandler;
 use crate::internal::config::up::utils::SyncUpdateInit;
+use crate::internal::config::up::utils::SyncUpdateInitOption;
 use crate::internal::config::up::utils::SyncUpdateListener;
 use crate::internal::config::up::utils::SyncUpdateOperation;
 use crate::internal::config::up::UpConfig;
@@ -41,6 +42,7 @@ use crate::internal::config::ConfigLoader;
 use crate::internal::config::ConfigValue;
 use crate::internal::config::SyntaxOptArg;
 use crate::internal::env::shell_is_interactive;
+use crate::internal::errors::SyncUpdateError;
 use crate::internal::git::format_path_with_template;
 use crate::internal::git::package_path_from_git_url;
 use crate::internal::git::path_entry_config;
@@ -1173,6 +1175,44 @@ impl UpCommand {
         updated
     }
 
+    fn handle_suggestions(
+        &self,
+        suggest_config: Option<ConfigValue>,
+        suggest_clone: bool,
+        suggest_config_updated: bool,
+        suggest_clone_updated: bool,
+        options: &UpOptions,
+    ) {
+        if let Some(suggested) = suggest_config {
+            self.suggest_config(suggested);
+        }
+
+        if suggest_clone {
+            self.suggest_clone();
+        }
+
+        if let Some(wd_id) = workdir(".").id() {
+            if suggest_config_updated || suggest_clone_updated {
+                self.handle_sync_operation(
+                    SyncUpdateOperation::OmniInfo(format!(
+                        "configuration suggestions for {} have an update",
+                        wd_id.light_blue(),
+                    )),
+                    &options,
+                );
+                self.handle_sync_operation(
+                    SyncUpdateOperation::OmniInfo(format!(
+                        "run {} to get the latest suggestions",
+                        "omni up --bootstrap".light_yellow(),
+                    )),
+                    &options,
+                );
+            }
+        }
+
+        self.handle_sync_operation(SyncUpdateOperation::Exit(0), &options);
+    }
+
     fn handle_sync_operation(&self, operation: SyncUpdateOperation, options: &UpOptions) {
         if let Some(mut sync_file) = options.lock_file {
             if let Err(err) = operation.dump_to_file(&mut sync_file) {
@@ -1493,9 +1533,20 @@ impl BuiltinCommand for UpCommand {
 
         // Prepare the sync command, so we can make sure we are listening to the correct operation
         let sync_command = if self.is_up() {
-            SyncUpdateInit::Up(head_commit.clone())
+            let mut init_options = HashSet::new();
+            if suggest_config.is_some() {
+                init_options.insert(SyncUpdateInitOption::SuggestConfig);
+            }
+            if suggest_clone {
+                init_options.insert(SyncUpdateInitOption::SuggestClone);
+            }
+            SyncUpdateInit::Up(
+                head_commit.clone(),
+                init_options,
+                self.cli_args().cache_enabled,
+            )
         } else {
-            SyncUpdateInit::Down
+            SyncUpdateInit::Down(self.cli_args().cache_enabled)
         };
 
         // Prepare a listener in case the operation is already running
@@ -1506,7 +1557,20 @@ impl BuiltinCommand for UpCommand {
         let mut lock_file = match workdir(".").lock_update(&mut listener) {
             Ok(Some(lock_file)) => lock_file,
             Ok(None) => {
-                // Nothing to do here, the update was done somewhere else in parallel
+                // Nothing to do here, the update was done in an attached operation
+                exit(0);
+            }
+            Err(SyncUpdateError::MissingInitOptions) => {
+                // If we get here, it means we were attached to an `up` operation that successfully
+                // went through, but we have options (e.g. suggest config, suggest clone) that
+                // weren't present for the attached operation. We thus still need to handle those
+                self.handle_suggestions(
+                    suggest_config,
+                    suggest_clone,
+                    suggest_config_updated,
+                    suggest_clone_updated,
+                    &UpOptions::new(),
+                );
                 exit(0);
             }
             Err(err) => {
@@ -1521,7 +1585,7 @@ impl BuiltinCommand for UpCommand {
         }
 
         // Prepare the options for the up command
-        let options = UpOptions::new().lock_file(&lock_file);
+        let options = UpOptions::new().lock_file(&mut lock_file);
 
         // No matter what's happening after, we want a clean cache for that
         // repository, as we're rebuilding the up environment from scratch
@@ -1602,34 +1666,13 @@ impl BuiltinCommand for UpCommand {
             }
         }
 
-        if let Some(suggested) = suggest_config {
-            self.suggest_config(suggested);
-        }
-
-        if suggest_clone {
-            self.suggest_clone();
-        }
-
-        if let Some(wd_id) = wd.id() {
-            if suggest_config_updated || suggest_clone_updated {
-                self.handle_sync_operation(
-                    SyncUpdateOperation::OmniInfo(format!(
-                        "configuration suggestions for {} have an update",
-                        wd_id.light_blue(),
-                    )),
-                    &options,
-                );
-                self.handle_sync_operation(
-                    SyncUpdateOperation::OmniInfo(format!(
-                        "run {} to get the latest suggestions",
-                        "omni up --bootstrap".light_yellow(),
-                    )),
-                    &options,
-                );
-            }
-        }
-
-        self.handle_sync_operation(SyncUpdateOperation::Exit(0), &options);
+        self.handle_suggestions(
+            suggest_config,
+            suggest_clone,
+            suggest_config_updated,
+            suggest_clone_updated,
+            &options,
+        );
     }
 
     fn autocompletion(&self) -> bool {
