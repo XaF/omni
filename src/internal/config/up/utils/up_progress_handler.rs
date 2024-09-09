@@ -53,11 +53,7 @@ impl<'a> UpProgressHandler<'a> {
             return parent.desc();
         }
 
-        self.desc
-            .get_or_init(|| {
-                "".to_string()
-            })
-            .as_str()
+        self.desc.get_or_init(|| "".to_string()).as_str()
     }
 
     pub fn init(&self, desc: String) -> bool {
@@ -280,17 +276,15 @@ impl SyncUpdateListener<'_> {
         self.current_handler_id = None;
 
         loop {
-            for line in &mut lines {
-                if let Ok(line) = line {
-                    if let Err(err) = self.handle_line(&line) {
-                        match err {
-                            SyncUpdateError::MismatchedInit(..)
-                            | SyncUpdateError::MissingInitOptions => {
-                                return Err(err);
-                            }
-                            _ => {
-                                omni_warning!(format!("{}", err));
-                            }
+            for line in (&mut lines).flatten() {
+                if let Err(err) = self.handle_line(&line) {
+                    match err {
+                        SyncUpdateError::MismatchedInit(..)
+                        | SyncUpdateError::MissingInitOptions => {
+                            return Err(err);
+                        }
+                        _ => {
+                            omni_warning!(format!("{}", err));
                         }
                     }
                 }
@@ -318,7 +312,10 @@ impl SyncUpdateListener<'_> {
 
                 if let Some(ref expected_init) = self.expected_init {
                     if expected_init != &init {
-                        return Err(SyncUpdateError::MismatchedInit(Box::new(init), Box::new(expected_init.clone())));
+                        return Err(SyncUpdateError::MismatchedInit(
+                            Box::new(init),
+                            Box::new(expected_init.clone()),
+                        ));
                     }
                     self.missing_options = !expected_init.options_difference(&init).is_empty();
                 }
@@ -533,9 +530,9 @@ impl SyncUpdateProgressAction {
         };
 
         match action.as_str() {
-            "progress" => {
-                map.get("message").map(|message| SyncUpdateProgressAction::Progress(message.clone()))
-            }
+            "progress" => map
+                .get("message")
+                .map(|message| SyncUpdateProgressAction::Progress(message.clone())),
             "success" => {
                 let message = map.get("message").cloned();
                 Some(SyncUpdateProgressAction::Success(message))
@@ -546,9 +543,9 @@ impl SyncUpdateProgressAction {
             }
             "hide" => Some(SyncUpdateProgressAction::Hide),
             "show" => Some(SyncUpdateProgressAction::Show),
-            "println" => {
-                map.get("message").map(|message| SyncUpdateProgressAction::Println(message.clone()))
-            }
+            "println" => map
+                .get("message")
+                .map(|message| SyncUpdateProgressAction::Println(message.clone())),
             _ => None,
         }
     }
