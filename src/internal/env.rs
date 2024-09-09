@@ -8,7 +8,7 @@ use std::process::exit;
 use std::sync::Mutex;
 
 use blake3::Hasher;
-use fs4::FileExt;
+use fs4::fs_std::FileExt;
 use gethostname::gethostname;
 use git2::Repository;
 use git_url_parse::GitUrl;

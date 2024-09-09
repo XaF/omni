@@ -10,7 +10,7 @@ use std::path::PathBuf;
 use std::process::exit;
 use std::sync::Mutex;
 
-use fs4::FileExt;
+use fs4::fs_std::FileExt;
 use itertools::Itertools;
 use lazy_static::lazy_static;
 

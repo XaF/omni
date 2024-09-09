@@ -5,7 +5,7 @@ use std::io::BufRead;
 use std::io::Write;
 use std::process::exit;
 
-use fs4::FileExt;
+use fs4::fs_std::FileExt;
 use once_cell::sync::OnceCell;
 use serde::Deserialize;
 use serde::Serialize;
