@@ -55,8 +55,7 @@ impl<'a> UpProgressHandler<'a> {
 
         self.desc
             .get_or_init(|| {
-                let desc = "".to_string();
-                desc
+                "".to_string()
             })
             .as_str()
     }
@@ -143,7 +142,7 @@ impl<'a> UpProgressHandler<'a> {
     }
 
     fn update_sync_file(&self, action: SyncUpdateProgressAction) {
-        if let Some(mut sync_file) = self.sync_file {
+        if let Some(sync_file) = self.sync_file {
             // Overwrite the handler id and description with the current ones
             let update = SyncUpdateOperation::Progress(SyncUpdateProgress {
                 handler_id: self.handler_id(),
@@ -152,7 +151,7 @@ impl<'a> UpProgressHandler<'a> {
                 action,
             });
 
-            if let Err(err) = update.dump_to_file(&mut sync_file) {
+            if let Err(err) = update.dump_to_file(sync_file) {
                 panic!("failed to write progress update to file: {}", err);
             }
         } else if let Some(parent) = self.parent {
@@ -281,7 +280,7 @@ impl SyncUpdateListener<'_> {
         self.current_handler_id = None;
 
         loop {
-            while let Some(line) = lines.next() {
+            for line in &mut lines {
                 if let Ok(line) = line {
                     if let Err(err) = self.handle_line(&line) {
                         match err {
@@ -308,7 +307,7 @@ impl SyncUpdateListener<'_> {
     fn handle_line(&mut self, line: &str) -> Result<(), SyncUpdateError> {
         // JSON deserialize the line into a SyncUpdateOperation object
         // If the line is not valid JSON, return an error
-        let sync_update = serde_json::from_str::<SyncUpdateOperation>(&line)?;
+        let sync_update = serde_json::from_str::<SyncUpdateOperation>(line)?;
         match sync_update {
             SyncUpdateOperation::Init(init) => {
                 if self.seen_init {
@@ -366,7 +365,7 @@ impl SyncUpdateListener<'_> {
             }
         }
 
-        return Ok(());
+        Ok(())
     }
 }
 
@@ -535,11 +534,7 @@ impl SyncUpdateProgressAction {
 
         match action.as_str() {
             "progress" => {
-                if let Some(message) = map.get("message") {
-                    Some(SyncUpdateProgressAction::Progress(message.clone()))
-                } else {
-                    None
-                }
+                map.get("message").map(|message| SyncUpdateProgressAction::Progress(message.clone()))
             }
             "success" => {
                 let message = map.get("message").cloned();
@@ -552,11 +547,7 @@ impl SyncUpdateProgressAction {
             "hide" => Some(SyncUpdateProgressAction::Hide),
             "show" => Some(SyncUpdateProgressAction::Show),
             "println" => {
-                if let Some(message) = map.get("message") {
-                    Some(SyncUpdateProgressAction::Println(message.clone()))
-                } else {
-                    None
-                }
+                map.get("message").map(|message| SyncUpdateProgressAction::Println(message.clone()))
             }
             _ => None,
         }
