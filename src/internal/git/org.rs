@@ -6,6 +6,7 @@ use git_url_parse::GitUrl;
 use git_url_parse::Scheme;
 use indicatif::ProgressBar;
 use indicatif::ProgressStyle;
+use itertools::Itertools;
 use lazy_static::lazy_static;
 use once_cell::sync::OnceCell;
 use strsim::normalized_damerau_levenshtein;
@@ -656,13 +657,12 @@ impl OrgLoader {
         // if there's a match that they want to use
         let mut with_score = all_repos
             .iter_mut()
-            .map(|found| {
+            .update(|found| {
                 // TODO: set scores related to <host>/<org>/<repo>, <org>/<repo>, and <repo> formats too
                 let absscore =
                     normalized_damerau_levenshtein(repo, found.abspath.to_str().unwrap());
                 let relscore = normalized_damerau_levenshtein(repo, found.relpath.as_str());
                 found.score = absscore.max(relscore);
-                found
             })
             .filter(|found| found.score > config(".").cd.path_match_min_score)
             .collect::<Vec<_>>();
