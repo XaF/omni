@@ -1,3 +1,4 @@
+use git_url_parse::GitUrlParseError;
 use thiserror::Error;
 
 use crate::internal::config::up::utils::SyncUpdateInit;
@@ -16,4 +17,22 @@ pub enum SyncUpdateError {
     InvalidFormat(#[from] serde_json::Error),
     #[error("progress handler was not initialized")]
     NoProgressHandler,
+}
+
+#[derive(Error, Debug)]
+pub enum GitUrlError {
+    #[error("unsupported scheme: {0}")]
+    UnsupportedScheme(String),
+    #[error("missing repository name")]
+    MissingRepositoryName,
+    #[error("missing repository owner")]
+    MissingRepositoryOwner,
+    #[error("missing repository host")]
+    MissingRepositoryHost,
+    #[error("parse timeout")]
+    ParseTimeout,
+    #[error("normalize timeout")]
+    NormalizeTimeout,
+    #[error("error during URL parsing: {0}")]
+    UrlParseError(#[from] GitUrlParseError),
 }
