@@ -7,7 +7,7 @@ pub enum SyncUpdateError {
     #[error("error during file operation: {0}")]
     IO(#[from] std::io::Error),
     #[error("actual init operation `{0}` is different from expected `{1}`")]
-    MismatchedInit(SyncUpdateInit, SyncUpdateInit),
+    MismatchedInit(Box<SyncUpdateInit>, Box<SyncUpdateInit>),
     #[error("the expected run has more options than the attached run")]
     MissingInitOptions,
     #[error("already initialized, but read another init operation")]

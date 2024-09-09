@@ -319,7 +319,7 @@ impl SyncUpdateListener<'_> {
 
                 if let Some(ref expected_init) = self.expected_init {
                     if expected_init != &init {
-                        return Err(SyncUpdateError::MismatchedInit(init, expected_init.clone()));
+                        return Err(SyncUpdateError::MismatchedInit(Box::new(init), Box::new(expected_init.clone())));
                     }
                     self.missing_options = !expected_init.options_difference(&init).is_empty();
                 }

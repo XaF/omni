@@ -1198,24 +1198,24 @@ impl UpCommand {
                         "configuration suggestions for {} have an update",
                         wd_id.light_blue(),
                     )),
-                    &options,
+                    options,
                 );
                 self.handle_sync_operation(
                     SyncUpdateOperation::OmniInfo(format!(
                         "run {} to get the latest suggestions",
                         "omni up --bootstrap".light_yellow(),
                     )),
-                    &options,
+                    options,
                 );
             }
         }
 
-        self.handle_sync_operation(SyncUpdateOperation::Exit(0), &options);
+        self.handle_sync_operation(SyncUpdateOperation::Exit(0), options);
     }
 
     fn handle_sync_operation(&self, operation: SyncUpdateOperation, options: &UpOptions) {
-        if let Some(mut sync_file) = options.lock_file {
-            if let Err(err) = operation.dump_to_file(&mut sync_file) {
+        if let Some(sync_file) = options.lock_file {
+            if let Err(err) = operation.dump_to_file(sync_file) {
                 omni_error!(format!("failed to write sync file: {}", err));
             }
         }
@@ -1526,10 +1526,7 @@ impl BuiltinCommand for UpCommand {
         }
 
         // Read the head commit of the repository
-        let head_commit = match git_env_fresh(".").commit() {
-            Some(commit) => Some(commit.to_string()),
-            None => None,
-        };
+        let head_commit = git_env_fresh(".").commit().map(|commit| commit.to_string());
 
         // Prepare the sync command, so we can make sure we are listening to the correct operation
         let sync_command = if self.is_up() {
@@ -1554,7 +1551,7 @@ impl BuiltinCommand for UpCommand {
         listener.expect_init(&sync_command);
 
         // Lock the update process to avoid running it multiple times in parallel
-        let mut lock_file = match workdir(".").lock_update(&mut listener) {
+        let lock_file = match workdir(".").lock_update(&mut listener) {
             Ok(Some(lock_file)) => lock_file,
             Ok(None) => {
                 // Nothing to do here, the update was done in an attached operation
@@ -1580,12 +1577,12 @@ impl BuiltinCommand for UpCommand {
         };
 
         // If we're here, we've got the lock file, so let's dump the init information
-        if let Err(err) = SyncUpdateOperation::Init(sync_command).dump_to_file(&mut lock_file) {
+        if let Err(err) = SyncUpdateOperation::Init(sync_command).dump_to_file(&lock_file) {
             omni_warning!(format!("failed to write sync file: {}", err));
         }
 
         // Prepare the options for the up command
-        let options = UpOptions::new().lock_file(&mut lock_file);
+        let options = UpOptions::new().lock_file(&lock_file);
 
         // No matter what's happening after, we want a clean cache for that
         // repository, as we're rebuilding the up environment from scratch

@@ -88,7 +88,7 @@ pub fn auto_update_async(called_command: &Command) {
     if called_command.requires_sync_update() && called_command.has_source() {
         let called_command_path_str = called_command.source();
         let called_command_path = Path::new(&called_command_path_str);
-        options.add_sync_path(&called_command_path);
+        options.add_sync_path(called_command_path);
     }
 
     update(&options);
@@ -849,10 +849,7 @@ fn update_git_branch(
                 Ok(false)
             } else {
                 progress_handler.success_with_message("updated".light_green());
-                git_env_flush_cache(match repo_path {
-                    Some(repo_path) => repo_path,
-                    None => ".",
-                });
+                git_env_flush_cache(repo_path.unwrap_or("."));
                 Ok(true)
             }
         }
@@ -1042,10 +1039,7 @@ fn update_git_tag(
     }
 
     progress_handler.success_with_message("updated".light_green());
-    git_env_flush_cache(match repo_path {
-        Some(repo_path) => repo_path,
-        None => ".",
-    });
+    git_env_flush_cache(repo_path.unwrap_or("."));
 
     Ok(true)
 }
