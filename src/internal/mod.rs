@@ -14,6 +14,8 @@ pub(crate) use env::workdir;
 pub(crate) use env::workdir_flush_cache;
 pub(crate) use env::workdir_or_init;
 
+pub(crate) mod errors;
+
 pub(crate) mod git;
 pub(crate) use git::ORG_LOADER;
 

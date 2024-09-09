@@ -30,6 +30,8 @@ use crate::internal::config::up::utils::PrintProgressHandler;
 use crate::internal::config::up::utils::ProgressHandler;
 use crate::internal::config::up::utils::RunConfig;
 use crate::internal::config::up::utils::SpinnerProgressHandler;
+use crate::internal::config::up::utils::SyncUpdateInit;
+use crate::internal::config::up::utils::SyncUpdateListener;
 use crate::internal::config::up::utils::SyncUpdateOperation;
 use crate::internal::config::up::UpConfig;
 use crate::internal::config::up::UpOptions;
@@ -1178,6 +1180,9 @@ impl UpCommand {
         }
 
         match operation {
+            SyncUpdateOperation::Init(init) => {
+                eprintln!("[3] init: {:?}", init);
+            }
             SyncUpdateOperation::Exit(exit_code) => exit(exit_code),
             SyncUpdateOperation::OmniWarning(message) => {
                 omni_warning!(message);
@@ -1479,8 +1484,19 @@ impl BuiltinCommand for UpCommand {
             exit(1);
         }
 
+        // Prepare the sync command, so we can make sure we are listening to the correct operation
+        let sync_command = if self.is_up() {
+            SyncUpdateInit::Up
+        } else {
+            SyncUpdateInit::Down
+        };
+
+        // Prepare a listener in case the operation is already running
+        let mut listener = SyncUpdateListener::new();
+        listener.expect_init(sync_command.as_str());
+
         // Lock the update process to avoid running it multiple times in parallel
-        let lock_file = match workdir(".").lock_update() {
+        let mut lock_file = match workdir(".").lock_update(&mut listener) {
             Ok(Some(lock_file)) => lock_file,
             Ok(None) => {
                 // Nothing to do here, the update was done somewhere else in parallel
@@ -1491,6 +1507,11 @@ impl BuiltinCommand for UpCommand {
                 exit(1);
             }
         };
+
+        // If we're here, we've got the lock file, so let's dump the init information
+        if let Err(err) = SyncUpdateOperation::Init(sync_command).dump_to_file(&mut lock_file) {
+            omni_warning!(format!("failed to write sync file: {}", err));
+        }
 
         // Prepare the options for the up command
         let options = UpOptions::new().lock_file(&lock_file);

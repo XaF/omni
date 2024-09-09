@@ -12,6 +12,7 @@ use crate::internal::config::up::utils::PrintProgressHandler;
 use crate::internal::config::up::utils::ProgressHandler;
 use crate::internal::config::up::utils::SpinnerProgressHandler;
 use crate::internal::env::shell_is_interactive;
+use crate::internal::errors::SyncUpdateError;
 use crate::internal::user_interface::colors::StringColor;
 use crate::omni_error;
 use crate::omni_info;
@@ -248,19 +249,28 @@ impl ProgressHandler for UpProgressHandler<'_> {
 }
 
 pub struct SyncUpdateListener<'a> {
+    expected_init: Option<String>,
     current_handler: Option<UpProgressHandler<'a>>,
     current_handler_id: Option<String>,
+    seen_init: bool,
 }
 
 impl SyncUpdateListener<'_> {
     pub fn new() -> Self {
         Self {
+            expected_init: None,
             current_handler: None,
             current_handler_id: None,
+            seen_init: false,
         }
     }
 
-    pub fn follow(&mut self, file: &std::fs::File) -> Result<(), std::io::Error> {
+    pub fn expect_init(&mut self, init: &str) -> &mut Self {
+        self.expected_init = Some(init.to_string());
+        self
+    }
+
+    pub fn follow(&mut self, file: &std::fs::File) -> Result<(), SyncUpdateError> {
         let mut lines = std::io::BufReader::new(file).lines();
 
         self.current_handler = None;
@@ -270,7 +280,14 @@ impl SyncUpdateListener<'_> {
             while let Some(line) = lines.next() {
                 if let Ok(line) = line {
                     if let Err(err) = self.handle_line(&line) {
-                        omni_warning!(format!("failed to handle line: {}", err));
+                        match err {
+                            SyncUpdateError::MismatchedInit(..) => {
+                                return Err(err);
+                            }
+                            _ => {
+                                omni_warning!(format!("{}", err));
+                            }
+                        }
                     }
                 }
             }
@@ -283,15 +300,28 @@ impl SyncUpdateListener<'_> {
         }
     }
 
-    fn handle_line(&mut self, line: &str) -> Result<(), String> {
+    fn handle_line(&mut self, line: &str) -> Result<(), SyncUpdateError> {
         // JSON deserialize the line into a SyncUpdateOperation object
         // If the line is not valid JSON, return an error
-        let sync_update = match serde_json::from_str::<SyncUpdateOperation>(&line) {
-            Ok(sync_update) => sync_update,
-            Err(err) => return Err(format!("failed to parse JSON: {}", err)),
-        };
-
+        let sync_update = serde_json::from_str::<SyncUpdateOperation>(&line)?;
         match sync_update {
+            SyncUpdateOperation::Init(init) => {
+                if self.seen_init {
+                    return Err(SyncUpdateError::AlreadyInit);
+                }
+
+                self.seen_init = true;
+
+                if let Some(ref expected_init) = self.expected_init {
+                    if expected_init != init.as_str() {
+                        return Err(SyncUpdateError::MismatchedInit(
+                            init.to_string(),
+                            expected_init.to_string(),
+                        ));
+                    }
+                }
+                omni_info!("attaching to running operation".to_string());
+            }
             SyncUpdateOperation::Exit(exit_code) => {
                 exit(exit_code);
             }
@@ -322,7 +352,7 @@ impl SyncUpdateListener<'_> {
                 if let Some(ref mut handler) = self.current_handler {
                     handler.perform_sync_action(progress.action());
                 } else {
-                    return Err("no handler found".to_string());
+                    return Err(SyncUpdateError::NoProgressHandler);
                 }
             }
         }
@@ -334,10 +364,14 @@ impl SyncUpdateListener<'_> {
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum SyncUpdateOperation {
+    Init(SyncUpdateInit),
     Exit(i32),
     Progress(SyncUpdateProgress),
+    #[serde(rename = "error")]
     OmniError(String),
+    #[serde(rename = "warning")]
     OmniWarning(String),
+    #[serde(rename = "info")]
     OmniInfo(String),
 }
 
@@ -357,8 +391,30 @@ impl SyncUpdateOperation {
 }
 
 #[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SyncUpdateInit {
+    Up,
+    Down,
+}
+
+impl SyncUpdateInit {
+    pub fn as_str(&self) -> &str {
+        match self {
+            SyncUpdateInit::Up => "up",
+            SyncUpdateInit::Down => "down",
+        }
+    }
+}
+
+impl ToString for SyncUpdateInit {
+    fn to_string(&self) -> String {
+        self.as_str().to_string()
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize)]
 pub struct SyncUpdateProgress {
-    #[serde(skip_serializing_if = "str::is_empty")]
+    #[serde(rename = "id", skip_serializing_if = "str::is_empty")]
     handler_id: String,
     #[serde(skip_serializing_if = "str::is_empty")]
     desc: String,
