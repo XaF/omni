@@ -269,6 +269,12 @@ impl PathCommand {
         }
     }
 
+    pub fn requires_sync_update(&self) -> bool {
+        self.file_details()
+            .map(|details| details.sync_update)
+            .unwrap_or(false)
+    }
+
     fn file_details(&self) -> Option<&PathCommandFileDetails> {
         self.file_details
             .get_or_init(|| PathCommandFileDetails::from_file(&self.source))
@@ -286,6 +292,8 @@ pub struct PathCommandFileDetails {
     autocompletion: bool,
     #[serde(default, deserialize_with = "deserialize_syntax")]
     syntax: Option<CommandSyntax>,
+    #[serde(default, deserialize_with = "deserialize_sync_update")]
+    sync_update: bool,
 }
 
 fn deserialize_category<'de, D>(deserializer: D) -> Result<Option<Vec<String>>, D::Error>
@@ -340,6 +348,17 @@ where
     Ok(None)
 }
 
+fn deserialize_sync_update<'de, D>(deserializer: D) -> Result<bool, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let value = serde_yaml::Value::deserialize(deserializer)?;
+    match value {
+        serde_yaml::Value::Bool(b) => Ok(b),
+        _ => Ok(false),
+    }
+}
+
 impl PathCommandFileDetails {
     pub fn from_file(path: &str) -> Option<Self> {
         if let Some(details) = Self::from_metadata_file(path) {
@@ -386,6 +405,7 @@ impl PathCommandFileDetails {
 
     pub fn from_source_file(path: &str) -> Option<Self> {
         let mut autocompletion = false;
+        let mut sync_update = false;
         let mut category = None;
         let mut help_lines = Vec::new();
 
@@ -427,6 +447,13 @@ impl PathCommandFileDetails {
                     .trim()
                     .to_lowercase();
                 autocompletion = completion == "true";
+            } else if line.starts_with("# sync_update:") {
+                let sync_upd = line
+                    .strip_prefix("# sync_update:")
+                    .unwrap()
+                    .trim()
+                    .to_lowercase();
+                sync_update = sync_upd == "true";
             } else if line.starts_with("# help:") {
                 reading_help = true;
                 let help_line =
@@ -487,6 +514,7 @@ impl PathCommandFileDetails {
             help: Some(help_lines.join("\n")),
             autocompletion,
             syntax,
+            sync_update,
         })
     }
 }

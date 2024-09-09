@@ -8,6 +8,7 @@ use std::process::exit;
 use std::sync::Mutex;
 
 use blake3::Hasher;
+use fs4::FileExt;
 use gethostname::gethostname;
 use git2::Repository;
 use git_url_parse::GitUrl;
@@ -20,13 +21,16 @@ use time::OffsetDateTime;
 
 use crate::internal::config::parser::PathEntryConfig;
 use crate::internal::config::up::utils::force_remove_dir_all;
+use crate::internal::config::up::utils::SyncUpdateListener;
 use crate::internal::config::OrgConfig;
 use crate::internal::dynenv::DynamicEnvExportMode;
+use crate::internal::errors::SyncUpdateError;
 use crate::internal::git::id_from_git_url;
 use crate::internal::git::safe_git_url_parse;
 use crate::internal::user_interface::StringColor;
 use crate::internal::utils::base62_encode;
 use crate::omni_error;
+use crate::omni_info;
 use crate::omni_warning;
 
 extern crate machine_uid;
@@ -153,6 +157,11 @@ pub fn git_env_flush_cache<T: AsRef<str>>(path: T) {
         .to_owned();
     let mut git_env = GIT_ENV.lock().unwrap();
     git_env.remove(&path);
+}
+
+pub fn git_env_fresh<T: AsRef<str>>(path: T) -> GitRepoEnv {
+    git_env_flush_cache(&path);
+    git_env(&path)
 }
 
 pub fn workdir<T: AsRef<str>>(path: T) -> WorkDirEnv {
@@ -383,6 +392,21 @@ fn compute_omni_cmd_file() -> Option<String> {
     omni_cmd_file
 }
 
+fn compute_omni_tmpdir() -> String {
+    match std::env::var("OMNI_TMPDIR") {
+        Ok(omni_tmpdir) if !omni_tmpdir.is_empty() && omni_tmpdir.starts_with('/') => omni_tmpdir,
+        _ => {
+            let tmpdir = match std::env::var("TMPDIR") {
+                Ok(tmpdir) if !tmpdir.is_empty() && tmpdir.starts_with('/') => tmpdir,
+                _ => "/tmp".to_string(),
+            };
+            let user = whoami::username();
+
+            format!("{}/omni.{}", tmpdir, user)
+        }
+    }
+}
+
 cfg_if::cfg_if! {
     if #[cfg(test)] {
         pub fn user_home() -> String {
@@ -432,6 +456,10 @@ cfg_if::cfg_if! {
         pub fn omni_cmd_file() -> Option<String> {
             compute_omni_cmd_file()
         }
+
+        pub fn omni_tmpdir() -> String {
+            compute_omni_tmpdir()
+        }
     } else {
         lazy_static! {
             #[derive(Debug)]
@@ -469,6 +497,9 @@ cfg_if::cfg_if! {
 
             #[derive(Debug)]
             static ref OMNI_CMD_FILE: Option<String> = compute_omni_cmd_file();
+
+            #[derive(Debug)]
+            static ref OMNI_TMPDIR: String = compute_omni_tmpdir();
         }
 
         pub fn user_home() -> String {
@@ -517,6 +548,10 @@ cfg_if::cfg_if! {
 
         pub fn omni_cmd_file() -> Option<String> {
             (*OMNI_CMD_FILE).clone()
+        }
+
+        pub fn omni_tmpdir() -> String {
+            (*OMNI_TMPDIR).to_string()
         }
     }
 }
@@ -934,6 +969,91 @@ impl WorkDirEnv {
         let hash_u64 = u64::from_le_bytes(hash_bytes.as_bytes()[..8].try_into().unwrap());
 
         hash_u64
+    }
+
+    pub fn lock_update(
+        self,
+        listener: &mut SyncUpdateListener,
+    ) -> Result<Option<std::fs::File>, SyncUpdateError> {
+        // Make sure the sync directory for up operations exists
+        let main_sync_dir_path = PathBuf::from(omni_tmpdir());
+        let sync_dir_path = main_sync_dir_path.join("up");
+        if !sync_dir_path.exists() {
+            std::fs::create_dir_all(&sync_dir_path)?;
+        }
+
+        // Try to get the id and root, or raise error
+        let id = self.id().ok_or_else(|| {
+            std::io::Error::new(std::io::ErrorKind::NotFound, "workdir id not found")
+        })?;
+
+        let root = self.root().ok_or_else(|| {
+            std::io::Error::new(std::io::ErrorKind::NotFound, "workdir root not found")
+        })?;
+
+        // Set random bytes as the separator, that couldn't be part of the strings above
+        let separator = [0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00];
+
+        // Use a hashing function to generate a unique identifier for the workdir,
+        // using the workdir id and the workdir path, so that the same workdir in
+        // the same location cannot be updated twice at the same time, but the same
+        // workdir in two different locations can (e.g. a package and a worktree,
+        // or two clones of the same repo...)
+        let mut hasher = blake3::Hasher::new();
+        hasher.update(id.as_bytes());
+        hasher.update(&separator);
+        hasher.update(root.as_bytes());
+        let workdir_unique_id = hasher.finalize().to_hex()[..64].to_string();
+
+        // The sync path is that id, in the up sync directory
+        let sync_path = sync_dir_path.join(workdir_unique_id);
+
+        // Open the sync file in read/write/create mode, so it gets created if it does not exist
+        let mut file = OpenOptions::new()
+            .read(true)
+            .write(true)
+            .create(true)
+            .truncate(false)
+            .open(sync_path)?;
+
+        // Try to acquire an exclusive lock on the file
+        match file.try_lock_exclusive() {
+            Ok(_file_lock) => {
+                // Now that we have the lock, truncate the file contents
+                file.set_len(0)?;
+                file.flush()?;
+
+                Ok(Some(file))
+            }
+            Err(_) => {
+                // If we can't acquire the lock, it means that another process is updating the workdir
+                // at the same time, so we will wait on the update to finish while streaming the
+                // file contents, and return None to indicate that the update was already done
+                match listener.follow(&file) {
+                    Err(err) => match err {
+                        SyncUpdateError::MismatchedInit(actual, _expected) => {
+                            // If the init operation is mismatched, we need to wait for the lock to be released
+                            omni_info!(format!(
+                                "waiting for running {} operation to finish",
+                                actual.name().light_yellow()
+                            ));
+
+                            // Grab the lock in a blocking way
+                            file.lock_exclusive()?;
+
+                            // Now that we have the lock, truncate the file contents
+                            file.set_len(0)?;
+                            file.flush()?;
+
+                            // Return the file
+                            Ok(Some(file))
+                        }
+                        _ => Err(err),
+                    },
+                    Ok(_) => Ok(None),
+                }
+            }
+        }
     }
 }
 

@@ -479,4 +479,11 @@ impl Command {
 
         std::cmp::Ordering::Equal
     }
+
+    pub fn requires_sync_update(&self) -> bool {
+        match self {
+            Command::FromPath(command) => command.requires_sync_update(),
+            _ => false,
+        }
+    }
 }
