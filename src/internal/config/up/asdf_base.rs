@@ -963,9 +963,8 @@ impl UpConfigAsdfBase {
                         progress_handler,
                     )?;
 
-                    self.resolve_version(&versions).map_err(|err| {
+                    self.resolve_version(&versions).inspect_err(|err| {
                         progress_handler.error_with_message(err.message());
-                        err
                     })?
                 } else {
                     progress_handler.error_with_message(err.message());
