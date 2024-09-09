@@ -160,17 +160,21 @@ impl UpConfig {
                 )));
             }
 
-            let progress_handler = UpProgressHandler::new(Some((idx + 1, num_steps)));
+            let mut progress_handler = UpProgressHandler::new(Some((idx + 1, num_steps)));
+            if let Some(sync_file) = &options.lock_file {
+                progress_handler.set_sync_file(sync_file);
+            }
+
             step.up(options, &progress_handler)?
         }
 
         // Cleanup anything that's not needed
-        self.cleanup(Some((num_steps, num_steps)))?;
+        self.cleanup(Some((num_steps, num_steps)), options)?;
 
         Ok(())
     }
 
-    pub fn down(&self) -> Result<(), UpError> {
+    pub fn down(&self, options: &UpOptions) -> Result<(), UpError> {
         // Filter the steps to only the available ones
         let steps = self
             .steps
@@ -185,12 +189,16 @@ impl UpConfig {
             // the command can consider it right away
             update_dynamic_env_for_command(".");
 
-            let progress_handler = UpProgressHandler::new(Some((idx + 1, num_steps)));
+            let mut progress_handler = UpProgressHandler::new(Some((idx + 1, num_steps)));
+            if let Some(sync_file) = &options.lock_file {
+                progress_handler.set_sync_file(sync_file);
+            }
+
             step.down(&progress_handler)?
         }
 
         // Cleanup anything that's not needed
-        self.cleanup(Some((num_steps, num_steps)))?;
+        self.cleanup(Some((num_steps, num_steps)), options)?;
 
         Ok(())
     }
@@ -199,8 +207,15 @@ impl UpConfig {
     /// method of every existing tool, so that it can cleanup dependencies from
     /// steps that do not exist anymore on top of previous versions of recently
     /// upgraded tools.
-    pub fn cleanup(&self, progress: Option<(usize, usize)>) -> Result<(), UpError> {
-        let progress_handler = UpProgressHandler::new(progress);
+    pub fn cleanup(
+        &self,
+        progress: Option<(usize, usize)>,
+        options: &UpOptions,
+    ) -> Result<(), UpError> {
+        let mut progress_handler = UpProgressHandler::new(progress);
+        if let Some(sync_file) = &options.lock_file {
+            progress_handler.set_sync_file(sync_file);
+        }
         progress_handler.init("resources cleanup:".light_blue());
 
         let mut cleanups = vec![];

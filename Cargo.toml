@@ -75,10 +75,12 @@ tempfile = "3.12.0"
 tera = "1.20.0"
 term_cursor = "0.2.1"
 term_size = "0.3.2"
+thiserror = "1.0.63"
 time = { version = "0.3.36", features = ["serde-well-known"] }
 tokio = { version = "1.39.1", features = ["full"] }
 url = "2.5.2"
 uuid = { version = "1.10.0", features = ["v4", "fast-rng"] }
 walkdir = "2.4.0"
 which = "6.0.2"
+whoami = "1.5.2"
 zip-extract = "0.2.1"
