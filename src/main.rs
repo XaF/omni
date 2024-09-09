@@ -246,11 +246,7 @@ fn run_omni_subcommand(parsed: &MainArgs) {
             });
         }
 
-        auto_update_async(if omni_cmd.has_source() {
-            Some(omni_cmd.source().into())
-        } else {
-            None
-        });
+        auto_update_async(omni_cmd);
 
         set_cleanup_handler();
         omni_cmd.exec(argv, Some(called_as));

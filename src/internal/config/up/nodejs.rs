@@ -319,7 +319,7 @@ fn setup_individual_npm_prefix(
                     let mut npm_install = TokioCommand::new("npm");
                     npm_install.arg("install");
                     npm_install.arg("-g");
-                    npm_install.arg(&format!("{}@{}", engine, version_range));
+                    npm_install.arg(format!("{}@{}", engine, version_range));
                     npm_install.stdout(std::process::Stdio::piped());
                     npm_install.stderr(std::process::Stdio::piped());
 

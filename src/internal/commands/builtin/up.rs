@@ -30,6 +30,10 @@ use crate::internal::config::up::utils::PrintProgressHandler;
 use crate::internal::config::up::utils::ProgressHandler;
 use crate::internal::config::up::utils::RunConfig;
 use crate::internal::config::up::utils::SpinnerProgressHandler;
+use crate::internal::config::up::utils::SyncUpdateInit;
+use crate::internal::config::up::utils::SyncUpdateInitOption;
+use crate::internal::config::up::utils::SyncUpdateListener;
+use crate::internal::config::up::utils::SyncUpdateOperation;
 use crate::internal::config::up::UpConfig;
 use crate::internal::config::up::UpOptions;
 use crate::internal::config::CommandSyntax;
@@ -38,12 +42,14 @@ use crate::internal::config::ConfigLoader;
 use crate::internal::config::ConfigValue;
 use crate::internal::config::SyntaxOptArg;
 use crate::internal::env::shell_is_interactive;
+use crate::internal::errors::SyncUpdateError;
 use crate::internal::git::format_path_with_template;
 use crate::internal::git::package_path_from_git_url;
 use crate::internal::git::path_entry_config;
 use crate::internal::git::safe_git_url_parse;
 use crate::internal::git::ORG_LOADER;
 use crate::internal::git_env;
+use crate::internal::git_env_fresh;
 use crate::internal::user_interface::StringColor;
 use crate::internal::workdir;
 use crate::internal::workdir::add_trust;
@@ -1168,6 +1174,71 @@ impl UpCommand {
 
         updated
     }
+
+    fn handle_suggestions(
+        &self,
+        suggest_config: Option<ConfigValue>,
+        suggest_clone: bool,
+        suggest_config_updated: bool,
+        suggest_clone_updated: bool,
+        options: &UpOptions,
+    ) {
+        if let Some(suggested) = suggest_config {
+            self.suggest_config(suggested);
+        }
+
+        if suggest_clone {
+            self.suggest_clone();
+        }
+
+        if let Some(wd_id) = workdir(".").id() {
+            if suggest_config_updated || suggest_clone_updated {
+                self.handle_sync_operation(
+                    SyncUpdateOperation::OmniInfo(format!(
+                        "configuration suggestions for {} have an update",
+                        wd_id.light_blue(),
+                    )),
+                    options,
+                );
+                self.handle_sync_operation(
+                    SyncUpdateOperation::OmniInfo(format!(
+                        "run {} to get the latest suggestions",
+                        "omni up --bootstrap".light_yellow(),
+                    )),
+                    options,
+                );
+            }
+        }
+
+        self.handle_sync_operation(SyncUpdateOperation::Exit(0), options);
+    }
+
+    fn handle_sync_operation(&self, operation: SyncUpdateOperation, options: &UpOptions) {
+        if let Some(sync_file) = options.lock_file {
+            if let Err(err) = operation.dump_to_file(sync_file) {
+                omni_error!(format!("failed to write sync file: {}", err));
+            }
+        }
+
+        match operation {
+            SyncUpdateOperation::Init(init) => {
+                panic!("unexpected init message: {:?}", init);
+            }
+            SyncUpdateOperation::Exit(exit_code) => exit(exit_code),
+            SyncUpdateOperation::OmniWarning(message) => {
+                omni_warning!(message);
+            }
+            SyncUpdateOperation::OmniError(message) => {
+                omni_error!(message);
+            }
+            SyncUpdateOperation::OmniInfo(message) => {
+                omni_info!(message);
+            }
+            SyncUpdateOperation::Progress(progress) => {
+                panic!("unexpected progress message: {:?}", progress)
+            }
+        }
+    }
 }
 
 impl BuiltinCommand for UpCommand {
@@ -1333,7 +1404,7 @@ impl BuiltinCommand for UpCommand {
         }
 
         if !self.update_repository() {
-            if let (Some(wd_id), Some(git_commit)) = (wd.id(), git_env(".").commit()) {
+            if let (Some(wd_id), Some(git_commit)) = (wd.id(), git_env_fresh(".").commit()) {
                 if RepositoriesCache::get().check_fingerprint(
                     &wd_id,
                     "head_commit",
@@ -1454,6 +1525,65 @@ impl BuiltinCommand for UpCommand {
             exit(1);
         }
 
+        // Read the head commit of the repository
+        let head_commit = git_env_fresh(".").commit().map(|commit| commit.to_string());
+
+        // Prepare the sync command, so we can make sure we are listening to the correct operation
+        let sync_command = if self.is_up() {
+            let mut init_options = HashSet::new();
+            if suggest_config.is_some() {
+                init_options.insert(SyncUpdateInitOption::SuggestConfig);
+            }
+            if suggest_clone {
+                init_options.insert(SyncUpdateInitOption::SuggestClone);
+            }
+            SyncUpdateInit::Up(
+                head_commit.clone(),
+                init_options,
+                self.cli_args().cache_enabled,
+            )
+        } else {
+            SyncUpdateInit::Down(self.cli_args().cache_enabled)
+        };
+
+        // Prepare a listener in case the operation is already running
+        let mut listener = SyncUpdateListener::new();
+        listener.expect_init(&sync_command);
+
+        // Lock the update process to avoid running it multiple times in parallel
+        let lock_file = match workdir(".").lock_update(&mut listener) {
+            Ok(Some(lock_file)) => lock_file,
+            Ok(None) => {
+                // Nothing to do here, the update was done in an attached operation
+                exit(0);
+            }
+            Err(SyncUpdateError::MissingInitOptions) => {
+                // If we get here, it means we were attached to an `up` operation that successfully
+                // went through, but we have options (e.g. suggest config, suggest clone) that
+                // weren't present for the attached operation. We thus still need to handle those
+                self.handle_suggestions(
+                    suggest_config,
+                    suggest_clone,
+                    suggest_config_updated,
+                    suggest_clone_updated,
+                    &UpOptions::new(),
+                );
+                exit(0);
+            }
+            Err(err) => {
+                omni_error!(format!("{}", err));
+                exit(1);
+            }
+        };
+
+        // If we're here, we've got the lock file, so let's dump the init information
+        if let Err(err) = SyncUpdateOperation::Init(sync_command).dump_to_file(&lock_file) {
+            omni_warning!(format!("failed to write sync file: {}", err));
+        }
+
+        // Prepare the options for the up command
+        let options = UpOptions::new().lock_file(&lock_file);
+
         // No matter what's happening after, we want a clean cache for that
         // repository, as we're rebuilding the up environment from scratch
         UpConfig::clear_cache();
@@ -1473,59 +1603,73 @@ impl BuiltinCommand for UpCommand {
                     false
                 }
             }) {
-                omni_warning!(format!("failed to update cache: {}", err));
+                self.handle_sync_operation(
+                    SyncUpdateOperation::OmniWarning(format!(
+                        "failed to update environment cache: {}",
+                        err
+                    )),
+                    &options,
+                );
             } else if env_vars.is_some() {
-                omni_info!(format!("Repository environment configured"));
+                self.handle_sync_operation(
+                    SyncUpdateOperation::OmniInfo("Repository environment configured".to_string()),
+                    &options,
+                );
             }
         }
 
         // If it has an up configuration, handle it
         if has_up_config {
             let up_config = up_config.unwrap();
+
             if self.is_up() {
-                let options = UpOptions::new()
+                let options = options
+                    .clone()
                     .cache(self.cli_args().cache_enabled)
                     .fail_on_upgrade(self.cli_args().fail_on_upgrade);
                 if let Err(err) = up_config.up(&options) {
-                    omni_error!(format!("issue while setting repo up: {}", err));
-                    exit(1);
+                    self.handle_sync_operation(
+                        SyncUpdateOperation::OmniError(format!(
+                            "issue while setting repo up: {}",
+                            err
+                        )),
+                        &options,
+                    );
+                    self.handle_sync_operation(SyncUpdateOperation::Exit(1), &options);
                 }
 
-                if let (Some(wd_id), Some(git_commit)) = (wd.id(), git_env(".").commit()) {
+                if let (Some(wd_id), Some(git_commit)) = (wd.id(), head_commit) {
                     if let Err(err) = RepositoriesCache::exclusive(|repos| {
                         repos.update_fingerprint(&wd_id, "head_commit", fingerprint(&git_commit))
                     }) {
-                        omni_warning!(format!("failed to update cache: {}", err));
+                        self.handle_sync_operation(
+                            SyncUpdateOperation::OmniWarning(format!(
+                                "failed to update cache: {}",
+                                err
+                            )),
+                            &options,
+                        );
                     }
                 }
-            } else if let Err(err) = up_config.down() {
-                omni_error!(format!("issue while tearing repo down: {}", err));
-                exit(1);
+            } else if let Err(err) = up_config.down(&options) {
+                self.handle_sync_operation(
+                    SyncUpdateOperation::OmniError(format!(
+                        "issue while tearing repo down: {}",
+                        err
+                    )),
+                    &options,
+                );
+                self.handle_sync_operation(SyncUpdateOperation::Exit(1), &options);
             }
         }
 
-        if let Some(suggested) = suggest_config {
-            self.suggest_config(suggested);
-        }
-
-        if suggest_clone {
-            self.suggest_clone();
-        }
-
-        if let Some(wd_id) = wd.id() {
-            if suggest_config_updated || suggest_clone_updated {
-                omni_info!(format!(
-                    "configuration suggestions for {} have an update",
-                    wd_id.light_blue(),
-                ));
-                omni_info!(format!(
-                    "run {} to get the latest suggestions",
-                    "omni up --bootstrap".light_yellow(),
-                ));
-            }
-        }
-
-        exit(0);
+        self.handle_suggestions(
+            suggest_config,
+            suggest_clone,
+            suggest_config_updated,
+            suggest_clone_updated,
+            &options,
+        );
     }
 
     fn autocompletion(&self) -> bool {

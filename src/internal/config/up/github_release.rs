@@ -181,9 +181,8 @@ impl UpConfigGithubReleases {
                 )
                 .light_yellow(),
             );
-            release.up(options, &subhandler).map_err(|err| {
+            release.up(options, &subhandler).inspect_err(|_err| {
                 progress_handler.error();
-                err
             })?;
         }
 
@@ -771,9 +770,8 @@ impl UpConfigGithubRelease {
                         progress_handler,
                     )?;
 
-                    self.resolve_release(&releases).map_err(|err| {
+                    self.resolve_release(&releases).inspect_err(|err| {
                         progress_handler.error_with_message(err.message());
-                        err
                     })?
                 } else {
                     progress_handler.error_with_message(err.message());
