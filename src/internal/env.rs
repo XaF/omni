@@ -159,6 +159,11 @@ pub fn git_env_flush_cache<T: AsRef<str>>(path: T) {
     git_env.remove(&path);
 }
 
+pub fn git_env_fresh<T: AsRef<str>>(path: T) -> GitRepoEnv {
+    git_env_flush_cache(&path);
+    git_env(&path)
+}
+
 pub fn workdir<T: AsRef<str>>(path: T) -> WorkDirEnv {
     let path: &str = path.as_ref();
     let path = std::fs::canonicalize(path)
@@ -1030,7 +1035,7 @@ impl WorkDirEnv {
                             // If the init operation is mismatched, we need to wait for the lock to be released
                             omni_info!(format!(
                                 "waiting for running {} operation to finish",
-                                actual.light_yellow()
+                                actual.name().light_yellow()
                             ));
 
                             // Grab the lock in a blocking way

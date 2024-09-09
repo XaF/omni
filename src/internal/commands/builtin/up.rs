@@ -47,6 +47,7 @@ use crate::internal::git::path_entry_config;
 use crate::internal::git::safe_git_url_parse;
 use crate::internal::git::ORG_LOADER;
 use crate::internal::git_env;
+use crate::internal::git_env_fresh;
 use crate::internal::user_interface::StringColor;
 use crate::internal::workdir;
 use crate::internal::workdir::add_trust;
@@ -1181,7 +1182,7 @@ impl UpCommand {
 
         match operation {
             SyncUpdateOperation::Init(init) => {
-                eprintln!("[3] init: {:?}", init);
+                panic!("unexpected init message: {:?}", init);
             }
             SyncUpdateOperation::Exit(exit_code) => exit(exit_code),
             SyncUpdateOperation::OmniWarning(message) => {
@@ -1363,7 +1364,7 @@ impl BuiltinCommand for UpCommand {
         }
 
         if !self.update_repository() {
-            if let (Some(wd_id), Some(git_commit)) = (wd.id(), git_env(".").commit()) {
+            if let (Some(wd_id), Some(git_commit)) = (wd.id(), git_env_fresh(".").commit()) {
                 if RepositoriesCache::get().check_fingerprint(
                     &wd_id,
                     "head_commit",
@@ -1484,16 +1485,22 @@ impl BuiltinCommand for UpCommand {
             exit(1);
         }
 
+        // Read the head commit of the repository
+        let head_commit = match git_env_fresh(".").commit() {
+            Some(commit) => Some(commit.to_string()),
+            None => None,
+        };
+
         // Prepare the sync command, so we can make sure we are listening to the correct operation
         let sync_command = if self.is_up() {
-            SyncUpdateInit::Up
+            SyncUpdateInit::Up(head_commit.clone())
         } else {
             SyncUpdateInit::Down
         };
 
         // Prepare a listener in case the operation is already running
         let mut listener = SyncUpdateListener::new();
-        listener.expect_init(sync_command.as_str());
+        listener.expect_init(&sync_command);
 
         // Lock the update process to avoid running it multiple times in parallel
         let mut lock_file = match workdir(".").lock_update(&mut listener) {
@@ -1570,7 +1577,7 @@ impl BuiltinCommand for UpCommand {
                     self.handle_sync_operation(SyncUpdateOperation::Exit(1), &options);
                 }
 
-                if let (Some(wd_id), Some(git_commit)) = (wd.id(), git_env(".").commit()) {
+                if let (Some(wd_id), Some(git_commit)) = (wd.id(), head_commit) {
                     if let Err(err) = RepositoriesCache::exclusive(|repos| {
                         repos.update_fingerprint(&wd_id, "head_commit", fingerprint(&git_commit))
                     }) {

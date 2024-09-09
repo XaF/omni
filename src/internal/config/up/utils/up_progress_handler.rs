@@ -1,4 +1,5 @@
 use std::collections::BTreeMap;
+use std::fmt::Display;
 use std::io::BufRead;
 use std::io::Write;
 use std::process::exit;
@@ -249,7 +250,7 @@ impl ProgressHandler for UpProgressHandler<'_> {
 }
 
 pub struct SyncUpdateListener<'a> {
-    expected_init: Option<String>,
+    expected_init: Option<SyncUpdateInit>,
     current_handler: Option<UpProgressHandler<'a>>,
     current_handler_id: Option<String>,
     seen_init: bool,
@@ -265,8 +266,8 @@ impl SyncUpdateListener<'_> {
         }
     }
 
-    pub fn expect_init(&mut self, init: &str) -> &mut Self {
-        self.expected_init = Some(init.to_string());
+    pub fn expect_init(&mut self, init: &SyncUpdateInit) -> &mut Self {
+        self.expected_init = Some(init.clone());
         self
     }
 
@@ -313,14 +314,14 @@ impl SyncUpdateListener<'_> {
                 self.seen_init = true;
 
                 if let Some(ref expected_init) = self.expected_init {
-                    if expected_init != init.as_str() {
-                        return Err(SyncUpdateError::MismatchedInit(
-                            init.to_string(),
-                            expected_init.to_string(),
-                        ));
+                    if expected_init != &init {
+                        return Err(SyncUpdateError::MismatchedInit(init, expected_init.clone()));
                     }
                 }
-                omni_info!("attaching to running operation".to_string());
+                omni_info!(format!(
+                    "attaching to running {} operation",
+                    init.name().light_yellow()
+                ));
             }
             SyncUpdateOperation::Exit(exit_code) => {
                 exit(exit_code);
@@ -390,25 +391,29 @@ impl SyncUpdateOperation {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, PartialEq, Eq, Clone)]
 #[serde(rename_all = "snake_case")]
 pub enum SyncUpdateInit {
-    Up,
+    Up(Option<String>),
     Down,
 }
 
 impl SyncUpdateInit {
-    pub fn as_str(&self) -> &str {
+    pub fn name(&self) -> &str {
         match self {
-            SyncUpdateInit::Up => "up",
+            SyncUpdateInit::Up(..) => "up",
             SyncUpdateInit::Down => "down",
         }
     }
 }
 
-impl ToString for SyncUpdateInit {
-    fn to_string(&self) -> String {
-        self.as_str().to_string()
+impl Display for SyncUpdateInit {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            SyncUpdateInit::Up(None) => write!(f, "up"),
+            SyncUpdateInit::Up(Some(commit)) => write!(f, "up (commit: {})", commit),
+            SyncUpdateInit::Down => write!(f, "down"),
+        }
     }
 }
 

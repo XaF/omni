@@ -31,6 +31,7 @@ use crate::internal::env::shell_is_interactive;
 use crate::internal::git::full_git_url_parse;
 use crate::internal::git::path_entry_config;
 use crate::internal::git_env;
+use crate::internal::git_env_flush_cache;
 use crate::internal::self_update;
 use crate::internal::user_interface::ensure_newline;
 use crate::internal::user_interface::StringColor;
@@ -848,6 +849,10 @@ fn update_git_branch(
                 Ok(false)
             } else {
                 progress_handler.success_with_message("updated".light_green());
+                git_env_flush_cache(match repo_path {
+                    Some(repo_path) => repo_path,
+                    None => ".",
+                });
                 Ok(true)
             }
         }
@@ -1037,6 +1042,10 @@ fn update_git_tag(
     }
 
     progress_handler.success_with_message("updated".light_green());
+    git_env_flush_cache(match repo_path {
+        Some(repo_path) => repo_path,
+        None => ".",
+    });
 
     Ok(true)
 }
