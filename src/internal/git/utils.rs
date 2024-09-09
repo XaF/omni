@@ -1,5 +1,4 @@
 use std::path::PathBuf;
-use std::str::FromStr;
 use std::time::Duration;
 
 use git_url_parse::normalize_url;
@@ -7,11 +6,11 @@ use git_url_parse::GitUrl;
 use lazy_static::lazy_static;
 use tokio::runtime::Runtime;
 use tokio::time::timeout;
-use url::ParseError;
 use url::Url;
 
 use crate::internal::config::parser::PathEntryConfig;
 use crate::internal::env::data_home;
+use crate::internal::errors::GitUrlError;
 use crate::internal::git_env;
 
 lazy_static! {
@@ -31,30 +30,30 @@ pub fn package_root_path() -> String {
 
 static TIMEOUT_DURATION: Duration = Duration::from_secs(2);
 
-async fn async_normalize_url(url: &str) -> Result<Url, <GitUrl as FromStr>::Err> {
-    normalize_url(url)
+async fn async_normalize_url(url: &str) -> Result<Url, GitUrlError> {
+    Ok(normalize_url(url)?)
 }
 
-pub fn safe_normalize_url(url: &str) -> Result<Url, <GitUrl as FromStr>::Err> {
+pub fn safe_normalize_url(url: &str) -> Result<Url, GitUrlError> {
     let rt = Runtime::new().unwrap();
     rt.block_on(async {
         match timeout(TIMEOUT_DURATION, async_normalize_url(url)).await {
             Ok(result) => result,
-            Err(_) => Err(<GitUrl as FromStr>::Err::new(ParseError::Overflow)),
+            Err(_) => Err(GitUrlError::NormalizeTimeout),
         }
     })
 }
 
-async fn async_git_url_parse(url: &str) -> Result<GitUrl, <GitUrl as FromStr>::Err> {
-    GitUrl::parse(url)
+async fn async_git_url_parse(url: &str) -> Result<GitUrl, GitUrlError> {
+    Ok(GitUrl::parse(url)?)
 }
 
-pub fn safe_git_url_parse(url: &str) -> Result<GitUrl, <GitUrl as FromStr>::Err> {
+pub fn safe_git_url_parse(url: &str) -> Result<GitUrl, GitUrlError> {
     let rt = Runtime::new().unwrap();
     rt.block_on(async {
         match timeout(TIMEOUT_DURATION, async_git_url_parse(url)).await {
             Ok(result) => result,
-            Err(_) => Err(<GitUrl as FromStr>::Err::new(ParseError::Overflow)),
+            Err(_) => Err(GitUrlError::ParseTimeout),
         }
     })
 }
@@ -69,17 +68,22 @@ pub fn id_from_git_url(url: &GitUrl) -> Option<String> {
     None
 }
 
-pub fn full_git_url_parse(url: &str) -> Result<GitUrl, <GitUrl as FromStr>::Err> {
+pub fn full_git_url_parse(url: &str) -> Result<GitUrl, GitUrlError> {
     // let url = safe_normalize_url(url)?;
     // let git_url = safe_git_url_parse(url.as_str())?;
     let git_url = safe_git_url_parse(url)?;
 
     if git_url.scheme.to_string() == "file" {
-        return Err(<GitUrl as FromStr>::Err::new(ParseError::Overflow));
+        return Err(GitUrlError::UnsupportedScheme(git_url.scheme.to_string()));
     }
-
-    if git_url.name.is_empty() || git_url.owner.is_none() || git_url.host.is_none() {
-        return Err(<GitUrl as FromStr>::Err::new(ParseError::Overflow));
+    if git_url.name.is_empty() {
+        return Err(GitUrlError::MissingRepositoryName);
+    }
+    if git_url.owner.is_none() {
+        return Err(GitUrlError::MissingRepositoryOwner);
+    }
+    if git_url.host.is_none() {
+        return Err(GitUrlError::MissingRepositoryHost);
     }
 
     Ok(git_url)
