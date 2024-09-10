@@ -28,6 +28,10 @@ pub(crate) use env::EnvConfig;
 pub(crate) use env::EnvOperationConfig;
 pub(crate) use env::EnvOperationEnum;
 
+mod github;
+pub(crate) use github::GithubAuthConfig;
+pub(crate) use github::GithubConfig;
+
 mod makefile_commands;
 pub(crate) use makefile_commands::MakefileCommandsConfig;
 

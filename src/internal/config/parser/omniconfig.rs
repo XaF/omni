@@ -12,6 +12,7 @@ use crate::internal::config::parser::CloneConfig;
 use crate::internal::config::parser::CommandDefinition;
 use crate::internal::config::parser::ConfigCommandsConfig;
 use crate::internal::config::parser::EnvConfig;
+use crate::internal::config::parser::GithubConfig;
 use crate::internal::config::parser::MakefileCommandsConfig;
 use crate::internal::config::parser::MatchSkipPromptIfConfig;
 use crate::internal::config::parser::PathConfig;
@@ -60,6 +61,8 @@ pub struct OmniConfig {
     pub config_commands: ConfigCommandsConfig,
     #[serde(skip_serializing_if = "EnvConfig::is_empty")]
     pub env: EnvConfig,
+    #[serde(skip_serializing_if = "GithubConfig::is_empty")]
+    pub github: GithubConfig,
     pub makefile_commands: MakefileCommandsConfig,
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub org: Vec<OrgConfig>,
@@ -127,6 +130,7 @@ impl OmniConfig {
                 config_value.get("config_commands"),
             ),
             env: EnvConfig::from_config_value(config_value.get("env")),
+            github: GithubConfig::from_config_value(config_value.get("github")),
             makefile_commands: MakefileCommandsConfig::from_config_value(
                 config_value.get("makefile_commands"),
             ),

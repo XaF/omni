@@ -41,6 +41,7 @@ This supports authenticated requests using [the `gh` command line interface](htt
 | `skip_arch_matching` | boolean | Whether to skip the architecture matching when downloading assets. If set to `true`, this will download all assets regardless of the architecture *(default: `false`)* |
 | `api_url` | string | The URL of the GitHub API to use, useful to use GitHub Enterprise (e.g. `https://github.example.com/api/v3`); defaults to `https://api.github.com` |
 | `checksum` | object | The configuration to verify the checksum of the downloaded asset; see [checksum configuration](#checksum-configuration) below |
+| `auth` | [`Auth`](../github#auth-object) object | The configuration to authenticate the GitHub API requests for this release; if specified, will override the global configuration |
 
 ### Checksum configuration
 
