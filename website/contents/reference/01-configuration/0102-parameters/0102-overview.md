@@ -20,6 +20,7 @@ Omni configuration files accept the following parameters:
 | `commands` | [commands](parameters/commands) (map) | Commands made available through omni |
 | `config_commands` | [config_commands](parameters/config_commands) | Configuration related to the commands defined in the config file |
 | `env` | [env](parameters/env) | Definition of the environment variables to be set when running omni commands |
+| `github` | [github](parameters/github) | Configuration related to the GitHub API |
 | `makefile_commands` | [makefile_commands](parameters/makefile_commands) | Configuration related to the commands generated from Makefile targets |
 | `org` | [org](parameters/org) (list) | Configuration for the default organizations |
 | `path_repo_updates` | [path_repo_updates](parameters/path_repo_updates) | Configuration for the automated updates of the repositories in omni path |

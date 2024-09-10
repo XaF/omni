@@ -31,6 +31,7 @@ use crate::internal::cache::GithubReleaseVersion;
 use crate::internal::cache::GithubReleases;
 use crate::internal::cache::UpEnvironmentsCache;
 use crate::internal::config::global_config;
+use crate::internal::config::parser::GithubAuthConfig;
 use crate::internal::config::up::utils::cleanup_path;
 use crate::internal::config::up::utils::force_remove_dir_all;
 use crate::internal::config::up::utils::ProgressHandler;
@@ -488,6 +489,16 @@ struct UpConfigGithubRelease {
     )]
     pub checksum: GithubReleaseChecksumConfig,
 
+    /// The authentication configuration for this specific
+    /// github release. This will override the global
+    /// authentication configuration, and the default behavior
+    #[serde(
+        default,
+        with = "serde_yaml::with::singleton_map",
+        skip_serializing_if = "GithubAuthConfig::is_default"
+    )]
+    pub auth: GithubAuthConfig,
+
     #[serde(default, skip)]
     pub actual_version: OnceCell<String>,
 
@@ -508,6 +519,7 @@ impl Default for UpConfigGithubRelease {
             skip_arch_matching: false,
             api_url: None,
             checksum: GithubReleaseChecksumConfig::default(),
+            auth: GithubAuthConfig::default(),
             actual_version: OnceCell::new(),
             was_handled: OnceCell::new(),
         }
@@ -617,6 +629,7 @@ impl UpConfigGithubRelease {
             .map(|v| v.as_str_forced())
             .unwrap_or(None);
         let checksum = GithubReleaseChecksumConfig::from_config_value(table.get("checksum"));
+        let auth = GithubAuthConfig::from_config_value(table.get("auth").cloned());
 
         UpConfigGithubRelease {
             repository,
@@ -629,6 +642,7 @@ impl UpConfigGithubRelease {
             skip_arch_matching,
             api_url,
             checksum,
+            auth,
             ..UpConfigGithubRelease::default()
         }
     }
@@ -878,19 +892,8 @@ impl UpConfigGithubRelease {
         }
     }
 
-    fn get_auth_token(&self, progress_handler: &UpProgressHandler) -> Option<String> {
-        // TODO: allow to fetch PAT from config too, so someone
-        // could configure it if they don't have `gh` installed
-        if which::which("gh").is_err() {
-            return None;
-        }
-
-        progress_handler.progress(format!(
-            "preparing to get auth token from {}",
-            "gh".light_yellow()
-        ));
-
-        let hostname = if let Some(api_url) = &self.api_url {
+    fn get_api_hostname(&self, progress_handler: &UpProgressHandler) -> String {
+        if let Some(api_url) = &self.api_url {
             match url::Url::parse(api_url) {
                 Ok(url) => url.host_str().unwrap_or(api_url).to_string(),
                 Err(err) => {
@@ -901,12 +904,49 @@ impl UpConfigGithubRelease {
             }
         } else {
             "github.com".to_string()
+        }
+    }
+
+    fn get_auth_token(&self, progress_handler: &UpProgressHandler) -> Option<String> {
+        let auth = if !self.auth.is_default() {
+            self.auth.clone()
+        } else {
+            let hostname = self.get_api_hostname(progress_handler);
+            global_config().github.auth_for(&self.repository, &hostname)
         };
 
+        let (hostname, user) = match auth {
+            GithubAuthConfig::Skip(true) => return None,
+            GithubAuthConfig::Skip(false) => unreachable!("skip: false is not expected"),
+            GithubAuthConfig::Token(token) => return Some(token),
+            GithubAuthConfig::TokenEnvVar(env_var) => {
+                eprintln!("using {} for auth token", env_var);
+                let token = std::env::var(env_var).ok()?;
+                return Some(token);
+            }
+            GithubAuthConfig::GhCli { hostname, user } => (hostname, user),
+        };
+
+        // If we get here, we need to use the `gh` command to get the token
+        if which::which("gh").is_err() {
+            return None;
+        }
+
         progress_handler.progress(format!(
-            "getting auth token from {} for hostname {}",
+            "preparing to get auth token from {}",
+            "gh".light_yellow()
+        ));
+
+        let hostname = hostname.unwrap_or_else(|| self.get_api_hostname(progress_handler));
+
+        progress_handler.progress(format!(
+            "getting auth token from {} for hostname {}{}",
             "gh".light_yellow(),
-            hostname.light_yellow()
+            hostname.light_yellow(),
+            user.clone().map_or_else(
+                || "".to_string(),
+                |user| format!(" and user {}", user.light_yellow())
+            )
         ));
 
         let mut gh_auth_token = ProcessCommand::new("gh");
@@ -914,6 +954,10 @@ impl UpConfigGithubRelease {
         gh_auth_token.arg("token");
         gh_auth_token.arg("--hostname");
         gh_auth_token.arg(hostname);
+        if let Some(user) = user {
+            gh_auth_token.arg("--user");
+            gh_auth_token.arg(user);
+        }
         gh_auth_token.stdout(std::process::Stdio::piped());
         gh_auth_token.stderr(std::process::Stdio::piped());
 
