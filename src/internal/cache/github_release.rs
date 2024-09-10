@@ -23,6 +23,7 @@ use crate::internal::config::up::utils::VersionMatcher;
 use crate::internal::config::up::utils::VersionParser;
 use crate::internal::env::now as omni_now;
 use crate::internal::self_updater::compatible_release_arch;
+use crate::internal::self_updater::compatible_release_arch_extended;
 use crate::internal::self_updater::compatible_release_os;
 
 const GITHUB_RELEASE_CACHE_NAME: &str = "github_release_operation";
@@ -41,6 +42,17 @@ lazy_static! {
     )) {
         Ok(arch_re) => arch_re,
         Err(err) => panic!("failed to create architecture regex: {}", err),
+    };
+    static ref ARCH_EXTENDED_REGEX: Option<Regex> = {
+        let arch_extended = compatible_release_arch_extended();
+        if arch_extended.is_empty() {
+            None
+        } else {
+            match Regex::new(&format!(r"(?i)(\b|_)({})(\b|_)", arch_extended.join("|"))) {
+                Ok(arch_re) => Some(arch_re),
+                Err(err) => panic!("failed to create architecture regex: {}", err),
+            }
+        }
     };
     static ref SEPARATOR_MID_REGEX: Regex = match Regex::new(r"([-_]{2,})") {
         Ok(separator_re) => separator_re,
@@ -247,18 +259,20 @@ impl GithubReleasesSelector {
         self
     }
 
-    fn asset_matches(&self, asset: &GithubReleaseAsset) -> bool {
+    // Use a tiny unsigned int for the matching, 0 means no matching,
+    // 1 means matching for extended arch, and 2 means matching for regular arch
+    fn asset_matches(&self, asset: &GithubReleaseAsset) -> usize {
         if let Some((asset_type, _)) = asset.file_type() {
             if asset_type.is_binary() && !self.binary {
-                return false;
+                return 0;
             }
         } else {
-            return false;
+            return 0;
         }
 
         if let Some(ref patterns) = self.asset_name {
             if !Self::matches_glob_patterns(patterns, &asset.name) {
-                return false;
+                return 0;
             }
         }
 
@@ -269,7 +283,7 @@ impl GithubReleasesSelector {
                 .into_iter()
                 .all(|os| !asset_name.contains(&os))
         {
-            return false;
+            return 0;
         }
 
         if !self.skip_arch_matching
@@ -277,10 +291,19 @@ impl GithubReleasesSelector {
                 .into_iter()
                 .all(|arch| !asset_name.contains(&arch))
         {
-            return false;
+            if compatible_release_arch_extended()
+                .into_iter()
+                .any(|arch| !asset_name.contains(&arch))
+            {
+                // Extended arch matching
+                return 1;
+            } else {
+                // Arch did not match
+                return 0;
+            }
         }
 
-        true
+        2
     }
 
     fn matches_glob_patterns(patterns: &str, value: &str) -> bool {
@@ -326,11 +349,25 @@ impl GithubReleasesSelector {
     }
 
     fn assets_with_checksums(&self, assets: &[GithubReleaseAsset]) -> Vec<GithubReleaseAsset> {
-        let mut matching_assets = assets
+        // This will prioritize an exact-arch matching over an extended-arch matching
+        let asset_with_matching = assets
             .iter()
-            .filter(|asset| self.asset_matches(asset))
-            .cloned()
-            .collect();
+            .map(|asset| (asset, self.asset_matches(asset)));
+
+        let highest_matching_level = asset_with_matching
+            .clone()
+            .map(|(_, level)| level)
+            .max()
+            .unwrap_or(0);
+
+        if highest_matching_level == 0 {
+            return vec![];
+        }
+
+        let mut matching_assets = asset_with_matching
+            .filter(|(_, level)| *level == highest_matching_level)
+            .map(|(asset, _)| asset.clone())
+            .collect::<Vec<GithubReleaseAsset>>();
 
         if !self.checksum_lookup {
             return matching_assets;
@@ -616,6 +653,10 @@ impl GithubReleaseAsset {
         let name = self.name.clone();
         let name = OS_REGEX.replace_all(&name, "$1$3");
         let name = ARCH_REGEX.replace_all(&name, "$1$3");
+        let name = match *ARCH_EXTENDED_REGEX {
+            Some(ref arch_extended) => arch_extended.replace_all(&name, "$1$3"),
+            None => name,
+        };
         let name = name.replace(version, "");
         let name = SEPARATOR_MID_REGEX.replace_all(&name, "-");
         let name = SEPARATOR_END_REGEX.replace_all(&name, "");

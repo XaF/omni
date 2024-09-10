@@ -3,6 +3,7 @@ use std::io;
 use std::io::Read;
 use std::io::Seek;
 use std::io::SeekFrom;
+use std::os::unix::fs::PermissionsExt;
 use std::os::unix::process::CommandExt;
 use std::path::Path;
 use std::process::Command as ProcessCommand;
@@ -46,6 +47,8 @@ lazy_static! {
         os.to_string()
     };
 
+    static ref ROSETTA_AVAILABLE: bool = compute_check_rosetta_available();
+
     static ref CURRENT_VERSION: Version = {
         let mut version = Version::parse(env!("CARGO_PKG_VERSION")).unwrap();
         if !version.pre.is_empty() {
@@ -75,13 +78,80 @@ lazy_static! {
     };
 }
 
+const RELEASE_ARCH_X86_64: &[&str] = &["x86_64", "amd64", "x64"];
+const RELEASE_ARCH_ARM64: &[&str] = &["arm64", "aarch64"];
+
 pub fn compatible_release_arch() -> Vec<String> {
     if *RELEASE_ARCH == "x86_64" {
-        vec!["x86_64".to_string(), "amd64".to_string(), "x64".to_string()]
+        RELEASE_ARCH_X86_64.iter().map(|s| s.to_string()).collect()
     } else if *RELEASE_ARCH == "arm64" {
-        vec!["arm64".to_string(), "aarch64".to_string()]
+        RELEASE_ARCH_ARM64.iter().map(|s| s.to_string()).collect()
     } else {
         vec![(*RELEASE_ARCH).to_string()]
+    }
+}
+
+fn compute_check_rosetta_available() -> bool {
+    if *RELEASE_OS != "darwin" || *RELEASE_ARCH == "x86_64" {
+        return false;
+    }
+
+    // Verify that /usr/bin/pgrep, /usr/bin/arch and /usr/bin/uname
+    // exist and are executable
+    for binary in &["/usr/bin/pgrep", "/usr/bin/arch", "/usr/bin/uname"] {
+        if !Path::new(binary).exists() || !Path::new(binary).is_file() {
+            return false;
+        }
+
+        // Get the metadata
+        let metadata = match std::fs::metadata(binary) {
+            Ok(metadata) => metadata,
+            Err(_) => return false,
+        };
+
+        // Check if it's executable
+        if !metadata.permissions().mode() & 0o111 != 0 {
+            return false;
+        }
+    }
+
+    // Verify that the `oahd` process is running; if not,
+    // it means Rosetta is not available
+    if !ProcessCommand::new("/usr/bin/pgrep")
+        .arg("oahd")
+        .output()
+        .map(|output| output.status.success())
+        .unwrap_or(false)
+    {
+        return false;
+    }
+
+    // Run `uname -m` through `arch` and check if the answer is `x86_64`, we also
+    // redirect the error output to `/dev/null` as we don't care about it
+    let output = ProcessCommand::new("/usr/bin/arch")
+        .arg("-x86_64")
+        .arg("/usr/bin/uname")
+        .arg("-m")
+        .stderr(std::process::Stdio::null())
+        .output();
+
+    // Validate that the output is `x86_64`
+    output
+        .map(|output| {
+            output.status.success() && String::from_utf8_lossy(&output.stdout).trim() == "x86_64"
+        })
+        .unwrap_or(false)
+}
+
+fn check_rosetta_available() -> bool {
+    *ROSETTA_AVAILABLE
+}
+
+pub fn compatible_release_arch_extended() -> Vec<String> {
+    if check_rosetta_available() {
+        RELEASE_ARCH_X86_64.iter().map(|s| s.to_string()).collect()
+    } else {
+        vec![]
     }
 }
 

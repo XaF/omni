@@ -13,8 +13,12 @@ For this to work properly for a GitHub release, it will need to:
 
 Omni will download all the assets matching the current OS and architecture, verify checksums, extract them and move all the found binary files to a known location to be loaded in the repository environment.
 
+:::info
+If using a ARM Mac (M1, M2, etc.) with Rosetta installed, omni will try to download the `amd64` version of the asset if the `arm64` version is not available.
+:::
+
 :::note
-This supports authenticated requests using [the `gh` command line interface](https://cli.github.com/) if it is installed and authenticated, which allows for a higher rate limit and access to private repositories, as well as GitHub Enterprise instances.
+This supports authenticated requests using [the `gh` command line interface](https://cli.github.com/) if it is installed and authenticated, which allows for a higher rate limit and access to private repositories, as well as GitHub Enterprise instances. See the `auth` parameter to override the default behavior.
 :::
 
 ## Alternative names
