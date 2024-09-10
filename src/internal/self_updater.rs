@@ -87,7 +87,7 @@ pub fn compatible_release_arch() -> Vec<String> {
 
 pub fn compatible_release_os() -> Vec<String> {
     if *RELEASE_OS == "darwin" {
-        vec!["darwin".to_string(), "macos".to_string()]
+        vec!["darwin".to_string(), "macos".to_string(), "osx".to_string()]
     } else {
         vec![(*RELEASE_OS).to_string()]
     }
