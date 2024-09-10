@@ -72,7 +72,7 @@ impl GithubAuthConfigWithFilters {
         if let Some(array) = config_value.as_array() {
             array
                 .iter()
-                .map(|config_value| GithubAuthConfigWithFilters::from_config_value(config_value))
+                .map(GithubAuthConfigWithFilters::from_config_value)
                 .collect()
         } else {
             vec![GithubAuthConfigWithFilters::from_config_value(
