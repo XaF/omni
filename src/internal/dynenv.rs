@@ -543,13 +543,19 @@ impl DynamicEnv {
 
                         envsetter.set_value("GOROOT", &format!("{}/go", tool_prefix));
                         envsetter.set_value("GOVERSION", &version);
-                        envsetter.prepend_to_list("PATH", &format!("{}/go/bin", tool_prefix));
+
+                        let gorootbin = format!("{}/go/bin", tool_prefix);
+                        envsetter.set_value("GOBIN", &gorootbin);
+                        envsetter.prepend_to_list("PATH", &gorootbin);
 
                         // Handle the isolated GOPATH
                         if let Some(data_path) = &toolversion.data_path {
                             envsetter.prepend_to_list("GOPATH", data_path);
-                            envsetter.prepend_to_list("PATH", &format!("{}/bin", data_path));
-                        };
+
+                            let gobin = format!("{}/bin", data_path);
+                            envsetter.set_value("GOBIN", &gobin);
+                            envsetter.prepend_to_list("PATH", &gobin);
+                        }
                     }
                     "python" => {
                         let tool_prefix = if let Some(data_path) = &toolversion.data_path {
