@@ -34,7 +34,7 @@ impl CloneConfig {
 
         Self {
             auto_up: config_value
-                .get_as_bool("auto_up")
+                .get_as_bool_forced("auto_up")
                 .unwrap_or(Self::DEFAULT_AUTO_UP),
             ls_remote_timeout,
         }

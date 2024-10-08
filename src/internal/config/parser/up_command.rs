@@ -10,6 +10,7 @@ pub struct UpCommandConfig {
     pub notify_workdir_config_updated: bool,
     pub notify_workdir_config_available: bool,
     pub preferred_tools: Vec<String>,
+    pub upgrade: bool,
 }
 
 impl Default for UpCommandConfig {
@@ -19,6 +20,7 @@ impl Default for UpCommandConfig {
             notify_workdir_config_updated: Self::DEFAULT_NOTIFY_WORKDIR_CONFIG_UPDATED,
             notify_workdir_config_available: Self::DEFAULT_NOTIFY_WORKDIR_CONFIG_AVAILABLE,
             preferred_tools: Vec::new(),
+            upgrade: Self::DEFAULT_UPGRADE,
         }
     }
 }
@@ -27,6 +29,7 @@ impl UpCommandConfig {
     const DEFAULT_AUTO_BOOTSTRAP: bool = true;
     const DEFAULT_NOTIFY_WORKDIR_CONFIG_UPDATED: bool = true;
     const DEFAULT_NOTIFY_WORKDIR_CONFIG_AVAILABLE: bool = true;
+    const DEFAULT_UPGRADE: bool = false;
 
     pub(super) fn from_config_value(config_value: Option<ConfigValue>) -> Self {
         let config_value = match config_value {
@@ -53,15 +56,18 @@ impl UpCommandConfig {
 
         Self {
             auto_bootstrap: config_value
-                .get_as_bool("auto_bootstrap")
+                .get_as_bool_forced("auto_bootstrap")
                 .unwrap_or(Self::DEFAULT_AUTO_BOOTSTRAP),
             notify_workdir_config_updated: config_value
-                .get_as_bool("notify_workdir_config_updated")
+                .get_as_bool_forced("notify_workdir_config_updated")
                 .unwrap_or(Self::DEFAULT_NOTIFY_WORKDIR_CONFIG_UPDATED),
             notify_workdir_config_available: config_value
-                .get_as_bool("notify_workdir_config_available")
+                .get_as_bool_forced("notify_workdir_config_available")
                 .unwrap_or(Self::DEFAULT_NOTIFY_WORKDIR_CONFIG_AVAILABLE),
             preferred_tools,
+            upgrade: config_value
+                .get_as_bool_forced("upgrade")
+                .unwrap_or(Self::DEFAULT_UPGRADE),
         }
     }
 }

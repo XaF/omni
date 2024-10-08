@@ -47,7 +47,7 @@ impl OrgConfig {
 
         Self {
             handle: config_value.get_as_str("handle").unwrap().to_string(),
-            trusted: config_value.get_as_bool("trusted").unwrap_or(false),
+            trusted: config_value.get_as_bool_forced("trusted").unwrap_or(false),
             worktree: config_value.get_as_str("worktree"),
             repo_path_format: config_value.get_as_str("repo_path_format"),
         }

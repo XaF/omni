@@ -10,6 +10,7 @@ use serde::Deserialize;
 use serde::Serialize;
 use tokio::process::Command as TokioCommand;
 
+use crate::internal::cache::utils as cache_utils;
 use crate::internal::cache::CacheObject;
 use crate::internal::cache::HomebrewInstalled;
 use crate::internal::cache::HomebrewOperationCache;
@@ -443,6 +444,8 @@ pub struct HomebrewTap {
     name: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     url: Option<String>,
+    #[serde(skip_serializing_if = "cache_utils::is_false")]
+    upgrade: bool,
 
     #[serde(skip)]
     was_handled: OnceCell<HomebrewHandled>,
@@ -522,6 +525,7 @@ impl HomebrewTap {
             return Some(Self {
                 name: tap_str.to_string(),
                 url: None,
+                upgrade: false,
                 was_handled: OnceCell::new(),
             });
         } else if let Some(tap_hash) = config_value.as_table() {
@@ -543,6 +547,7 @@ impl HomebrewTap {
 
     fn parse_config(name: String, config_value: &ConfigValue) -> Self {
         let mut url = None;
+        let mut upgrade = false;
 
         if let Some(tap_str) = config_value.as_str() {
             url = Some(tap_str.to_string());
@@ -550,11 +555,18 @@ impl HomebrewTap {
             if let Some(url_value) = config_value.get("url") {
                 url = Some(url_value.as_str().unwrap().to_string());
             }
+
+            if let Some(upgrade_value) = config_value.get("upgrade") {
+                if let Some(upgrade_bool) = upgrade_value.as_bool_forced() {
+                    upgrade = upgrade_bool;
+                }
+            }
         }
 
         Self {
             name,
             url,
+            upgrade,
             was_handled: OnceCell::new(),
         }
     }
@@ -563,6 +575,7 @@ impl HomebrewTap {
         Self {
             name: name.to_string(),
             url: None,
+            upgrade: false,
             was_handled: OnceCell::new(),
         }
     }
@@ -660,12 +673,20 @@ impl HomebrewTap {
         false
     }
 
+    fn upgrade_tap(&self, options: &UpOptions) -> bool {
+        self.upgrade || options.upgrade || global_config().up_command.upgrade
+    }
+
     fn update_tap(
         &self,
         options: &UpOptions,
         progress_handler: &UpProgressHandler,
     ) -> Result<bool, UpError> {
-        if options.read_cache && !HomebrewOperationCache::get().should_update_tap(&self.name) {
+        if !self.upgrade_tap(options) {
+            progress_handler.progress("already tapped".light_black());
+            return Ok(false);
+        } else if options.read_cache && !HomebrewOperationCache::get().should_update_tap(&self.name)
+        {
             progress_handler.progress("already up to date".light_black());
             return Ok(false);
         }
@@ -822,6 +843,7 @@ pub struct HomebrewInstall {
     install_type: HomebrewInstallType,
     name: String,
     version: Option<String>,
+    upgrade: bool,
 
     #[serde(skip)]
     was_handled: OnceCell<HomebrewHandled>,
@@ -832,18 +854,33 @@ impl Serialize for HomebrewInstall {
     where
         S: ::serde::ser::Serializer,
     {
-        let mut install = HashMap::new();
-        install.insert(
-            self.name.clone(),
-            self.version.clone().unwrap_or("latest".to_string()),
-        );
+        match (
+            self.install_type.clone(),
+            self.upgrade,
+            self.version.clone(),
+        ) {
+            (HomebrewInstallType::Formula, false, None) => self.name.serialize(serializer),
+            (HomebrewInstallType::Formula, false, Some(version)) => {
+                let mut install = HashMap::new();
+                install.insert(self.name.clone(), version);
+                install.serialize(serializer)
+            }
+            (install_type, upgrade, version) => {
+                let mut install = HashMap::new();
 
-        if self.install_type == HomebrewInstallType::Cask {
-            let mut cask = HashMap::new();
-            cask.insert("cask".to_string(), install);
-            cask.serialize(serializer)
-        } else {
-            install.serialize(serializer)
+                let install_type = match install_type {
+                    HomebrewInstallType::Formula => "formula",
+                    HomebrewInstallType::Cask => "cask",
+                };
+                install.insert(install_type.to_string(), self.name.clone());
+
+                if let Some(version) = &version {
+                    install.insert("version".to_string(), version.clone());
+                }
+                install.insert("upgrade".to_string(), upgrade.to_string());
+
+                install.serialize(serializer)
+            }
         }
     }
 }
@@ -854,6 +891,7 @@ impl HomebrewInstall {
             install_type: HomebrewInstallType::Formula,
             name: name.to_string(),
             version: None,
+            upgrade: false,
             was_handled: OnceCell::new(),
         }
     }
@@ -884,6 +922,7 @@ impl HomebrewInstall {
                 let mut install_type = HomebrewInstallType::Formula;
                 let mut version = None;
                 let mut name = None;
+                let mut upgrade = false;
 
                 if let Some(formula_config) = formula_config_value.as_table() {
                     let mut rest_of_config = formula_config_value.clone();
@@ -902,6 +941,12 @@ impl HomebrewInstall {
                     let parse_version = if rest_of_config.is_str() {
                         Some(rest_of_config)
                     } else {
+                        if let Some(upgrade_value) = rest_of_config.get("upgrade") {
+                            if let Some(upgrade_bool) = upgrade_value.as_bool_forced() {
+                                upgrade = upgrade_bool;
+                            }
+                        }
+
                         rest_of_config.get("version")
                     };
 
@@ -923,17 +968,13 @@ impl HomebrewInstall {
                         install_type,
                         name,
                         version,
+                        upgrade,
                         was_handled: OnceCell::new(),
                     });
                 }
             }
         } else if let Some(formula) = formulae.as_str() {
-            installs.push(Self {
-                install_type: HomebrewInstallType::Formula,
-                name: formula.to_string(),
-                version: None,
-                was_handled: OnceCell::new(),
-            });
+            installs.push(Self::new_formula(&formula));
         }
 
         installs
@@ -950,6 +991,7 @@ impl HomebrewInstall {
             install_type,
             name: cached.name.clone(),
             version: cached.version.clone(),
+            upgrade: false,
             was_handled: OnceCell::new(),
         }
     }
@@ -1397,6 +1439,10 @@ impl HomebrewInstall {
         None
     }
 
+    fn upgrade_install(&self, options: &UpOptions) -> bool {
+        self.upgrade || options.upgrade || global_config().up_command.upgrade
+    }
+
     fn install(
         &self,
         options: &UpOptions,
@@ -1405,6 +1451,12 @@ impl HomebrewInstall {
     ) -> Result<bool, UpError> {
         if !installed {
             self.extract_package(options, progress_handler)?;
+        } else if !self.upgrade_install(options) {
+            if let Some(progress_handler) = progress_handler {
+                progress_handler.progress("already installed".light_black())
+            }
+
+            return Ok(false);
         } else if options.read_cache
             && !HomebrewOperationCache::get().should_update_install(
                 &self.name,

@@ -427,6 +427,11 @@ struct UpConfigGithubRelease {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub version: Option<String>,
 
+    /// Whether to always upgrade the tool or use the latest matching
+    /// already installed version.
+    #[serde(default, skip_serializing_if = "cache_utils::is_false")]
+    pub upgrade: bool,
+
     /// Whether to install the pre-release version of the tool
     /// if it is the most recent matching version
     #[serde(default, skip_serializing_if = "cache_utils::is_false")]
@@ -511,6 +516,7 @@ impl Default for UpConfigGithubRelease {
         UpConfigGithubRelease {
             repository: "".to_string(),
             version: None,
+            upgrade: false,
             prerelease: false,
             build: false,
             binary: true,
@@ -595,6 +601,11 @@ impl UpConfigGithubRelease {
             .get("version")
             .map(|v| v.as_str_forced())
             .unwrap_or(None);
+        let upgrade = table
+            .get("upgrade")
+            .map(|v| v.as_bool_forced())
+            .unwrap_or(None)
+            .unwrap_or(false);
         let prerelease = table
             .get("prerelease")
             .map(|v| v.as_bool())
@@ -634,6 +645,7 @@ impl UpConfigGithubRelease {
         UpConfigGithubRelease {
             repository,
             version,
+            upgrade,
             prerelease,
             build,
             binary,
@@ -761,52 +773,26 @@ impl UpConfigGithubRelease {
         Ok(())
     }
 
+    fn upgrade_release(&self, options: &UpOptions) -> bool {
+        self.upgrade || options.upgrade || global_config().up_command.upgrade
+    }
+
     fn resolve_and_download_release(
         &self,
         options: &UpOptions,
         progress_handler: &UpProgressHandler,
     ) -> Result<bool, UpError> {
-        let releases = self.list_releases(options, progress_handler)?;
-        let release = match self.resolve_release(&releases) {
-            Ok(release) => release,
-            Err(err) => {
-                // If the release is not fresh of now, and we failed to
-                // resolve the release, we should try to refresh the
-                // release list and try again
-                if options.read_cache && !releases.is_fresh() {
-                    progress_handler.progress("no matching release found in cache".to_string());
+        let mut version = "".to_string();
+        let mut download_release = Err(UpError::Exec("did not even try".to_string()));
 
-                    let releases = self.list_releases(
-                        &UpOptions {
-                            read_cache: false,
-                            ..options.clone()
-                        },
-                        progress_handler,
-                    )?;
-
-                    self.resolve_release(&releases).inspect_err(|err| {
-                        progress_handler.error_with_message(err.message());
-                    })?
-                } else {
-                    progress_handler.error_with_message(err.message());
-                    return Err(err);
-                }
-            }
-        };
-
-        let mut version = release.version();
-
-        // Try installing the release found
-        let mut download_release = self.download_release(options, &release, progress_handler);
-        if download_release.is_err() && !options.fail_on_upgrade {
-            // If we get here and there is an issue downloading the release,
-            // list all installed versions and check if one of those could
-            // fit the requirement, in which case we can fallback to it
+        // If the options do not include upgrade, then we can try using
+        // an already-installed version if any matches the requirements
+        if !self.upgrade_release(options) {
             let installed_versions = self.list_installed_versions(progress_handler)?;
             match self.resolve_version(&installed_versions) {
                 Ok(installed_version) => {
                     progress_handler.progress(format!(
-                        "falling back to {} {}",
+                        "using already installed {} {}",
                         self.repository,
                         installed_version.light_yellow(),
                     ));
@@ -814,7 +800,63 @@ impl UpConfigGithubRelease {
                     version = installed_version;
                     download_release = Ok(false);
                 }
-                Err(_err) => {}
+                Err(_err) => {
+                    progress_handler.progress("no matching version already installed".to_string());
+                }
+            }
+        }
+
+        if version.is_empty() {
+            let releases = self.list_releases(options, progress_handler)?;
+            let release = match self.resolve_release(&releases) {
+                Ok(release) => release,
+                Err(err) => {
+                    // If the release is not fresh of now, and we failed to
+                    // resolve the release, we should try to refresh the
+                    // release list and try again
+                    if options.read_cache && !releases.is_fresh() {
+                        progress_handler.progress("no matching release found in cache".to_string());
+
+                        let releases = self.list_releases(
+                            &UpOptions {
+                                read_cache: false,
+                                ..options.clone()
+                            },
+                            progress_handler,
+                        )?;
+
+                        self.resolve_release(&releases).inspect_err(|err| {
+                            progress_handler.error_with_message(err.message());
+                        })?
+                    } else {
+                        progress_handler.error_with_message(err.message());
+                        return Err(err);
+                    }
+                }
+            };
+
+            version = release.version();
+
+            // Try installing the release found
+            download_release = self.download_release(options, &release, progress_handler);
+            if download_release.is_err() && !options.fail_on_upgrade {
+                // If we get here and there is an issue downloading the release,
+                // list all installed versions and check if one of those could
+                // fit the requirement, in which case we can fallback to it
+                let installed_versions = self.list_installed_versions(progress_handler)?;
+                match self.resolve_version(&installed_versions) {
+                    Ok(installed_version) => {
+                        progress_handler.progress(format!(
+                            "falling back to {} {}",
+                            self.repository,
+                            installed_version.light_yellow(),
+                        ));
+
+                        version = installed_version;
+                        download_release = Ok(false);
+                    }
+                    Err(_err) => {}
+                }
             }
         }
 

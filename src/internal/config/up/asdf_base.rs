@@ -15,6 +15,7 @@ use tokio::process::Command as TokioCommand;
 use walkdir::WalkDir;
 
 use crate::internal::cache::asdf_operation::AsdfOperationUpdateCachePluginVersions;
+use crate::internal::cache::utils as cache_utils;
 use crate::internal::cache::AsdfOperationCache;
 use crate::internal::cache::CacheObject;
 use crate::internal::cache::UpEnvironmentsCache;
@@ -173,6 +174,11 @@ fn is_asdf_tool_version_installed(tool: &str, version: &str) -> bool {
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, Default)]
+pub struct UpConfigAsdfBaseParams {
+    pub tool_url: Option<String>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone, Default)]
 pub struct UpConfigAsdfBase {
     /// The name of the tool to install.
     #[serde(skip)]
@@ -195,6 +201,11 @@ pub struct UpConfigAsdfBase {
 
     /// The version of the tool to install, as specified in the config file.
     pub version: String,
+
+    /// Whether to always upgrade the tool or use the latest matching
+    /// already installed version.
+    #[serde(default, skip_serializing_if = "cache_utils::is_false")]
+    pub upgrade: bool,
 
     /// A list of directories to install the tool for.
     #[serde(default, skip_serializing_if = "BTreeSet::is_empty")]
@@ -251,10 +262,11 @@ pub struct UpConfigAsdfBase {
 }
 
 impl UpConfigAsdfBase {
-    pub fn new(tool: &str, version: &str, dirs: BTreeSet<String>) -> Self {
+    pub fn new(tool: &str, version: &str, dirs: BTreeSet<String>, upgrade: bool) -> Self {
         UpConfigAsdfBase {
             tool: tool.to_string(),
             version: version.to_string(),
+            upgrade,
             dirs: dirs.clone(),
             ..UpConfigAsdfBase::default()
         }
@@ -279,23 +291,16 @@ impl UpConfigAsdfBase {
     }
 
     pub fn from_config_value(tool: &str, config_value: Option<&ConfigValue>) -> Self {
-        Self::from_config_value_with_params(tool, None, config_value)
+        Self::from_config_value_with_params(tool, config_value, UpConfigAsdfBaseParams::default())
     }
 
-    pub fn from_config_value_with_url(
+    pub fn from_config_value_with_params(
         tool: &str,
-        tool_url: &str,
         config_value: Option<&ConfigValue>,
-    ) -> Self {
-        Self::from_config_value_with_params(tool, Some(tool_url.to_string()), config_value)
-    }
-
-    fn from_config_value_with_params(
-        tool: &str,
-        tool_url: Option<String>,
-        config_value: Option<&ConfigValue>,
+        params: UpConfigAsdfBaseParams,
     ) -> Self {
         let mut version = "latest".to_string();
+        let mut upgrade = false;
         let mut dirs = BTreeSet::new();
         let mut override_tool_url = None;
 
@@ -332,13 +337,17 @@ impl UpConfigAsdfBase {
                 }
 
                 if let Some(url) = config_value.get_as_str_forced("url") {
-                    let set_override = match &tool_url {
+                    let set_override = match &params.tool_url {
                         None => true,
                         Some(tool_url) => url != *tool_url,
                     };
                     if set_override {
                         override_tool_url = Some(url.to_string());
                     }
+                }
+
+                if let Some(value) = config_value.get_as_bool_forced("upgrade") {
+                    upgrade = value;
                 }
             }
         }
@@ -358,7 +367,7 @@ impl UpConfigAsdfBase {
 
                 (tool, tool_real_name, tool_url)
             }
-            None => (tool.to_string(), None, tool_url),
+            None => (tool.to_string(), None, params.tool_url.clone()),
         };
 
         UpConfigAsdfBase {
@@ -367,6 +376,7 @@ impl UpConfigAsdfBase {
             tool_url,
             override_tool_url,
             version,
+            upgrade,
             dirs,
             config_value: config_value.cloned(),
             ..UpConfigAsdfBase::default()
@@ -940,14 +950,33 @@ impl UpConfigAsdfBase {
         is_asdf_tool_version_installed(&self.tool, version)
     }
 
+    fn upgrade_version(&self, options: &UpOptions) -> bool {
+        self.upgrade || options.upgrade || global_config().up_command.upgrade
+    }
+
     fn resolve_and_install_version(
         &self,
         options: &UpOptions,
         progress_handler: &UpProgressHandler,
     ) -> Result<bool, UpError> {
+        // If the options do not include upgrade, then we can try using
+        // an already-installed version if any matches the requirements
+        if !self.upgrade_version(options) {
+            let installed_versions = self.list_installed_versions_from_plugin(progress_handler)?;
+            match self.resolve_version(&installed_versions) {
+                Ok(installed_version) => {
+                    progress_handler.progress("using matching installed version".to_string());
+                    return self.install_version(&installed_version, options, progress_handler);
+                }
+                Err(_err) => {
+                    progress_handler.progress("no matching version already installed".to_string());
+                }
+            }
+        }
+
         let versions = self.list_versions(options, progress_handler)?;
-        let mut version = match self.resolve_version(&versions) {
-            Ok(version) => version,
+        let version = match self.resolve_version(&versions) {
+            Ok(available_version) => available_version,
             Err(err) => {
                 // If the versions are not fresh of now, and we failed to
                 // resolve the version, we should try to refresh the
@@ -986,8 +1015,8 @@ impl UpConfigAsdfBase {
                         "falling back to installed version {}",
                         installed_version.light_yellow()
                     ));
-                    version = installed_version;
-                    install_version = self.install_version(&version, options, progress_handler);
+                    install_version =
+                        self.install_version(&installed_version, options, progress_handler);
                 }
                 Err(_err) => {}
             }
@@ -1003,11 +1032,15 @@ impl UpConfigAsdfBase {
         progress_handler: &dyn ProgressHandler,
     ) -> Result<bool, UpError> {
         let installed = if self.is_version_installed(version) {
-            progress_handler.progress(format!("using {} {}", self.name(), version));
+            progress_handler.progress(format!("using {} {}", self.name(), version.light_yellow()));
 
             false
         } else {
-            progress_handler.progress(format!("installing {} {}", self.name(), version));
+            progress_handler.progress(format!(
+                "installing {} {}",
+                self.name(),
+                version.light_yellow()
+            ));
 
             let mut asdf_install = asdf_async_command();
             asdf_install.arg("install");

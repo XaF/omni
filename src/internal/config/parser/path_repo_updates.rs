@@ -104,16 +104,16 @@ impl PathRepoUpdatesConfig {
 
         Self {
             enabled: config_value
-                .get_as_bool("enabled")
+                .get_as_bool_forced("enabled")
                 .unwrap_or(Self::DEFAULT_ENABLED),
             self_update,
             on_command_not_found,
             pre_auth: config_value
-                .get_as_bool("pre_auth")
+                .get_as_bool_forced("pre_auth")
                 .unwrap_or(Self::DEFAULT_PRE_AUTH),
             pre_auth_timeout,
             background_updates: config_value
-                .get_as_bool("background_updates")
+                .get_as_bool_forced("background_updates")
                 .unwrap_or(Self::DEFAULT_BACKGROUND_UPDATES),
             background_updates_timeout,
             interval,

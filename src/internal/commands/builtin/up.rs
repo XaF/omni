@@ -62,14 +62,15 @@ use crate::omni_warning;
 #[derive(Debug, Clone)]
 struct UpCommandArgs {
     cache_enabled: bool,
-    fail_on_upgrade: bool,
     clone_suggested: UpCommandArgsCloneSuggestedOptions,
-    trust: UpCommandArgsTrustOptions,
-    update_repository: bool,
-    update_user_config: UpCommandArgsUpdateUserConfigOptions,
+    fail_on_upgrade: bool,
     prompt: bool,
     prompt_all: bool,
     prompt_ids: HashSet<String>,
+    trust: UpCommandArgsTrustOptions,
+    update_repository: bool,
+    update_user_config: UpCommandArgsUpdateUserConfigOptions,
+    upgrade: bool,
 }
 
 impl UpCommandArgs {
@@ -140,6 +141,11 @@ impl UpCommandArgs {
                     .value_parser(clap::builder::PossibleValuesParser::new([
                         "yes", "ask", "no",
                     ])),
+            )
+            .arg(
+                clap::Arg::new("upgrade")
+                    .long("upgrade")
+                    .action(clap::ArgAction::SetTrue),
             )
             .try_get_matches_from(&parse_argv);
 
@@ -227,16 +233,17 @@ impl UpCommandArgs {
 
         Self {
             cache_enabled: !*matches.get_one::<bool>("no-cache").unwrap_or(&false),
-            fail_on_upgrade: *matches.get_one::<bool>("fail-on-upgrade").unwrap_or(&false),
             clone_suggested,
-            trust,
+            fail_on_upgrade: *matches.get_one::<bool>("fail-on-upgrade").unwrap_or(&false),
             prompt,
             prompt_all,
             prompt_ids,
+            trust,
             update_repository: *matches
                 .get_one::<bool>("update-repository")
                 .unwrap_or(&false),
             update_user_config,
+            upgrade: *matches.get_one::<bool>("upgrade").unwrap_or(&false),
         }
     }
 }
@@ -1375,6 +1382,20 @@ impl BuiltinCommand for UpCommand {
                     ),
                     required: false,
                 },
+                SyntaxOptArg {
+                    name: "--upgrade".to_string(),
+                    desc: Some(
+                        concat!(
+                            "Whether we should upgrade the resources when the currently-installed ",
+                            "version already matches version constraints. If false, this also means ",
+                            "that if an already installed version for another repository matches ",
+                            "version contraints, we will avoid downloading and building a more ",
+                            "recent version \x1B[90m(default: false)\x1B[0m",
+                        )
+                        .to_string(),
+                    ),
+                    required: false,
+                },
             ],
         })
     }
@@ -1626,7 +1647,8 @@ impl BuiltinCommand for UpCommand {
                 let options = options
                     .clone()
                     .cache(self.cli_args().cache_enabled)
-                    .fail_on_upgrade(self.cli_args().fail_on_upgrade);
+                    .fail_on_upgrade(self.cli_args().fail_on_upgrade)
+                    .upgrade(self.cli_args().upgrade);
                 if let Err(err) = up_config.up(&options) {
                     self.handle_sync_operation(
                         SyncUpdateOperation::OmniError(format!(
@@ -1686,6 +1708,7 @@ impl BuiltinCommand for UpCommand {
         println!("--trust");
         println!("--update-repository");
         println!("--update-user-config");
+        println!("--upgrade");
 
         Ok(())
     }
