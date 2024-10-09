@@ -32,7 +32,7 @@ clap = "4.5.19"
 ctrlc = { version = "3.4.5", features = ["termination"] }
 duct = "0.13.6"
 flate2 = "1.0.34"
-fs4 = "0.9.1"
+fs4 = "0.10.0"
 gethostname = "0.5.0"
 git-url-parse = "0.4.5"
 git2 = { version = "0.19.0", features = ["vendored-libgit2"] }
