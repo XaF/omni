@@ -985,7 +985,7 @@ impl UpConfigAsdfBase {
         // If the options do not include upgrade, then we can try using
         // an already-installed version if any matches the requirements
         if !self.upgrade_version(options) {
-            if let Some(installed_versions) =
+            if let Ok(installed_versions) =
                 self.list_installed_versions_from_plugin(progress_handler)
             {
                 let resolve_str = match self.version.as_str() {
