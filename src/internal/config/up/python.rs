@@ -256,7 +256,11 @@ fn setup_python_venv_per_dir(
             RunConfig::default(),
         )?;
 
-        progress_handler.progress(format!("venv created for python {} in {}", version, dir,));
+        progress_handler.progress(format!(
+            "venv created for python {} in {}",
+            version,
+            if dir.is_empty() { "." } else { &dir }
+        ));
     }
 
     // Update the cache
