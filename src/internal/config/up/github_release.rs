@@ -30,6 +30,7 @@ use crate::internal::cache::GithubReleaseOperationCache;
 use crate::internal::cache::GithubReleaseVersion;
 use crate::internal::cache::GithubReleases;
 use crate::internal::cache::UpEnvironmentsCache;
+use crate::internal::config;
 use crate::internal::config::global_config;
 use crate::internal::config::parser::GithubAuthConfig;
 use crate::internal::config::up::utils::cleanup_path;
@@ -774,7 +775,7 @@ impl UpConfigGithubRelease {
     }
 
     fn upgrade_release(&self, options: &UpOptions) -> bool {
-        self.upgrade || options.upgrade || global_config().up_command.upgrade
+        self.upgrade || options.upgrade || config(".").up_command.upgrade
     }
 
     fn resolve_and_download_release(
@@ -784,16 +785,29 @@ impl UpConfigGithubRelease {
     ) -> Result<bool, UpError> {
         let mut version = "".to_string();
         let mut download_release = Err(UpError::Exec("did not even try".to_string()));
+        let mut releases = None;
 
         // If the options do not include upgrade, then we can try using
         // an already-installed version if any matches the requirements
         if !self.upgrade_release(options) {
+            let resolve_str = match self.version.as_ref() {
+                Some(version) if version != "latest" => version.to_string(),
+                _ => {
+                    let list_releases = self.list_releases(options, progress_handler)?;
+                    releases = Some(list_releases.clone());
+                    let latest = self.latest_release_version(&list_releases)?;
+                    progress_handler.progress(
+                        format!("considering installed versions matching {}", latest).light_black(),
+                    );
+                    latest
+                }
+            };
+
             let installed_versions = self.list_installed_versions(progress_handler)?;
-            match self.resolve_version(&installed_versions) {
+            match self.resolve_version_from_str(&resolve_str, &installed_versions) {
                 Ok(installed_version) => {
                     progress_handler.progress(format!(
-                        "using already installed {} {}",
-                        self.repository,
+                        "found matching installed version {}",
                         installed_version.light_yellow(),
                     ));
 
@@ -801,13 +815,16 @@ impl UpConfigGithubRelease {
                     download_release = Ok(false);
                 }
                 Err(_err) => {
-                    progress_handler.progress("no matching version already installed".to_string());
+                    progress_handler.progress("no matching version installed".to_string());
                 }
             }
         }
 
         if version.is_empty() {
-            let releases = self.list_releases(options, progress_handler)?;
+            let releases = match releases {
+                Some(releases) => releases,
+                None => self.list_releases(options, progress_handler)?,
+            };
             let release = match self.resolve_release(&releases) {
                 Ok(release) => release,
                 Err(err) => {
@@ -1102,11 +1119,27 @@ impl UpConfigGithubRelease {
     }
 
     fn resolve_release(&self, releases: &GithubReleases) -> Result<GithubReleaseVersion, UpError> {
-        let version = self.version.clone().unwrap_or_else(|| "latest".to_string());
+        let match_version = self.version.clone().unwrap_or_else(|| "latest".to_string());
+        self.resolve_release_from_str(&match_version, releases)
+    }
 
+    fn latest_release_version(&self, releases: &GithubReleases) -> Result<String, UpError> {
+        let latest = self.resolve_release_from_str("latest", releases)?;
+        let version_str = latest.version();
+        Ok(VersionParser::parse(&version_str)
+            .expect("failed to parse version string")
+            .major()
+            .to_string())
+    }
+
+    fn resolve_release_from_str(
+        &self,
+        match_version: &str,
+        releases: &GithubReleases,
+    ) -> Result<GithubReleaseVersion, UpError> {
         let (_version, release) = releases
             .get(
-                GithubReleasesSelector::new(&version)
+                GithubReleasesSelector::new(match_version)
                     .prerelease(self.prerelease)
                     .build(self.build)
                     .binary(self.binary)
@@ -1120,7 +1153,7 @@ impl UpConfigGithubRelease {
             .ok_or_else(|| {
                 let errmsg = format!(
                     "no matching release found for {} {}",
-                    self.repository, version,
+                    self.repository, match_version,
                 );
                 UpError::Exec(errmsg)
             })?;
@@ -1159,7 +1192,15 @@ impl UpConfigGithubRelease {
 
     fn resolve_version(&self, versions: &[String]) -> Result<String, UpError> {
         let match_version = self.version.clone().unwrap_or_else(|| "latest".to_string());
-        let mut matcher = VersionMatcher::new(&match_version);
+        self.resolve_version_from_str(&match_version, versions)
+    }
+
+    fn resolve_version_from_str(
+        &self,
+        match_version: &str,
+        versions: &[String],
+    ) -> Result<String, UpError> {
+        let mut matcher = VersionMatcher::new(match_version);
         matcher.prerelease(self.prerelease);
         matcher.build(self.build);
         matcher.prefix(true);

@@ -19,6 +19,7 @@ use crate::internal::cache::utils as cache_utils;
 use crate::internal::cache::AsdfOperationCache;
 use crate::internal::cache::CacheObject;
 use crate::internal::cache::UpEnvironmentsCache;
+use crate::internal::config;
 use crate::internal::config::global_config;
 use crate::internal::config::up::homebrew::HomebrewInstall;
 use crate::internal::config::up::utils::data_path_dir_hash;
@@ -27,6 +28,7 @@ use crate::internal::config::up::utils::ProgressHandler;
 use crate::internal::config::up::utils::RunConfig;
 use crate::internal::config::up::utils::UpProgressHandler;
 use crate::internal::config::up::utils::VersionMatcher;
+use crate::internal::config::up::utils::VersionParser;
 use crate::internal::config::up::UpConfigHomebrew;
 use crate::internal::config::up::UpConfigNix;
 use crate::internal::config::up::UpConfigTool;
@@ -859,13 +861,32 @@ impl UpConfigAsdfBase {
         &self,
         versions: &AsdfOperationUpdateCachePluginVersions,
     ) -> Result<String, UpError> {
-        let matcher = VersionMatcher::new(&self.version);
+        self.resolve_version_from_str(&self.version, versions)
+    }
+
+    fn latest_version(
+        &self,
+        versions: &AsdfOperationUpdateCachePluginVersions,
+    ) -> Result<String, UpError> {
+        let version_str = self.resolve_version_from_str("latest", versions)?;
+        Ok(VersionParser::parse(&version_str)
+            .expect("failed to parse version string")
+            .major()
+            .to_string())
+    }
+
+    fn resolve_version_from_str(
+        &self,
+        match_version: &str,
+        versions: &AsdfOperationUpdateCachePluginVersions,
+    ) -> Result<String, UpError> {
+        let matcher = VersionMatcher::new(match_version);
 
         let version = versions.get(&matcher).ok_or_else(|| {
             UpError::Exec(format!(
                 "no {} version found matching {}",
                 self.name(),
-                self.version,
+                match_version,
             ))
         })?;
 
@@ -951,7 +972,7 @@ impl UpConfigAsdfBase {
     }
 
     fn upgrade_version(&self, options: &UpOptions) -> bool {
-        self.upgrade || options.upgrade || global_config().up_command.upgrade
+        self.upgrade || options.upgrade || config(".").up_command.upgrade
     }
 
     fn resolve_and_install_version(
@@ -959,22 +980,40 @@ impl UpConfigAsdfBase {
         options: &UpOptions,
         progress_handler: &UpProgressHandler,
     ) -> Result<bool, UpError> {
+        let mut versions = None;
+
         // If the options do not include upgrade, then we can try using
         // an already-installed version if any matches the requirements
         if !self.upgrade_version(options) {
+            let resolve_str = match self.version.as_str() {
+                "latest" => {
+                    let list_versions = self.list_versions(options, progress_handler)?;
+                    versions = Some(list_versions.clone());
+                    let latest = self.latest_version(&list_versions)?;
+                    progress_handler.progress(
+                        format!("considering installed versions matching {}", latest).light_black(),
+                    );
+                    latest
+                }
+                _ => self.version.clone(),
+            };
+
             let installed_versions = self.list_installed_versions_from_plugin(progress_handler)?;
-            match self.resolve_version(&installed_versions) {
+            match self.resolve_version_from_str(&resolve_str, &installed_versions) {
                 Ok(installed_version) => {
-                    progress_handler.progress("using matching installed version".to_string());
+                    progress_handler.progress("found matching installed version".to_string());
                     return self.install_version(&installed_version, options, progress_handler);
                 }
                 Err(_err) => {
-                    progress_handler.progress("no matching version already installed".to_string());
+                    progress_handler.progress("no matching version installed".to_string());
                 }
             }
         }
 
-        let versions = self.list_versions(options, progress_handler)?;
+        let versions = match versions {
+            Some(versions) => versions,
+            None => self.list_versions(options, progress_handler)?,
+        };
         let version = match self.resolve_version(&versions) {
             Ok(available_version) => available_version,
             Err(err) => {

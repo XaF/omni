@@ -15,6 +15,7 @@ use crate::internal::cache::CacheObject;
 use crate::internal::cache::HomebrewInstalled;
 use crate::internal::cache::HomebrewOperationCache;
 use crate::internal::cache::UpEnvironmentsCache;
+use crate::internal::config;
 use crate::internal::config::up::utils::get_command_output;
 use crate::internal::config::up::utils::run_progress;
 use crate::internal::config::up::utils::ProgressHandler;
@@ -674,7 +675,7 @@ impl HomebrewTap {
     }
 
     fn upgrade_tap(&self, options: &UpOptions) -> bool {
-        self.upgrade || options.upgrade || global_config().up_command.upgrade
+        self.upgrade || options.upgrade || config(".").up_command.upgrade
     }
 
     fn update_tap(
@@ -1440,7 +1441,7 @@ impl HomebrewInstall {
     }
 
     fn upgrade_install(&self, options: &UpOptions) -> bool {
-        self.upgrade || options.upgrade || global_config().up_command.upgrade
+        self.upgrade || options.upgrade || config(".").up_command.upgrade
     }
 
     fn install(
