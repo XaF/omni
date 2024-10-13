@@ -150,7 +150,6 @@ impl UpConfigTool {
                     config_value,
                     UpConfigAsdfBaseParams {
                         tool_url: Some("https://github.com/xaf/asdf-bash".into()),
-                        ..UpConfigAsdfBaseParams::default()
                     },
                 ),
             )),
