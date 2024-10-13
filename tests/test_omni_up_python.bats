@@ -28,6 +28,7 @@ add_asdf_python_calls() {
   venv=true
   cache_versions=false
   list_versions=true
+  upgrade=false
 
   for arg in "$@"; do
     case $arg in
@@ -63,6 +64,10 @@ add_asdf_python_calls() {
         list_versions="${arg#list_versions=}"
         shift
         ;;
+      upgrade=*)
+        upgrade="${arg#upgrade=}"
+        shift
+        ;;
       *)
         echo "Unknown argument: $arg"
         return 1
@@ -95,6 +100,10 @@ add_asdf_python_calls() {
     add_command asdf plugin list <<EOF
 python
 EOF
+  fi
+
+  if [ "$upgrade" = "false" ]; then
+    add_command asdf plugin list python
   fi
 
   if [ "$list_versions" = "true" ]; then
