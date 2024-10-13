@@ -28,11 +28,11 @@ temp-env = "0.3.6"
 [dependencies]
 blake3 = "1.5.4"
 cfg-if = "1.0.0"
-clap = "4.5.17"
+clap = "4.5.20"
 ctrlc = { version = "3.4.5", features = ["termination"] }
 duct = "0.13.6"
 flate2 = "1.0.34"
-fs4 = "0.9.1"
+fs4 = "0.10.0"
 gethostname = "0.5.0"
 git-url-parse = "0.4.5"
 git2 = { version = "0.19.0", features = ["vendored-libgit2"] }
@@ -52,14 +52,14 @@ normalize-path = "0.2.1"
 num-bigint = "0.4.6"
 num-integer = "0.1.46"
 num-traits = "0.2.18"
-once_cell = "1.19.0"
+once_cell = "1.20.1"
 openssl = { version = "0.10", features = ["vendored"] }
 path-clean = "1.0.1"
 pathdiff = "0.2.1"
 petname = "2.0.2"
-regex = "1.10.5"
+regex = "1.11.0"
 requestty = "0.5.0"
-reqwest = { version = "0.12.7", features = ["blocking"] }
+reqwest = { version = "0.12.8", features = ["blocking"] }
 self-replace = "1.5.0"
 semver = "1.0.23"
 serde = { version = "1.0", features = ["derive"] }
