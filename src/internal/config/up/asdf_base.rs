@@ -837,7 +837,7 @@ impl UpConfigAsdfBase {
 
         if !output.status.success() {
             return Err(UpError::Exec(format!(
-                "failed to list installed versions for {} (exit: {}): {}",
+                "failed to list installed versions for {} ({}): {}",
                 self.name(),
                 output.status,
                 String::from_utf8_lossy(&output.stderr),
@@ -985,27 +985,31 @@ impl UpConfigAsdfBase {
         // If the options do not include upgrade, then we can try using
         // an already-installed version if any matches the requirements
         if !self.upgrade_version(options) {
-            let resolve_str = match self.version.as_str() {
-                "latest" => {
-                    let list_versions = self.list_versions(options, progress_handler)?;
-                    versions = Some(list_versions.clone());
-                    let latest = self.latest_version(&list_versions)?;
-                    progress_handler.progress(
-                        format!("considering installed versions matching {}", latest).light_black(),
-                    );
-                    latest
-                }
-                _ => self.version.clone(),
-            };
+            if let Some(installed_versions) =
+                self.list_installed_versions_from_plugin(progress_handler)
+            {
+                let resolve_str = match self.version.as_str() {
+                    "latest" => {
+                        let list_versions = self.list_versions(options, progress_handler)?;
+                        versions = Some(list_versions.clone());
+                        let latest = self.latest_version(&list_versions)?;
+                        progress_handler.progress(
+                            format!("considering installed versions matching {}", latest)
+                                .light_black(),
+                        );
+                        latest
+                    }
+                    _ => self.version.clone(),
+                };
 
-            let installed_versions = self.list_installed_versions_from_plugin(progress_handler)?;
-            match self.resolve_version_from_str(&resolve_str, &installed_versions) {
-                Ok(installed_version) => {
-                    progress_handler.progress("found matching installed version".to_string());
-                    return self.install_version(&installed_version, options, progress_handler);
-                }
-                Err(_err) => {
-                    progress_handler.progress("no matching version installed".to_string());
+                match self.resolve_version_from_str(&resolve_str, &installed_versions) {
+                    Ok(installed_version) => {
+                        progress_handler.progress("found matching installed version".to_string());
+                        return self.install_version(&installed_version, options, progress_handler);
+                    }
+                    Err(_err) => {
+                        progress_handler.progress("no matching version installed".to_string());
+                    }
                 }
             }
         }
