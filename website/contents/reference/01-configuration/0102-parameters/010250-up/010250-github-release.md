@@ -37,6 +37,7 @@ This supports authenticated requests using [the `gh` command line interface](htt
 |------------------|-----------|-------------------------------------------------------|
 | `repository` | string | The name of the repository to download the release from, in the `<owner>/<name>` format; can also be provided as an object with the `owner` and `name` keys |
 | `version` | string | The version of the tool to install; see [version handling](#version-handling) below for more details. |
+| `upgrade` | boolean | whether or not to always upgrade to the most up to date matching release, even if an already-installed version matches the requirements *(default: false)* |
 | `prerelease` | boolean | Whether to download a prerelease version or only match stable releases; this will also apply to versions with prerelease specification, e.g. `1.2.3-alpha` *(default: `false`)* |
 | `build` | boolean | Whether to download a version with build specification, e.g. `1.2.3+build` *(default: `false`)* |
 | `binary` | boolean | Whether to download an asset that is not archived and consider it a binary file *(default: `true`)* |
@@ -72,8 +73,8 @@ The following strings can be used to specify the version:
 | `<1.2.3`  | Must be lower than `1.2.3` |
 | `<=1.2.3` | Must be lower or equal to `1.2.3` |
 | `1.2.x`   | Accepts `1.2.0`, `1.2.1`, etc. but will not accept `1.3.0` |
-| `*`       | Matches any version (will default to `latest`) |
-| `latest`  | Latest release |
+| `*`       | Matches any version (same as `latest`, except that when `upgrade` is `false`, will match any installed version) |
+| `latest`  | Latest release (when `upgrade` is set to `false`, will only match with installed versions of the latest major) |
 | `auto`    | Lookup for any version files in the project directory (`.tool-versions`, `.go-version`, `.golang-version` or `.go.mod`) and apply version parsing |
 
 The version also supports the `||` operator to specify ranges. This operator is not compatible with the `latest` and `auto` keywords. For instance, `1.2.x || >1.3.5 <=1.4.0` will match any version between `1.2.0` included and `1.3.0` excluded, or between `1.3.5` excluded and `1.4.0` included.
