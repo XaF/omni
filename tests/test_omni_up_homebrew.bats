@@ -40,7 +40,7 @@ EOF
 }
 
 # bats test_tags=omni:up,omni:up:homebrew,omni:up:homebrew:install
-@test "omni up homebrew operation calls to upgrade formula" {
+@test "omni up homebrew operation calls to upgrade formula when upgrade is passed on the command line" {
   cat > .omni.yaml <<EOF
 up:
   - homebrew:
@@ -50,6 +50,69 @@ EOF
 
   add_command brew list --formula fakeformula
   add_command brew upgrade --formula fakeformula
+  add_command brew --prefix --installed fakeformula
+  add_command brew --prefix
+
+  run omni up --trust --upgrade 3>&-
+  echo "STATUS: $status"
+  echo "OUTPUT: $output"
+  [ "$status" -eq 0 ]
+}
+
+# bats test_tags=omni:up,omni:up:homebrew,omni:up:homebrew:install
+@test "omni up homebrew operation calls to upgrade formula when upgrade is configured at the work directory level" {
+  cat > .omni.yaml <<EOF
+up:
+  - homebrew:
+      install:
+      - fakeformula
+
+up_command:
+  upgrade: true
+EOF
+
+  add_command brew list --formula fakeformula
+  add_command brew upgrade --formula fakeformula
+  add_command brew --prefix --installed fakeformula
+  add_command brew --prefix
+
+  run omni up --trust 3>&-
+  echo "STATUS: $status"
+  echo "OUTPUT: $output"
+  [ "$status" -eq 0 ]
+}
+
+# bats test_tags=omni:up,omni:up:homebrew,omni:up:homebrew:install
+@test "omni up homebrew operation calls to upgrade formula when upgrade is configured for the formula" {
+  cat > .omni.yaml <<EOF
+up:
+  - homebrew:
+      install:
+      - formula: fakeformula
+        upgrade: true
+EOF
+
+  add_command brew list --formula fakeformula
+  add_command brew upgrade --formula fakeformula
+  add_command brew --prefix --installed fakeformula
+  add_command brew --prefix
+
+  run omni up --trust 3>&-
+  echo "STATUS: $status"
+  echo "OUTPUT: $output"
+  [ "$status" -eq 0 ]
+}
+
+# bats test_tags=omni:up,omni:up:homebrew,omni:up:homebrew:install
+@test "omni up homebrew operation does not upgrade formula if it is already installed and upgrade is not configured" {
+  cat > .omni.yaml <<EOF
+up:
+  - homebrew:
+      install:
+      - formula: fakeformula
+EOF
+
+  add_command brew list --formula fakeformula
   add_command brew --prefix --installed fakeformula
   add_command brew --prefix
 
@@ -79,7 +142,7 @@ EOF
 }
 
 # bats test_tags=omni:up,omni:up:homebrew,omni:up:homebrew:install
-@test "omni up homebrew operation calls to upgrade cask" {
+@test "omni up homebrew operation calls to upgrade cask when upgrade is passed on the command line" {
   cat > .omni.yaml <<EOF
 up:
   - homebrew:
@@ -89,6 +152,66 @@ EOF
 
   add_command brew list --cask fakecask
   add_command brew upgrade --cask fakecask
+  add_command brew --prefix
+
+  run omni up --trust --upgrade 3>&-
+  echo "STATUS: $status"
+  echo "OUTPUT: $output"
+  [ "$status" -eq 0 ]
+}
+
+# bats test_tags=omni:up,omni:up:homebrew,omni:up:homebrew:install
+@test "omni up homebrew operation calls to upgrade cask when upgrade is configured at the work directory level" {
+  cat > .omni.yaml <<EOF
+up:
+  - homebrew:
+      install:
+      - cask: fakecask
+
+up_command:
+  upgrade: true
+EOF
+
+  add_command brew list --cask fakecask
+  add_command brew upgrade --cask fakecask
+  add_command brew --prefix
+
+  run omni up --trust 3>&-
+  echo "STATUS: $status"
+  echo "OUTPUT: $output"
+  [ "$status" -eq 0 ]
+}
+
+# bats test_tags=omni:up,omni:up:homebrew,omni:up:homebrew:install
+@test "omni up homebrew operation calls to upgrade cask when upgrade is configured for the cask" {
+  cat > .omni.yaml <<EOF
+up:
+  - homebrew:
+      install:
+      - cask: fakecask
+        upgrade: true
+EOF
+
+  add_command brew list --cask fakecask
+  add_command brew upgrade --cask fakecask
+  add_command brew --prefix
+
+  run omni up --trust 3>&-
+  echo "STATUS: $status"
+  echo "OUTPUT: $output"
+  [ "$status" -eq 0 ]
+}
+
+# bats test_tags=omni:up,omni:up:homebrew,omni:up:homebrew:install
+@test "omni up homebrew operation does not upgrade cask if it is already installed and upgrade is not configured" {
+  cat > .omni.yaml <<EOF
+up:
+  - homebrew:
+      install:
+      - cask: fakecask
+EOF
+
+  add_command brew list --cask fakecask
   add_command brew --prefix
 
   run omni up --trust 3>&-
