@@ -37,10 +37,10 @@ impl UpCommandConfig {
             None => return Self::default(),
         };
 
-        let config_value_global = match config_value.reject_scope(&ConfigScope::Workdir) {
-            Some(config_value) => config_value,
-            None => ConfigValue::default(),
-        };
+        // For the values that we don't support overriding in the workdir
+        let config_value_global = config_value
+            .reject_scope(&ConfigScope::Workdir)
+            .unwrap_or_default();
 
         let preferred_tools =
             if let Some(preferred_tools) = config_value_global.get_as_array("preferred_tools") {
