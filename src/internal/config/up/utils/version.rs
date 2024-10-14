@@ -138,6 +138,10 @@ impl VersionParser {
         version.build = vec![];
         version.satisfies(requirements)
     }
+
+    pub fn major(&self) -> u64 {
+        self.version.major
+    }
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, Default)]

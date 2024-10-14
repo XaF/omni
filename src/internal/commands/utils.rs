@@ -57,10 +57,8 @@ where
 
     let absolute_path = if path.is_absolute() {
         path.to_path_buf()
-    } else if path.starts_with("~") {
-        let home_dir = std::env::var("HOME").expect("Failed to determine user's home directory");
-        let path = path.strip_prefix("~").expect("Failed to strip prefix");
-        PathBuf::from(home_dir).join(path)
+    } else if let Ok(path) = path.strip_prefix("~") {
+        PathBuf::from(user_home()).join(path)
     } else {
         match frompath {
             Some(frompath) => frompath.as_ref().join(path),

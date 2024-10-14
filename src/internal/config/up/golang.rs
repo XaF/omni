@@ -10,6 +10,7 @@ use once_cell::sync::OnceCell;
 use serde::Deserialize;
 use serde::Serialize;
 
+use crate::internal::cache::utils as cache_utils;
 use crate::internal::cache::utils::CacheObject;
 use crate::internal::cache::UpEnvironmentsCache;
 use crate::internal::commands::utils::abs_path;
@@ -30,6 +31,8 @@ struct UpConfigGolangSerialized {
     version: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     version_file: Option<String>,
+    #[serde(default, skip_serializing_if = "cache_utils::is_false")]
+    upgrade: bool,
     #[serde(skip_serializing_if = "BTreeSet::is_empty")]
     dirs: BTreeSet<String>,
 }
@@ -38,6 +41,7 @@ struct UpConfigGolangSerialized {
 pub struct UpConfigGolang {
     pub version: Option<String>,
     pub version_file: Option<String>,
+    pub upgrade: bool,
     pub dirs: BTreeSet<String>,
     #[serde(skip)]
     pub asdf_base: OnceCell<UpConfigAsdfBase>,
@@ -51,6 +55,7 @@ impl Serialize for UpConfigGolang {
         let mut serialized = UpConfigGolangSerialized {
             version: self.version.clone(),
             version_file: self.version_file.clone(),
+            upgrade: self.upgrade,
             dirs: self.dirs.clone(),
         };
 
@@ -67,6 +72,7 @@ impl UpConfigGolang {
         let mut version = None;
         let mut version_file = None;
         let mut dirs = BTreeSet::new();
+        let mut upgrade = false;
 
         if let Some(config_value) = config_value {
             if let Some(value) = config_value.as_str() {
@@ -101,6 +107,10 @@ impl UpConfigGolang {
                         }
                     }
                 }
+
+                if let Some(value) = config_value.get_as_bool_forced("upgrade") {
+                    upgrade = value;
+                }
             }
         }
 
@@ -108,6 +118,7 @@ impl UpConfigGolang {
             asdf_base: OnceCell::new(),
             version,
             version_file,
+            upgrade,
             dirs,
         }
     }
@@ -145,7 +156,7 @@ impl UpConfigGolang {
             };
 
             let mut asdf_base =
-                UpConfigAsdfBase::new("golang", version.as_ref(), self.dirs.clone());
+                UpConfigAsdfBase::new("golang", version.as_ref(), self.dirs.clone(), self.upgrade);
             asdf_base.add_detect_version_func(detect_version_from_gomod);
             asdf_base.add_post_install_func(setup_individual_gopath);
 

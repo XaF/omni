@@ -33,6 +33,7 @@ If `brew` is not available on the system, this step will be ignored.
 |------------------|-----------|-------------------------------------------------------|
 | `repo` | string | The name of the repository to tap, in the `<owner>/<repo>` format |
 | `url` | string | The URL to tap the repository from (necessary if not following the `https://github.com/<owner>/homebrew-<repo>` format) |
+| `upgrade` | boolean | whether or not to always try and update the tap *(default: false)* |
 
 
 ### `install`
@@ -42,6 +43,8 @@ If `brew` is not available on the system, this step will be ignored.
 | `formula` | string | The name of the formula to install (cannot be used along with `cask`) |
 | `cask` | string | The name of the cask to install (cannot be used along with `formula`) |
 | `version` | string | The version to install for the formula or cask |
+| `upgrade` | boolean | whether or not to always try and update the formula or cask *(default: false)* |
+
 
 ## Examples
 

@@ -27,7 +27,7 @@ impl CdConfig {
 
         Self {
             fast_search: config_value
-                .get_as_bool("fast_search")
+                .get_as_bool_forced("fast_search")
                 .unwrap_or(Self::DEFAULT_FAST_SEARCH),
             path_match_min_score: config_value
                 .get_as_float("path_match_min_score")

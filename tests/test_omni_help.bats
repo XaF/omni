@@ -264,7 +264,7 @@ omni - omnipotent tool (v$version)
 
 Sets up or tear down a repository depending on its up configuration
 
-Usage: omni down [--no-cache] [--fail-on-upgrade] [--bootstrap] [--clone-suggested] [--prompt] [--prompt-all] [--trust] [--update-repository] [--update-user-config]
+Usage: omni down [--no-cache] [--fail-on-upgrade] [--bootstrap] [--clone-suggested] [--prompt] [--prompt-all] [--trust] [--update-repository] [--update-user-config] [--upgrade]
 
   --no-cache            Whether we should disable the cache while running the command
                         (default: no)
@@ -296,6 +296,12 @@ Usage: omni down [--no-cache] [--fail-on-upgrade] [--bootstrap] [--clone-suggest
                         repository if any (yes/ask/no); When using up, the suggest_config
                         configuration will be copied to the home directory of the user to be
                         loaded on every omni call (default: no)
+
+  --upgrade             Whether we should upgrade the resources when the currently-installed
+                        version already matches version constraints. If false, this also means
+                        that if an already installed version for another repository matches
+                        version contraints, we will avoid downloading and building a more
+                        recent version (default: false)
 
 Source: builtin
 EOF
@@ -399,7 +405,7 @@ omni - omnipotent tool (v$version)
 
 Sets up or tear down a repository depending on its up configuration
 
-Usage: omni up [--no-cache] [--fail-on-upgrade] [--bootstrap] [--clone-suggested] [--prompt] [--prompt-all] [--trust] [--update-repository] [--update-user-config]
+Usage: omni up [--no-cache] [--fail-on-upgrade] [--bootstrap] [--clone-suggested] [--prompt] [--prompt-all] [--trust] [--update-repository] [--update-user-config] [--upgrade]
 
   --no-cache            Whether we should disable the cache while running the command
                         (default: no)
@@ -431,6 +437,12 @@ Usage: omni up [--no-cache] [--fail-on-upgrade] [--bootstrap] [--clone-suggested
                         repository if any (yes/ask/no); When using up, the suggest_config
                         configuration will be copied to the home directory of the user to be
                         loaded on every omni call (default: no)
+
+  --upgrade             Whether we should upgrade the resources when the currently-installed
+                        version already matches version constraints. If false, this also means
+                        that if an already installed version for another repository matches
+                        version contraints, we will avoid downloading and building a more
+                        recent version (default: false)
 
 Source: builtin
 EOF

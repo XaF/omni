@@ -452,6 +452,31 @@ impl ConfigValue {
         None
     }
 
+    pub fn as_bool_forced(&self) -> Option<bool> {
+        if let Some(ConfigData::Value(value)) = self.value.as_ref().map(|data| data.as_ref()) {
+            match value {
+                serde_yaml::Value::Null => return None,
+                serde_yaml::Value::Bool(value) => return Some(*value),
+                serde_yaml::Value::String(value) => match value.to_lowercase().as_str() {
+                    "true" | "yes" | "y" | "on" | "1" => return Some(true),
+                    "false" | "no" | "n" | "off" | "0" => return Some(false),
+                    _ => return None,
+                },
+                serde_yaml::Value::Number(value) => match value.as_i64() {
+                    Some(value) => return Some(value != 0),
+                    None => match value.as_f64() {
+                        Some(value) => return Some(value != 0.0),
+                        None => return None,
+                    },
+                },
+                serde_yaml::Value::Sequence(_) => return None,
+                serde_yaml::Value::Mapping(_) => return None,
+                serde_yaml::Value::Tagged(_) => return None,
+            }
+        }
+        None
+    }
+
     #[allow(dead_code)]
     pub fn is_float(&self) -> bool {
         self.as_float().is_some()
@@ -595,6 +620,13 @@ impl ConfigValue {
     pub fn get_as_bool(&self, key: &str) -> Option<bool> {
         if let Some(value) = self.get(key) {
             return value.as_bool();
+        }
+        None
+    }
+
+    pub fn get_as_bool_forced(&self, key: &str) -> Option<bool> {
+        if let Some(value) = self.get(key) {
+            return value.as_bool_forced();
         }
         None
     }

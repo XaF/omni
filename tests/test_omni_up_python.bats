@@ -28,6 +28,8 @@ add_asdf_python_calls() {
   venv=true
   cache_versions=false
   list_versions=true
+  upgrade=false
+  no_upgrade_installed=false
 
   for arg in "$@"; do
     case $arg in
@@ -61,6 +63,14 @@ add_asdf_python_calls() {
         ;;
       list_versions=*)
         list_versions="${arg#list_versions=}"
+        shift
+        ;;
+      upgrade=*)
+        upgrade="${arg#upgrade=}"
+        shift
+        ;;
+      no_upgrade_installed=*)
+        no_upgrade_installed="${arg#no_upgrade_installed=}"
         shift
         ;;
       *)
@@ -97,6 +107,16 @@ python
 EOF
   fi
 
+  if [ "$upgrade" = "false" ]; then
+    if [ "$no_upgrade_installed" = "false" ]; then
+      add_command asdf list python
+    else
+      add_command asdf list python <<EOF
+$(for v in $(echo "${no_upgrade_installed}" | perl -pe 's/,+/,/g' | sort -u); do echo "  ${v}"; done)
+EOF
+    fi
+  fi
+
   if [ "$list_versions" = "true" ]; then
     add_command asdf plugin update python
     add_command asdf list all python <"${PROJECT_DIR}/tests/fixtures/python-versions.txt"
@@ -108,11 +128,11 @@ EOF
   fi
 
   if [ "$installed" = "true" ]; then
-    if [ "$others_installed" = "false" ]; then
-      installed_versions="${version}"
-    else
-      installed_versions=$(echo "${others_installed},${version}" | tr ',' '\n' | sort -u)
-    fi
+    installed_versions=$(echo "${others_installed},${no_upgrade_installed},${version}" | \
+      perl -pe 's/(^|,)false(?=,|$)/,/g' | \
+      perl -pe 's/,+/\n/g' | \
+      perl -pe '/^$/d' | \
+      sort -u)
     add_command asdf list python "${version}" exit=0 <<EOF
 $(for v in ${installed_versions}; do echo "  ${v}"; done)
 EOF
@@ -395,6 +415,123 @@ EOF
 
   add_brew_python_calls
   add_asdf_python_calls cache_versions=expired list_versions=fail-update
+
+  run omni up --trust 3>&-
+  echo "STATUS: $status"
+  echo "OUTPUT: $output"
+  [ "$status" -eq 0 ]
+}
+
+# bats test_tags=omni:up,omni:up:python,omni:up:python:brew
+@test "omni up python operation (latest) with upgrade configured for the python version" {
+  cat > .omni.yaml <<EOF
+up:
+  - python:
+      upgrade: true
+EOF
+
+  add_brew_python_calls
+  add_asdf_python_calls upgrade=true
+
+  run omni up --trust 3>&-
+  echo "STATUS: $status"
+  echo "OUTPUT: $output"
+  [ "$status" -eq 0 ]
+}
+
+# bats test_tags=omni:up,omni:up:python,omni:up:python:brew
+@test "omni up python operation (latest) with upgrade configured at the work directory level" {
+  cat > .omni.yaml <<EOF
+up:
+  - python
+
+up_command:
+  upgrade: true
+EOF
+
+  add_brew_python_calls
+  add_asdf_python_calls upgrade=true
+
+  run omni up --trust 3>&-
+  echo "STATUS: $status"
+  echo "OUTPUT: $output"
+  [ "$status" -eq 0 ]
+}
+
+# bats test_tags=omni:up,omni:up:python,omni:up:python:brew
+@test "omni up python operation (latest) with upgrade configured as a command-line parameter" {
+  cat > .omni.yaml <<EOF
+up:
+  - python
+EOF
+
+  add_brew_python_calls
+  add_asdf_python_calls upgrade=true
+
+  run omni up --trust --upgrade 3>&-
+  echo "STATUS: $status"
+  echo "OUTPUT: $output"
+  [ "$status" -eq 0 ]
+}
+
+# bats test_tags=omni:up,omni:up:python,omni:up:python:brew
+@test "omni up python operation (latest) with upgrade disabled and only an older major installed" {
+  cat > .omni.yaml <<EOF
+up:
+  - python
+EOF
+
+  add_brew_python_calls
+  # Expect that it won't match latest since older major, and install is required
+  add_asdf_python_calls no_upgrade_installed="2.7.18"
+
+  run omni up --trust 3>&-
+  echo "STATUS: $status"
+  echo "OUTPUT: $output"
+  [ "$status" -eq 0 ]
+}
+
+# bats test_tags=omni:up,omni:up:python,omni:up:python:brew
+@test "omni up python operation (2) with upgrade disabled and a version 2 installed" {
+  cat > .omni.yaml <<EOF
+up:
+  - python: 2
+EOF
+
+  add_brew_python_calls
+  add_asdf_python_calls installed=true list_versions=false version="2.7.9" no_upgrade_installed="2.7.9" venv=false
+
+  run omni up --trust 3>&-
+  echo "STATUS: $status"
+  echo "OUTPUT: $output"
+  [ "$status" -eq 0 ]
+}
+
+# bats test_tags=omni:up,omni:up:python,omni:up:python:brew
+@test "omni up python operation (latest) with upgrade disabled and the current major installed" {
+  cat > .omni.yaml <<EOF
+up:
+  - python
+EOF
+
+  add_brew_python_calls
+  add_asdf_python_calls installed=true version="3.7.1" no_upgrade_installed="3.7.1"
+
+  run omni up --trust 3>&-
+  echo "STATUS: $status"
+  echo "OUTPUT: $output"
+  [ "$status" -eq 0 ]
+}
+
+# bats test_tags=omni:up,omni:up:python,omni:up:python:brew
+@test "omni up python operation (3) with upgrade disabled and a version 3 installed" {
+  cat > .omni.yaml <<EOF
+up:
+  - python: 3
+EOF
+
+  add_brew_python_calls
+  add_asdf_python_calls installed=true list_versions=false version="3.7.1" no_upgrade_installed="3.7.1"
 
   run omni up --trust 3>&-
   echo "STATUS: $status"

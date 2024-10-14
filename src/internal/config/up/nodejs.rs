@@ -56,11 +56,11 @@ impl UpConfigNodejsParams {
         let mut params = Self::default();
 
         if let Some(config_value) = &config_value {
-            if let Some(value) = config_value.get_as_bool("install_engines") {
+            if let Some(value) = config_value.get_as_bool_forced("install_engines") {
                 params.install_engines = value;
             }
 
-            if let Some(value) = config_value.get_as_bool("install_packages") {
+            if let Some(value) = config_value.get_as_bool_forced("install_packages") {
                 params.install_packages = value;
             }
         }

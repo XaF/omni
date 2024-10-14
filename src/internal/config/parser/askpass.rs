@@ -39,13 +39,13 @@ impl AskPassConfig {
 
         Self {
             enabled: config_value
-                .get_as_bool("enabled")
+                .get_as_bool_forced("enabled")
                 .unwrap_or(Self::DEFAULT_ENABLED),
             enable_gui: config_value
-                .get_as_bool("enable_gui")
+                .get_as_bool_forced("enable_gui")
                 .unwrap_or(Self::DEFAULT_ENABLE_GUI),
             prefer_gui: config_value
-                .get_as_bool("prefer_gui")
+                .get_as_bool_forced("prefer_gui")
                 .unwrap_or(Self::DEFAULT_PREFER_GUI),
         }
     }

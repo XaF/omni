@@ -35,6 +35,7 @@ pub(crate) mod asdf_base;
 pub(crate) use asdf_base::asdf_tool_path;
 pub(crate) use asdf_base::AsdfToolUpVersion;
 pub(crate) use asdf_base::UpConfigAsdfBase;
+pub(crate) use asdf_base::UpConfigAsdfBaseParams;
 
 pub(crate) mod error;
 pub(crate) use error::UpError;

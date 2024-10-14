@@ -10,6 +10,7 @@ use crate::internal::config::global_config;
 use crate::internal::config::up::utils::UpProgressHandler;
 use crate::internal::config::up::UpConfig;
 use crate::internal::config::up::UpConfigAsdfBase;
+use crate::internal::config::up::UpConfigAsdfBaseParams;
 use crate::internal::config::up::UpConfigBundler;
 use crate::internal::config::up::UpConfigCustom;
 use crate::internal::config::up::UpConfigGithubReleases;
@@ -144,10 +145,12 @@ impl UpConfigTool {
                 }
             }
             "bash" => Some(UpConfigTool::Bash(
-                UpConfigAsdfBase::from_config_value_with_url(
+                UpConfigAsdfBase::from_config_value_with_params(
                     "bash",
-                    "https://github.com/XaF/asdf-bash",
                     config_value,
+                    UpConfigAsdfBaseParams {
+                        tool_url: Some("https://github.com/xaf/asdf-bash".into()),
+                    },
                 ),
             )),
             "bundler" | "bundle" => Some(UpConfigTool::Bundler(

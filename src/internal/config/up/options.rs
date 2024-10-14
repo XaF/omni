@@ -6,6 +6,7 @@ pub struct UpOptions<'a> {
     pub read_cache: bool,
     pub write_cache: bool,
     pub fail_on_upgrade: bool,
+    pub upgrade: bool,
     #[serde(skip)]
     pub lock_file: Option<&'a std::fs::File>,
 }
@@ -16,6 +17,7 @@ impl Default for UpOptions<'_> {
             read_cache: true,
             write_cache: true,
             fail_on_upgrade: false,
+            upgrade: false,
             lock_file: None,
         }
     }
@@ -39,6 +41,11 @@ impl<'a> UpOptions<'a> {
 
     pub fn fail_on_upgrade(mut self, fail_on_upgrade: bool) -> Self {
         self.fail_on_upgrade = fail_on_upgrade;
+        self
+    }
+
+    pub fn upgrade(mut self, upgrade: bool) -> Self {
+        self.upgrade = upgrade;
         self
     }
 
