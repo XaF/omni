@@ -18,7 +18,9 @@ pub(crate) use clone::CloneConfig;
 mod command_definition;
 pub(crate) use command_definition::CommandDefinition;
 pub(crate) use command_definition::CommandSyntax;
+pub(crate) use command_definition::SyntaxGroup;
 pub(crate) use command_definition::SyntaxOptArg;
+pub(crate) use command_definition::SyntaxOptArgType;
 
 mod config_commands;
 pub(crate) use config_commands::ConfigCommandsConfig;

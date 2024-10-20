@@ -183,29 +183,33 @@ impl BuiltinCommand for ConfigBootstrapCommand {
 
     fn syntax(&self) -> Option<CommandSyntax> {
         Some(CommandSyntax {
-            usage: None,
             parameters: vec![
                 SyntaxOptArg {
                     name: "--worktree".to_string(),
                     desc: Some("Bootstrap the main worktree location".to_string()),
                     required: false,
+                    ..Default::default()
                 },
                 SyntaxOptArg {
                     name: "--repo-path-format".to_string(),
                     desc: Some("Bootstrap the repository path format".to_string()),
                     required: false,
+                    ..Default::default()
                 },
                 SyntaxOptArg {
                     name: "--organizations".to_string(),
                     desc: Some("Bootstrap the organizations".to_string()),
                     required: false,
+                    ..Default::default()
                 },
                 SyntaxOptArg {
                     name: "--shell".to_string(),
                     desc: Some("Bootstrap the shell integration".to_string()),
                     required: false,
+                    ..Default::default()
                 },
             ],
+            ..Default::default()
         })
     }
 

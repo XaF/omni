@@ -248,7 +248,6 @@ impl BuiltinCommand for HookInitCommand {
 
     fn syntax(&self) -> Option<CommandSyntax> {
         Some(CommandSyntax {
-            usage: None,
             parameters: vec![
                 SyntaxOptArg {
                     name: "--alias <alias>".to_string(),
@@ -257,6 +256,7 @@ impl BuiltinCommand for HookInitCommand {
                             .to_string(),
                     ),
                     required: false,
+                    ..Default::default()
                 },
                 SyntaxOptArg {
                     name: "--command-alias <alias> <subcommand>".to_string(),
@@ -269,6 +269,7 @@ impl BuiltinCommand for HookInitCommand {
                         .to_string(),
                     ),
                     required: false,
+                    ..Default::default()
                 },
                 SyntaxOptArg {
                     name: "--shims".to_string(),
@@ -277,6 +278,7 @@ impl BuiltinCommand for HookInitCommand {
                             .to_string(),
                     ),
                     required: false,
+                    ..Default::default()
                 },
                 SyntaxOptArg {
                     name: "--keep-shims-in-path".to_string(),
@@ -286,6 +288,7 @@ impl BuiltinCommand for HookInitCommand {
                         "not have other means to load the shims in its environment."
                     ).to_string()),
                     required: false,
+                    ..Default::default()
                 },
                 SyntaxOptArg {
                     name: "--print-shims-path".to_string(),
@@ -294,6 +297,7 @@ impl BuiltinCommand for HookInitCommand {
                         "used to eval in a shell environment."
                     ).to_string()),
                     required: false,
+                    ..Default::default()
                 },
                 SyntaxOptArg {
                     name: "shell".to_string(),
@@ -302,8 +306,10 @@ impl BuiltinCommand for HookInitCommand {
                             .to_string(),
                     ),
                     required: false,
+                    ..Default::default()
                 },
             ],
+            ..Default::default()
         })
     }
 

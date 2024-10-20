@@ -377,19 +377,21 @@ impl BuiltinCommand for HelpCommand {
 
     fn syntax(&self) -> Option<CommandSyntax> {
         Some(CommandSyntax {
-            usage: None,
             parameters: vec![
                 SyntaxOptArg {
                     name: "--unfold".to_string(),
                     desc: Some("Show all subcommands".to_string()),
                     required: false,
+                    ..Default::default()
                 },
                 SyntaxOptArg {
                     name: "command".to_string(),
                     desc: Some("The command to get help for".to_string()),
                     required: false,
+                    ..Default::default()
                 },
             ],
+            ..Default::default()
         })
     }
 

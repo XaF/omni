@@ -132,7 +132,6 @@ impl BuiltinCommand for ConfigTrustCommand {
 
     fn syntax(&self) -> Option<CommandSyntax> {
         Some(CommandSyntax {
-            usage: None,
             parameters: vec![
                 SyntaxOptArg {
                     name: "--check".to_string(),
@@ -144,6 +143,7 @@ impl BuiltinCommand for ConfigTrustCommand {
                         .to_string(),
                     ),
                     required: false,
+                    ..Default::default()
                 },
                 SyntaxOptArg {
                     name: "repo".to_string(),
@@ -155,8 +155,10 @@ impl BuiltinCommand for ConfigTrustCommand {
                         .to_string(),
                     ),
                     required: false,
+                    ..Default::default()
                 },
             ],
+            ..Default::default()
         })
     }
 

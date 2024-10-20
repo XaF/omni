@@ -134,7 +134,6 @@ impl BuiltinCommand for HookEnvCommand {
 
     fn syntax(&self) -> Option<CommandSyntax> {
         Some(CommandSyntax {
-            usage: None,
             parameters: vec![
                 SyntaxOptArg {
                     name: "--quiet".to_string(),
@@ -146,6 +145,7 @@ impl BuiltinCommand for HookEnvCommand {
                         .to_string(),
                     ),
                     required: false,
+                    ..Default::default()
                 },
                 SyntaxOptArg {
                     name: "--keep-shims".to_string(),
@@ -157,8 +157,10 @@ impl BuiltinCommand for HookEnvCommand {
                         .to_string(),
                     ),
                     required: false,
+                    ..Default::default()
                 },
             ],
+            ..Default::default()
         })
     }
 

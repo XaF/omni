@@ -1,3 +1,4 @@
+use std::collections::BTreeMap;
 use std::process::exit;
 
 use crate::internal::commands::fromconfig::ConfigCommand;
@@ -297,18 +298,58 @@ impl Command {
         false
     }
 
+    pub fn exec_parse_args(
+        &self,
+        argv: Vec<String>,
+        called_as: Vec<String>,
+    ) -> Option<BTreeMap<String, String>> {
+        let should_parse_args = match self {
+            Command::FromConfig(command) => command.argparser(),
+            Command::FromPath(command) => command.argparser(),
+            _ => false,
+        };
+
+        if !should_parse_args {
+            return None;
+        }
+
+        match self.syntax() {
+            Some(syntax) => Some(syntax.parse_args(argv, called_as)),
+            None => Some(BTreeMap::from_iter(vec![(
+                "OMNI_ARG_LIST".to_string(),
+                "".to_string(),
+            )])),
+        }
+    }
+
     pub fn exec(&self, argv: Vec<String>, called_as: Option<Vec<String>>) {
         // Load the dynamic environment for that command
         update_dynamic_env_for_command(self.exec_dir());
 
         // Set the general execution environment
-        let name = if let Some(ref called_as) = called_as {
-            called_as.clone()
-        } else {
-            self.name().clone()
+        let called_as = match called_as {
+            Some(called_as) => called_as,
+            None => self.name().clone(),
         };
-        let name = name.join(" ");
+        let name = called_as.join(" ");
         std::env::set_var("OMNI_SUBCOMMAND", name.clone());
+
+        // Add the omni version to the environment
+        std::env::set_var("OMNI_VERSION", env!("CARGO_PKG_VERSION"));
+
+        // Clear all `OMNI_ARG_` environment variables
+        for (key, _) in std::env::vars() {
+            if key.starts_with("OMNI_ARG_") {
+                std::env::remove_var(&key);
+            }
+        }
+
+        // Set environment variables for the parsed arguments, if we are parsing any
+        if let Some(args) = self.exec_parse_args(argv.clone(), called_as.clone()) {
+            for (key, value) in args {
+                std::env::set_var(key, value);
+            }
+        }
 
         match self {
             Command::FromConfig(cmd) if cmd.is_trusted() => {
@@ -335,7 +376,7 @@ impl Command {
 
         match self {
             Command::Builtin(command) => command.exec(argv),
-            Command::FromPath(command) => command.exec(argv, called_as),
+            Command::FromPath(command) => command.exec(argv, Some(called_as)),
             Command::FromConfig(command) => command.exec(argv),
             Command::FromMakefile(command) => command.exec(argv),
             Command::Void(_) => {}

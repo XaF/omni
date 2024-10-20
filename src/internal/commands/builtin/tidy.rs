@@ -291,7 +291,6 @@ impl BuiltinCommand for TidyCommand {
 
     fn syntax(&self) -> Option<CommandSyntax> {
         Some(CommandSyntax {
-            usage: None,
             parameters: vec![
                 SyntaxOptArg {
                     name: "--yes".to_string(),
@@ -299,6 +298,7 @@ impl BuiltinCommand for TidyCommand {
                         "Do not ask for confirmation before organizing repositories".to_string(),
                     ),
                     required: false,
+                    ..Default::default()
                 },
                 SyntaxOptArg {
                     name: "--search-path".to_string(),
@@ -310,6 +310,7 @@ impl BuiltinCommand for TidyCommand {
                         .to_string(),
                     ),
                     required: false,
+                    ..Default::default()
                 },
                 SyntaxOptArg {
                     name: "--up-all".to_string(),
@@ -324,8 +325,10 @@ impl BuiltinCommand for TidyCommand {
                         .to_string(),
                     ),
                     required: false,
+                    ..Default::default()
                 },
             ],
+            ..Default::default()
         })
     }
 

@@ -446,7 +446,6 @@ impl BuiltinCommand for CloneCommand {
 
     fn syntax(&self) -> Option<CommandSyntax> {
         Some(CommandSyntax {
-            usage: None,
             parameters: vec![
                 SyntaxOptArg {
                     name: "--package".to_string(),
@@ -455,6 +454,7 @@ impl BuiltinCommand for CloneCommand {
                             .to_string(),
                     ),
                     required: false,
+                    ..Default::default()
                 },
                 SyntaxOptArg {
                     name: "repo".to_string(),
@@ -468,13 +468,16 @@ impl BuiltinCommand for CloneCommand {
                         .to_string(),
                     ),
                     required: true,
+                    ..Default::default()
                 },
                 SyntaxOptArg {
                     name: "options...".to_string(),
                     desc: Some("Any additional options to pass to git clone.".to_string()),
                     required: false,
+                    ..Default::default()
                 },
             ],
+            ..Default::default()
         })
     }
 
