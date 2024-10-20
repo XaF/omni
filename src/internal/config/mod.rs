@@ -19,7 +19,10 @@ pub(crate) use parser::CommandDefinition;
 pub(crate) use parser::CommandSyntax;
 pub(crate) use parser::OmniConfig;
 pub(crate) use parser::OrgConfig;
+pub(crate) use parser::SyntaxGroup;
 pub(crate) use parser::SyntaxOptArg;
+pub(crate) use parser::SyntaxOptArgNumValues;
+pub(crate) use parser::SyntaxOptArgType;
 
 pub(crate) mod up;
 

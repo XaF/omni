@@ -351,12 +351,12 @@ impl BuiltinCommand for StatusCommand {
 
     fn syntax(&self) -> Option<CommandSyntax> {
         Some(CommandSyntax {
-            usage: None,
             parameters: vec![
                 SyntaxOptArg {
                     name: "--shell-integration".to_string(),
                     desc: Some("Show if the shell integration is loaded or not.".to_string()),
                     required: false,
+                    ..Default::default()
                 },
                 SyntaxOptArg {
                     name: "--config".to_string(),
@@ -365,6 +365,7 @@ impl BuiltinCommand for StatusCommand {
                             .to_string(),
                     ),
                     required: false,
+                    ..Default::default()
                 },
                 SyntaxOptArg {
                     name: "--config-files".to_string(),
@@ -373,6 +374,7 @@ impl BuiltinCommand for StatusCommand {
                             .to_string(),
                     ),
                     required: false,
+                    ..Default::default()
                 },
                 SyntaxOptArg {
                     name: "--worktree".to_string(),
@@ -381,6 +383,7 @@ impl BuiltinCommand for StatusCommand {
                             .to_string(),
                     ),
                     required: false,
+                    ..Default::default()
                 },
                 SyntaxOptArg {
                     name: "--orgs".to_string(),
@@ -389,6 +392,7 @@ impl BuiltinCommand for StatusCommand {
                             .to_string(),
                     ),
                     required: false,
+                    ..Default::default()
                 },
                 SyntaxOptArg {
                     name: "--path".to_string(),
@@ -397,8 +401,10 @@ impl BuiltinCommand for StatusCommand {
                             .to_string(),
                     ),
                     required: false,
+                    ..Default::default()
                 },
             ],
+            ..Default::default()
         })
     }
 

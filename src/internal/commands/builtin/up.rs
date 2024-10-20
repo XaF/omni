@@ -1277,7 +1277,6 @@ impl BuiltinCommand for UpCommand {
 
     fn syntax(&self) -> Option<CommandSyntax> {
         Some(CommandSyntax {
-            usage: None,
             parameters: vec![
                 SyntaxOptArg {
                     name: "--no-cache".to_string(),
@@ -1289,6 +1288,7 @@ impl BuiltinCommand for UpCommand {
                         .to_string(),
                     ),
                     required: false,
+                    ..Default::default()
                 },
                 SyntaxOptArg {
                     name: "--fail-on-upgrade".to_string(),
@@ -1301,6 +1301,7 @@ impl BuiltinCommand for UpCommand {
                         .to_string(),
                     ),
                     required: false,
+                    ..Default::default()
                 },
                 SyntaxOptArg {
                     name: "--bootstrap".to_string(),
@@ -1313,6 +1314,7 @@ impl BuiltinCommand for UpCommand {
                         .to_string(),
                     ),
                     required: false,
+                    ..Default::default()
                 },
                 SyntaxOptArg {
                     name: "--clone-suggested".to_string(),
@@ -1325,6 +1327,7 @@ impl BuiltinCommand for UpCommand {
                         .to_string(),
                     ),
                     required: false,
+                    ..Default::default()
                 },
                 SyntaxOptArg {
                     name: "--prompt".to_string(),
@@ -1336,6 +1339,7 @@ impl BuiltinCommand for UpCommand {
                         .to_string(),
                     ),
                     required: false,
+                    ..Default::default()
                 },
                 SyntaxOptArg {
                     name: "--prompt-all".to_string(),
@@ -1347,6 +1351,7 @@ impl BuiltinCommand for UpCommand {
                         .to_string(),
                     ),
                     required: false,
+                    ..Default::default()
                 },
                 SyntaxOptArg {
                     name: "--trust".to_string(),
@@ -1355,6 +1360,7 @@ impl BuiltinCommand for UpCommand {
                             .to_string(),
                     ),
                     required: false,
+                    ..Default::default()
                 },
                 SyntaxOptArg {
                     name: "--update-repository".to_string(),
@@ -1367,6 +1373,7 @@ impl BuiltinCommand for UpCommand {
                         .to_string(),
                     ),
                     required: false,
+                    ..Default::default()
                 },
                 SyntaxOptArg {
                     name: "--update-user-config".to_string(),
@@ -1381,6 +1388,7 @@ impl BuiltinCommand for UpCommand {
                         .to_string(),
                     ),
                     required: false,
+                    ..Default::default()
                 },
                 SyntaxOptArg {
                     name: "--upgrade".to_string(),
@@ -1395,8 +1403,10 @@ impl BuiltinCommand for UpCommand {
                         .to_string(),
                     ),
                     required: false,
+                    ..Default::default()
                 },
             ],
+            ..Default::default()
         })
     }
 

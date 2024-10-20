@@ -150,36 +150,58 @@ impl HelpCommand {
             );
         }
 
-        eprintln!(
-            "\n{} {}",
-            "Usage:".italic().bold(),
-            command.usage(Some(called_as.join(" "))).bold()
-        );
+        let command_usage = command.usage(Some(called_as.join(" "))).bold();
+        let wrapped_usage = wrap_text(&command_usage, max_width - 7); // 7 is the length of "Usage: "
+
+        eprintln!("\n{} {}", "Usage:".underline().bold(), wrapped_usage[0]);
+        wrapped_usage.iter().skip(1).for_each(|line| {
+            eprintln!("       {}", line);
+        });
 
         if let Some(syntax) = command.syntax() {
             if !syntax.parameters.is_empty() {
-                // Make a single vector with contents from both syntax.arguments and syntax.options
-                let longest = syntax
+                let (arguments, options): (Vec<_>, Vec<_>) = syntax
                     .parameters
                     .iter()
-                    .map(|arg| arg.name.len())
-                    .max()
-                    .unwrap_or(0);
-                let ljust = std::cmp::max(longest + 2, 15);
-                let join_str = format!("\n  {}", " ".repeat(ljust));
+                    .partition(|arg| arg.is_positional());
 
-                for arg in syntax.parameters.iter() {
-                    let missing_just = ljust - arg.name.len();
-                    let str_name = format!("  {}{}", arg.name.cyan(), " ".repeat(missing_just));
-                    let help = if let Some(desc) = &arg.desc {
-                        wrap_text(&strip_colors_if_needed(desc), max_width - ljust)
-                            .join(join_str.as_str())
-                    } else {
-                        "".to_string()
-                    };
-                    eprintln!("\n{}{}", str_name, help);
+                if !arguments.is_empty() {
+                    eprintln!("\n{}", "Arguments:".bold().underline());
+                    if let Err(err) = self.print_syntax_column_help(&arguments) {
+                        omni_error!(err);
+                    }
+                }
+
+                if !options.is_empty() {
+                    eprintln!("\n{}", "Options:".bold().underline());
+                    if let Err(err) = self.print_syntax_column_help(&options) {
+                        omni_error!(err);
+                    }
                 }
             }
+
+            // if !syntax.parameters.is_empty() {
+            // let longest = syntax
+            // .parameters
+            // .iter()
+            // .map(|arg| arg.name.len())
+            // .max()
+            // .unwrap_or(0);
+            // let ljust = std::cmp::max(longest + 2, 15);
+            // let join_str = format!("\n  {}", " ".repeat(ljust));
+
+            // for arg in syntax.parameters.iter() {
+            // let missing_just = ljust - arg.name.len();
+            // let str_name = format!("  {}{}", arg.name.cyan(), " ".repeat(missing_just));
+            // let help = if let Some(desc) = &arg.desc {
+            // wrap_text(&strip_colors_if_needed(desc), max_width - ljust)
+            // .join(join_str.as_str())
+            // } else {
+            // "".to_string()
+            // };
+            // eprintln!("\n{}{}", str_name, help);
+            // }
+            // }
         }
 
         self.print_categorized_command_help(called_as);
@@ -196,6 +218,143 @@ impl HelpCommand {
             &Command::Void(VoidCommand::new_for_help(called_as.clone())),
             called_as,
         );
+    }
+
+    fn print_syntax_column_help(&self, args: &[&SyntaxOptArg]) -> Result<(), String> {
+        // Get the longest command so we know how to justify the help
+        const MIN_LJUST: usize = 15;
+        let abs_max_ljust = term_width() / 2;
+        let max_ljust = std::cmp::min(std::cmp::max(term_width() / 3, 40), abs_max_ljust);
+        if max_ljust < MIN_LJUST {
+            return Err("terminal width is too small to print help".to_string());
+        }
+
+        let (_, longest_under_threshold) = get_longest_under_threshold_func::<&SyntaxOptArg>(
+            args.iter().copied(),
+            |arg| arg.help_name(true, false),
+            None::<for<'a, 'b, 'c, 'd> fn(&'a &SyntaxOptArg, &'b _, &'c _, &'d _) -> _>,
+            max_ljust - 4,
+        );
+        let ljust = std::cmp::max(longest_under_threshold + 2, MIN_LJUST);
+        let help_just = term_width() - ljust - 4;
+
+        // Print the help
+        for arg in args.iter() {
+            let help_name = arg.help_name(true, true);
+
+            let (print_name_on_same_line, wrap_threshold) = match strip_ansi_codes(&help_name).len()
+            {
+                n if n <= longest_under_threshold => (true, longest_under_threshold),
+                _ => (false, term_width() - 4),
+            };
+
+            let wrapped_name = wrap_text(&help_name, wrap_threshold);
+            let wrapped_name_and_len = wrapped_name
+                .iter()
+                .map(|name| (name.to_string(), strip_ansi_codes(name).len()))
+                .collect::<Vec<(String, usize)>>();
+
+            // Prepare the help contents
+            let help_desc = wrap_text(&strip_colors_if_needed(arg.help_desc()), help_just);
+
+            // Prepare the help message to print for this command
+            let empty_str = "".to_string();
+            let mut buf = String::new();
+            if print_name_on_same_line {
+                wrapped_name_and_len
+                    .iter()
+                    .take(wrapped_name_and_len.len() - 1)
+                    .for_each(|(name, _)| {
+                        buf.push_str(&format!("  {}\n", name));
+                    });
+
+                let first_desc_line = help_desc.first().unwrap_or(&empty_str);
+                let last_name_line = wrapped_name_and_len
+                    .last()
+                    .expect("Name should not be empty");
+                buf.push_str(&format!(
+                    "  {}{}{}\n",
+                    last_name_line.0,
+                    " ".repeat(ljust - last_name_line.1),
+                    first_desc_line,
+                ));
+
+                help_desc.iter().skip(1).for_each(|line| {
+                    buf.push_str(&format!("{}{}\n", " ".repeat(ljust + 2), line));
+                });
+            } else {
+                wrapped_name_and_len.iter().for_each(|(name, _)| {
+                    buf.push_str(&format!("  {}\n", name));
+                });
+
+                help_desc.iter().for_each(|line| {
+                    buf.push_str(&format!("{}{}\n", " ".repeat(ljust + 2), line));
+                });
+            }
+
+            // Print the help message for this argument
+            eprint!("{}", buf);
+        }
+
+        // let all_names_str = format!("{}{}", all_names_str, "-".repeat(num_folded_len));
+        // let all_names_vec = wrap_text(&all_names_str, wrap_threshold);
+        // let all_names_and_len = all_names_vec
+        // .iter()
+        // .enumerate()
+        // .map(|(idx, name)| {
+        // let namelen = strip_ansi_codes(name).len();
+        // let name = if idx == all_names_vec.len() - 1 {
+        // match name.strip_suffix("--") {
+        // Some(name) => format!("{}{}", name, num_folded),
+        // None => name.to_string(),
+        // }
+        // } else {
+        // name.to_string()
+        // };
+        // (name, namelen)
+        // })
+        // .collect::<Vec<(String, usize)>>();
+
+        // // Prepare the help contents
+        // let help_vec = wrap_text(&strip_colors_if_needed(command.help_short()), help_just);
+
+        // // Prepare the help message to print for this command
+        // let empty_str = "".to_string();
+        // let mut buf = String::new();
+        // if print_name_on_same_line {
+        // all_names_and_len
+        // .iter()
+        // .take(all_names_and_len.len() - 1)
+        // .for_each(|(name, _)| {
+        // buf.push_str(&format!("  {}\n", name));
+        // });
+
+        // let first_desc_line = help_vec.first().unwrap_or(&empty_str);
+        // let last_name_line = all_names_and_len.last().expect("Name should not be empty");
+        // buf.push_str(&format!(
+        // "  {}{}{}\n",
+        // last_name_line.0,
+        // " ".repeat(ljust - last_name_line.1),
+        // first_desc_line,
+        // ));
+
+        // help_vec.iter().skip(1).for_each(|line| {
+        // buf.push_str(&format!("{}{}\n", " ".repeat(ljust + 2), line));
+        // });
+        // } else {
+        // all_names_and_len.iter().for_each(|(name, _)| {
+        // buf.push_str(&format!("  {}\n", name));
+        // });
+
+        // help_vec.iter().for_each(|line| {
+        // buf.push_str(&format!("{}{}\n", " ".repeat(ljust + 2), line));
+        // });
+        // }
+
+        // eprint!("{}", buf);
+        // }
+
+        Ok(())
     }
 
     fn print_categorized_command_help(&self, prefix: Vec<String>) -> bool {
@@ -377,19 +536,21 @@ impl BuiltinCommand for HelpCommand {
 
     fn syntax(&self) -> Option<CommandSyntax> {
         Some(CommandSyntax {
-            usage: None,
             parameters: vec![
                 SyntaxOptArg {
                     name: "--unfold".to_string(),
                     desc: Some("Show all subcommands".to_string()),
                     required: false,
+                    ..Default::default()
                 },
                 SyntaxOptArg {
                     name: "command".to_string(),
                     desc: Some("The command to get help for".to_string()),
                     required: false,
+                    ..Default::default()
                 },
             ],
+            ..Default::default()
         })
     }
 
@@ -584,6 +745,48 @@ impl HelpCommandMetadata {
             false => 0,
         }
     }
+}
+
+/// Get the longest name under a specific threshold, takes as parameter an iterator of objects
+/// of arbitrary type, a function to get the name of the object when receiving one of those objects
+/// as parameter, and a threshold to consider for the length of the name.
+/// The function returns a tuple with the longest name, and the longest name under the threshold.
+fn get_longest_under_threshold_func<T>(
+    iter: impl Iterator<Item = T>,
+    name_func: impl Fn(&T) -> String,
+    name_len_func: Option<impl Fn(&T, &str, &usize, &usize) -> usize>,
+    wrap_threshold: usize,
+) -> (usize, usize) {
+    let mut longest_name = 0;
+    let mut longest_under_threshold = 0;
+
+    for item in iter {
+        let name = name_func(&item);
+        let name_wrapped = wrap_text(&name, wrap_threshold);
+        let name_len = name_wrapped
+            .iter()
+            .enumerate()
+            .map(|(idx, name)| {
+                if let Some(name_len_func) = &name_len_func {
+                    name_len_func(&item, name, &idx, &name_wrapped.len())
+                } else {
+                    name.len()
+                }
+            })
+            .collect::<Vec<usize>>();
+
+        let max_len = name_len.clone().into_iter().max().unwrap_or(0);
+        let max_under_threshold = name_len
+            .into_iter()
+            .filter(|len| *len <= wrap_threshold)
+            .max()
+            .unwrap_or(0);
+
+        longest_name = std::cmp::max(longest_name, max_len);
+        longest_under_threshold = std::cmp::max(longest_under_threshold, max_under_threshold);
+    }
+
+    (longest_name, longest_under_threshold)
 }
 
 fn get_longest_command(

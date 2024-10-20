@@ -78,3 +78,15 @@ commands:
     run: |
       cargo test
       bats tests/
+
+  clippy:
+    desc: Runs the linter
+    run: |
+      cargo clippy --all-features
+
+  fix:
+    desc: Fixes the code
+    run: |
+      cargo fix --all-features --color always --allow-dirty
+      cargo clippy --fix --all-features --color always --allow-dirty
+      cargo fmt

@@ -166,3 +166,66 @@ pub fn file_auto_complete(p: String) -> Completions<String> {
 
     files
 }
+
+pub fn str_to_bool(value: &str) -> Option<bool> {
+    match value.to_lowercase().as_str() {
+        "true" | "1" | "on" | "enable" | "enabled" | "yes" | "y" => Some(true),
+        "false" | "0" | "off" | "disable" | "disabled" | "no" | "n" => Some(false),
+        _ => None,
+    }
+}
+
+pub struct SplitOnSeparators<'a> {
+    remainder: &'a str,
+    separators: &'a [char],
+    skip_next_char: bool,
+}
+
+impl<'a> SplitOnSeparators<'a> {
+    pub fn new(s: &'a str, separators: &'a [char]) -> Self {
+        SplitOnSeparators {
+            remainder: s,
+            separators,
+            skip_next_char: false,
+        }
+    }
+
+    pub fn remainder(&mut self) -> &'a str {
+        let remainder = self.remainder;
+        self.remainder = "";
+        remainder
+    }
+}
+
+impl<'a> Iterator for SplitOnSeparators<'a> {
+    type Item = &'a str;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.remainder.is_empty() {
+            return None;
+        }
+
+        if self.skip_next_char {
+            self.skip_next_char = false;
+            self.remainder = &self.remainder[1..];
+
+            if self.remainder.is_empty() {
+                return None;
+            }
+        }
+
+        match self.remainder.find(|c| self.separators.contains(&c)) {
+            Some(index) => {
+                let (part, rest) = self.remainder.split_at(index);
+                self.remainder = rest;
+                self.skip_next_char = true;
+                Some(part)
+            }
+            None => {
+                let part = self.remainder;
+                self.remainder = "";
+                Some(part)
+            }
+        }
+    }
+}

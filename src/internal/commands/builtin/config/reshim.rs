@@ -48,10 +48,7 @@ impl BuiltinCommand for ConfigReshimCommand {
     }
 
     fn syntax(&self) -> Option<CommandSyntax> {
-        Some(CommandSyntax {
-            usage: None,
-            parameters: vec![],
-        })
+        Some(CommandSyntax::default())
     }
 
     fn category(&self) -> Option<Vec<String>> {

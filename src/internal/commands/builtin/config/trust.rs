@@ -46,7 +46,7 @@ impl ConfigTrustCommandArgs {
                 match err.kind() {
                     clap::error::ErrorKind::DisplayHelp
                     | clap::error::ErrorKind::DisplayHelpOnMissingArgumentOrSubcommand => {
-                        HelpCommand::new().exec(vec!["cd".to_string()]);
+                        HelpCommand::new().exec(vec!["config".to_string(), "trust".to_string()]);
                     }
                     clap::error::ErrorKind::DisplayVersion => {
                         unreachable!("version flag is disabled");
@@ -132,7 +132,6 @@ impl BuiltinCommand for ConfigTrustCommand {
 
     fn syntax(&self) -> Option<CommandSyntax> {
         Some(CommandSyntax {
-            usage: None,
             parameters: vec![
                 SyntaxOptArg {
                     name: "--check".to_string(),
@@ -144,6 +143,7 @@ impl BuiltinCommand for ConfigTrustCommand {
                         .to_string(),
                     ),
                     required: false,
+                    ..Default::default()
                 },
                 SyntaxOptArg {
                     name: "repo".to_string(),
@@ -155,8 +155,10 @@ impl BuiltinCommand for ConfigTrustCommand {
                         .to_string(),
                     ),
                     required: false,
+                    ..Default::default()
                 },
             ],
+            ..Default::default()
         })
     }
 

@@ -171,7 +171,6 @@ impl BuiltinCommand for ConfigPathSwitchCommand {
 
     fn syntax(&self) -> Option<CommandSyntax> {
         Some(CommandSyntax {
-            usage: None,
             parameters: vec![
                 SyntaxOptArg {
                     name: "--<source>".to_string(),
@@ -184,6 +183,7 @@ impl BuiltinCommand for ConfigPathSwitchCommand {
                         .to_string()
                     ),
                     required: false,
+                    ..Default::default()
                 },
                 SyntaxOptArg {
                     name: "repo".to_string(),
@@ -197,8 +197,10 @@ impl BuiltinCommand for ConfigPathSwitchCommand {
                         .to_string()
                     ),
                     required: false,
+                    ..Default::default()
                 },
             ],
+            ..Default::default()
         })
     }
 

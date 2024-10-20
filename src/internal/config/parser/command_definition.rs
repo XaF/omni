@@ -1,11 +1,22 @@
+use std::any::Any;
+use std::collections::BTreeMap;
 use std::collections::HashMap;
+use std::collections::HashSet;
+use std::fmt;
+use std::str::FromStr;
 
 use serde::Deserialize;
 use serde::Serialize;
 
+use crate::internal::cache::utils as cache_utils;
+use crate::internal::commands::base::BuiltinCommand;
+use crate::internal::commands::utils::str_to_bool;
+use crate::internal::commands::HelpCommand;
+use crate::internal::config::parser::ParseArgsErrorKind;
 use crate::internal::config::ConfigScope;
 use crate::internal::config::ConfigSource;
 use crate::internal::config::ConfigValue;
+use crate::internal::user_interface::colors::StringColor;
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct CommandDefinition {
@@ -22,6 +33,8 @@ pub struct CommandDefinition {
     pub dir: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub subcommands: Option<HashMap<String, CommandDefinition>>,
+    #[serde(skip_serializing_if = "cache_utils::is_false")]
+    pub argparser: bool,
     #[serde(skip)]
     pub source: ConfigSource,
     #[serde(skip)]
@@ -72,6 +85,10 @@ impl CommandDefinition {
             None => vec![],
         };
 
+        let argparser = config_value
+            .get_as_bool_forced("argparser")
+            .unwrap_or(false);
+
         Self {
             desc: config_value
                 .get("desc")
@@ -87,26 +104,28 @@ impl CommandDefinition {
                 .get_as_str("dir")
                 .map(|value| value.to_string()),
             subcommands,
+            argparser,
             source: config_value.get_source().clone(),
             scope: config_value.current_scope().clone(),
         }
     }
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Default)]
 pub struct CommandSyntax {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub usage: Option<String>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub parameters: Vec<SyntaxOptArg>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub groups: Vec<SyntaxGroup>,
 }
 
 impl CommandSyntax {
+    const RESERVED_NAMES: [&'static str; 2] = ["-h", "--help"];
+
     pub fn new() -> Self {
-        CommandSyntax {
-            usage: None,
-            parameters: vec![],
-        }
+        Self::default()
     }
 
     pub fn deserialize<'de, D>(deserializer: D) -> Result<Self, D::Error>
@@ -125,6 +144,7 @@ impl CommandSyntax {
     pub(super) fn from_config_value(config_value: &ConfigValue) -> Option<Self> {
         let mut usage = None;
         let mut parameters = vec![];
+        let mut groups = vec![];
 
         if let Some(array) = config_value.as_array() {
             parameters.extend(
@@ -156,6 +176,10 @@ impl CommandSyntax {
                 }
             }
 
+            if let Some(value) = table.get("groups") {
+                groups = SyntaxGroup::from_config_value_multi(value);
+            }
+
             if let Some(value) = table.get("usage") {
                 if let Some(value) = value.as_str() {
                     usage = Some(value.to_string());
@@ -165,28 +189,537 @@ impl CommandSyntax {
             usage = Some(value.to_string());
         }
 
-        if parameters.is_empty() && usage.is_none() {
+        if parameters.is_empty() && groups.is_empty() && usage.is_none() {
             return None;
         }
 
-        Some(Self { usage, parameters })
+        Some(Self {
+            usage,
+            parameters,
+            groups,
+        })
+    }
+
+    /// The 'leftovers' parameter is used to capture all the remaining arguments
+    /// It corresponds to using 'trailing_var_arg' in clap
+    /// The following will lead to panic:
+    /// - Using 'leftovers' more than once
+    /// - Using 'leftovers' before the last positional argument
+    /// - Using 'leftovers' with a non-positional argument
+    fn check_parameters_leftovers(&self) -> Result<(), String> {
+        // Grab all the leftovers params
+        let leftovers_params = self.parameters.iter().filter(|param| param.leftovers);
+
+        // Check if the count is greater than one
+        if leftovers_params.clone().count() > 1 {
+            return Err(format!(
+                "only one argument can use {}; found {}",
+                "leftovers".light_yellow(),
+                leftovers_params
+                    .map(|param| param.name.light_yellow())
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            ));
+        }
+
+        // Check if any is non-positional
+        let nonpositional_leftovers = leftovers_params
+            .clone()
+            .filter(|param| !param.is_positional());
+        if nonpositional_leftovers.clone().count() > 0 {
+            return Err(format!(
+                "only positional arguments can use {}; found {}",
+                "leftovers".light_yellow(),
+                nonpositional_leftovers
+                    .map(|param| param.name.light_yellow())
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            ));
+        }
+
+        // Check if our leftovers argument is before the last positional argument
+        let last_positional_idx = self
+            .parameters
+            .iter()
+            .rposition(|param| param.is_positional());
+        if let Some(lpidx) = last_positional_idx {
+            for (idx, param) in self.parameters.iter().enumerate() {
+                if param.leftovers && idx < lpidx {
+                    return Err(format!(
+                        "only the last positional argument can use {}",
+                        "leftovers".light_yellow()
+                    ));
+                }
+            }
+        }
+
+        Ok(())
+    }
+
+    /// The 'last' parameter is used to capture arguments after using '--' on the command line
+    /// It corresponds to setting 'last' to true in clap
+    /// The following will lead to panic:
+    /// - Flags using 'last'
+    /// - non-positional using 'last'
+    fn check_parameters_last(&self) -> Result<(), String> {
+        // Grab all the last params
+        let params = self
+            .parameters
+            .iter()
+            .filter(|param| param.last_arg_double_hyphen);
+
+        // Check if any is a non-positional argument
+        let nonpositional_last = params.clone().filter(|param| !param.is_positional());
+        if nonpositional_last.clone().count() > 0 {
+            return Err(format!(
+                "only positional arguments can use {}; found {}",
+                "last".light_yellow(),
+                nonpositional_last
+                    .map(|param| param.name.light_yellow())
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            ));
+        }
+
+        Ok(())
+    }
+
+    /// Since when setting a counter we do not expect any value, parameters using
+    /// the `counter` type will panic if:
+    /// - They are positional
+    /// - They have a num_values
+    fn check_parameters_counter(&self) -> Result<(), String> {
+        // Grab all the counter params
+        let params = self
+            .parameters
+            .iter()
+            .filter(|param| matches!(param.arg_type(), SyntaxOptArgType::Counter));
+
+        for param in params {
+            if param.is_positional() {
+                return Err(format!(
+                    "{}: counter argument cannot be positional",
+                    param.name.light_yellow()
+                ));
+            }
+
+            if param.num_values.is_some() {
+                return Err(format!(
+                    "{}: counter argument cannot have a num_values (counters do not take any values)",
+                    param.name.light_yellow()
+                ));
+            }
+        }
+
+        Ok(())
+    }
+
+    fn check_parameters_references_iter(
+        &self,
+        references: impl Iterator<Item = impl ToString>,
+        available_references: &HashSet<String>,
+        reference_type: &str,
+        param_name: &str,
+    ) -> Result<(), String> {
+        for reference in references {
+            let reference = reference.to_string();
+
+            if !available_references.contains(&reference) {
+                return Err(format!(
+                    "parameter or group {} specified in {} for {} does not exist",
+                    reference.light_yellow(),
+                    reference_type.light_yellow(),
+                    param_name.light_yellow(),
+                ));
+            }
+        }
+
+        Ok(())
+    }
+
+    fn check_parameters_references(&self) -> Result<(), String> {
+        let available_references = self
+            .parameters
+            .iter()
+            .map(|param| param.dest())
+            .chain(self.groups.iter().map(|group| group.dest()))
+            .collect::<HashSet<_>>();
+
+        for param in &self.parameters {
+            let dest = param.dest();
+
+            self.check_parameters_references_iter(
+                param.requires.iter().map(|param| sanitize_str(param)),
+                &available_references,
+                "requires",
+                &dest,
+            )?;
+            self.check_parameters_references_iter(
+                param.conflicts_with.iter().map(|param| sanitize_str(param)),
+                &available_references,
+                "conflicts_with",
+                &dest,
+            )?;
+            self.check_parameters_references_iter(
+                param
+                    .required_without
+                    .iter()
+                    .map(|param| sanitize_str(param)),
+                &available_references,
+                "required_without",
+                &dest,
+            )?;
+            self.check_parameters_references_iter(
+                param
+                    .required_without_all
+                    .iter()
+                    .map(|param| sanitize_str(param)),
+                &available_references,
+                "required_without_all",
+                &dest,
+            )?;
+            self.check_parameters_references_iter(
+                param
+                    .required_if_eq
+                    .keys()
+                    .map(|k| sanitize_str(k))
+                    .collect::<Vec<_>>()
+                    .iter(),
+                &available_references,
+                "required_if_eq",
+                &dest,
+            )?;
+            self.check_parameters_references_iter(
+                param.required_if_eq_all.keys().map(|k| sanitize_str(k)),
+                &available_references,
+                "required_if_eq_all",
+                &dest,
+            )?;
+        }
+
+        for group in &self.groups {
+            let dest = group.dest();
+
+            self.check_parameters_references_iter(
+                group.parameters.iter().map(|param| sanitize_str(param)),
+                &available_references,
+                "parameters",
+                &dest,
+            )?;
+
+            self.check_parameters_references_iter(
+                group.requires.iter().map(|param| sanitize_str(param)),
+                &available_references,
+                "requires",
+                &dest,
+            )?;
+
+            self.check_parameters_references_iter(
+                group.conflicts_with.iter().map(|param| sanitize_str(param)),
+                &available_references,
+                "conflicts_with",
+                &dest,
+            )?;
+        }
+
+        Ok(())
+    }
+
+    /// The identifiers in the parameters and groups should be unique
+    /// across the parameters and groups, or else it will lead to panic
+    fn check_parameters_unique_names(&self) -> Result<(), String> {
+        let mut dests = HashSet::new();
+        let mut names = HashSet::new();
+
+        for param in &self.parameters {
+            let dest = param.dest();
+            if !dests.insert(dest.clone()) {
+                return Err(format!(
+                    "identifier {} is defined more than once",
+                    dest.light_yellow()
+                ));
+            }
+
+            for name in param.all_names() {
+                // Check if name is -h or --help or any other reserved names
+                if Self::RESERVED_NAMES.contains(&name.as_str()) {
+                    return Err(format!(
+                        "name {} is reserved and cannot be used",
+                        name.light_yellow()
+                    ));
+                }
+
+                if !names.insert(name.clone()) {
+                    return Err(format!(
+                        "name {} is defined more than once",
+                        name.light_yellow()
+                    ));
+                }
+            }
+        }
+
+        for group in &self.groups {
+            let dest = group.dest();
+            if !dests.insert(dest.clone()) {
+                return Err(format!(
+                    "identifier {} is defined more than once",
+                    dest.light_yellow()
+                ));
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Allow hyphen values requires that the argument can take a value.
+    /// It will thus panic if:
+    /// - Set when num_values is set to 0
+    /// - Set on a counter
+    /// - Set on a flag
+    fn check_parameters_allow_hyphen_values(&self) -> Result<(), String> {
+        // Grab all the counter params
+        let params = self
+            .parameters
+            .iter()
+            .filter(|param| param.allow_hyphen_values);
+
+        for param in params {
+            if let Some(SyntaxOptArgNumValues::Exactly(0)) = param.num_values {
+                return Err(format!(
+                    "{}: cannot use {} with 'num_values=0'",
+                    param.name.light_yellow(),
+                    "allow_hyphen_values".light_yellow(),
+                ));
+            }
+
+            match param.arg_type {
+                SyntaxOptArgType::Flag | SyntaxOptArgType::Counter => {
+                    return Err(format!(
+                        "{}: cannot use {} on a {}",
+                        param.name.light_yellow(),
+                        "allow_hyphen_values".light_yellow(),
+                        param.arg_type.to_str(),
+                    ))
+                }
+                _ => {}
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Positional parameters have some constraints that could lead the
+    /// building of the argument parser to panic:
+    /// - If a non-required positional argument appears before a required one
+    /// - If a num_values > 1 positional argument appears before a non-required
+    ///   one, the latter must have last=true or required=true
+    /// - If using num_values=0 or any number of values lower than 1 for a required
+    ///   positional argument
+    fn check_parameters_positional(&self) -> Result<(), String> {
+        let mut prev_positional_with_num_values: Option<String> = None;
+        let mut prev_positional_without_required: Option<String> = None;
+
+        for param in self.parameters.iter().filter(|param| param.is_positional()) {
+            if !param.required {
+                if !param.last_arg_double_hyphen {
+                    if let Some(prev) = prev_positional_with_num_values {
+                        return Err(format!(
+                            "{}: positional need to be required or use '{}' if appearing after {} with num_values > 1",
+                            param.name.light_yellow(),
+                            "last=true".light_yellow(),
+                            prev.light_yellow(),
+                        ));
+                    }
+                }
+
+                if prev_positional_without_required.is_none() {
+                    prev_positional_without_required = Some(param.name.clone());
+                }
+            } else if let Some(prev) = prev_positional_without_required {
+                return Err(format!(
+                    "{}: required positional argument cannot appear after non-required one {}",
+                    param.name.light_yellow(),
+                    prev.light_yellow(),
+                ));
+            } else if let Some(
+                SyntaxOptArgNumValues::Exactly(0)
+                | SyntaxOptArgNumValues::AtMost(0)
+                | SyntaxOptArgNumValues::Between(_, 0),
+            ) = param.num_values
+            {
+                return Err(format!(
+                    "{}: positional argument cannot have 'num_values=0'",
+                    param.name.light_yellow(),
+                ));
+            }
+
+            if param.num_values.is_some() && prev_positional_with_num_values.is_none() {
+                prev_positional_with_num_values = Some(param.name.clone());
+            }
+        }
+
+        Ok(())
+    }
+
+    fn check_parameters(&self) -> Result<(), String> {
+        self.check_parameters_unique_names()?;
+        self.check_parameters_references()?;
+        self.check_parameters_leftovers()?;
+        self.check_parameters_last()?;
+        self.check_parameters_counter()?;
+        self.check_parameters_allow_hyphen_values()?;
+        self.check_parameters_positional()?;
+
+        Ok(())
+    }
+
+    pub fn argparser(&self, called_as: Vec<String>) -> Result<clap::Command, String> {
+        let mut parser = clap::Command::new(called_as.join(" "))
+            .disable_help_subcommand(true)
+            .disable_version_flag(true);
+
+        self.check_parameters()?;
+
+        for param in &self.parameters {
+            parser = param.add_to_argparser(parser);
+        }
+
+        for group in &self.groups {
+            parser = group.add_to_argparser(parser);
+        }
+
+        Ok(parser)
+    }
+
+    pub fn parse_args(
+        &self,
+        argv: Vec<String>,
+        called_as: Vec<String>,
+    ) -> Result<BTreeMap<String, String>, ParseArgsErrorKind> {
+        let mut parse_argv = vec!["".to_string()];
+        parse_argv.extend(argv);
+
+        let parser = match self.argparser(called_as.clone()) {
+            Ok(parser) => parser,
+            Err(err) => {
+                return Err(ParseArgsErrorKind::ParserBuildError(err));
+            }
+        };
+
+        // TODO: REMOVE DEBUG
+        // let _matches = parser.clone().get_matches_from(&parse_argv);
+
+        let matches = match parser.try_get_matches_from(&parse_argv) {
+            Err(err) => match err.kind() {
+                clap::error::ErrorKind::DisplayHelp
+                | clap::error::ErrorKind::DisplayHelpOnMissingArgumentOrSubcommand => {
+                    HelpCommand::new().exec(called_as);
+                    panic!("help command should have exited");
+                }
+                clap::error::ErrorKind::DisplayVersion => {
+                    unreachable!("version flag is disabled");
+                }
+                _ => {
+                    return Err(ParseArgsErrorKind::ArgumentParsingError(err));
+                }
+            },
+            Ok(matches) => matches,
+        };
+
+        let mut args = BTreeMap::new();
+        let mut all_args = Vec::new();
+
+        for param in &self.parameters {
+            all_args.push(param.dest());
+            param.add_to_args(&mut args, &matches, None);
+        }
+
+        for group in &self.groups {
+            all_args.push(group.dest());
+            group.add_to_args(&mut args, &matches, &self.parameters);
+        }
+
+        args.insert("OMNI_ARG_LIST".to_string(), all_args.join(" "));
+
+        Ok(args)
     }
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
 pub struct SyntaxOptArg {
     pub name: String,
     #[serde(skip_serializing_if = "Option::is_none")]
+    pub dest: Option<String>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub aliases: Vec<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub desc: Option<String>,
+    #[serde(skip_serializing_if = "cache_utils::is_false")]
     pub required: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub placeholder: Option<String>,
+    #[serde(skip_serializing_if = "SyntaxOptArgType::is_default")]
+    pub arg_type: SyntaxOptArgType,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub default: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub num_values: Option<SyntaxOptArgNumValues>,
+    #[serde(rename = "delimiter", skip_serializing_if = "Option::is_none")]
+    pub value_delimiter: Option<char>,
+    #[serde(rename = "last", skip_serializing_if = "cache_utils::is_false")]
+    pub last_arg_double_hyphen: bool,
+    #[serde(skip_serializing_if = "cache_utils::is_false")]
+    pub leftovers: bool,
+    #[serde(skip_serializing_if = "cache_utils::is_false")]
+    pub allow_hyphen_values: bool,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub requires: Vec<String>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub conflicts_with: Vec<String>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub required_without: Vec<String>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub required_without_all: Vec<String>,
+    #[serde(skip_serializing_if = "HashMap::is_empty")]
+    pub required_if_eq: HashMap<String, String>,
+    #[serde(skip_serializing_if = "HashMap::is_empty")]
+    pub required_if_eq_all: HashMap<String, String>,
+}
+
+impl Default for SyntaxOptArg {
+    fn default() -> Self {
+        Self {
+            name: "".to_string(),
+            dest: None,
+            aliases: vec![],
+            desc: None,
+            required: false,
+            placeholder: None,
+            arg_type: SyntaxOptArgType::String,
+            default: None,
+            num_values: None,
+            value_delimiter: None,
+            last_arg_double_hyphen: false,
+            leftovers: false,
+            allow_hyphen_values: false,
+            requires: vec![],
+            conflicts_with: vec![],
+            required_without: vec![],
+            required_without_all: vec![],
+            required_if_eq: HashMap::new(),
+            required_if_eq_all: HashMap::new(),
+        }
+    }
 }
 
 impl SyntaxOptArg {
+    #[allow(dead_code)]
     pub fn new(name: String, desc: Option<String>, required: bool) -> Self {
         Self {
             name,
             desc,
             required,
+            ..Self::default()
         }
     }
 
@@ -196,7 +729,23 @@ impl SyntaxOptArg {
     ) -> Option<Self> {
         let name;
         let mut desc = None;
+        let mut dest = None;
         let mut required = required;
+        let mut arg_type = SyntaxOptArgType::String;
+        let mut placeholder = None;
+        let mut default = None;
+        let mut num_values = None;
+        let mut value_delimiter = None;
+        let mut last_arg_double_hyphen = false;
+        let mut leftovers = false;
+        let mut allow_hyphen_values = false;
+        let mut requires = vec![];
+        let mut conflicts_with = vec![];
+        let mut required_without = vec![];
+        let mut required_without_all = vec![];
+        let mut required_if_eq = HashMap::new();
+        let mut required_if_eq_all = HashMap::new();
+        let mut aliases = vec![];
 
         if let Some(table) = config_value.as_table() {
             let value_for_details;
@@ -223,9 +772,133 @@ impl SyntaxOptArg {
                 if let Some(value_str) = value_for_details.as_str() {
                     desc = Some(value_str.to_string());
                 } else if let Some(value_table) = value_for_details.as_table() {
-                    desc = value_table.get("desc")?.as_str();
+                    desc = value_table
+                        .get("desc")
+                        .and_then(|value| value.as_str_forced());
+                    dest = value_table
+                        .get("dest")
+                        .and_then(|value| value.as_str_forced());
+
                     if required.is_none() {
-                        required = value_table.get("required")?.as_bool();
+                        required = value_table
+                            .get("required")
+                            .and_then(|value| value.as_bool_forced());
+                    }
+
+                    placeholder = value_table
+                        .get("placeholder")
+                        .and_then(|value| value.as_str_forced());
+                    default = value_table
+                        .get("default")
+                        .and_then(|value| value.as_str_forced());
+                    num_values =
+                        SyntaxOptArgNumValues::from_config_value(value_table.get("num_values"));
+                    value_delimiter = value_table
+                        .get("delimiter")
+                        .and_then(|value| value.as_str_forced())
+                        .and_then(|value| value.chars().next());
+                    last_arg_double_hyphen = value_table
+                        .get("last")
+                        .and_then(|value| value.as_bool_forced())
+                        .unwrap_or(false);
+                    leftovers = value_table
+                        .get("leftovers")
+                        .and_then(|value| value.as_bool_forced())
+                        .unwrap_or(false);
+                    allow_hyphen_values = value_table
+                        .get("allow_hyphen_values")
+                        .and_then(|value| value.as_bool_forced())
+                        .unwrap_or(false);
+
+                    arg_type = SyntaxOptArgType::from_config_value(
+                        value_table.get("type"),
+                        value_table.get("values"),
+                        value_delimiter,
+                    )
+                    .unwrap_or(SyntaxOptArgType::String);
+
+                    // TODO: this happens a lot, should make a function in config_value to handle
+                    // that situation
+                    if let Some(requires_value) = value_table.get("requires") {
+                        if let Some(value) = requires_value.as_str_forced() {
+                            requires.push(value.to_string());
+                        } else if let Some(array) = requires_value.as_array() {
+                            for value in array {
+                                if let Some(value) = value.as_str_forced() {
+                                    requires.push(value.to_string());
+                                }
+                            }
+                        }
+                    }
+
+                    if let Some(conflicts_with_value) = value_table.get("conflicts_with") {
+                        if let Some(value) = conflicts_with_value.as_str_forced() {
+                            conflicts_with.push(value.to_string());
+                        } else if let Some(array) = conflicts_with_value.as_array() {
+                            for value in array {
+                                if let Some(value) = value.as_str_forced() {
+                                    conflicts_with.push(value.to_string());
+                                }
+                            }
+                        }
+                    }
+
+                    if let Some(required_without_value) = value_table.get("required_without") {
+                        if let Some(value) = required_without_value.as_str_forced() {
+                            required_without.push(value.to_string());
+                        } else if let Some(array) = required_without_value.as_array() {
+                            for value in array {
+                                if let Some(value) = value.as_str_forced() {
+                                    required_without.push(value.to_string());
+                                }
+                            }
+                        }
+                    }
+
+                    if let Some(required_without_all_value) =
+                        value_table.get("required_without_all")
+                    {
+                        if let Some(value) = required_without_all_value.as_str_forced() {
+                            required_without_all.push(value.to_string());
+                        } else if let Some(array) = required_without_all_value.as_array() {
+                            for value in array {
+                                if let Some(value) = value.as_str_forced() {
+                                    required_without_all.push(value.to_string());
+                                }
+                            }
+                        }
+                    }
+
+                    if let Some(required_if_eq_value) = value_table.get("required_if_eq") {
+                        if let Some(value) = required_if_eq_value.as_table() {
+                            for (key, value) in value {
+                                if let Some(value) = value.as_str_forced() {
+                                    required_if_eq.insert(key.to_string(), value.to_string());
+                                }
+                            }
+                        }
+                    }
+
+                    if let Some(required_if_eq_all_value) = value_table.get("required_if_eq_all") {
+                        if let Some(value) = required_if_eq_all_value.as_table() {
+                            for (key, value) in value {
+                                if let Some(value) = value.as_str_forced() {
+                                    required_if_eq_all.insert(key.to_string(), value.to_string());
+                                }
+                            }
+                        }
+                    }
+
+                    if let Some(aliases_value) = value_table.get("aliases") {
+                        if let Some(value) = aliases_value.as_str_forced() {
+                            aliases.push(value.to_string());
+                        } else if let Some(array) = aliases_value.as_array() {
+                            for value in array {
+                                if let Some(value) = value.as_str_forced() {
+                                    aliases.push(value.to_string());
+                                }
+                            }
+                        }
                     }
                 }
             }
@@ -235,8 +908,3450 @@ impl SyntaxOptArg {
 
         Some(Self {
             name,
+            dest,
+            aliases,
             desc,
             required: required.unwrap_or(false),
+            placeholder,
+            arg_type,
+            default,
+            num_values,
+            value_delimiter,
+            last_arg_double_hyphen,
+            leftovers,
+            allow_hyphen_values,
+            requires,
+            conflicts_with,
+            required_without,
+            required_without_all,
+            required_if_eq,
+            required_if_eq_all,
         })
+    }
+
+    pub fn arg_type(&self) -> SyntaxOptArgType {
+        let convert_to_array = self.leftovers || self.value_delimiter.is_some();
+
+        if convert_to_array {
+            match &self.arg_type {
+                SyntaxOptArgType::String
+                | SyntaxOptArgType::Integer
+                | SyntaxOptArgType::Float
+                | SyntaxOptArgType::Boolean
+                | SyntaxOptArgType::Enum(_) => {
+                    SyntaxOptArgType::Array(Box::new(self.arg_type.clone()))
+                }
+                _ => self.arg_type.clone(),
+            }
+        } else {
+            self.arg_type.clone()
+        }
+    }
+
+    pub fn dest(&self) -> String {
+        let dest = match self.dest {
+            Some(ref dest) => dest.clone(),
+            None => self.name.clone(),
+        };
+
+        sanitize_str(&dest)
+    }
+
+    pub fn all_names(&self) -> Vec<String> {
+        let mut names = vec![self.name.clone()];
+        names.extend(self.aliases.clone());
+        names
+    }
+
+    pub fn is_positional(&self) -> bool {
+        !self.name.starts_with('-')
+    }
+
+    pub fn takes_value(&self) -> bool {
+        if matches!(
+            self.arg_type(),
+            SyntaxOptArgType::Flag | SyntaxOptArgType::Counter
+        ) {
+            return false;
+        }
+
+        if let Some(SyntaxOptArgNumValues::Exactly(0)) = self.num_values {
+            return false;
+        }
+
+        true
+    }
+
+    /// Returns the representation of that argument for the
+    /// 'usage' string in the help message
+    pub fn usage(&self) -> String {
+        self.help_name(false, true)
+    }
+
+    /// Returns the representation of that argument for the help message
+    /// This will include:
+    /// - For a positional, only the placeholder "num_values" times
+    /// - For an optional, the main long and main short, with the placeholder "num_values" times
+    ///
+    /// The "include_short" parameter influences if the short is shown or not for an optional.
+    /// The "use_colors" parameter influences if the output should be colored or not.
+    pub fn help_name(&self, include_short: bool, use_colors: bool) -> String {
+        let mut help_name = String::new();
+
+        if self.is_positional() {
+            let placeholder = self
+                .placeholder
+                .clone()
+                .unwrap_or_else(|| self.name.clone());
+
+            let repr = if self.required {
+                format!("<{}>", placeholder)
+            } else {
+                format!("[{}]", placeholder)
+            };
+            let repr = if use_colors { repr.light_cyan() } else { repr };
+
+            if let Some(num_values) = &self.num_values {
+                let repr = match num_values {
+                    SyntaxOptArgNumValues::Exactly(n) => std::iter::repeat(repr)
+                        .take(*n)
+                        .collect::<Vec<_>>()
+                        .join(" "),
+                    SyntaxOptArgNumValues::AtLeast(min) => {
+                        let repr = std::iter::repeat(repr)
+                            .take(*min)
+                            .collect::<Vec<_>>()
+                            .join(" ");
+                        format!("{}...", repr)
+                    }
+                    SyntaxOptArgNumValues::AtMost(_) | SyntaxOptArgNumValues::Any => {
+                        format!("{}...", repr)
+                    }
+                    SyntaxOptArgNumValues::Between(min, max) => {
+                        let min = if *min == 0 { 1 } else { *min };
+
+                        let repr = std::iter::repeat(repr)
+                            .take(min)
+                            .collect::<Vec<_>>()
+                            .join(" ");
+
+                        if min == *max {
+                            repr
+                        } else {
+                            format!("{}...", repr)
+                        }
+                    }
+                };
+                help_name.push_str(&repr);
+            } else {
+                help_name.push_str(&repr);
+            }
+
+            if self.arg_type().is_array() && !help_name.ends_with("...") {
+                help_name.push_str("...");
+            }
+        } else {
+            // Split the short and long names, and only keep the first of each (return Option<_>)
+            let all_names = self.all_names();
+            let (short_name, long_name): (Vec<_>, Vec<_>) =
+                all_names.iter().partition(|name| !name.starts_with("--"));
+            let short_name = short_name.first();
+            let long_name = long_name.first();
+
+            if include_short {
+                if let Some(short_name) = short_name {
+                    let short_name = if use_colors {
+                        short_name.bold().light_cyan()
+                    } else {
+                        short_name.to_string()
+                    };
+                    help_name.push_str(&short_name);
+
+                    if long_name.is_some() {
+                        help_name.push_str(", ");
+                    }
+                }
+            }
+            if let Some(long_name) = long_name {
+                let long_name = if use_colors {
+                    long_name.bold().light_cyan()
+                } else {
+                    long_name.to_string()
+                };
+                help_name.push_str(&long_name);
+            }
+
+            if self.takes_value() {
+                help_name.push(' ');
+
+                let placeholder = self
+                    .placeholder
+                    .clone()
+                    .unwrap_or_else(|| sanitize_str(&self.name).to_uppercase());
+
+                let repr = format!("<{}>", placeholder);
+                let repr = if use_colors { repr.light_cyan() } else { repr };
+
+                if let Some(num_values) = &self.num_values {
+                    let repr = match num_values {
+                        SyntaxOptArgNumValues::Exactly(n) => std::iter::repeat(repr)
+                            .take(*n)
+                            .collect::<Vec<_>>()
+                            .join(" "),
+                        SyntaxOptArgNumValues::AtLeast(min) => {
+                            let repr = std::iter::repeat(repr)
+                                .take(*min)
+                                .collect::<Vec<_>>()
+                                .join(" ");
+                            format!("{}...", repr)
+                        }
+                        SyntaxOptArgNumValues::AtMost(_) | SyntaxOptArgNumValues::Any => {
+                            format!("[{}...]", repr)
+                        }
+                        SyntaxOptArgNumValues::Between(min, max) => {
+                            let (min, optional) = if *min == 0 { (1, true) } else { (*min, false) };
+
+                            let repr = std::iter::repeat(repr)
+                                .take(min)
+                                .collect::<Vec<_>>()
+                                .join(" ");
+
+                            let repr = if min == *max {
+                                repr
+                            } else {
+                                format!("{}...", repr)
+                            };
+
+                            if optional {
+                                format!("[{}]", repr)
+                            } else {
+                                repr
+                            }
+                        }
+                    };
+
+                    help_name.push_str(&repr);
+                } else {
+                    help_name.push_str(&repr);
+                }
+            } else if matches!(self.arg_type, SyntaxOptArgType::Counter) {
+                help_name.push_str("...");
+            }
+        }
+
+        help_name
+    }
+
+    /// Returns the description of that argument for the help message
+    pub fn help_desc(&self) -> String {
+        let mut help_desc = String::new();
+
+        // Add the description if any
+        if let Some(desc) = &self.desc {
+            help_desc.push_str(desc);
+        }
+
+        // Add the default value if any
+        if !matches!(self.arg_type, SyntaxOptArgType::Flag) {
+            if let Some(default) = &self.default {
+                if !default.is_empty() {
+                    if !help_desc.is_empty() {
+                        help_desc.push(' ');
+                    }
+                    help_desc
+                        .push_str(&format!("[{}: {}]", "default".italic(), default).light_black());
+                }
+            }
+        }
+
+        // Add the possible values if any
+        if let Some(possible_values) = self.arg_type().possible_values() {
+            if !help_desc.is_empty() {
+                help_desc.push(' ');
+            }
+            help_desc.push_str(
+                &format!(
+                    "[{}: {}]",
+                    "possible values".italic(),
+                    possible_values.join(", ")
+                )
+                .light_black(),
+            );
+        }
+
+        // Add the long aliases if any
+        if !self.aliases.is_empty() {
+            let all_names = self.all_names();
+            let (short_aliases, long_aliases): (Vec<_>, Vec<_>) =
+                all_names.iter().partition(|name| !name.starts_with("--"));
+
+            // Skip the first element of each array, and map the elements to String
+            let short_aliases = short_aliases
+                .iter()
+                .skip(1)
+                .map(|name| name.to_string())
+                .collect::<Vec<_>>();
+            let long_aliases = long_aliases
+                .iter()
+                .skip(1)
+                .map(|name| name.to_string())
+                .collect::<Vec<_>>();
+
+            // Now add to the help description if any left
+            if !long_aliases.is_empty() {
+                if !help_desc.is_empty() {
+                    help_desc.push(' ');
+                }
+                help_desc.push_str(
+                    &format!("[{}: {}]", "aliases".italic(), long_aliases.join(", ")).light_black(),
+                );
+            }
+
+            if !short_aliases.is_empty() {
+                if !help_desc.is_empty() {
+                    help_desc.push(' ');
+                }
+                help_desc.push_str(
+                    &format!(
+                        "[{}: {}]",
+                        "short aliases".italic(),
+                        short_aliases.join(", ")
+                    )
+                    .light_black(),
+                );
+            }
+        }
+
+        help_desc
+    }
+
+    pub fn add_to_argparser(&self, parser: clap::Command) -> clap::Command {
+        let mut arg = clap::Arg::new(self.dest());
+
+        // Add the help for the argument
+        if let Some(desc) = &self.desc {
+            arg = arg.help(desc);
+        }
+
+        // Add all the names for that argument
+        if self.name.starts_with('-') {
+            let mut seen_short = false;
+
+            // Check that the sanitized name is not empty
+            if sanitize_str(&self.name).is_empty() {
+                // TODO: raise error ?
+                return parser;
+            }
+
+            let name = self.name.clone();
+            if let Some(trimmed) = name.strip_prefix("--") {
+                arg = arg.long(trimmed.to_string());
+            } else if let Some(trimmed) = name.strip_prefix("-") {
+                arg = arg.short(trimmed.chars().next().unwrap());
+                seen_short = true;
+            } else {
+                unreachable!("should not have non-dash names");
+            }
+
+            for alias in &self.aliases {
+                if sanitize_str(alias).is_empty() {
+                    // TODO: raise error ?
+                    continue;
+                }
+
+                let alias = alias.clone();
+                if let Some(trimmed) = alias.strip_prefix("--") {
+                    arg = arg.visible_alias(trimmed.to_string());
+                } else if let Some(trimmed) = alias.strip_prefix("-") {
+                    let short = trimmed.chars().next().unwrap();
+                    if seen_short {
+                        arg = arg.visible_short_alias(short);
+                    } else {
+                        arg = arg.short(short);
+                        seen_short = true;
+                    }
+                } else {
+                    unreachable!("should not have non-dash aliases")
+                }
+            }
+        }
+
+        // Set the placeholder if any
+        if let Some(placeholder) = &self.placeholder {
+            arg = arg.value_name(placeholder);
+        }
+
+        // Set the default value
+        if let Some(default) = &self.default {
+            arg = arg.default_value(default);
+        }
+
+        // Set how to parse the values
+        if let Some(num_values) = &self.num_values {
+            arg = arg.num_args(*num_values);
+        }
+        if let Some(value_delimiter) = &self.value_delimiter {
+            arg = arg.value_delimiter(*value_delimiter);
+        }
+        if self.last_arg_double_hyphen {
+            arg = arg.last(true);
+        }
+        if self.leftovers {
+            arg = arg.trailing_var_arg(true);
+        }
+        if self.allow_hyphen_values {
+            arg = arg.allow_hyphen_values(true);
+        }
+
+        // Set conflicts and requirements
+        for require_arg in &self.requires {
+            let require_arg = sanitize_str(require_arg);
+            arg = arg.requires(&require_arg);
+        }
+        for conflict_arg in &self.conflicts_with {
+            let conflict_arg = sanitize_str(conflict_arg);
+            arg = arg.conflicts_with(&conflict_arg);
+        }
+        if !self.required_without.is_empty() {
+            let required_without = self
+                .required_without
+                .iter()
+                .map(|name| sanitize_str(name))
+                .collect::<Vec<String>>();
+            arg = arg.required_unless_present_any(&required_without);
+        }
+        if !self.required_without_all.is_empty() {
+            let required_without_all = self
+                .required_without_all
+                .iter()
+                .map(|name| sanitize_str(name))
+                .collect::<Vec<String>>();
+            arg = arg.required_unless_present_all(&required_without_all);
+        }
+        if !self.required_if_eq.is_empty() {
+            arg = arg.required_if_eq_any(
+                self.required_if_eq
+                    .iter()
+                    .map(|(k, v)| (sanitize_str(k), v.clone()))
+                    .collect::<Vec<(String, String)>>(),
+            );
+        }
+        if !self.required_if_eq_all.is_empty() {
+            arg = arg.required_if_eq_all(
+                self.required_if_eq_all
+                    .iter()
+                    .map(|(k, v)| (sanitize_str(k), v.clone()))
+                    .collect::<Vec<(String, String)>>(),
+            );
+        }
+        if self.required {
+            arg = arg.required(true);
+        }
+
+        // Set the action, i.e. how the values are stored when the selfeter is used
+        match &self.arg_type() {
+            SyntaxOptArgType::String
+            | SyntaxOptArgType::Integer
+            | SyntaxOptArgType::Float
+            | SyntaxOptArgType::Boolean
+            | SyntaxOptArgType::Enum(_) => {
+                arg = arg.action(clap::ArgAction::Set);
+            }
+            SyntaxOptArgType::Array(_) => {
+                arg = arg.action(clap::ArgAction::Append);
+            }
+            SyntaxOptArgType::Flag => {
+                if str_to_bool(&self.default.clone().unwrap_or_default()).unwrap_or(false) {
+                    arg = arg.action(clap::ArgAction::SetFalse);
+                } else {
+                    arg = arg.action(clap::ArgAction::SetTrue);
+                }
+            }
+            SyntaxOptArgType::Counter => {
+                arg = arg.action(clap::ArgAction::Count);
+            }
+        };
+
+        // Set the validators, i.e. how the values are checked when the parameter is used
+        match &self.arg_type().terminal_type() {
+            SyntaxOptArgType::Integer => {
+                arg = arg.value_parser(clap::value_parser!(i64));
+            }
+            SyntaxOptArgType::Float => {
+                arg = arg.value_parser(clap::value_parser!(f64));
+            }
+            SyntaxOptArgType::Boolean => {
+                arg = arg.value_parser(clap::value_parser!(bool));
+            }
+            SyntaxOptArgType::Enum(possible_values) => {
+                arg = arg.value_parser(possible_values.clone());
+            }
+            _ => {}
+        }
+
+        parser.arg(arg)
+    }
+
+    pub fn add_to_args(
+        &self,
+        args: &mut BTreeMap<String, String>,
+        matches: &clap::ArgMatches,
+        override_dest: Option<String>,
+    ) {
+        let dest = self.dest();
+        let has_multi = self.arg_type().is_array()
+            || self
+                .num_values
+                .as_ref()
+                .map_or(false, |num_values| num_values.is_many());
+
+        match &self.arg_type().terminal_type() {
+            SyntaxOptArgType::String | SyntaxOptArgType::Enum(_) => {
+                extract_value_to_env::<String>(
+                    matches,
+                    &dest,
+                    &self.default,
+                    "str",
+                    args,
+                    override_dest,
+                    has_multi,
+                );
+            }
+            SyntaxOptArgType::Integer => {
+                extract_value_to_env::<i64>(
+                    matches,
+                    &dest,
+                    &self.default,
+                    "int",
+                    args,
+                    override_dest,
+                    has_multi,
+                );
+            }
+            SyntaxOptArgType::Counter => {
+                extract_value_to_env::<u8>(
+                    matches,
+                    &dest,
+                    &self.default,
+                    "int",
+                    args,
+                    override_dest,
+                    has_multi,
+                );
+            }
+            SyntaxOptArgType::Float => {
+                extract_value_to_env::<f64>(
+                    matches,
+                    &dest,
+                    &self.default,
+                    "float",
+                    args,
+                    override_dest,
+                    has_multi,
+                );
+            }
+            SyntaxOptArgType::Boolean | SyntaxOptArgType::Flag => {
+                let default = Some(
+                    str_to_bool(&self.default.clone().unwrap_or_default())
+                        .unwrap_or(false)
+                        .to_string(),
+                );
+                extract_value_to_env::<bool>(
+                    matches,
+                    &dest,
+                    &default,
+                    "bool",
+                    args,
+                    override_dest,
+                    has_multi,
+                );
+            }
+            SyntaxOptArgType::Array(_) => unreachable!("array type should be handled differently"),
+        };
+    }
+}
+
+fn extract_value_from_parser<T: Any + Clone + Send + Sync + 'static + ToString + FromStr>(
+    matches: &clap::ArgMatches,
+    dest: &str,
+    default: &Option<String>,
+    multi: bool,
+) -> Vec<String> {
+    if multi {
+        match (matches.get_many::<T>(dest), default) {
+            (Some(values), _) => values
+                .collect::<Vec<_>>()
+                .into_iter()
+                .map(|value| value.to_string())
+                .collect(),
+            (None, Some(default)) => default
+                .split(',')
+                .flat_map(|part| part.trim().parse::<T>())
+                .map(|value| value.to_string())
+                .collect(),
+            _ => vec![],
+        }
+    } else {
+        let value = match (matches.get_one::<T>(dest), default) {
+            (Some(value), _) => value.to_string(),
+            (None, Some(default)) => match default.parse::<T>() {
+                Ok(value) => value.to_string(),
+                Err(_) => "".to_string(),
+            },
+            _ => "".to_string(),
+        };
+        vec![value]
+    }
+}
+
+fn extract_value_to_env<T: Any + Clone + Send + Sync + 'static + ToString + FromStr>(
+    matches: &clap::ArgMatches,
+    dest: &str,
+    default: &Option<String>,
+    arg_type: &str,
+    args: &mut BTreeMap<String, String>,
+    override_dest: Option<String>,
+    multi: bool,
+) {
+    let values = extract_value_from_parser::<T>(matches, dest, default, multi);
+    let env_dest = override_dest.unwrap_or(dest.to_string()).to_uppercase();
+
+    if multi {
+        for (i, value) in values.iter().enumerate() {
+            args.insert(
+                format!("OMNI_ARG_{}_VALUE_{}", env_dest, i),
+                value.to_string(),
+            );
+        }
+        args.insert(
+            format!("OMNI_ARG_{}_TYPE", env_dest),
+            format!("{}/{}", arg_type, values.len()),
+        );
+    } else if !values.is_empty() {
+        let value = values
+            .first()
+            .expect("values should not be empty")
+            .to_string();
+        if !value.is_empty() {
+            args.insert(format!("OMNI_ARG_{}_VALUE", env_dest), value);
+        }
+        args.insert(format!("OMNI_ARG_{}_TYPE", env_dest), arg_type.to_string());
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Copy)]
+pub enum SyntaxOptArgNumValues {
+    Any,
+    Exactly(usize),
+    AtLeast(usize),
+    AtMost(usize),
+    Between(usize, usize),
+}
+
+impl fmt::Display for SyntaxOptArgNumValues {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Any => write!(f, ".."),
+            Self::Exactly(value) => write!(f, "{}", value),
+            Self::AtLeast(min) => write!(f, "{}..", min),
+            Self::AtMost(max) => write!(f, "..={}", max),
+            Self::Between(min, max) => write!(f, "{}..={}", min, max),
+        }
+    }
+}
+
+impl From<SyntaxOptArgNumValues> for clap::builder::ValueRange {
+    fn from(val: SyntaxOptArgNumValues) -> Self {
+        match val {
+            SyntaxOptArgNumValues::Any => clap::builder::ValueRange::from(..),
+            SyntaxOptArgNumValues::Exactly(value) => clap::builder::ValueRange::from(value),
+            SyntaxOptArgNumValues::AtLeast(min) => clap::builder::ValueRange::from(min..),
+            SyntaxOptArgNumValues::AtMost(max) => clap::builder::ValueRange::from(..=max),
+            SyntaxOptArgNumValues::Between(min, max) => clap::builder::ValueRange::from(min..=max),
+        }
+    }
+}
+
+impl From<std::ops::RangeToInclusive<usize>> for SyntaxOptArgNumValues {
+    fn from(range: std::ops::RangeToInclusive<usize>) -> Self {
+        let max = range.end;
+        Self::AtMost(max)
+    }
+}
+
+impl From<std::ops::RangeTo<usize>> for SyntaxOptArgNumValues {
+    fn from(range: std::ops::RangeTo<usize>) -> Self {
+        let max = range.end;
+        Self::AtMost(max - 1)
+    }
+}
+
+impl From<std::ops::RangeFrom<usize>> for SyntaxOptArgNumValues {
+    fn from(range: std::ops::RangeFrom<usize>) -> Self {
+        let min = range.start;
+        Self::AtLeast(min)
+    }
+}
+
+impl From<std::ops::RangeInclusive<usize>> for SyntaxOptArgNumValues {
+    fn from(range: std::ops::RangeInclusive<usize>) -> Self {
+        let (min, max) = range.into_inner();
+        Self::Between(min, max)
+    }
+}
+
+impl From<std::ops::Range<usize>> for SyntaxOptArgNumValues {
+    fn from(range: std::ops::Range<usize>) -> Self {
+        let (min, max) = (range.start, range.end);
+        Self::Between(min, max)
+    }
+}
+
+impl From<std::ops::RangeFull> for SyntaxOptArgNumValues {
+    fn from(_: std::ops::RangeFull) -> Self {
+        Self::Any
+    }
+}
+
+impl From<usize> for SyntaxOptArgNumValues {
+    fn from(value: usize) -> Self {
+        Self::Exactly(value)
+    }
+}
+
+impl SyntaxOptArgNumValues {
+    pub fn from_str(value: &str) -> Option<Self> {
+        let value = value.trim();
+
+        if value.contains("..") {
+            let mut parts = value.split("..");
+
+            let min = parts.next()?.trim();
+            let max = parts.next()?.trim();
+            let (max, max_inclusive) = if let Some(max) = max.strip_prefix('=') {
+                (max, true)
+            } else {
+                (max, false)
+            };
+
+            match (min, max, max_inclusive) {
+                ("", "", _) => Some(Self::Any),
+                ("", max, true) => max.parse().ok().map(Self::AtMost),
+                ("", max, false) => {
+                    let max = max.parse::<usize>().ok()?;
+                    if max > 0 {
+                        Some(Self::AtMost(max - 1))
+                    } else {
+                        None
+                    }
+                }
+                (min, "", _) => min.parse().ok().map(Self::AtLeast),
+                (min, max, true) => {
+                    let min = min.parse().ok()?;
+                    let max = max.parse().ok()?;
+
+                    if min <= max {
+                        Some(Self::Between(min, max))
+                    } else {
+                        None
+                    }
+                }
+                (min, max, false) => {
+                    let min = min.parse().ok()?;
+                    let max = max.parse().ok()?;
+                    if min < max {
+                        Some(Self::Between(min, max - 1))
+                    } else {
+                        None
+                    }
+                }
+            }
+        } else {
+            let value = value.parse().ok()?;
+            Some(Self::Exactly(value))
+        }
+    }
+
+    fn from_config_value(config_value: Option<&ConfigValue>) -> Option<Self> {
+        let config_value = config_value?;
+
+        if let Some(value) = config_value.as_integer() {
+            Some(Self::Exactly(value as usize))
+        } else if let Some(value) = config_value.as_str_forced() {
+            Self::from_str(&value)
+        } else {
+            None
+        }
+    }
+
+    fn is_many(&self) -> bool {
+        match self {
+            Self::Any => true,
+            Self::Exactly(value) => *value > 1,
+            Self::AtLeast(_min) => true, // AtLeast is always many since it is not bounded by a maximum
+            Self::AtMost(max) => *max > 1,
+            Self::Between(_min, max) => *max > 1,
+        }
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Default)]
+pub enum SyntaxOptArgType {
+    #[default]
+    #[serde(rename = "str", alias = "string")]
+    String,
+    #[serde(rename = "int", alias = "integer")]
+    Integer,
+    #[serde(rename = "float")]
+    Float,
+    #[serde(rename = "bool")]
+    Boolean,
+    #[serde(rename = "flag")]
+    Flag,
+    #[serde(rename = "count", alias = "counter")]
+    Counter,
+    #[serde(rename = "enum")]
+    Enum(Vec<String>),
+    #[serde(rename = "array")]
+    Array(Box<SyntaxOptArgType>),
+}
+
+impl SyntaxOptArgType {
+    pub fn is_default(&self) -> bool {
+        matches!(self, Self::String)
+    }
+
+    pub fn to_str(&self) -> &'static str {
+        match self {
+            Self::String => "string",
+            Self::Integer => "int",
+            Self::Float => "float",
+            Self::Boolean => "bool",
+            Self::Flag => "flag",
+            Self::Counter => "counter",
+            Self::Enum(_) => "enum",
+            Self::Array(inner) => match **inner {
+                Self::String => "array/str",
+                Self::Integer => "array/int",
+                Self::Float => "array/float",
+                Self::Boolean => "array/bool",
+                Self::Enum(_) => "array/enum",
+                _ => unimplemented!("unsupported array type: {:?}", self),
+            },
+        }
+    }
+
+    fn from_config_value(
+        config_value_type: Option<&ConfigValue>,
+        config_value_values: Option<&ConfigValue>,
+        value_delimiter: Option<char>,
+    ) -> Option<Self> {
+        let config_value_type = config_value_type?;
+        let obj = Self::from_str(&config_value_type.as_str_forced()?)?;
+
+        match obj {
+            Self::Enum(values) if values.is_empty() => {
+                if let Some(values) = config_value_values {
+                    if let Some(array) = values.as_array() {
+                        let values = array
+                            .iter()
+                            .filter_map(|value| value.as_str_forced())
+                            .collect::<Vec<String>>();
+                        return Some(Self::Enum(values));
+                    } else if let Some(value) = values.as_str_forced() {
+                        if let Some(value_delimiter) = value_delimiter {
+                            let values = value
+                                .split(value_delimiter)
+                                .map(|value| value.to_string())
+                                .collect::<Vec<String>>();
+                            return Some(Self::Enum(values));
+                        } else {
+                            return Some(Self::Enum(vec![value.to_string()]));
+                        }
+                    }
+                }
+            }
+            _ => return Some(obj),
+        }
+
+        None
+    }
+
+    pub fn from_str(value: &str) -> Option<Self> {
+        let mut is_array = false;
+
+        let normalized = value.trim().to_lowercase();
+        let mut value = normalized.trim();
+
+        if value.starts_with("array/") {
+            value = &value[6..];
+            is_array = true;
+        } else if value.starts_with("[") && value.ends_with("]") {
+            value = &value[1..value.len() - 1];
+            is_array = true;
+        } else if value == "array" {
+            return Some(Self::Array(Box::new(Self::String)));
+        }
+
+        let obj = match value.to_lowercase().as_str() {
+            "int" | "integer" => Self::Integer,
+            "float" => Self::Float,
+            "bool" | "boolean" => Self::Boolean,
+            "flag" => Self::Flag,
+            "count" | "counter" => Self::Counter,
+            "str" | "string" => Self::String,
+            _ => {
+                // If the string is in format array/enum(xx, yy, zz) or enum(xx, yy, zz) or (xx, yy, zz)
+                // or [(xx, yy, zz)], then it's an enum and we need to extract the values
+                let mut enum_contents = None;
+
+                if value.starts_with("enum(") && value.ends_with(")") {
+                    enum_contents = Some(&value[5..value.len() - 1]);
+                } else if value.starts_with("(") && value.ends_with(")") {
+                    enum_contents = Some(&value[1..value.len() - 1]);
+                }
+
+                if let Some(enum_contents) = enum_contents {
+                    let values = enum_contents
+                        .split(',')
+                        .map(|value| value.trim().to_string())
+                        .collect::<Vec<String>>();
+
+                    Self::Enum(values)
+                } else {
+                    Self::Enum(vec![])
+                }
+            }
+        };
+
+        if is_array {
+            Some(Self::Array(Box::new(obj)))
+        } else {
+            Some(obj)
+        }
+    }
+
+    pub fn terminal_type(&self) -> &Self {
+        match self {
+            Self::Array(inner) => inner.terminal_type(),
+            _ => self,
+        }
+    }
+
+    pub fn is_array(&self) -> bool {
+        matches!(self, Self::Array(_))
+    }
+
+    pub fn possible_values(&self) -> Option<Vec<String>> {
+        match self.terminal_type() {
+            Self::Enum(values) => Some(values.clone()),
+            Self::Boolean => Some(vec!["true".to_string(), "false".to_string()]),
+            _ => None,
+        }
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
+pub struct SyntaxGroup {
+    pub name: String,
+    pub parameters: Vec<String>,
+    #[serde(skip_serializing_if = "cache_utils::is_false")]
+    pub multiple: bool,
+    #[serde(skip_serializing_if = "cache_utils::is_false")]
+    pub required: bool,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub requires: Vec<String>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub conflicts_with: Vec<String>,
+}
+
+impl Default for SyntaxGroup {
+    fn default() -> Self {
+        Self {
+            name: "".to_string(),
+            parameters: vec![],
+            multiple: false,
+            required: false,
+            requires: vec![],
+            conflicts_with: vec![],
+        }
+    }
+}
+
+impl SyntaxGroup {
+    /// Create a vector of groups from a config value that can contain multiple groups.
+    /// This supports the groups being specified as:
+    ///
+    /// ```yaml
+    /// groups:
+    ///  - name: group1
+    ///    parameters:
+    ///    - param1
+    ///    - param2
+    ///    multiple: true
+    ///    required: true
+    /// - name: group2
+    ///   parameters: param3
+    ///   requires: group1
+    ///   conflicts_with: group3
+    /// - group3:
+    ///     parameters: param4
+    /// ```
+    ///
+    /// Or as:
+    ///
+    /// ```yaml
+    /// groups:
+    ///   group1:
+    ///     parameters:
+    ///     - param1
+    ///     - param2
+    ///     multiple: true
+    ///     required: true
+    ///   group2:
+    ///     parameters: param3
+    ///     requires: group1
+    ///     conflicts_with: group3
+    ///   group3:
+    ///     parameters: param4
+    /// ```
+    ///
+    /// The ConfigValue object received is the contents of the `groups` key in the config file.
+    pub(super) fn from_config_value_multi(config_value: &ConfigValue) -> Vec<Self> {
+        let mut groups = vec![];
+
+        if let Some(array) = config_value.as_array() {
+            // If this is an array, we can simply iterate over it and create the groups
+            for value in array {
+                if let Some(group) = Self::from_config_value(&value, None) {
+                    groups.push(group);
+                }
+            }
+        } else if let Some(table) = config_value.as_table() {
+            // If this is a table, we need to iterate over the keys and create the groups
+            for (name, value) in table {
+                if let Some(group) = Self::from_config_value(&value, Some(name.to_string())) {
+                    groups.push(group);
+                }
+            }
+        }
+
+        groups
+    }
+
+    pub(super) fn from_config_value(
+        config_value: &ConfigValue,
+        name: Option<String>,
+    ) -> Option<Self> {
+        // Exit early if the value is not a table
+        let mut table = match config_value.as_table() {
+            Some(table) => table,
+            None => return None,
+        };
+
+        // Exit early if the table is empty
+        if table.is_empty() {
+            return None;
+        }
+
+        // Handle the group name
+        let name = match name {
+            Some(name) => name,
+            None => {
+                if table.len() == 1 {
+                    // Extract the only key from the table, this will be the name of the group
+                    let key = table.keys().next().unwrap().to_string();
+                    // Change the table to be the value of the key, this will be the group's config
+                    table = table.get(&key)?.as_table()?;
+                    // Return the key as the name of the group
+                    key
+                } else {
+                    table
+                        .get("name")
+                        .and_then(|value| value.as_str_forced())?
+                        .to_string()
+                }
+            }
+        };
+
+        // Handle the group parameters
+        let mut parameters = vec![];
+        if let Some(parameters_value) = table.get("parameters") {
+            if let Some(value) = parameters_value.as_str() {
+                parameters.push(value.to_string());
+            } else if let Some(array) = parameters_value.as_array() {
+                parameters.extend(
+                    array
+                        .iter()
+                        .filter_map(|value| value.as_str_forced().map(|value| value.to_string())),
+                );
+            }
+        }
+        // No parameters, skip this group
+        if parameters.is_empty() {
+            return None;
+        }
+
+        // Parse the rest of the group configuration
+        let mut multiple = false;
+        let mut required = false;
+        let mut requires = vec![];
+        let mut conflicts_with = vec![];
+
+        if let Some(multiple_value) = table.get("multiple") {
+            if let Some(multiple_value) = multiple_value.as_bool_forced() {
+                multiple = multiple_value;
+            }
+        }
+
+        if let Some(required_value) = table.get("required") {
+            if let Some(required_value) = required_value.as_bool_forced() {
+                required = required_value;
+            }
+        }
+
+        if let Some(requires_value) = table.get("requires") {
+            if let Some(value) = requires_value.as_str_forced() {
+                requires.push(value.to_string());
+            } else if let Some(array) = requires_value.as_array() {
+                for value in array {
+                    if let Some(value) = value.as_str_forced() {
+                        requires.push(value.to_string());
+                    }
+                }
+            }
+        }
+
+        if let Some(conflicts_with_value) = table.get("conflicts_with") {
+            if let Some(value) = conflicts_with_value.as_str_forced() {
+                conflicts_with.push(value.to_string());
+            } else if let Some(array) = conflicts_with_value.as_array() {
+                for value in array {
+                    if let Some(value) = value.as_str_forced() {
+                        conflicts_with.push(value.to_string());
+                    }
+                }
+            }
+        }
+
+        Some(Self {
+            name,
+            parameters,
+            multiple,
+            required,
+            requires,
+            conflicts_with,
+        })
+    }
+
+    fn dest(&self) -> String {
+        sanitize_str(&self.name)
+    }
+
+    fn add_to_argparser(&self, parser: clap::Command) -> clap::Command {
+        let args = self
+            .parameters
+            .iter()
+            .map(|param| sanitize_str(param))
+            .collect::<Vec<String>>();
+
+        let mut group = clap::ArgGroup::new(self.dest())
+            .args(&args)
+            .multiple(self.multiple)
+            .required(self.required);
+
+        // Set conflicts and requirements
+        for require_arg in &self.requires {
+            let require_arg = sanitize_str(require_arg);
+            group = group.requires(&require_arg);
+        }
+        for conflict_arg in &self.conflicts_with {
+            let conflict_arg = sanitize_str(conflict_arg);
+            group = group.conflicts_with(&conflict_arg);
+        }
+
+        parser.group(group)
+    }
+
+    fn add_to_args(
+        &self,
+        args: &mut BTreeMap<String, String>,
+        matches: &clap::ArgMatches,
+        parameters: &[SyntaxOptArg],
+    ) {
+        let dest = self.dest();
+
+        let param_id = match matches.get_one::<clap::Id>(&dest) {
+            Some(param_id) => param_id.to_string(),
+            None => return,
+        };
+
+        let param = match parameters.iter().find(|param| *param.dest() == param_id) {
+            Some(param) => param,
+            None => return,
+        };
+
+        param.add_to_args(args, matches, Some(dest.clone()));
+    }
+}
+
+fn sanitize_str(s: &str) -> String {
+    let mut prev_is_sanitized = false;
+    let s = s
+        .chars()
+        // Replace all non-alphanumeric characters with _
+        .flat_map(|c| {
+            if c.is_alphanumeric() {
+                prev_is_sanitized = false;
+                Some(c)
+            } else if !prev_is_sanitized {
+                prev_is_sanitized = true;
+                Some('_')
+            } else {
+                None
+            }
+        })
+        .collect::<String>();
+
+    s.trim_matches('_').to_string()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn disable_colors() {
+        std::env::set_var("NO_COLOR", "true");
+    }
+
+    mod command_syntax {
+        use super::*;
+
+        mod check_parameters_unique_names {
+            use super::*;
+
+            #[test]
+            fn test_params_dest() {
+                disable_colors();
+
+                let syntax = CommandSyntax {
+                    parameters: vec![
+                        SyntaxOptArg {
+                            name: "--param1".to_string(),
+                            dest: Some("paramdest".to_string()),
+                            ..SyntaxOptArg::default()
+                        },
+                        SyntaxOptArg {
+                            name: "--param2".to_string(),
+                            dest: Some("paramdest".to_string()),
+                            ..SyntaxOptArg::default()
+                        },
+                    ],
+                    ..CommandSyntax::default()
+                };
+
+                let errmsg = "identifier paramdest is defined more than once";
+                assert_eq!(
+                    syntax.check_parameters_unique_names(),
+                    Err(errmsg.to_string())
+                );
+            }
+
+            #[test]
+            fn test_params_names() {
+                disable_colors();
+
+                let syntax = CommandSyntax {
+                    parameters: vec![
+                        SyntaxOptArg {
+                            name: "--param1".to_string(),
+                            aliases: vec!["--param2".to_string()],
+                            ..SyntaxOptArg::default()
+                        },
+                        SyntaxOptArg {
+                            name: "--param2".to_string(),
+                            ..SyntaxOptArg::default()
+                        },
+                    ],
+                    ..CommandSyntax::default()
+                };
+
+                let errmsg = "name --param2 is defined more than once";
+                assert_eq!(
+                    syntax.check_parameters_unique_names(),
+                    Err(errmsg.to_string())
+                );
+            }
+
+            #[test]
+            fn test_params_and_groups() {
+                disable_colors();
+
+                let syntax = CommandSyntax {
+                    parameters: vec![SyntaxOptArg {
+                        name: "--param1".to_string(),
+                        ..SyntaxOptArg::default()
+                    }],
+                    groups: vec![SyntaxGroup {
+                        name: "param1".to_string(),
+                        parameters: vec!["--param1".to_string()],
+                        ..SyntaxGroup::default()
+                    }],
+                    ..CommandSyntax::default()
+                };
+
+                let errmsg = "identifier param1 is defined more than once";
+                assert_eq!(
+                    syntax.check_parameters_unique_names(),
+                    Err(errmsg.to_string())
+                );
+            }
+        }
+
+        mod check_parameters_references {
+            use super::*;
+
+            #[test]
+            fn test_param_requires() {
+                let syntax = CommandSyntax {
+                    parameters: vec![SyntaxOptArg {
+                        name: "--param1".to_string(),
+                        requires: vec!["--param2".to_string()],
+                        ..SyntaxOptArg::default()
+                    }],
+                    ..CommandSyntax::default()
+                };
+
+                let errmsg =
+                    "parameter or group param2 specified in requires for param1 does not exist";
+                assert_eq!(
+                    syntax.check_parameters_references(),
+                    Err(errmsg.to_string())
+                );
+            }
+
+            #[test]
+            fn test_param_conflicts_with() {
+                let syntax = CommandSyntax {
+                    parameters: vec![SyntaxOptArg {
+                        name: "--param1".to_string(),
+                        conflicts_with: vec!["--param2".to_string()],
+                        ..SyntaxOptArg::default()
+                    }],
+                    ..CommandSyntax::default()
+                };
+
+                let errmsg =
+                    "parameter or group param2 specified in conflicts_with for param1 does not exist";
+                assert_eq!(
+                    syntax.check_parameters_references(),
+                    Err(errmsg.to_string())
+                );
+            }
+
+            #[test]
+            fn test_param_required_without() {
+                let syntax = CommandSyntax {
+                    parameters: vec![SyntaxOptArg {
+                        name: "--param1".to_string(),
+                        required_without: vec!["--param2".to_string()],
+                        ..SyntaxOptArg::default()
+                    }],
+                    ..CommandSyntax::default()
+                };
+
+                let errmsg =
+                    "parameter or group param2 specified in required_without for param1 does not exist";
+                assert_eq!(
+                    syntax.check_parameters_references(),
+                    Err(errmsg.to_string())
+                );
+            }
+
+            #[test]
+            fn test_param_required_without_all() {
+                let syntax = CommandSyntax {
+                    parameters: vec![SyntaxOptArg {
+                        name: "--param1".to_string(),
+                        required_without_all: vec!["--param2".to_string()],
+                        ..SyntaxOptArg::default()
+                    }],
+                    ..CommandSyntax::default()
+                };
+
+                let errmsg =
+                    "parameter or group param2 specified in required_without_all for param1 does not exist";
+                assert_eq!(
+                    syntax.check_parameters_references(),
+                    Err(errmsg.to_string())
+                );
+            }
+
+            #[test]
+            fn test_param_required_if_eq() {
+                let syntax = CommandSyntax {
+                    parameters: vec![SyntaxOptArg {
+                        name: "--param1".to_string(),
+                        required_if_eq: HashMap::from_iter(vec![(
+                            "param2".to_string(),
+                            "value".to_string(),
+                        )]),
+                        ..SyntaxOptArg::default()
+                    }],
+                    ..CommandSyntax::default()
+                };
+
+                let errmsg =
+                    "parameter or group param2 specified in required_if_eq for param1 does not exist";
+                assert_eq!(
+                    syntax.check_parameters_references(),
+                    Err(errmsg.to_string())
+                );
+            }
+
+            #[test]
+            fn test_param_required_if_eq_all() {
+                let syntax = CommandSyntax {
+                    parameters: vec![SyntaxOptArg {
+                        name: "--param1".to_string(),
+                        required_if_eq_all: HashMap::from_iter(vec![(
+                            "param2".to_string(),
+                            "value".to_string(),
+                        )]),
+                        ..SyntaxOptArg::default()
+                    }],
+                    ..CommandSyntax::default()
+                };
+
+                let errmsg =
+                    "parameter or group param2 specified in required_if_eq_all for param1 does not exist";
+                assert_eq!(
+                    syntax.check_parameters_references(),
+                    Err(errmsg.to_string())
+                );
+            }
+
+            #[test]
+            fn test_group_parameters() {
+                let syntax = CommandSyntax {
+                    groups: vec![SyntaxGroup {
+                        name: "group1".to_string(),
+                        parameters: vec!["--param1".to_string()],
+                        ..SyntaxGroup::default()
+                    }],
+                    ..CommandSyntax::default()
+                };
+
+                let errmsg =
+                    "parameter or group param1 specified in parameters for group1 does not exist";
+                assert_eq!(
+                    syntax.check_parameters_references(),
+                    Err(errmsg.to_string())
+                );
+            }
+
+            #[test]
+            fn test_group_requires_group_exists() {
+                let syntax = CommandSyntax {
+                    groups: vec![
+                        SyntaxGroup {
+                            name: "group1".to_string(),
+                            parameters: vec![],
+                            requires: vec!["group2".to_string()],
+                            ..SyntaxGroup::default()
+                        },
+                        SyntaxGroup {
+                            name: "group2".to_string(),
+                            parameters: vec![],
+                            ..SyntaxGroup::default()
+                        },
+                    ],
+                    ..CommandSyntax::default()
+                };
+
+                assert_eq!(syntax.check_parameters_references(), Ok(()));
+            }
+
+            #[test]
+            fn test_group_requires_param_exists() {
+                let syntax = CommandSyntax {
+                    parameters: vec![SyntaxOptArg {
+                        name: "--param1".to_string(),
+                        ..SyntaxOptArg::default()
+                    }],
+                    groups: vec![SyntaxGroup {
+                        name: "group1".to_string(),
+                        parameters: vec![],
+                        requires: vec!["param1".to_string()],
+                        ..SyntaxGroup::default()
+                    }],
+                    ..CommandSyntax::default()
+                };
+
+                assert_eq!(syntax.check_parameters_references(), Ok(()));
+            }
+
+            #[test]
+            fn test_group_requires() {
+                let syntax = CommandSyntax {
+                    groups: vec![SyntaxGroup {
+                        name: "group1".to_string(),
+                        parameters: vec![],
+                        requires: vec!["group2".to_string()],
+                        ..SyntaxGroup::default()
+                    }],
+                    ..CommandSyntax::default()
+                };
+
+                let errmsg =
+                    "parameter or group group2 specified in requires for group1 does not exist";
+                assert_eq!(
+                    syntax.check_parameters_references(),
+                    Err(errmsg.to_string())
+                );
+            }
+
+            #[test]
+            fn test_group_conflicts_with() {
+                let syntax = CommandSyntax {
+                    groups: vec![SyntaxGroup {
+                        name: "group1".to_string(),
+                        parameters: vec![],
+                        conflicts_with: vec!["group2".to_string()],
+                        ..SyntaxGroup::default()
+                    }],
+                    ..CommandSyntax::default()
+                };
+
+                let errmsg =
+                    "parameter or group group2 specified in conflicts_with for group1 does not exist";
+                assert_eq!(
+                    syntax.check_parameters_references(),
+                    Err(errmsg.to_string())
+                );
+            }
+        }
+
+        mod check_parameters_leftovers {
+            use super::*;
+
+            #[test]
+            fn test_use_more_than_once() {
+                disable_colors();
+
+                let syntax = CommandSyntax {
+                    parameters: vec![
+                        SyntaxOptArg {
+                            name: "param1".to_string(),
+                            leftovers: true,
+                            ..SyntaxOptArg::default()
+                        },
+                        SyntaxOptArg {
+                            name: "param2".to_string(),
+                            leftovers: true,
+                            ..SyntaxOptArg::default()
+                        },
+                    ],
+                    ..CommandSyntax::default()
+                };
+
+                let errmsg = "only one argument can use leftovers; found param1, param2";
+                assert_eq!(syntax.check_parameters_leftovers(), Err(errmsg.to_string()));
+            }
+
+            #[test]
+            fn test_use_before_last_positional() {
+                disable_colors();
+
+                let syntax = CommandSyntax {
+                    parameters: vec![
+                        SyntaxOptArg {
+                            name: "param1".to_string(),
+                            ..SyntaxOptArg::default()
+                        },
+                        SyntaxOptArg {
+                            name: "param2".to_string(),
+                            leftovers: true,
+                            ..SyntaxOptArg::default()
+                        },
+                        SyntaxOptArg {
+                            name: "param3".to_string(),
+                            ..SyntaxOptArg::default()
+                        },
+                    ],
+                    ..CommandSyntax::default()
+                };
+
+                let errmsg = "only the last positional argument can use leftovers";
+                assert_eq!(syntax.check_parameters_leftovers(), Err(errmsg.to_string()));
+            }
+
+            #[test]
+            fn test_use_with_non_positional() {
+                disable_colors();
+
+                let syntax = CommandSyntax {
+                    parameters: vec![
+                        SyntaxOptArg {
+                            name: "param1".to_string(),
+                            ..SyntaxOptArg::default()
+                        },
+                        SyntaxOptArg {
+                            name: "--param2".to_string(),
+                            leftovers: true,
+                            ..SyntaxOptArg::default()
+                        },
+                    ],
+                    ..CommandSyntax::default()
+                };
+
+                let errmsg = "only positional arguments can use leftovers; found --param2";
+                assert_eq!(syntax.check_parameters_leftovers(), Err(errmsg.to_string()));
+            }
+        }
+
+        mod check_parameters_last {
+            use super::*;
+
+            #[test]
+            fn test_non_positional() {
+                disable_colors();
+
+                let syntax = CommandSyntax {
+                    parameters: vec![SyntaxOptArg {
+                        name: "--param1".to_string(),
+                        last_arg_double_hyphen: true,
+                        ..SyntaxOptArg::default()
+                    }],
+                    ..CommandSyntax::default()
+                };
+
+                let errmsg = "only positional arguments can use last; found --param1";
+                assert_eq!(syntax.check_parameters_last(), Err(errmsg.to_string()));
+            }
+        }
+
+        mod check_parameters_counter {
+            use super::*;
+
+            #[test]
+            fn test_positional() {
+                disable_colors();
+
+                let syntax = CommandSyntax {
+                    parameters: vec![SyntaxOptArg {
+                        name: "param1".to_string(),
+                        arg_type: SyntaxOptArgType::Counter,
+                        ..SyntaxOptArg::default()
+                    }],
+                    ..CommandSyntax::default()
+                };
+
+                let errmsg = "param1: counter argument cannot be positional";
+                assert_eq!(syntax.check_parameters_counter(), Err(errmsg.to_string()));
+            }
+
+            #[test]
+            fn test_num_values() {
+                disable_colors();
+
+                let syntax = CommandSyntax {
+                    parameters: vec![SyntaxOptArg {
+                        name: "--param1".to_string(),
+                        arg_type: SyntaxOptArgType::Counter,
+                        num_values: Some(SyntaxOptArgNumValues::Exactly(1)),
+                        ..SyntaxOptArg::default()
+                    }],
+                    ..CommandSyntax::default()
+                };
+
+                let errmsg = "--param1: counter argument cannot have a num_values (counters do not take any values)";
+                assert_eq!(syntax.check_parameters_counter(), Err(errmsg.to_string()));
+            }
+        }
+
+        mod check_parameters_allow_hyphen_values {
+            use super::*;
+
+            #[test]
+            fn test_num_values() {
+                disable_colors();
+
+                let syntax = CommandSyntax {
+                    parameters: vec![SyntaxOptArg {
+                        name: "--param1".to_string(),
+                        arg_type: SyntaxOptArgType::String,
+                        num_values: Some(SyntaxOptArgNumValues::Exactly(0)),
+                        allow_hyphen_values: true,
+                        ..SyntaxOptArg::default()
+                    }],
+                    ..CommandSyntax::default()
+                };
+
+                let errmsg = "--param1: cannot use allow_hyphen_values with 'num_values=0'";
+                assert_eq!(
+                    syntax.check_parameters_allow_hyphen_values(),
+                    Err(errmsg.to_string())
+                );
+            }
+
+            #[test]
+            fn test_counter() {
+                disable_colors();
+
+                let syntax = CommandSyntax {
+                    parameters: vec![SyntaxOptArg {
+                        name: "--param1".to_string(),
+                        arg_type: SyntaxOptArgType::Counter,
+                        allow_hyphen_values: true,
+                        ..SyntaxOptArg::default()
+                    }],
+                    ..CommandSyntax::default()
+                };
+
+                let errmsg = "--param1: cannot use allow_hyphen_values on a counter";
+                assert_eq!(
+                    syntax.check_parameters_allow_hyphen_values(),
+                    Err(errmsg.to_string())
+                );
+            }
+
+            #[test]
+            fn test_flag() {
+                disable_colors();
+
+                let syntax = CommandSyntax {
+                    parameters: vec![SyntaxOptArg {
+                        name: "--param1".to_string(),
+                        arg_type: SyntaxOptArgType::Flag,
+                        allow_hyphen_values: true,
+                        ..SyntaxOptArg::default()
+                    }],
+                    ..CommandSyntax::default()
+                };
+
+                let errmsg = "--param1: cannot use allow_hyphen_values on a flag";
+                assert_eq!(
+                    syntax.check_parameters_allow_hyphen_values(),
+                    Err(errmsg.to_string())
+                );
+            }
+        }
+
+        mod check_parameters_positional {
+            use super::*;
+
+            #[test]
+            fn test_positional_required_before_non_required() {
+                disable_colors();
+
+                let syntax = CommandSyntax {
+                    parameters: vec![
+                        SyntaxOptArg {
+                            name: "param1".to_string(),
+                            required: false,
+                            ..SyntaxOptArg::default()
+                        },
+                        SyntaxOptArg {
+                            name: "param2".to_string(),
+                            required: true,
+                            ..SyntaxOptArg::default()
+                        },
+                    ],
+                    ..CommandSyntax::default()
+                };
+
+                let errmsg =
+                    "param2: required positional argument cannot appear after non-required one param1";
+                assert_eq!(
+                    syntax.check_parameters_positional(),
+                    Err(errmsg.to_string())
+                );
+            }
+
+            #[test]
+            fn test_positional_num_values() {
+                disable_colors();
+
+                let syntax = CommandSyntax {
+                    parameters: vec![
+                        SyntaxOptArg {
+                            name: "param1".to_string(),
+                            num_values: Some(SyntaxOptArgNumValues::Exactly(2)),
+                            ..SyntaxOptArg::default()
+                        },
+                        SyntaxOptArg {
+                            name: "param2".to_string(),
+                            required: false,
+                            ..SyntaxOptArg::default()
+                        },
+                    ],
+                    ..CommandSyntax::default()
+                };
+
+                let errmsg = "param2: positional need to be required or use 'last=true' if appearing after param1 with num_values > 1";
+                assert_eq!(
+                    syntax.check_parameters_positional(),
+                    Err(errmsg.to_string())
+                );
+            }
+
+            #[test]
+            fn test_positional_num_values_ok_if_required() {
+                let syntax = CommandSyntax {
+                    parameters: vec![
+                        SyntaxOptArg {
+                            name: "param1".to_string(),
+                            num_values: Some(SyntaxOptArgNumValues::Exactly(2)),
+                            required: true,
+                            ..SyntaxOptArg::default()
+                        },
+                        SyntaxOptArg {
+                            name: "param2".to_string(),
+                            required: true,
+                            ..SyntaxOptArg::default()
+                        },
+                    ],
+                    ..CommandSyntax::default()
+                };
+
+                assert_eq!(syntax.check_parameters_positional(), Ok(()));
+            }
+
+            #[test]
+            fn test_positional_num_values_ok_if_last() {
+                let syntax = CommandSyntax {
+                    parameters: vec![
+                        SyntaxOptArg {
+                            name: "param1".to_string(),
+                            num_values: Some(SyntaxOptArgNumValues::Exactly(2)),
+                            ..SyntaxOptArg::default()
+                        },
+                        SyntaxOptArg {
+                            name: "param2".to_string(),
+                            last_arg_double_hyphen: true,
+                            ..SyntaxOptArg::default()
+                        },
+                    ],
+                    ..CommandSyntax::default()
+                };
+
+                assert_eq!(syntax.check_parameters_positional(), Ok(()));
+            }
+
+            #[test]
+            fn test_positional_required_num_values_exactly_zero() {
+                disable_colors();
+
+                let syntax = CommandSyntax {
+                    parameters: vec![SyntaxOptArg {
+                        name: "param1".to_string(),
+                        required: true,
+                        num_values: Some(SyntaxOptArgNumValues::Exactly(0)),
+                        ..SyntaxOptArg::default()
+                    }],
+                    ..CommandSyntax::default()
+                };
+
+                let errmsg = "param1: positional argument cannot have 'num_values=0'";
+                assert_eq!(
+                    syntax.check_parameters_positional(),
+                    Err(errmsg.to_string())
+                );
+            }
+
+            #[test]
+            fn test_positional_required_num_values_at_most_zero() {
+                disable_colors();
+
+                let syntax = CommandSyntax {
+                    parameters: vec![SyntaxOptArg {
+                        name: "param1".to_string(),
+                        required: true,
+                        num_values: Some(SyntaxOptArgNumValues::AtMost(0)),
+                        ..SyntaxOptArg::default()
+                    }],
+                    ..CommandSyntax::default()
+                };
+
+                let errmsg = "param1: positional argument cannot have 'num_values=0'";
+                assert_eq!(
+                    syntax.check_parameters_positional(),
+                    Err(errmsg.to_string())
+                );
+            }
+
+            #[test]
+            fn test_positional_required_num_values_between_max_zero() {
+                disable_colors();
+
+                let syntax = CommandSyntax {
+                    parameters: vec![SyntaxOptArg {
+                        name: "param1".to_string(),
+                        required: true,
+                        num_values: Some(SyntaxOptArgNumValues::Between(0, 0)),
+                        ..SyntaxOptArg::default()
+                    }],
+                    ..CommandSyntax::default()
+                };
+
+                let errmsg = "param1: positional argument cannot have 'num_values=0'";
+                assert_eq!(
+                    syntax.check_parameters_positional(),
+                    Err(errmsg.to_string())
+                );
+            }
+        }
+
+        mod parse_args {
+            use super::*;
+
+            fn check_expectations(
+                syntax: &CommandSyntax,
+                expectations: &Vec<(&[&str], Option<&str>)>,
+            ) {
+                for (argv, expectation) in expectations {
+                    let parsed_args = syntax.parse_args(
+                        argv.iter().map(|s| s.to_string()).collect(),
+                        vec!["test".to_string()],
+                    );
+                    match &expectation {
+                        Some(errmsg) => match &parsed_args {
+                            Ok(_args) => {
+                                panic!("case with args {:?} should have failed but succeeded", argv)
+                            }
+                            Err(e) => assert_eq!((argv, e.simple()), (argv, errmsg.to_string())),
+                        },
+                        None => {
+                            if let Err(ref e) = parsed_args {
+                                panic!("case with args {:?} should have succeeded but failed with error: {}", argv, e);
+                            }
+                        }
+                    }
+                }
+            }
+
+            fn check_type_expectations(
+                arg_name: &str,
+                arg_type: &str,
+                syntax: &CommandSyntax,
+                expectations: &Vec<(Vec<&str>, Result<&str, &str>)>,
+            ) {
+                for (argv, expectation) in expectations {
+                    let args = match syntax.parse_args(
+                        argv.iter().map(|s| s.to_string()).collect(),
+                        vec!["test".to_string()],
+                    ) {
+                        Ok(args) => {
+                            if expectation.is_err() {
+                                panic!("{:?} should have failed", argv)
+                            }
+                            args
+                        }
+                        Err(e) => {
+                            if let Err(expect_err) = &expectation {
+                                assert_eq!((&argv, e.simple()), (&argv, expect_err.to_string()));
+                                continue;
+                            }
+                            panic!("{:?} should have succeeded, instead: {}", argv, e);
+                        }
+                    };
+
+                    let value = expectation.expect("should not get here if not Ok");
+
+                    let type_var = format!("OMNI_ARG_{}_TYPE", arg_name.to_uppercase());
+                    let value_var = format!("OMNI_ARG_{}_VALUE", arg_name.to_uppercase());
+
+                    let mut expectations = vec![("OMNI_ARG_LIST", arg_name), (&type_var, arg_type)];
+                    if !value.is_empty() {
+                        expectations.push((&value_var, value));
+                    }
+
+                    assert_eq!((&argv, args.len()), (&argv, expectations.len()));
+                    for (key, value) in expectations {
+                        assert_eq!(
+                            (&argv, key, args.get(key)),
+                            (&argv, key, Some(&value.to_string()))
+                        );
+                    }
+                }
+            }
+
+            #[test]
+            fn test_simple() {
+                let syntax = CommandSyntax {
+                    parameters: vec![
+                        SyntaxOptArg {
+                            name: "--param1".to_string(),
+                            arg_type: SyntaxOptArgType::String,
+                            required: true,
+                            ..SyntaxOptArg::default()
+                        },
+                        SyntaxOptArg {
+                            name: "--param2".to_string(),
+                            arg_type: SyntaxOptArgType::Integer,
+                            desc: Some("takes an int".to_string()),
+                            required: false,
+                            ..SyntaxOptArg::default()
+                        },
+                    ],
+                    ..CommandSyntax::default()
+                };
+
+                let args = match syntax.parse_args(
+                    ["--param1", "value1", "--param2", "42"]
+                        .iter()
+                        .map(|s| s.to_string())
+                        .collect(),
+                    vec!["test".to_string()],
+                ) {
+                    Ok(args) => args,
+                    Err(e) => panic!("{}", e),
+                };
+
+                let expectations = vec![
+                    ("OMNI_ARG_LIST", "param1 param2"),
+                    ("OMNI_ARG_PARAM1_TYPE", "str"),
+                    ("OMNI_ARG_PARAM1_VALUE", "value1"),
+                    ("OMNI_ARG_PARAM2_TYPE", "int"),
+                    ("OMNI_ARG_PARAM2_VALUE", "42"),
+                ];
+
+                assert_eq!(args.len(), expectations.len());
+                for (key, value) in expectations {
+                    assert_eq!((key, args.get(key)), (key, Some(&value.to_string())));
+                }
+            }
+
+            #[test]
+            fn test_value_string() {
+                let syntax = CommandSyntax {
+                    parameters: vec![SyntaxOptArg {
+                        name: "--param1".to_string(),
+                        arg_type: SyntaxOptArgType::String,
+                        ..SyntaxOptArg::default()
+                    }],
+                    ..CommandSyntax::default()
+                };
+
+                let expectations: Vec<(Vec<&str>, Result<&str, &str>)> = vec![
+                    (vec!["--param1", "value1"], Ok("value1")),
+                    (vec!["--param1", ""], Ok("")),
+                    (vec!["--param1", "1"], Ok("1")),
+                    (vec!["--param1", "value1,value2"], Ok("value1,value2")),
+                ];
+
+                check_type_expectations("param1", "str", &syntax, &expectations);
+            }
+
+            #[test]
+            fn test_value_int() {
+                let syntax = CommandSyntax {
+                    parameters: vec![SyntaxOptArg {
+                        name: "--param1".to_string(),
+                        arg_type: SyntaxOptArgType::Integer,
+                        allow_hyphen_values: true,
+                        ..SyntaxOptArg::default()
+                    }],
+                    ..CommandSyntax::default()
+                };
+
+                let expectations: Vec<(Vec<&str>, Result<&str, &str>)> = vec![
+                    (vec!["--param1", "1"], Ok("1")),
+                    (vec!["--param1", "10"], Ok("10")),
+                    (vec!["--param1", "0"], Ok("0")),
+                    (vec!["--param1", "-100"], Ok("-100")),
+                    (vec!["--param1", ""], Err("invalid value '' for '--param1 <param1>': cannot parse integer from empty string")),
+                    (vec!["--param1", "1.2"], Err("invalid value '1.2' for '--param1 <param1>': invalid digit found in string")),
+                    (vec!["--param1", "1,2"], Err("invalid value '1,2' for '--param1 <param1>': invalid digit found in string")),
+                ];
+
+                check_type_expectations("param1", "int", &syntax, &expectations);
+            }
+
+            #[test]
+            fn test_value_float() {
+                let syntax = CommandSyntax {
+                    parameters: vec![SyntaxOptArg {
+                        name: "--param1".to_string(),
+                        arg_type: SyntaxOptArgType::Float,
+                        allow_hyphen_values: true,
+                        ..SyntaxOptArg::default()
+                    }],
+                    ..CommandSyntax::default()
+                };
+
+                let expectations: Vec<(Vec<&str>, Result<&str, &str>)> = vec![
+                    (vec!["--param1", "1.978326"], Ok("1.978326")),
+                    (vec!["--param1", "10"], Ok("10")),
+                    (vec!["--param1", "0"], Ok("0")),
+                    (vec!["--param1", "-100.4"], Ok("-100.4")),
+                    (vec!["--param1", ""], Err("invalid value '' for '--param1 <param1>': cannot parse float from empty string")),
+                    (vec!["--param1", "1.2"], Ok("1.2")),
+                    (vec!["--param1", "1,2"], Err("invalid value '1,2' for '--param1 <param1>': invalid float literal")),
+                ];
+
+                check_type_expectations("param1", "float", &syntax, &expectations);
+            }
+
+            #[test]
+            fn test_value_bool() {
+                let syntax = CommandSyntax {
+                    parameters: vec![SyntaxOptArg {
+                        name: "--param1".to_string(),
+                        arg_type: SyntaxOptArgType::Boolean,
+                        ..SyntaxOptArg::default()
+                    }],
+                    ..CommandSyntax::default()
+                };
+
+                let expectations: Vec<(Vec<&str>, Result<&str, &str>)> = vec![
+                    (vec!["--param1", "true"], Ok("true")),
+                    (vec!["--param1", "false"], Ok("false")),
+                    (vec!["--param1", ""], Err("a value is required for '--param1 <param1>' but none was supplied [possible values: true, false]")),
+                    (vec!["--param1", "TRUE"], Err("invalid value 'TRUE' for '--param1 <param1>' [possible values: true, false]")),
+                    (vec!["--param1", "no"], Err("invalid value 'no' for '--param1 <param1>' [possible values: true, false]")),
+                    (vec!["--param1", "1"], Err("invalid value '1' for '--param1 <param1>' [possible values: true, false]")),
+                    (vec!["--param1", "0"], Err("invalid value '0' for '--param1 <param1>' [possible values: true, false]")),
+                    (vec!["--param1", "on"], Err("invalid value 'on' for '--param1 <param1>' [possible values: true, false]")),
+                    (vec!["--param1", "off"], Err("invalid value 'off' for '--param1 <param1>' [possible values: true, false]")),
+                ];
+
+                check_type_expectations("param1", "bool", &syntax, &expectations);
+            }
+
+            #[test]
+            fn test_value_enum() {
+                let syntax = CommandSyntax {
+                    parameters: vec![SyntaxOptArg {
+                        name: "--param1".to_string(),
+                        arg_type: SyntaxOptArgType::Enum(vec![
+                            "a".to_string(),
+                            "b".to_string(),
+                            "c".to_string(),
+                        ]),
+                        ..SyntaxOptArg::default()
+                    }],
+                    ..CommandSyntax::default()
+                };
+
+                let expectations: Vec<(Vec<&str>, Result<&str, &str>)> = vec![
+                    (vec!["--param1", "a"], Ok("a")),
+                    (vec!["--param1", "b"], Ok("b")),
+                    (vec!["--param1", "c"], Ok("c")),
+                    (vec!["--param1", "d"], Err("invalid value 'd' for '--param1 <param1>' [possible values: a, b, c]")),
+                    (vec!["--param1", ""], Err("a value is required for '--param1 <param1>' but none was supplied [possible values: a, b, c]")),
+                ];
+
+                check_type_expectations("param1", "str", &syntax, &expectations);
+            }
+
+            #[test]
+            fn test_value_flag() {
+                let syntax = CommandSyntax {
+                    parameters: vec![SyntaxOptArg {
+                        name: "--param1".to_string(),
+                        arg_type: SyntaxOptArgType::Flag,
+                        ..SyntaxOptArg::default()
+                    }],
+                    ..CommandSyntax::default()
+                };
+
+                let expectations: Vec<(Vec<&str>, Result<&str, &str>)> = vec![
+                    (vec!["--param1"], Ok("true")),
+                    (vec![], Ok("false")),
+                    (vec!["--param1", "c"], Err("unexpected argument 'c' found")),
+                    (vec!["--param1", ""], Err("unexpected argument '' found")),
+                ];
+
+                check_type_expectations("param1", "bool", &syntax, &expectations);
+            }
+
+            #[test]
+            fn test_value_counter() {
+                let syntax = CommandSyntax {
+                    parameters: vec![SyntaxOptArg {
+                        name: "--count".to_string(),
+                        aliases: vec!["-c".to_string()],
+                        arg_type: SyntaxOptArgType::Counter,
+                        ..SyntaxOptArg::default()
+                    }],
+                    ..CommandSyntax::default()
+                };
+
+                let expectations: Vec<(Vec<&str>, Result<&str, &str>)> = vec![
+                    (vec![], Ok("0")),
+                    (vec!["--count"], Ok("1")),
+                    (vec!["--count", "--count"], Ok("2")),
+                    (vec!["-c", "-c", "-c"], Ok("3")),
+                    (vec!["-cc", "-c"], Ok("3")),
+                    (vec!["-ccc"], Ok("3")),
+                    (
+                        vec!["--count", "blah"],
+                        Err("unexpected argument 'blah' found"),
+                    ),
+                    (vec!["--count", ""], Err("unexpected argument '' found")),
+                ];
+
+                check_type_expectations("count", "int", &syntax, &expectations);
+            }
+
+            #[test]
+            fn test_unexpected_argument() {
+                let syntax = CommandSyntax {
+                    parameters: vec![
+                        SyntaxOptArg {
+                            name: "--param1".to_string(),
+                            arg_type: SyntaxOptArgType::String,
+                            required: true,
+                            ..SyntaxOptArg::default()
+                        },
+                        SyntaxOptArg {
+                            name: "--param2".to_string(),
+                            arg_type: SyntaxOptArgType::Integer,
+                            desc: Some("takes an int".to_string()),
+                            required: false,
+                            ..SyntaxOptArg::default()
+                        },
+                    ],
+                    ..CommandSyntax::default()
+                };
+
+                match syntax.parse_args(
+                    ["unexpected", "--param1", "value1", "--param2", "42"]
+                        .iter()
+                        .map(|s| s.to_string())
+                        .collect(),
+                    vec!["test".to_string()],
+                ) {
+                    Ok(_) => panic!("should have failed"),
+                    Err(e) => assert!(e.to_string().contains("unexpected argument 'unexpected'")),
+                }
+            }
+
+            #[test]
+            fn test_param_default() {
+                let syntax = CommandSyntax {
+                    parameters: vec![
+                        SyntaxOptArg {
+                            name: "--str".to_string(),
+                            arg_type: SyntaxOptArgType::String,
+                            default: Some("default1".to_string()),
+                            ..SyntaxOptArg::default()
+                        },
+                        SyntaxOptArg {
+                            name: "--int".to_string(),
+                            arg_type: SyntaxOptArgType::Integer,
+                            desc: Some("takes an int".to_string()),
+                            default: Some("42".to_string()),
+                            ..SyntaxOptArg::default()
+                        },
+                        SyntaxOptArg {
+                            name: "--float".to_string(),
+                            arg_type: SyntaxOptArgType::Float,
+                            desc: Some("takes a float".to_string()),
+                            default: Some("3.14".to_string()),
+                            ..SyntaxOptArg::default()
+                        },
+                        SyntaxOptArg {
+                            name: "--bool".to_string(),
+                            arg_type: SyntaxOptArgType::Boolean,
+                            desc: Some("takes a boolean".to_string()),
+                            default: Some("true".to_string()),
+                            ..SyntaxOptArg::default()
+                        },
+                        SyntaxOptArg {
+                            name: "--enum".to_string(),
+                            arg_type: SyntaxOptArgType::Enum(vec![
+                                "a".to_string(),
+                                "b".to_string(),
+                            ]),
+                            desc: Some("takes an enum".to_string()),
+                            default: Some("a".to_string()),
+                            ..SyntaxOptArg::default()
+                        },
+                        SyntaxOptArg {
+                            name: "--flag".to_string(),
+                            arg_type: SyntaxOptArgType::Flag,
+                            desc: Some("takes a flag (default to false)".to_string()),
+                            default: Some("false".to_string()),
+                            ..SyntaxOptArg::default()
+                        },
+                        SyntaxOptArg {
+                            name: "--no-flag".to_string(),
+                            arg_type: SyntaxOptArgType::Flag,
+                            desc: Some("takes a flag (default to true)".to_string()),
+                            default: Some("true".to_string()),
+                            ..SyntaxOptArg::default()
+                        },
+                    ],
+                    ..CommandSyntax::default()
+                };
+
+                let args = match syntax.parse_args(vec![], vec!["test".to_string()]) {
+                    Ok(args) => args,
+                    Err(e) => panic!("{}", e),
+                };
+
+                let expectations = vec![
+                    ("OMNI_ARG_LIST", "str int float bool enum flag no_flag"),
+                    ("OMNI_ARG_STR_TYPE", "str"),
+                    ("OMNI_ARG_STR_VALUE", "default1"),
+                    ("OMNI_ARG_INT_TYPE", "int"),
+                    ("OMNI_ARG_INT_VALUE", "42"),
+                    ("OMNI_ARG_FLOAT_TYPE", "float"),
+                    ("OMNI_ARG_FLOAT_VALUE", "3.14"),
+                    ("OMNI_ARG_BOOL_TYPE", "bool"),
+                    ("OMNI_ARG_BOOL_VALUE", "true"),
+                    ("OMNI_ARG_ENUM_TYPE", "str"),
+                    ("OMNI_ARG_ENUM_VALUE", "a"),
+                    ("OMNI_ARG_FLAG_TYPE", "bool"),
+                    ("OMNI_ARG_FLAG_VALUE", "false"),
+                    ("OMNI_ARG_NO_FLAG_TYPE", "bool"),
+                    ("OMNI_ARG_NO_FLAG_VALUE", "true"),
+                ];
+
+                assert_eq!(args.len(), expectations.len());
+                for (key, value) in expectations {
+                    assert_eq!((key, args.get(key)), (key, Some(&value.to_string())));
+                }
+            }
+
+            #[test]
+            fn test_param_default_array_with_value_delimiter() {
+                let syntax = CommandSyntax {
+                    parameters: vec![
+                        SyntaxOptArg {
+                            name: "--arr-str".to_string(),
+                            arg_type: SyntaxOptArgType::Array(Box::new(SyntaxOptArgType::String)),
+                            default: Some("default1,default2".to_string()),
+                            value_delimiter: Some(','),
+                            ..SyntaxOptArg::default()
+                        },
+                        SyntaxOptArg {
+                            name: "--arr-int".to_string(),
+                            arg_type: SyntaxOptArgType::Array(Box::new(SyntaxOptArgType::Integer)),
+                            default: Some("42|43|44".to_string()),
+                            value_delimiter: Some('|'),
+                            ..SyntaxOptArg::default()
+                        },
+                        SyntaxOptArg {
+                            name: "--arr-float".to_string(),
+                            arg_type: SyntaxOptArgType::Array(Box::new(SyntaxOptArgType::Float)),
+                            default: Some("3.14/2.71".to_string()),
+                            value_delimiter: Some('/'),
+                            ..SyntaxOptArg::default()
+                        },
+                        SyntaxOptArg {
+                            name: "--arr-bool".to_string(),
+                            arg_type: SyntaxOptArgType::Array(Box::new(SyntaxOptArgType::Boolean)),
+                            default: Some("true%false".to_string()),
+                            value_delimiter: Some('%'),
+                            ..SyntaxOptArg::default()
+                        },
+                        SyntaxOptArg {
+                            name: "--arr-enum".to_string(),
+                            arg_type: SyntaxOptArgType::Array(Box::new(SyntaxOptArgType::Enum(
+                                vec!["a".to_string(), "b".to_string()],
+                            ))),
+                            default: Some("a,b,a,a".to_string()),
+                            value_delimiter: Some(','),
+                            ..SyntaxOptArg::default()
+                        },
+                    ],
+                    ..CommandSyntax::default()
+                };
+
+                let args = match syntax.parse_args(vec![], vec!["test".to_string()]) {
+                    Ok(args) => args,
+                    Err(e) => panic!("{}", e),
+                };
+
+                let expectations = vec![
+                    (
+                        "OMNI_ARG_LIST",
+                        "arr_str arr_int arr_float arr_bool arr_enum",
+                    ),
+                    ("OMNI_ARG_ARR_STR_TYPE", "str/2"),
+                    ("OMNI_ARG_ARR_STR_VALUE_0", "default1"),
+                    ("OMNI_ARG_ARR_STR_VALUE_1", "default2"),
+                    ("OMNI_ARG_ARR_INT_TYPE", "int/3"),
+                    ("OMNI_ARG_ARR_INT_VALUE_0", "42"),
+                    ("OMNI_ARG_ARR_INT_VALUE_1", "43"),
+                    ("OMNI_ARG_ARR_INT_VALUE_2", "44"),
+                    ("OMNI_ARG_ARR_FLOAT_TYPE", "float/2"),
+                    ("OMNI_ARG_ARR_FLOAT_VALUE_0", "3.14"),
+                    ("OMNI_ARG_ARR_FLOAT_VALUE_1", "2.71"),
+                    ("OMNI_ARG_ARR_BOOL_TYPE", "bool/2"),
+                    ("OMNI_ARG_ARR_BOOL_VALUE_0", "true"),
+                    ("OMNI_ARG_ARR_BOOL_VALUE_1", "false"),
+                    ("OMNI_ARG_ARR_ENUM_TYPE", "str/4"),
+                    ("OMNI_ARG_ARR_ENUM_VALUE_0", "a"),
+                    ("OMNI_ARG_ARR_ENUM_VALUE_1", "b"),
+                    ("OMNI_ARG_ARR_ENUM_VALUE_2", "a"),
+                    ("OMNI_ARG_ARR_ENUM_VALUE_3", "a"),
+                ];
+
+                let expect_len = expectations.len();
+                for (key, value) in expectations {
+                    assert_eq!((key, args.get(key)), (key, Some(&value.to_string())));
+                }
+                assert_eq!(args.len(), expect_len);
+            }
+
+            #[test]
+            fn test_param_value_delimiter_on_non_array() {
+                let syntax = CommandSyntax {
+                    parameters: vec![SyntaxOptArg {
+                        name: "--param1".to_string(),
+                        arg_type: SyntaxOptArgType::String,
+                        value_delimiter: Some(','),
+                        ..SyntaxOptArg::default()
+                    }],
+                    ..CommandSyntax::default()
+                };
+
+                let args = match syntax.parse_args(
+                    ["--param1", "value1,value2"]
+                        .iter()
+                        .map(|s| s.to_string())
+                        .collect(),
+                    vec!["test".to_string()],
+                ) {
+                    Ok(args) => args,
+                    Err(e) => panic!("{}", e),
+                };
+
+                let expectations = vec![
+                    ("OMNI_ARG_LIST", "param1"),
+                    ("OMNI_ARG_PARAM1_TYPE", "str/2"),
+                    ("OMNI_ARG_PARAM1_VALUE_0", "value1"),
+                    ("OMNI_ARG_PARAM1_VALUE_1", "value2"),
+                ];
+
+                assert_eq!(args.len(), expectations.len());
+                for (key, value) in expectations {
+                    assert_eq!((key, args.get(key)), (key, Some(&value.to_string())));
+                }
+            }
+
+            #[test]
+            fn test_param_num_values() {
+                let syntax = CommandSyntax {
+                    parameters: vec![
+                        SyntaxOptArg {
+                            name: "--param1".to_string(),
+                            arg_type: SyntaxOptArgType::String,
+                            num_values: Some(SyntaxOptArgNumValues::Exactly(2)),
+                            ..SyntaxOptArg::default()
+                        },
+                        SyntaxOptArg {
+                            name: "--param2".to_string(),
+                            arg_type: SyntaxOptArgType::Integer,
+                            desc: Some("takes an int".to_string()),
+                            num_values: Some(SyntaxOptArgNumValues::Exactly(3)),
+                            ..SyntaxOptArg::default()
+                        },
+                    ],
+                    ..CommandSyntax::default()
+                };
+
+                let args = match syntax.parse_args(
+                    ["--param1", "value1", "value2", "--param2", "42", "43", "44"]
+                        .iter()
+                        .map(|s| s.to_string())
+                        .collect(),
+                    vec!["test".to_string()],
+                ) {
+                    Ok(args) => args,
+                    Err(e) => panic!("{}", e),
+                };
+
+                let expectations = vec![
+                    ("OMNI_ARG_LIST", "param1 param2"),
+                    ("OMNI_ARG_PARAM1_TYPE", "str/2"),
+                    ("OMNI_ARG_PARAM1_VALUE_0", "value1"),
+                    ("OMNI_ARG_PARAM1_VALUE_1", "value2"),
+                    ("OMNI_ARG_PARAM2_TYPE", "int/3"),
+                    ("OMNI_ARG_PARAM2_VALUE_0", "42"),
+                    ("OMNI_ARG_PARAM2_VALUE_1", "43"),
+                    ("OMNI_ARG_PARAM2_VALUE_2", "44"),
+                ];
+
+                assert_eq!(args.len(), expectations.len());
+                for (key, value) in expectations {
+                    assert_eq!((key, args.get(key)), (key, Some(&value.to_string())));
+                }
+            }
+
+            #[test]
+            fn test_param_num_values_at_most() {
+                let syntax = CommandSyntax {
+                    parameters: vec![
+                        SyntaxOptArg {
+                            name: "--exactly".to_string(),
+                            arg_type: SyntaxOptArgType::Integer,
+                            num_values: Some(SyntaxOptArgNumValues::Exactly(2)),
+                            ..SyntaxOptArg::default()
+                        },
+                        SyntaxOptArg {
+                            name: "--at-most-3".to_string(),
+                            arg_type: SyntaxOptArgType::Integer,
+                            num_values: Some(SyntaxOptArgNumValues::AtMost(3)),
+                            ..SyntaxOptArg::default()
+                        },
+                        SyntaxOptArg {
+                            name: "--at-least-2".to_string(),
+                            arg_type: SyntaxOptArgType::Integer,
+                            num_values: Some(SyntaxOptArgNumValues::AtLeast(2)),
+                            ..SyntaxOptArg::default()
+                        },
+                        SyntaxOptArg {
+                            name: "--between-2-4".to_string(),
+                            arg_type: SyntaxOptArgType::Integer,
+                            num_values: Some(SyntaxOptArgNumValues::Between(2, 4)),
+                            ..SyntaxOptArg::default()
+                        },
+                        SyntaxOptArg {
+                            name: "--any".to_string(),
+                            arg_type: SyntaxOptArgType::Integer,
+                            num_values: Some(SyntaxOptArgNumValues::Any),
+                            ..SyntaxOptArg::default()
+                        },
+                    ],
+                    ..CommandSyntax::default()
+                };
+
+                let test_cases: Vec<(Vec<&str>, Option<&str>)> = vec![
+                    (vec!["--exactly"], Some("a value is required for '--exactly <exactly> <exactly>' but none was supplied")),
+                    (vec!["--exactly", "1"], Some("2 values required for '--exactly <exactly> <exactly>' but 1 was provided")),
+                    (vec!["--exactly", "1", "2"], None),
+                    (vec!["--exactly", "1", "2", "3"], Some("unexpected argument '3' found")),
+                    (vec!["--at-most-3"], None),
+                    (vec!["--at-most-3", "1"], None),
+                    (vec!["--at-most-3", "1", "2"], None),
+                    (vec!["--at-most-3", "1", "2", "3"], None),
+                    (vec!["--at-most-3", "1", "2", "3", "4"], Some("unexpected argument '4' found")),
+                    (vec!["--at-least-2"], Some("a value is required for '--at-least-2 <at_least_2> <at_least_2>...' but none was supplied")),
+                    (vec!["--at-least-2", "1"], Some("2 values required by '--at-least-2 <at_least_2> <at_least_2>...'; only 1 was provided")),
+                    (vec!["--at-least-2", "1", "2"], None),
+                    (vec!["--at-least-2", "1", "2", "3"], None),
+                    (vec!["--at-least-2", "1", "2", "3", "4"], None),
+                    (vec!["--between-2-4"], Some("a value is required for '--between-2-4 <between_2_4> <between_2_4>...' but none was supplied")),
+                    (vec!["--between-2-4", "1"], Some("2 values required by '--between-2-4 <between_2_4> <between_2_4>...'; only 1 was provided")),
+                    (vec!["--between-2-4", "1", "2"], None),
+                    (vec!["--between-2-4", "1", "2", "3"], None),
+                    (vec!["--between-2-4", "1", "2", "3", "4"], None),
+                    (vec!["--between-2-4", "1", "2", "3", "4", "5"], Some("unexpected argument '5' found")),
+                    (vec!["--any"], None),
+                    (vec!["--any", "1"], None),
+                    (vec!["--any", "1", "2", "3", "4", "5", "6", "7", "8", "9"], None),
+                ];
+
+                for (i, (argv, error)) in test_cases.iter().enumerate() {
+                    match syntax.parse_args(
+                        argv.iter().map(|s| s.to_string()).collect(),
+                        vec!["test".to_string()],
+                    ) {
+                        Ok(args) => {
+                            if error.is_some() {
+                                panic!(
+                                    "case {} with argv {:?} should have failed, instead: {:?}",
+                                    i, argv, args
+                                );
+                            }
+
+                            let mut expectations = vec![(
+                                "OMNI_ARG_LIST".to_string(),
+                                "exactly at_most_3 at_least_2 between_2_4 any".to_string(),
+                            )];
+
+                            let params = &[
+                                ("--exactly", "exactly"),
+                                ("--at-most-3", "at_most_3"),
+                                ("--at-least-2", "at_least_2"),
+                                ("--between-2-4", "between_2_4"),
+                                ("--any", "any"),
+                            ];
+
+                            for (param, env_name) in params {
+                                // Get the position of the parameter in argv
+                                let pos = argv.iter().position(|s| s == param);
+                                let values = match pos {
+                                    Some(pos) => {
+                                        // Take all values until the next value with --
+                                        argv.iter()
+                                            .skip(pos + 1)
+                                            .take_while(|s| !s.starts_with("--"))
+                                            .collect::<Vec<_>>()
+                                    }
+                                    None => vec![],
+                                };
+
+                                // Add the type and values to the expectations
+                                let type_var = format!("OMNI_ARG_{}_TYPE", env_name.to_uppercase());
+                                expectations.push((type_var, format!("int/{}", values.len())));
+
+                                for (i, value) in values.iter().enumerate() {
+                                    let value_var =
+                                        format!("OMNI_ARG_{}_VALUE_{}", env_name.to_uppercase(), i);
+                                    expectations.push((value_var, value.to_string()));
+                                }
+                            }
+
+                            // Validate that the expectations are met
+                            let expect_len = expectations.len();
+                            for (key, value) in expectations {
+                                assert_eq!(
+                                    (&argv, &key, args.get(&key)),
+                                    (&argv, &key, Some(&value.to_string()))
+                                );
+                            }
+                            assert_eq!((&argv, args.len()), (&argv, expect_len));
+                        }
+                        Err(e) => {
+                            if let Some(errmsg) = error {
+                                assert_eq!(e.simple(), errmsg.to_string());
+                                continue;
+                            }
+                            panic!(
+                                "case {} with argv {:?} should have succeeded, instead: {}",
+                                i, argv, e
+                            );
+                        }
+                    }
+                }
+            }
+
+            #[test]
+            fn test_param_last() {
+                let syntax = CommandSyntax {
+                    parameters: vec![
+                        SyntaxOptArg {
+                            name: "param1".to_string(),
+                            arg_type: SyntaxOptArgType::String,
+                            ..SyntaxOptArg::default()
+                        },
+                        SyntaxOptArg {
+                            name: "param2".to_string(),
+                            arg_type: SyntaxOptArgType::Array(Box::new(SyntaxOptArgType::String)),
+                            last_arg_double_hyphen: true,
+                            ..SyntaxOptArg::default()
+                        },
+                    ],
+                    ..CommandSyntax::default()
+                };
+
+                let args = match syntax.parse_args(
+                    ["value1", "--", "value2", "value3"]
+                        .iter()
+                        .map(|s| s.to_string())
+                        .collect(),
+                    vec!["test".to_string()],
+                ) {
+                    Ok(args) => args,
+                    Err(e) => panic!("{}", e),
+                };
+
+                let expectations = vec![
+                    ("OMNI_ARG_LIST", "param1 param2"),
+                    ("OMNI_ARG_PARAM1_TYPE", "str"),
+                    ("OMNI_ARG_PARAM1_VALUE", "value1"),
+                    ("OMNI_ARG_PARAM2_TYPE", "str/2"),
+                    ("OMNI_ARG_PARAM2_VALUE_0", "value2"),
+                    ("OMNI_ARG_PARAM2_VALUE_1", "value3"),
+                ];
+
+                assert_eq!(args.len(), expectations.len());
+                for (key, value) in expectations {
+                    assert_eq!((key, args.get(key)), (key, Some(&value.to_string())));
+                }
+            }
+
+            #[test]
+            fn test_param_last_single_value() {
+                let syntax = CommandSyntax {
+                    parameters: vec![
+                        SyntaxOptArg {
+                            name: "param1".to_string(),
+                            arg_type: SyntaxOptArgType::String,
+                            ..SyntaxOptArg::default()
+                        },
+                        SyntaxOptArg {
+                            name: "param2".to_string(),
+                            arg_type: SyntaxOptArgType::String,
+                            last_arg_double_hyphen: true,
+                            ..SyntaxOptArg::default()
+                        },
+                    ],
+                    ..CommandSyntax::default()
+                };
+
+                let args = syntax.parse_args(
+                    ["value1", "--", "value2", "value3"]
+                        .iter()
+                        .map(|s| s.to_string())
+                        .collect(),
+                    vec!["test".to_string()],
+                );
+
+                match args {
+                    Ok(_) => panic!("should have failed"),
+                    Err(e) => assert_eq!(
+                        e.simple(),
+                        "the argument '[param2]' cannot be used multiple times"
+                    ),
+                }
+            }
+
+            #[test]
+            fn test_param_leftovers() {
+                let syntax = CommandSyntax {
+                    parameters: vec![
+                        SyntaxOptArg {
+                            name: "param1".to_string(),
+                            arg_type: SyntaxOptArgType::String,
+                            ..SyntaxOptArg::default()
+                        },
+                        SyntaxOptArg {
+                            name: "param2".to_string(),
+                            arg_type: SyntaxOptArgType::String,
+                            leftovers: true,
+                            ..SyntaxOptArg::default()
+                        },
+                    ],
+                    ..CommandSyntax::default()
+                };
+
+                let args = match syntax.parse_args(
+                    ["value1", "value2", "value3"]
+                        .iter()
+                        .map(|s| s.to_string())
+                        .collect(),
+                    vec!["test".to_string()],
+                ) {
+                    Ok(args) => args,
+                    Err(e) => panic!("{}", e),
+                };
+
+                let expectations = vec![
+                    ("OMNI_ARG_LIST", "param1 param2"),
+                    ("OMNI_ARG_PARAM1_TYPE", "str"),
+                    ("OMNI_ARG_PARAM1_VALUE", "value1"),
+                    ("OMNI_ARG_PARAM2_TYPE", "str/2"),
+                    ("OMNI_ARG_PARAM2_VALUE_0", "value2"),
+                    ("OMNI_ARG_PARAM2_VALUE_1", "value3"),
+                ];
+
+                assert_eq!(args.len(), expectations.len());
+                for (key, value) in expectations {
+                    assert_eq!((key, args.get(key)), (key, Some(&value.to_string())));
+                }
+            }
+
+            #[test]
+            fn test_param_leftovers_no_allow_hyphens() {
+                let syntax = CommandSyntax {
+                    parameters: vec![
+                        SyntaxOptArg {
+                            name: "param1".to_string(),
+                            arg_type: SyntaxOptArgType::String,
+                            ..SyntaxOptArg::default()
+                        },
+                        SyntaxOptArg {
+                            name: "param2".to_string(),
+                            arg_type: SyntaxOptArgType::String,
+                            leftovers: true,
+                            ..SyntaxOptArg::default()
+                        },
+                    ],
+                    ..CommandSyntax::default()
+                };
+
+                let args = syntax.parse_args(
+                    ["value1", "--value2", "value3"]
+                        .iter()
+                        .map(|s| s.to_string())
+                        .collect(),
+                    vec!["test".to_string()],
+                );
+
+                match args {
+                    Ok(_) => panic!("should have failed"),
+                    Err(e) => assert_eq!(e.simple(), "unexpected argument '--value2' found"),
+                }
+            }
+
+            #[test]
+            fn test_param_leftovers_allow_hyphens() {
+                let syntax = CommandSyntax {
+                    parameters: vec![
+                        SyntaxOptArg {
+                            name: "param1".to_string(),
+                            arg_type: SyntaxOptArgType::String,
+                            ..SyntaxOptArg::default()
+                        },
+                        SyntaxOptArg {
+                            name: "param2".to_string(),
+                            arg_type: SyntaxOptArgType::String,
+                            leftovers: true,
+                            allow_hyphen_values: true,
+                            ..SyntaxOptArg::default()
+                        },
+                    ],
+                    ..CommandSyntax::default()
+                };
+
+                let args = match syntax.parse_args(
+                    ["value1", "--value2", "value3"]
+                        .iter()
+                        .map(|s| s.to_string())
+                        .collect(),
+                    vec!["test".to_string()],
+                ) {
+                    Ok(args) => args,
+                    Err(e) => panic!("{}", e),
+                };
+
+                let expectations = vec![
+                    ("OMNI_ARG_LIST", "param1 param2"),
+                    ("OMNI_ARG_PARAM1_TYPE", "str"),
+                    ("OMNI_ARG_PARAM1_VALUE", "value1"),
+                    ("OMNI_ARG_PARAM2_TYPE", "str/2"),
+                    ("OMNI_ARG_PARAM2_VALUE_0", "--value2"),
+                    ("OMNI_ARG_PARAM2_VALUE_1", "value3"),
+                ];
+
+                assert_eq!(args.len(), expectations.len());
+                for (key, value) in expectations {
+                    assert_eq!((key, args.get(key)), (key, Some(&value.to_string())));
+                }
+            }
+
+            #[test]
+            fn test_param_required() {
+                let syntax = CommandSyntax {
+                    parameters: vec![
+                        SyntaxOptArg {
+                            name: "--param1".to_string(),
+                            arg_type: SyntaxOptArgType::String,
+                            required: true,
+                            ..SyntaxOptArg::default()
+                        },
+                        SyntaxOptArg {
+                            name: "--param2".to_string(),
+                            arg_type: SyntaxOptArgType::Integer,
+                            desc: Some("takes an int".to_string()),
+                            ..SyntaxOptArg::default()
+                        },
+                    ],
+                    ..CommandSyntax::default()
+                };
+
+                let expectations: Vec<(&[&str], Option<&str>)> = vec![
+                    (
+                        &[],
+                        Some(
+                            "the following required arguments were not provided: --param1 <param1>",
+                        ),
+                    ),
+                    (
+                        &["--param2", "42"],
+                        Some(
+                            "the following required arguments were not provided: --param1 <param1>",
+                        ),
+                    ),
+                    (&["--param1", "value1"], None),
+                ];
+
+                check_expectations(&syntax, &expectations);
+            }
+
+            #[test]
+            fn test_group_multiple() {
+                let syntax = CommandSyntax {
+                    parameters: vec![
+                        SyntaxOptArg {
+                            name: "--param1".to_string(),
+                            arg_type: SyntaxOptArgType::String,
+                            ..SyntaxOptArg::default()
+                        },
+                        SyntaxOptArg {
+                            name: "--param2".to_string(),
+                            arg_type: SyntaxOptArgType::Integer,
+                            desc: Some("takes an int".to_string()),
+                            ..SyntaxOptArg::default()
+                        },
+                        SyntaxOptArg {
+                            name: "--param3".to_string(),
+                            arg_type: SyntaxOptArgType::Float,
+                            desc: Some("takes a float".to_string()),
+                            ..SyntaxOptArg::default()
+                        },
+                        SyntaxOptArg {
+                            name: "--param4".to_string(),
+                            arg_type: SyntaxOptArgType::Boolean,
+                            desc: Some("takes a boolean".to_string()),
+                            ..SyntaxOptArg::default()
+                        },
+                    ],
+                    groups: vec![
+                        SyntaxGroup {
+                            name: "group1".to_string(),
+                            parameters: vec!["--param1".to_string(), "--param2".to_string()],
+                            ..SyntaxGroup::default()
+                        },
+                        SyntaxGroup {
+                            name: "group2".to_string(),
+                            parameters: vec!["--param3".to_string(), "--param4".to_string()],
+                            multiple: true,
+                            ..SyntaxGroup::default()
+                        },
+                    ],
+                    ..CommandSyntax::default()
+                };
+
+                let expectations: Vec<(&[&str], Option<&str>)> = vec![
+                    (&[], None),
+                    (&["--param1", "value1"], None),
+                    (&["--param2", "42"], None),
+                    (&["--param3", "3.14"], None),
+                    (&["--param4", "true"], None),
+                    (&["--param1", "value1", "--param3", "3.14"], None),
+                    (&["--param1", "value1", "--param2", "42"], Some("the argument '--param1 <param1>' cannot be used with '--param2 <param2>'")),
+                    (&["--param3", "3.14", "--param4", "true"], None),
+                ];
+
+                check_expectations(&syntax, &expectations);
+            }
+
+            #[test]
+            fn test_group_required() {
+                let syntax = CommandSyntax {
+                    parameters: vec![
+                        SyntaxOptArg {
+                            name: "--param1".to_string(),
+                            arg_type: SyntaxOptArgType::String,
+                            ..SyntaxOptArg::default()
+                        },
+                        SyntaxOptArg {
+                            name: "--param2".to_string(),
+                            arg_type: SyntaxOptArgType::Integer,
+                            desc: Some("takes an int".to_string()),
+                            ..SyntaxOptArg::default()
+                        },
+                        SyntaxOptArg {
+                            name: "--param3".to_string(),
+                            arg_type: SyntaxOptArgType::Float,
+                            desc: Some("takes a float".to_string()),
+                            ..SyntaxOptArg::default()
+                        },
+                    ],
+                    groups: vec![SyntaxGroup {
+                        name: "group1".to_string(),
+                        parameters: vec!["--param1".to_string(), "--param2".to_string()],
+                        required: true,
+                        ..SyntaxGroup::default()
+                    }],
+                    ..CommandSyntax::default()
+                };
+
+                let expectations: Vec<(&[&str], Option<&str>)> = vec![
+                    (&[], Some("the following required arguments were not provided: <--param1 <param1>|--param2 <param2>>")),
+                    (&["--param3", "3.14"], Some("the following required arguments were not provided: <--param1 <param1>|--param2 <param2>>")),
+                    (&["--param1", "value1", "--param3", "3.14"], None),
+                    (&["--param2", "42", "--param3", "3.14"], None),
+                    (&["--param1", "value1"], None),
+                    (&["--param2", "42"], None),
+                ];
+
+                check_expectations(&syntax, &expectations);
+            }
+
+            #[test]
+            fn test_group_requires() {
+                let syntax = CommandSyntax {
+                    parameters: vec![
+                        SyntaxOptArg {
+                            name: "--param1".to_string(),
+                            arg_type: SyntaxOptArgType::String,
+                            ..SyntaxOptArg::default()
+                        },
+                        SyntaxOptArg {
+                            name: "--param2".to_string(),
+                            arg_type: SyntaxOptArgType::Integer,
+                            ..SyntaxOptArg::default()
+                        },
+                        SyntaxOptArg {
+                            name: "--param3".to_string(),
+                            arg_type: SyntaxOptArgType::Float,
+                            ..SyntaxOptArg::default()
+                        },
+                    ],
+                    groups: vec![
+                        SyntaxGroup {
+                            name: "group1".to_string(),
+                            parameters: vec!["--param1".to_string()],
+                            requires: vec!["param2".to_string()],
+                            ..SyntaxGroup::default()
+                        },
+                        SyntaxGroup {
+                            name: "group3".to_string(),
+                            parameters: vec!["--param3".to_string()],
+                            requires: vec!["group1".to_string()],
+                            ..SyntaxGroup::default()
+                        },
+                    ],
+                    ..CommandSyntax::default()
+                };
+
+                let expectations: Vec<(&[&str], Option<&str>)> = vec![
+                    (&["--param2", "42"], None),
+                    (
+                        &["--param1", "value1"],
+                        Some("the following required arguments were not provided: --param2 <param2>"),
+                    ),
+                    (&["--param1", "value1", "--param2", "42"], None),
+                    (&["--param3", "3.14"], Some("the following required arguments were not provided: <--param1 <param1>>")),
+                    (&["--param3", "3.14", "--param2", "42"], Some("the following required arguments were not provided: <--param1 <param1>>")),
+                    (&["--param1", "value1", "--param2", "42", "--param3", "3.14"], None),
+                    (&[], None),
+                ];
+
+                check_expectations(&syntax, &expectations);
+            }
+
+            #[test]
+            fn test_group_conflicts_with() {
+                let syntax = CommandSyntax {
+                    parameters: vec![
+                        SyntaxOptArg {
+                            name: "--param1".to_string(),
+                            arg_type: SyntaxOptArgType::String,
+                            ..SyntaxOptArg::default()
+                        },
+                        SyntaxOptArg {
+                            name: "--param2".to_string(),
+                            arg_type: SyntaxOptArgType::Integer,
+                            ..SyntaxOptArg::default()
+                        },
+                        SyntaxOptArg {
+                            name: "--param3".to_string(),
+                            arg_type: SyntaxOptArgType::Float,
+                            ..SyntaxOptArg::default()
+                        },
+                    ],
+                    groups: vec![
+                        SyntaxGroup {
+                            name: "group1".to_string(),
+                            parameters: vec!["--param1".to_string()],
+                            conflicts_with: vec!["group2".to_string()],
+                            ..SyntaxGroup::default()
+                        },
+                        SyntaxGroup {
+                            name: "group2".to_string(),
+                            parameters: vec!["--param2".to_string()],
+                            ..SyntaxGroup::default()
+                        },
+                        SyntaxGroup {
+                            name: "group3".to_string(),
+                            parameters: vec!["--param3".to_string()],
+                            conflicts_with: vec!["param1".to_string()],
+                            ..SyntaxGroup::default()
+                        },
+                    ],
+                    ..CommandSyntax::default()
+                };
+
+                let expectations: Vec<(&[&str], Option<&str>)> = vec![
+                    (&[], None),
+                    (&["--param1", "value1"], None),
+                    (&["--param2", "42"], None),
+                    (&["--param3", "3.14"], None),
+                    (&["--param2", "42", "--param3", "3.14"], None),
+                    (&["--param1", "value1", "--param2", "42"], Some("the argument '--param1 <param1>' cannot be used with '--param2 <param2>'")),
+                    (&["--param1", "value1", "--param3", "3.14"], Some("the argument '--param1 <param1>' cannot be used with '--param3 <param3>'")),
+                ];
+
+                check_expectations(&syntax, &expectations);
+            }
+
+            #[test]
+            fn test_param_requires() {
+                let syntax = CommandSyntax {
+                    parameters: vec![
+                        SyntaxOptArg {
+                            name: "--param1".to_string(),
+                            arg_type: SyntaxOptArgType::String,
+                            requires: vec!["param2".to_string()],
+                            ..SyntaxOptArg::default()
+                        },
+                        SyntaxOptArg {
+                            name: "--param2".to_string(),
+                            arg_type: SyntaxOptArgType::Integer,
+                            ..SyntaxOptArg::default()
+                        },
+                        SyntaxOptArg {
+                            name: "--param3".to_string(),
+                            arg_type: SyntaxOptArgType::Float,
+                            requires: vec!["group2".to_string()],
+                            ..SyntaxOptArg::default()
+                        },
+                        SyntaxOptArg {
+                            name: "--param4".to_string(),
+                            arg_type: SyntaxOptArgType::Integer,
+                            requires: vec!["param1".to_string()],
+                            ..SyntaxOptArg::default()
+                        },
+                        SyntaxOptArg {
+                            name: "--param5".to_string(),
+                            arg_type: SyntaxOptArgType::Integer,
+                            requires: vec!["group1".to_string()],
+                            ..SyntaxOptArg::default()
+                        },
+                    ],
+                    groups: vec![
+                        SyntaxGroup {
+                            name: "group1".to_string(),
+                            parameters: vec!["--param1".to_string()],
+                            ..SyntaxGroup::default()
+                        },
+                        SyntaxGroup {
+                            name: "group2".to_string(),
+                            parameters: vec!["--param2".to_string()],
+                            ..SyntaxGroup::default()
+                        },
+                    ],
+                    ..CommandSyntax::default()
+                };
+
+                let expectations: Vec<(&[&str], Option<&str>)> = vec![
+                    (&["--param2", "42"], None),
+                    (
+                        &["--param1", "value1"],
+                        Some("the following required arguments were not provided: --param2 <param2>"),
+                    ),
+                    (&["--param1", "value1", "--param2", "42"], None),
+                    (&["--param3", "3.14"], Some("the following required arguments were not provided: <--param2 <param2>>")),
+                    (&["--param3", "3.14", "--param2", "42"], None),
+                    (&["--param4", "10"], Some("the following required arguments were not provided: --param2 <param2> --param1 <param1>")),
+                    (&["--param4", "10", "--param1", "value1"], Some("the following required arguments were not provided: --param2 <param2>")),
+                    (&["--param4", "10", "--param1", "value1", "--param2", "42"], None),
+                    (&["--param5", "20"], Some("the following required arguments were not provided: <--param1 <param1>>")),
+                    (&["--param5", "20", "--param1", "value1"], Some("the following required arguments were not provided: --param2 <param2>")),
+                    (&["--param5", "20", "--param2", "42"], Some("the following required arguments were not provided: <--param1 <param1>>")),
+                    (&["--param5", "20", "--param1", "value1", "--param2", "42"], None),
+                    (&[], None),
+                ];
+
+                check_expectations(&syntax, &expectations);
+            }
+
+            #[test]
+            fn test_param_conflicts_with() {
+                let syntax = CommandSyntax {
+                    parameters: vec![
+                        SyntaxOptArg {
+                            name: "--param1".to_string(),
+                            arg_type: SyntaxOptArgType::String,
+                            conflicts_with: vec!["param2".to_string()],
+                            ..SyntaxOptArg::default()
+                        },
+                        SyntaxOptArg {
+                            name: "--param2".to_string(),
+                            arg_type: SyntaxOptArgType::Integer,
+                            ..SyntaxOptArg::default()
+                        },
+                        SyntaxOptArg {
+                            name: "--param3".to_string(),
+                            arg_type: SyntaxOptArgType::Float,
+                            conflicts_with: vec!["group2".to_string()],
+                            ..SyntaxOptArg::default()
+                        },
+                    ],
+                    groups: vec![
+                        SyntaxGroup {
+                            name: "group1".to_string(),
+                            parameters: vec!["--param1".to_string()],
+                            ..SyntaxGroup::default()
+                        },
+                        SyntaxGroup {
+                            name: "group2".to_string(),
+                            parameters: vec!["--param2".to_string()],
+                            ..SyntaxGroup::default()
+                        },
+                    ],
+                    ..CommandSyntax::default()
+                };
+
+                let expectations: Vec<(&[&str], Option<&str>)> = vec![
+                    (&[], None),
+                    (&["--param1", "value1"], None),
+                    (&["--param2", "42"], None),
+                    (&["--param3", "3.14"], None),
+                    (&["--param1", "value1", "--param3", "3.14"], None),
+                    (&["--param1", "value1", "--param2", "42"], Some("the argument '--param1 <param1>' cannot be used with '--param2 <param2>'")),
+                    (&["--param2", "42", "--param3", "3.14"], Some("the argument '--param3 <param3>' cannot be used with '--param2 <param2>'")),
+                    (&["--param1", "value1", "--param2", "42", "--param3", "3.14"], Some("the argument '--param1 <param1>' cannot be used with '--param2 <param2>'")),
+                ];
+
+                check_expectations(&syntax, &expectations);
+            }
+
+            #[test]
+            fn test_param_required_without() {
+                let syntax = CommandSyntax {
+                    parameters: vec![
+                        SyntaxOptArg {
+                            name: "--param1".to_string(),
+                            arg_type: SyntaxOptArgType::String,
+                            required_without: vec!["param2".to_string(), "param3".to_string()],
+                            ..SyntaxOptArg::default()
+                        },
+                        SyntaxOptArg {
+                            name: "--param2".to_string(),
+                            arg_type: SyntaxOptArgType::Integer,
+                            required: false,
+                            ..SyntaxOptArg::default()
+                        },
+                        SyntaxOptArg {
+                            name: "--param3".to_string(),
+                            arg_type: SyntaxOptArgType::Float,
+                            required: false,
+                            ..SyntaxOptArg::default()
+                        },
+                        SyntaxOptArg {
+                            name: "--param4".to_string(),
+                            arg_type: SyntaxOptArgType::Integer,
+                            required_without: vec!["group1".to_string()],
+                            ..SyntaxOptArg::default()
+                        },
+                    ],
+                    groups: vec![SyntaxGroup {
+                        name: "group1".to_string(),
+                        parameters: vec!["--param1".to_string()],
+                        ..SyntaxGroup::default()
+                    }],
+                    ..CommandSyntax::default()
+                };
+
+                let expectations: Vec<(&[&str], Option<&str>)> = vec![
+                    (&["--param1", "value1"], None),
+                    (&["--param2", "42"], Some("the following required arguments were not provided: --param4 <param4>")),
+                    (&["--param3", "3.14"], Some("the following required arguments were not provided: --param4 <param4>")),
+                    (&["--param2", "42", "--param3", "43"], Some("the following required arguments were not provided: --param4 <param4>")),
+                    (&["--param1", "value1", "--param2", "42"], None),
+                    (&["--param1", "value1", "--param2", "42", "--param3", "3.14", "--param4", "10"], None),
+                    (&[], Some("the following required arguments were not provided: --param1 <param1> --param4 <param4>")),
+                ];
+
+                check_expectations(&syntax, &expectations);
+            }
+
+            #[test]
+            fn test_param_required_without_all() {
+                let syntax = CommandSyntax {
+                    parameters: vec![
+                        SyntaxOptArg {
+                            name: "--param1".to_string(),
+                            arg_type: SyntaxOptArgType::String,
+                            required_without_all: vec!["param2".to_string(), "param3".to_string()],
+                            ..SyntaxOptArg::default()
+                        },
+                        SyntaxOptArg {
+                            name: "--param2".to_string(),
+                            arg_type: SyntaxOptArgType::Integer,
+                            required: false,
+                            ..SyntaxOptArg::default()
+                        },
+                        SyntaxOptArg {
+                            name: "--param3".to_string(),
+                            arg_type: SyntaxOptArgType::Float,
+                            required: false,
+                            ..SyntaxOptArg::default()
+                        },
+                        SyntaxOptArg {
+                            name: "--param4".to_string(),
+                            arg_type: SyntaxOptArgType::Integer,
+                            required_without_all: vec!["group5".to_string(), "group2".to_string()],
+                            ..SyntaxOptArg::default()
+                        },
+                        SyntaxOptArg {
+                            name: "--param5".to_string(),
+                            arg_type: SyntaxOptArgType::Integer,
+                            ..SyntaxOptArg::default()
+                        },
+                    ],
+                    groups: vec![
+                        SyntaxGroup {
+                            name: "group5".to_string(),
+                            parameters: vec!["--param5".to_string()],
+                            ..SyntaxGroup::default()
+                        },
+                        SyntaxGroup {
+                            name: "group2".to_string(),
+                            parameters: vec!["--param2".to_string()],
+                            ..SyntaxGroup::default()
+                        },
+                    ],
+                    ..CommandSyntax::default()
+                };
+
+                let expectations: Vec<(&[&str], Option<&str>)> = vec![
+                    (&["--param1", "value1"], Some("the following required arguments were not provided: --param4 <param4>")),
+                    (&["--param2", "42"], Some("the following required arguments were not provided: --param1 <param1> --param4 <param4>")),
+                    (&["--param3", "3.14"], Some("the following required arguments were not provided: --param1 <param1> --param4 <param4>")),
+                    (&["--param2", "42", "--param3", "43"], Some("the following required arguments were not provided: --param4 <param4>")),
+                    (&["--param1", "value1", "--param2", "42"], Some("the following required arguments were not provided: --param4 <param4>")),
+                    (&["--param1", "value1", "--param4", "10"], None),
+                    (&["--param1", "value1", "--param2", "42", "--param3", "3.14", "--param4", "10", "--param5", "20"], None),
+                    (&["--param2", "42", "--param3", "3.14", "--param5", "20"], None),
+                    (&[], Some("the following required arguments were not provided: --param1 <param1> --param4 <param4>")),
+                ];
+
+                check_expectations(&syntax, &expectations);
+            }
+
+            #[test]
+            fn test_param_required_if_eq() {
+                let syntax = CommandSyntax {
+                    parameters: vec![
+                        SyntaxOptArg {
+                            name: "--param1".to_string(),
+                            arg_type: SyntaxOptArgType::String,
+                            required_if_eq: HashMap::from_iter(vec![(
+                                "param2".to_string(),
+                                "42".to_string(),
+                            )]),
+                            ..SyntaxOptArg::default()
+                        },
+                        SyntaxOptArg {
+                            name: "--param2".to_string(),
+                            arg_type: SyntaxOptArgType::Integer,
+                            ..SyntaxOptArg::default()
+                        },
+                        SyntaxOptArg {
+                            name: "--param3".to_string(),
+                            arg_type: SyntaxOptArgType::Float,
+                            required_if_eq: HashMap::from_iter(vec![(
+                                "param4".to_string(),
+                                "true".to_string(),
+                            )]),
+                            ..SyntaxOptArg::default()
+                        },
+                        SyntaxOptArg {
+                            name: "--param4".to_string(),
+                            arg_type: SyntaxOptArgType::Boolean,
+                            ..SyntaxOptArg::default()
+                        },
+                    ],
+                    ..CommandSyntax::default()
+                };
+
+                let expectations: Vec<(&[&str], Option<&str>)> = vec![
+                    (&["--param1", "value1"], None),
+                    (
+                        &["--param2", "42"],
+                        Some(
+                            "the following required arguments were not provided: --param1 <param1>",
+                        ),
+                    ),
+                    (&["--param1", "value1", "--param2", "42"], None),
+                    (&["--param3", "3.14"], None),
+                    (
+                        &["--param4", "true"],
+                        Some(
+                            "the following required arguments were not provided: --param3 <param3>",
+                        ),
+                    ),
+                    (&["--param3", "3.14", "--param4", "true"], None),
+                    (
+                        &[
+                            "--param1", "value1", "--param2", "42", "--param3", "3.14", "--param4",
+                            "true",
+                        ],
+                        None,
+                    ),
+                    (&[], None),
+                ];
+
+                check_expectations(&syntax, &expectations);
+            }
+
+            #[test]
+            fn test_param_required_if_eq_all() {
+                let syntax = CommandSyntax {
+                    parameters: vec![
+                        SyntaxOptArg {
+                            name: "--param1".to_string(),
+                            arg_type: SyntaxOptArgType::String,
+                            required_if_eq_all: HashMap::from_iter(vec![
+                                ("param2".to_string(), "42".to_string()),
+                                ("param3".to_string(), "3.14".to_string()),
+                            ]),
+                            ..SyntaxOptArg::default()
+                        },
+                        SyntaxOptArg {
+                            name: "--param2".to_string(),
+                            arg_type: SyntaxOptArgType::Integer,
+                            ..SyntaxOptArg::default()
+                        },
+                        SyntaxOptArg {
+                            name: "--param3".to_string(),
+                            arg_type: SyntaxOptArgType::Float,
+                            required_if_eq_all: HashMap::from_iter(vec![(
+                                "param4".to_string(),
+                                "true".to_string(),
+                            )]),
+                            ..SyntaxOptArg::default()
+                        },
+                        SyntaxOptArg {
+                            name: "--param4".to_string(),
+                            arg_type: SyntaxOptArgType::Boolean,
+                            ..SyntaxOptArg::default()
+                        },
+                    ],
+                    ..CommandSyntax::default()
+                };
+
+                let expectations: Vec<(&[&str], Option<&str>)> = vec![
+                    (&["--param1", "value1"], None),
+                    (&["--param2", "42"], None),
+                    (&["--param3", "3.14"], None),
+                    (
+                        &["--param2", "42", "--param3", "3.14"],
+                        Some(
+                            "the following required arguments were not provided: --param1 <param1>",
+                        ),
+                    ),
+                    (&["--param1", "value1", "--param2", "42"], None),
+                    (&["--param1", "value1", "--param3", "3.14"], None),
+                    (
+                        &["--param1", "value1", "--param4", "true"],
+                        Some(
+                            "the following required arguments were not provided: --param3 <param3>",
+                        ),
+                    ),
+                    (&["--param3", "3.14"], None),
+                    (
+                        &["--param4", "true"],
+                        Some(
+                            "the following required arguments were not provided: --param3 <param3>",
+                        ),
+                    ),
+                    (&["--param3", "3.14", "--param4", "true"], None),
+                    (
+                        &[
+                            "--param1", "value1", "--param2", "42", "--param3", "3.14", "--param4",
+                            "true",
+                        ],
+                        None,
+                    ),
+                    (&[], None),
+                ];
+
+                check_expectations(&syntax, &expectations);
+            }
+        }
     }
 }
