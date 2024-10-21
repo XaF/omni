@@ -6,7 +6,7 @@ description: Configuration of the `commands` parameter
 
 Commands made available through omni, while the user is in the scope of the configuration file defining those commands.
 
-Any command defined in a global configuration file will be available throughout the whole system. Any command defined in the configuration of a git repository will only be available in that repository.
+Any command defined in a global configuration file will be available throughout the whole system. Any command defined in the configuration of a git repository will only be available in that repository. You can check the [configuration custom commands](/reference/custom-commands/configuration) to read more about how commands defined with the `commands` parameter behave.
 
 ## Parameters
 
