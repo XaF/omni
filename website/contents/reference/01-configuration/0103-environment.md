@@ -22,4 +22,5 @@ Omni supports a number of environment variables for its configuration. Setting t
 ## Read-only
 
 | Variable                | Type | Description                                                            |
+|-------------------------|------|------------------------------------------------------------------------|
 | `OMNI_LOCAL_LOOKUP` | `boolean` | When using `omni --local` to prioritize local commands lookup over global ones, this variable will be set to `true`. It is not used by omni in any way, but can be used by scripts to determine if omni is running in local mode. |
