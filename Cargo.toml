@@ -57,7 +57,7 @@ openssl = { version = "0.10", features = ["vendored"] }
 path-clean = "1.0.1"
 pathdiff = "0.2.1"
 petname = "2.0.2"
-regex = "1.11.0"
+regex = "1.11.1"
 requestty = "0.5.0"
 reqwest = { version = "0.12.8", features = ["blocking"] }
 self-replace = "1.5.0"
@@ -75,9 +75,9 @@ tempfile = "3.12.0"
 tera = "1.20.0"
 term_cursor = "0.2.1"
 term_size = "0.3.2"
-thiserror = "1.0.64"
+thiserror = "1.0.65"
 time = { version = "0.3.36", features = ["serde-well-known"] }
-tokio = { version = "1.39.1", features = ["full"] }
+tokio = { version = "1.41.0", features = ["full"] }
 url = "2.5.2"
 uuid = { version = "1.11.0", features = ["v4", "fast-rng"] }
 walkdir = "2.4.0"
