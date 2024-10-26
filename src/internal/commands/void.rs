@@ -55,9 +55,9 @@ impl VoidCommand {
                     ..Default::default()
                 },
                 SyntaxOptArg {
-                    name: "options...".to_string(),
+                    name: "options".to_string(),
                     desc: Some("Options to pass to the subcommand".to_string()),
-                    required: false,
+                    leftovers: true,
                     ..Default::default()
                 },
             ],

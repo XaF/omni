@@ -7,10 +7,9 @@ to run without asking confirmation.
 Usage: omni config trust [OPTIONS] [repo]
 
 Arguments:
-  [repo]         The repository to trust or untrust (default: current)
+  [repo]         The repository to trust or untrust [default: current]
 
 Options:
-  --check <CHECK>  Check the trust status of the repository instead of changing it (default:
-                   false)
+  --check        Check the trust status of the repository instead of changing it
 
 Source: builtin

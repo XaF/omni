@@ -17,22 +17,19 @@ Arguments:
   [shell]        Which shell to initialize omni for. Can be one of bash, zsh or fish.
 
 Options:
-  --alias <alias> <ALIAS_ALIAS>         Create an alias for the omni command with
-                                        autocompletion support.
-  --command-alias <alias> <subcommand> <COMMAND_ALIAS_ALIAS_SUBCOMMAND>
-                                        Create an alias for the specified omni subcommand with
-                                        autocompletion support. The <subcommand> argument can
-                                        be any omni subcommand, including custom subcommands.
-  --shims <SHIMS>                       Only load the shims without setting up the dynamic
-                                        environment.
-  --keep-shims-in-path <KEEP_SHIMS_IN_PATH>
-                                        Prevent the dynamic environment from removing the
-                                        shims directory from the PATH. This can be useful if
-                                        you are used to launch your IDE from the terminal and
-                                        do not have other means to load the shims in its
-                                        environment.
-  --print-shims-path <PRINT_SHIMS_PATH>
-                                        Print the path to the shims directory and exit. This
-                                        should not be used to eval in a shell environment.
+  --alias <ALIAS>                  Create an alias for the omni command with autocompletion
+                                   support.
+  --command-alias <COMMAND_ALIAS> <COMMAND_ALIAS>
+                                   Create an alias for the specified omni subcommand with
+                                   autocompletion support. The second argument can be any omni
+                                   subcommand, including custom subcommands.
+  --shims                          Only load the shims without setting up the dynamic
+                                   environment.
+  --keep-shims-in-path             Prevent the dynamic environment from removing the shims
+                                   directory from the PATH. This can be useful if you are used
+                                   to launch your IDE from the terminal and do not have other
+                                   means to load the shims in its environment.
+  --print-shims-path               Print the path to the shims directory and exit. This should
+                                   not be used to eval in a shell environment.
 
 Source: builtin

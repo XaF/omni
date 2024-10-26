@@ -13,13 +13,12 @@ Arguments:
                  all the other organizations alphabetically.
 
 Options:
-  --locate <LOCATE>        If provided, will only return the path to the repository instead of
+  --locate                 If provided, will only return the path to the repository instead of
                            switching directory to it. When this flag is passed, interactions
                            are also disabled, as it is assumed to be used for command line
                            purposes. This will exit with 0 if the repository is found, 1
                            otherwise.
-  --[no-]include-packages <NO_INCLUDE_PACKAGES>
-                           If provided, will include (or not include) packages when running
+  --[no-]include-packages  If provided, will include (or not include) packages when running
                            the command; this defaults to including packages when using
                            --locate, and not including packages otherwise.
 

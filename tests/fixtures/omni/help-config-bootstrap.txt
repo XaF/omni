@@ -8,10 +8,9 @@ organizations.
 Usage: omni config bootstrap [OPTIONS]
 
 Options:
-  --worktree <WORKTREE>            Bootstrap the main worktree location
-  --repo-path-format <REPO_PATH_FORMAT>
-                                   Bootstrap the repository path format
-  --organizations <ORGANIZATIONS>  Bootstrap the organizations
-  --shell <SHELL>                  Bootstrap the shell integration
+  --worktree          Bootstrap the main worktree location
+  --repo-path-format  Bootstrap the repository path format
+  --organizations     Bootstrap the organizations
+  --shell             Bootstrap the shell integration
 
 Source: builtin

@@ -4,12 +4,16 @@ Hook used to update the dynamic environment
 The env hook is called during your shell prompt to set the dynamic environment required for
 omni up-ed repositories.
 
-Usage: omni hook env [OPTIONS]
+Usage: omni hook env [OPTIONS] [shell]
+
+Arguments:
+  [shell]        The shell for which to export the dynamic environment. If not provided, the
+                 shell will be detected from the environment.
 
 Options:
-  --quiet <QUIET>            Suppress the output of the hook showing information about the
-                             dynamic environment update.
-  --keep-shims <KEEP_SHIMS>  Keep the shims directory in the PATH. This is useful for instance
-                             if you are used to launch your IDE from the terminal.
+  --quiet        Suppress the output of the hook showing information about the dynamic
+                 environment update.
+  --keep-shims   Keep the shims directory in the PATH. This is useful for instance if you are
+                 used to launch your IDE from the terminal.
 
 Source: builtin

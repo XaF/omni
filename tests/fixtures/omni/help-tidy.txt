@@ -6,13 +6,16 @@ the path they should be at if they had been cloned using omni clone. This is use
 have a bunch of repositories that you have cloned manually, and you want to start using
 omni, or if you changed your mind on the repo path format you wish to use.
 
-Usage: omni tidy [OPTIONS]
+Usage: omni tidy [OPTIONS] [up args]...
+
+Arguments:
+  [up args]...   Arguments to pass to omni up when running with --up-all
 
 Options:
-  --yes <YES>                  Do not ask for confirmation before organizing repositories
+  --yes                        Do not ask for confirmation before organizing repositories
   --search-path <SEARCH_PATH>  Extra path to search git repositories to tidy up (repeat as
                                many times as you need)
-  --up-all <UP_ALL>            Run omni up in all the repositories with an omni configuration;
+  --up-all                     Run omni up in all the repositories with an omni configuration;
                                any argument passed to the tidy command after -- will be passed
                                to omni up (e.g. omni tidy --up-all -- --update-repository)
 

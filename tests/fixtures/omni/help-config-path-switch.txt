@@ -16,7 +16,7 @@ Arguments:
                  repository. If the repo is not found in the omnipath, the command will fail.
 
 Options:
-  --<source> <SOURCE>  The source to use for the repository; this can be either --package or
-                       --worktree, or will toggle between the two if not specified.
+  --<source>     The source to use for the repository; this can be either --package or
+                 --worktree, or will toggle between the two if not specified.
 
 Source: builtin

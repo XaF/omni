@@ -472,7 +472,7 @@ impl BuiltinCommand for CloneCommand {
                     ..Default::default()
                 },
                 SyntaxOptArg {
-                    name: "options...".to_string(),
+                    name: "options".to_string(),
                     desc: Some("Any additional options to pass to git clone.".to_string()),
                     leftovers: true,
                     ..Default::default()

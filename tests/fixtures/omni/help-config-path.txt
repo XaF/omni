@@ -1,11 +1,11 @@
 
 Provides config path commands
 
-Usage: omni config path <subcommand> [options...]
+Usage: omni config path <subcommand> [options]...
 
 Arguments:
   <subcommand>   Subcommand to be called
-  [options...]   Options to pass to the subcommand
+  [options]...   Options to pass to the subcommand
 
 General
   switch         Switch the source of a repository in the omnipath

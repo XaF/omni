@@ -4,7 +4,7 @@ Runs an omni command in the context of the specified repository
 This allows to run any omni command that would be available while in the repository
 directory, but without having to change directory to the repository first.
 
-Usage: omni scope <repo> <command> [options...]
+Usage: omni scope <repo> <command> [options]...
 
 Arguments:
   <repo>         The name of the repo to run commands in the context of; this can be in the
@@ -12,6 +12,6 @@ Arguments:
                  for in all the organizations, trying to use OMNI_ORG if it is set, and then
                  trying all the other organizations alphabetically.
   <command>      The omni command to run in the context of the specified repository.
-  [options...]   Any options to pass to the omni command.
+  [options]...   Any options to pass to the omni command.
 
 Source: builtin
