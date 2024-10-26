@@ -287,7 +287,7 @@ Uncategorized
   pysayhello
 ```
 
-We can fix that using [metadata headers](/reference/custom-commands/path/metadata-headers) in text files, that omni will directly read from the file when trying to provide help for a command. Of course, since we are using a binary file for our Go tool, this method cannot directly work, so we need to create a new executable file, in bash for instance, that will wrap the call to our tool and provide readable [metadata headers](/reference/custom-commands/path/metadata-headers) to omni.
+We can fix that using [metadata headers](/reference/custom-commands/path/metadata#metadata-headers) in text files, that omni will directly read from the file when trying to provide help for a command. Of course, since we are using a binary file for our Go tool, this method cannot directly work, so we need to create a new executable file, in bash for instance, that will wrap the call to our tool and provide readable [metadata headers](/reference/custom-commands/path/metadata) to omni.
 
 These are the new `go/wrapper/gosayhello.sh` and the modified `python/pysayhello.py` files:
 

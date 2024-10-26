@@ -6,7 +6,7 @@ description: Handling autocompletion for custom commands from path
 
 Omni supports autocompletion of its commands, for instance to autocomplete available omni commands but also to autocomplete parameters of [builtin commands](/reference/builtin-commands).
 
-To improve path commands integration to omni, when the [`autocompletion`](metadata-headers#autocompletion) metadata is set to `true`, omni will transfer any autocompletion to the command that will be executing the call. This is done by calling the command with its first argument set to `--complete`, followed by all the arguments passed so far to the omni command. Omni also sets the `COMP_CWORD` environment variable to the current expected autocompletion position.
+To improve path commands integration to omni, when the [`autocompletion`](metadata#autocompletion) metadata is set to `true`, omni will transfer any autocompletion to the command that will be executing the call. This is done by calling the command with its first argument set to `--complete`, followed by all the arguments passed so far to the omni command. Omni also sets the `COMP_CWORD` environment variable to the current expected autocompletion position.
 
 It is expected from the command to print, on the standard output, all the potential values for autocompletion. The user's shell will then take it over and offer autocompletion to the user.
 
