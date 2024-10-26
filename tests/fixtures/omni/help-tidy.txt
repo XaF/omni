@@ -1,4 +1,3 @@
-omni - omnipotent tool (v0.0.26-43-g4bdc6a1-dirty)
 
 Organize your git repositories using the configured format
 

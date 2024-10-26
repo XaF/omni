@@ -1,4 +1,3 @@
-omni - omnipotent tool (v0.0.26-43-g4bdc6a1-dirty)
 
 Usage: omni <command> [options] ARG...
 

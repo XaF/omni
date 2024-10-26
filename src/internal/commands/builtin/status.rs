@@ -12,6 +12,7 @@ use crate::internal::config::config_loader;
 use crate::internal::config::utils::sort_serde_yaml;
 use crate::internal::config::CommandSyntax;
 use crate::internal::config::SyntaxOptArg;
+use crate::internal::config::SyntaxOptArgType;
 use crate::internal::env::shell_integration_is_loaded;
 use crate::internal::git::ORG_LOADER;
 use crate::internal::user_interface::StringColor;
@@ -355,7 +356,7 @@ impl BuiltinCommand for StatusCommand {
                 SyntaxOptArg {
                     name: "--shell-integration".to_string(),
                     desc: Some("Show if the shell integration is loaded or not.".to_string()),
-                    required: false,
+                    arg_type: SyntaxOptArgType::Flag,
                     ..Default::default()
                 },
                 SyntaxOptArg {
@@ -364,7 +365,7 @@ impl BuiltinCommand for StatusCommand {
                         "Show the configuration that omni is using for the current directory. This is not shown by default."
                             .to_string(),
                     ),
-                    required: false,
+                    arg_type: SyntaxOptArgType::Flag,
                     ..Default::default()
                 },
                 SyntaxOptArg {
@@ -373,7 +374,7 @@ impl BuiltinCommand for StatusCommand {
                         "Show the configuration files that omni is loading for the current directory."
                             .to_string(),
                     ),
-                    required: false,
+                    arg_type: SyntaxOptArgType::Flag,
                     ..Default::default()
                 },
                 SyntaxOptArg {
@@ -382,7 +383,7 @@ impl BuiltinCommand for StatusCommand {
                         "Show the default worktree."
                             .to_string(),
                     ),
-                    required: false,
+                    arg_type: SyntaxOptArgType::Flag,
                     ..Default::default()
                 },
                 SyntaxOptArg {
@@ -391,7 +392,7 @@ impl BuiltinCommand for StatusCommand {
                         "Show the organizations."
                             .to_string(),
                     ),
-                    required: false,
+                    arg_type: SyntaxOptArgType::Flag,
                     ..Default::default()
                 },
                 SyntaxOptArg {
@@ -400,7 +401,7 @@ impl BuiltinCommand for StatusCommand {
                         "Show the current omnipath."
                             .to_string(),
                     ),
-                    required: false,
+                    arg_type: SyntaxOptArgType::Flag,
                     ..Default::default()
                 },
             ],

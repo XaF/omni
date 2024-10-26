@@ -9,6 +9,7 @@ use crate::internal::commands::base::BuiltinCommand;
 use crate::internal::commands::HelpCommand;
 use crate::internal::config::CommandSyntax;
 use crate::internal::config::SyntaxOptArg;
+use crate::internal::config::SyntaxOptArgType;
 use crate::internal::user_interface::StringColor;
 use crate::internal::workdir;
 use crate::internal::workdir::add_trust;
@@ -136,25 +137,18 @@ impl BuiltinCommand for ConfigTrustCommand {
                 SyntaxOptArg {
                     name: "--check".to_string(),
                     desc: Some(
-                        concat!(
-                            "Check the trust status of the repository instead of changing it ",
-                            "\x1B[90m(default: false)\x1B[0m",
-                        )
-                        .to_string(),
+                        "Check the trust status of the repository instead of changing it"
+                            .to_string(),
                     ),
-                    required: false,
+                    arg_type: SyntaxOptArgType::Flag,
                     ..Default::default()
                 },
                 SyntaxOptArg {
                     name: "repo".to_string(),
                     desc: Some(
-                        concat!(
-                            "The repository to trust or untrust ",
-                            "\x1B[90m(default: current)\x1B[0m",
-                        )
-                        .to_string(),
+                        concat!("The repository to trust or untrust ", "[default: current]",)
+                            .to_string(),
                     ),
-                    required: false,
                     ..Default::default()
                 },
             ],

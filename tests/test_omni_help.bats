@@ -39,7 +39,7 @@ validate_test_output() {
     [ "$status" -eq 0 ]
     run "$@" 3>&-
     [ "$status" -eq "$exit_code" ]
-    echo "$output" >"$fixture_file"
+    echo "$output" | tail -n +2 >"$fixture_file"
     return 0
   fi
   expected=$(cat "$fixture_file")
@@ -51,9 +51,7 @@ validate_test_output() {
   echo "OUTPUT: $output"
   [ "$status" -eq "$exit_code" ]
 
-  # Remove the first line for both the expected and the output, so we can avoid
-  # the version number in the comparison
-  expected=$(echo "$expected" | tail -n +2)
+  # Remove the first line so we can avoid the version number in the comparison
   output=$(echo "$output" | tail -n +2)
 
   set -o pipefail
@@ -70,6 +68,14 @@ validate_test_output() {
   validate_test_output omni/help.txt omni help
 }
 
+# bats test_tags=generate,omni:help,omni:help:self
+@test "omni help shows the help message with all omni commands when using --unfold" {
+  # Avoiding any shorter-than-expected wrapping
+  export COLUMNS=1000
+
+  validate_test_output omni/help-unfold.txt omni help --unfold
+}
+
 # bats test_tags=generate,omni:help
 @test "omni help shows the help message wrapped for smaller screens" {
   # Set the columns to 60 to force wrapping
@@ -79,8 +85,63 @@ validate_test_output() {
 }
 
 # bats test_tags=generate,omni:help
+@test "omni help config shows the help message for the command" {
+  validate_test_output omni/help-config.txt omni help config
+}
+
+# bats test_tags=generate,omni:help
+@test "omni help config bootstrap shows the help message for the command" {
+  validate_test_output omni/help-config-bootstrap.txt omni help config bootstrap
+}
+
+# bats test_tags=generate,omni:help
+@test "omni help config path shows the help message for the command" {
+  validate_test_output omni/help-config-path.txt omni help config path
+}
+
+# bats test_tags=generate,omni:help
+@test "omni help config path switch shows the help message for the command" {
+  validate_test_output omni/help-config-path-switch.txt omni help config path switch
+}
+
+# bats test_tags=generate,omni:help
+@test "omni help config reshim shows the help message for the command" {
+  validate_test_output omni/help-config-reshim.txt omni help config reshim
+}
+
+# bats test_tags=generate,omni:help
+@test "omni help config trust shows the help message for the command" {
+  validate_test_output omni/help-config-trust.txt omni help config trust
+}
+
+# bats test_tags=generate,omni:help
+@test "omni help config untrust shows the help message for the command" {
+  validate_test_output omni/help-config-untrust.txt omni help config untrust
+}
+
+# bats test_tags=generate,omni:help
 @test "omni help help shows the help message for the command" {
   validate_test_output omni/help-help.txt omni help help
+}
+
+# bats test_tags=generate,omni:help
+@test "omni help hook shows the help message for the command" {
+  validate_test_output omni/help-hook.txt omni help hook
+}
+
+# bats test_tags=generate,omni:help
+@test "omni help hook env shows the help message for the command" {
+  validate_test_output omni/help-hook-env.txt omni help hook env
+}
+
+# bats test_tags=generate,omni:help
+@test "omni help hook init shows the help message for the command" {
+  validate_test_output omni/help-hook-init.txt omni help hook init
+}
+
+# bats test_tags=generate,omni:help
+@test "omni help hook uuid shows the help message for the command" {
+  validate_test_output omni/help-hook-uuid.txt omni help hook uuid
 }
 
 # bats test_tags=generate,omni:help

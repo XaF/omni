@@ -271,9 +271,9 @@ impl BuiltinCommand for ScopeCommand {
                     ..Default::default()
                 },
                 SyntaxOptArg {
-                    name: "options...".to_string(),
+                    name: "options".to_string(),
                     desc: Some("Any options to pass to the omni command.".to_string()),
-                    required: false,
+                    leftovers: true,
                     ..Default::default()
                 },
             ],

@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::collections::HashSet;
 use std::hash::Hash;
 use std::hash::Hasher;
@@ -20,6 +21,7 @@ use crate::internal::config::parser::PathEntryConfig;
 use crate::internal::config::CommandSyntax;
 use crate::internal::config::ConfigSource;
 use crate::internal::config::SyntaxOptArg;
+use crate::internal::config::SyntaxOptArgType;
 use crate::internal::env::shell_is_interactive;
 use crate::internal::git::format_path_with_template;
 use crate::internal::git::package_path_from_handle;
@@ -297,7 +299,7 @@ impl BuiltinCommand for TidyCommand {
                     desc: Some(
                         "Do not ask for confirmation before organizing repositories".to_string(),
                     ),
-                    required: false,
+                    arg_type: SyntaxOptArgType::Flag,
                     ..Default::default()
                 },
                 SyntaxOptArg {
@@ -309,7 +311,7 @@ impl BuiltinCommand for TidyCommand {
                         )
                         .to_string(),
                     ),
-                    required: false,
+                    arg_type: SyntaxOptArgType::Array(Box::new(SyntaxOptArgType::String)),
                     ..Default::default()
                 },
                 SyntaxOptArg {
@@ -324,7 +326,24 @@ impl BuiltinCommand for TidyCommand {
                         )
                         .to_string(),
                     ),
-                    required: false,
+                    arg_type: SyntaxOptArgType::Flag,
+                    ..Default::default()
+                },
+                SyntaxOptArg {
+                    name: "up args".to_string(),
+                    desc: Some(
+                        concat!(
+                            "Arguments to pass to \x1B[3momni up\x1B[0m when running ",
+                            "with \x1B[3m--up-all\x1B[0m",
+                        )
+                        .to_string(),
+                    ),
+                    last_arg_double_hyphen: true,
+                    arg_type: SyntaxOptArgType::Array(Box::new(SyntaxOptArgType::String)),
+                    required_if_eq: HashMap::from_iter(vec![(
+                        "up-all".to_string(),
+                        "true".to_string(),
+                    )]),
                     ..Default::default()
                 },
             ],

@@ -42,9 +42,10 @@ impl BuiltinCommand for HookCommand {
                     ..Default::default()
                 },
                 SyntaxOptArg {
-                    name: "options...".to_string(),
+                    name: "options".to_string(),
                     desc: Some("Any options to pass to the hook.".to_string()),
                     required: false,
+                    leftovers: true,
                     ..Default::default()
                 },
             ],

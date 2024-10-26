@@ -1,4 +1,3 @@
-omni - omnipotent tool (v0.0.26-43-g4bdc6a1-dirty)
 
 Runs an omni command in the context of the specified repository
 

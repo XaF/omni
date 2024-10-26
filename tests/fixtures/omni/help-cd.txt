@@ -1,4 +1,3 @@
-omni - omnipotent tool (v0.0.26-43-g4bdc6a1-dirty)
 
 Change directory to the git directory of the specified repository
 

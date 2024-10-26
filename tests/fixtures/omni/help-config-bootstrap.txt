@@ -1,0 +1,17 @@
+
+Bootstraps the configuration of omni
+
+This will walk you through setting up the initial configuration to use omni, such as setting
+up the worktree, format to use when cloning repositories, and setting up initial
+organizations.
+
+Usage: omni config bootstrap [OPTIONS]
+
+Options:
+  --worktree <WORKTREE>            Bootstrap the main worktree location
+  --repo-path-format <REPO_PATH_FORMAT>
+                                   Bootstrap the repository path format
+  --organizations <ORGANIZATIONS>  Bootstrap the organizations
+  --shell <SHELL>                  Bootstrap the shell integration
+
+Source: builtin

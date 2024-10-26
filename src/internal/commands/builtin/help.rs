@@ -10,6 +10,7 @@ use crate::internal::commands::void::VoidCommand;
 use crate::internal::commands::Command;
 use crate::internal::config::CommandSyntax;
 use crate::internal::config::SyntaxOptArg;
+use crate::internal::config::SyntaxOptArgType;
 use crate::internal::user_interface::colors::strip_colors_if_needed;
 use crate::internal::user_interface::print::strip_ansi_codes;
 use crate::internal::user_interface::term_width;
@@ -179,29 +180,6 @@ impl HelpCommand {
                     }
                 }
             }
-
-            // if !syntax.parameters.is_empty() {
-            // let longest = syntax
-            // .parameters
-            // .iter()
-            // .map(|arg| arg.name.len())
-            // .max()
-            // .unwrap_or(0);
-            // let ljust = std::cmp::max(longest + 2, 15);
-            // let join_str = format!("\n  {}", " ".repeat(ljust));
-
-            // for arg in syntax.parameters.iter() {
-            // let missing_just = ljust - arg.name.len();
-            // let str_name = format!("  {}{}", arg.name.cyan(), " ".repeat(missing_just));
-            // let help = if let Some(desc) = &arg.desc {
-            // wrap_text(&strip_colors_if_needed(desc), max_width - ljust)
-            // .join(join_str.as_str())
-            // } else {
-            // "".to_string()
-            // };
-            // eprintln!("\n{}{}", str_name, help);
-            // }
-            // }
         }
 
         self.print_categorized_command_help(called_as);
@@ -540,12 +518,14 @@ impl BuiltinCommand for HelpCommand {
                 SyntaxOptArg {
                     name: "--unfold".to_string(),
                     desc: Some("Show all subcommands".to_string()),
+                    arg_type: SyntaxOptArgType::Flag,
                     required: false,
                     ..Default::default()
                 },
                 SyntaxOptArg {
                     name: "command".to_string(),
                     desc: Some("The command to get help for".to_string()),
+                    leftovers: true,
                     required: false,
                     ..Default::default()
                 },

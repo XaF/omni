@@ -14,6 +14,7 @@ use crate::internal::commands::builtin::UpCommand;
 use crate::internal::commands::path::global_omnipath_entries;
 use crate::internal::config::CommandSyntax;
 use crate::internal::config::SyntaxOptArg;
+use crate::internal::config::SyntaxOptArgType;
 use crate::internal::env::shell_is_interactive;
 use crate::internal::git::full_git_url_parse;
 use crate::internal::git::id_from_git_url;
@@ -182,7 +183,7 @@ impl BuiltinCommand for ConfigPathSwitchCommand {
                         )
                         .to_string()
                     ),
-                    required: false,
+                    arg_type: SyntaxOptArgType::Flag,
                     ..Default::default()
                 },
                 SyntaxOptArg {
@@ -196,7 +197,6 @@ impl BuiltinCommand for ConfigPathSwitchCommand {
                         )
                         .to_string()
                     ),
-                    required: false,
                     ..Default::default()
                 },
             ],
