@@ -119,24 +119,6 @@ go get github.com/omnicli/sdk-go
 
 The SDK provides a `ParseArgs(targets ...interface{}) (*Args, error)` function that reads the environment variables and returns an `Args` object. This function can be used one of two ways: by passing a pointer to a struct to be filled with the parsed arguments, or by using the resulting `Args` object directly to access the parsed arguments.
 
-#### Extracting arguments manually
-
-The `Args` object provides getter methods. Each methods returns a tuple with the value and a boolean indicating if the value exists. If the value does not exist, the getter returns the zero value for the type and `false`. The getter methods are:
-- `GetString(name string) (string, bool)`: Get the value of a string argument.
-- `GetBool(name string) (bool, bool)`: Get the value of a boolean argument.
-- `GetInt(name string) (int, bool)`: Get the value of an integer argument.
-- `GetFloat(name string) (float64, bool)`: Get the value of a float argument.
-- `GetStringSlice(name string) ([]string, bool)`: Get the value of a string slice argument.
-- `GetBoolSlice(name string) ([]bool, bool)`: Get the value of a boolean slice argument.
-- `GetIntSlice(name string) ([]int, bool)`: Get the value of an integer slice argument.
-- `GetFloatSlice(name string) ([]float64, bool)`: Get the value of a float slice argument.
-
-#### Using a struct
-
-The `Args` object can also be used to fill structs with the parsed arguments, the same way that the `ParseArgs` function does. You can use the following methods:
-- `Fill(target interface{}) error`: Fill the fields of the target struct with the parsed arguments. You can use the `omniarg` tag to specify custom names for the arguments (using `omniarg:"custom_name"`), or to skip fields (using `omniarg:"-"`). The function returns an error if any field in the struct does not match an argument, or if the types do not match. It returns `nil` if all fields were filled successfully.
-- `FillAll(targets... interface{}) error`: Fill multiple structs with the parsed arguments. This function is a convenience method that calls `Fill` for each target struct. This function returns the first error encountered, or `nil` if all structs were filled successfully. This function is called by the `ParseArgs` function if you provided structs to be filled.
-
 #### Example
 
 ```go
@@ -181,6 +163,24 @@ func main() {
     log.Printf("DB Host: %v", logFile)
 }
 ```
+
+#### Extracting arguments manually
+
+The `Args` object provides getter methods. Each methods returns a tuple with the value and a boolean indicating if the value exists. If the value does not exist, the getter returns the zero value for the type and `false`. The getter methods are:
+- `GetString(name string) (string, bool)`: Get the value of a string argument.
+- `GetBool(name string) (bool, bool)`: Get the value of a boolean argument.
+- `GetInt(name string) (int, bool)`: Get the value of an integer argument.
+- `GetFloat(name string) (float64, bool)`: Get the value of a float argument.
+- `GetStringSlice(name string) ([]string, bool)`: Get the value of a string slice argument.
+- `GetBoolSlice(name string) ([]bool, bool)`: Get the value of a boolean slice argument.
+- `GetIntSlice(name string) ([]int, bool)`: Get the value of an integer slice argument.
+- `GetFloatSlice(name string) ([]float64, bool)`: Get the value of a float slice argument.
+
+#### Using a struct
+
+The `Args` object can also be used to fill structs with the parsed arguments, the same way that the `ParseArgs` function does. You can use the following methods:
+- `Fill(target interface{}) error`: Fill the fields of the target struct with the parsed arguments. You can use the `omniarg` tag to specify custom names for the arguments (using `omniarg:"custom_name"`), or to skip fields (using `omniarg:"-"`). The function returns an error if any field in the struct does not match an argument, or if the types do not match. It returns `nil` if all fields were filled successfully.
+- `FillAll(targets... interface{}) error`: Fill multiple structs with the parsed arguments. This function is a convenience method that calls `Fill` for each target struct. This function returns the first error encountered, or `nil` if all structs were filled successfully. This function is called by the `ParseArgs` function if you provided structs to be filled.
 
 ### Ruby
 
