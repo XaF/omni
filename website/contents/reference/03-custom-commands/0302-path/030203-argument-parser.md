@@ -38,7 +38,12 @@ syntax:
 The following command-line invocation:
 
 ```bash
-omni my-command --input-file /path/to/file --verbose --workers worker1 --workers worker2 --workers worker3
+omni my-command \
+    --input-file /path/to/file \
+    --verbose \
+    --workers worker1 \
+    --workers worker2 \
+    --workers worker3
 ```
 
 Will lead to the following environment variables being set:
