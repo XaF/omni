@@ -1,0 +1,4 @@
+omni - omnipotent tool (v0.0.26-43-g4bdc6a1-dirty)
+
+Usage: omni <command> [options] ARG...
+omni: help command failed: terminal width is too small to print help

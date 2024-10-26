@@ -1,0 +1,21 @@
+omni - omnipotent tool (v0.0.26-43-g4bdc6a1-dirty)
+
+Show the status of omni
+
+This will show the configuration that omni is loading when called from the current
+directory.
+
+Usage: omni status [OPTIONS]
+
+Options:
+  --shell-integration <SHELL_INTEGRATION>
+                                 Show if the shell integration is loaded or not.
+  --config <CONFIG>              Show the configuration that omni is using for the current
+                                 directory. This is not shown by default.
+  --config-files <CONFIG_FILES>  Show the configuration files that omni is loading for the
+                                 current directory.
+  --worktree <WORKTREE>          Show the default worktree.
+  --orgs <ORGS>                  Show the organizations.
+  --path <PATH>                  Show the current omnipath.
+
+Source: builtin

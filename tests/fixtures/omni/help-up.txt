@@ -1,0 +1,42 @@
+omni - omnipotent tool (v0.0.26-43-g4bdc6a1-dirty)
+
+Sets up or tear down a repository depending on its up configuration
+
+Usage: omni up [OPTIONS]
+
+Options:
+  --no-cache <NO_CACHE>                Whether we should disable the cache while running the
+                                       command (default: no)
+  --fail-on-upgrade <FAIL_ON_UPGRADE>  If provided, will fail the operation if a resource
+                                       failed to upgrade, even if a currently-existing version
+                                       can satisfy the dependencies (default: no)
+  --bootstrap <BOOTSTRAP>              Same as using --update-user-config --clone-suggested;
+                                       if any of the options are directly provided, they will
+                                       take precedence over the default values of the options
+  --clone-suggested <CLONE_SUGGESTED>  Whether we should clone suggested repositories found in
+                                       the configuration of the repository if any (yes/ask/no)
+                                       (default: no)
+  --prompt <PROMPT>                    Trigger prompts for the given prompt ids, specified as
+                                       arguments, as well as the currently unanswered prompts
+  --prompt-all <PROMPT_ALL>            Trigger all prompts for the current work directory,
+                                       even if they have already been answered
+  --trust <TRUST>                      Define how to trust the repository (always/yes/no) to
+                                       run the command
+  --update-repository <UPDATE_REPOSITORY>
+                                       Whether we should update the repository before running
+                                       the command; if the repository is already up to date,
+                                       the rest of the process will be skipped (default: no)
+  --update-user-config <UPDATE_USER_CONFIG>
+                                       Whether we should handle suggestions found in the
+                                       configuration of the repository if any (yes/ask/no);
+                                       When using up, the suggest_config configuration will be
+                                       copied to the home directory of the user to be loaded
+                                       on every omni call (default: no)
+  --upgrade <UPGRADE>                  Whether we should upgrade the resources when the
+                                       currently-installed version already matches version
+                                       constraints. If false, this also means that if an
+                                       already installed version for another repository
+                                       matches version contraints, we will avoid downloading
+                                       and building a more recent version (default: false)
+
+Source: builtin

@@ -15,6 +15,9 @@ omni_setup() {
     return 1
   fi
 
+  # Set the fixtures directory
+  export FIXTURES_DIR="${PROJECT_DIR}/tests/fixtures"
+
   if [[ -n "$OMNI_TEST_BIN" ]]; then
     echo "Using OMNI_TEST_BIN: ${OMNI_TEST_BIN}" >&2
     local test_bin_dir="$(dirname "${OMNI_TEST_BIN}")"

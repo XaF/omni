@@ -1,0 +1,25 @@
+omni - omnipotent tool (v0.0.26-43-g4bdc6a1-dirty)
+
+Usage: omni <command> [options] ARG...
+
+General
+  config ▶                              Provides config commands
+  help                                  Show help for omni commands
+  hook ▶                                Call one of omni's hooks for the shell
+  status                                Show the status of omni
+
+Git commands
+  cd                                    Change directory to the git directory of the specified repository
+  clone                                 Clone the specified repository
+  up, down                              Sets up or tear down a repository depending on its up configuration
+  scope                                 Runs an omni command in the context of the specified repository
+  tidy                                  Organize your git repositories using the configured format
+
+Configuration < .config/omni/config.yaml
+  supercalifragilisticexpialidocious,
+  abracadabra, hocuspocus, open sesame  lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor
+                                        incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis
+                                        nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat.
+                                        Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore
+                                        eu fugiat nulla pariatur. Excepteur sint occaecat cupidatat non proident, sunt
+                                        in culpa qui officia deserunt mollit anim id est laborum.

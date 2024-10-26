@@ -215,7 +215,8 @@ The metadata file accepts the following parameters:
 
 | Parameter               | Type | Description                                                            |
 |-------------------------|------|------------------------------------------------------------------------|
-| `autocompletion` | bool | whether or not the command supports autocompletion
+| `autocompletion` | bool | whether or not the command supports autocompletion |
+| `argparser` | bool | whether or not omni should parse arguments for the command |
 | `category` | list | the category of the command; can be provided as an array or as a comma-separated list in string format. |
 | `help` | string | the help of the command that will be used in `omni help`. This can be on multiple lines, in which case the first paragraph (until the first empty line) will be shown in `omni help`, while the rest of the help message will be shown when calling `omni help <command>`. |
 | `syntax` | [`syntax`](/reference/configuration/parameters/commands#syntax) | Define the parameters that the command can take. This will be used when calling `omni help <command>`. |
@@ -225,6 +226,9 @@ The metadata file accepts the following parameters:
 ```yaml
 # Enable autocompletion handling through --complete
 autocompletion: true
+
+# Enable argument parsing
+argparser: true
 
 # Specify the command category
 category:
