@@ -69,6 +69,8 @@ commands:
 
   lint:
     desc: Runs the linter
+    aliases:
+      - clippy
     run: |
       # cargo fmt -- --check
       cargo clippy --all-features
@@ -78,11 +80,6 @@ commands:
     run: |
       cargo test
       bats tests/
-
-  clippy:
-    desc: Runs the linter
-    run: |
-      cargo clippy --all-features
 
   fix:
     desc: Fixes the code

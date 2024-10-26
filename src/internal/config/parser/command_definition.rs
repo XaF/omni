@@ -77,12 +77,15 @@ impl CommandDefinition {
             None => None,
         };
 
-        let aliases = match config_value.get_as_array("aliases") {
-            Some(value) => value
+        let aliases = if let Some(array) = config_value.get_as_array("aliases") {
+            array
                 .iter()
-                .map(|value| value.as_str().unwrap().to_string())
-                .collect(),
-            None => vec![],
+                .filter_map(|value| value.as_str_forced())
+                .collect()
+        } else if let Some(string) = config_value.get_as_str_forced("aliases") {
+            vec![string]
+        } else {
+            vec![]
         };
 
         let argparser = config_value
