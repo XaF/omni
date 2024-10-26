@@ -124,7 +124,7 @@ impl CommandLoader {
 
         // Look for all commands in the configuration
         for command in ConfigCommand::all() {
-            add_fn(Command::FromConfig(command));
+            add_fn(Command::FromConfig(Box::new(command)));
         }
 
         // Look for all commands in the path that would be

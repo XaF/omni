@@ -44,7 +44,7 @@ pub trait BuiltinCommand: std::fmt::Debug + Send + Sync {
 pub enum Command {
     // Take any BuiltinCommand that's also Debuggable
     Builtin(Box<dyn BuiltinCommand>),
-    FromConfig(ConfigCommand),
+    FromConfig(Box<ConfigCommand>),
     FromMakefile(MakefileCommand),
     FromPath(PathCommand),
     Void(VoidCommand),
