@@ -1803,6 +1803,7 @@ impl SyntaxOptArgType {
             "flag" => Self::Flag,
             "count" | "counter" => Self::Counter,
             "str" | "string" => Self::String,
+            "enum" => Self::Enum(vec![]),
             _ => {
                 // If the string is in format array/enum(xx, yy, zz) or enum(xx, yy, zz) or (xx, yy, zz)
                 // or [(xx, yy, zz)], then it's an enum and we need to extract the values
@@ -1818,11 +1819,12 @@ impl SyntaxOptArgType {
                     let values = enum_contents
                         .split(',')
                         .map(|value| value.trim().to_string())
+                        .filter(|value| !value.is_empty())
                         .collect::<Vec<String>>();
 
                     Self::Enum(values)
                 } else {
-                    Self::Enum(vec![])
+                    return None;
                 }
             }
         };

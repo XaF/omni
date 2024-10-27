@@ -234,6 +234,12 @@ impl HelpCommand {
 
             // Prepare the help contents
             let help_desc = wrap_text(&strip_colors_if_needed(arg.help_desc()), help_just);
+            // Remove help_desc lines until we find the first non-empty line
+            let help_desc = help_desc
+                .iter()
+                .skip_while(|line| line.trim().is_empty())
+                .map(|line| line.to_string())
+                .collect::<Vec<String>>();
 
             // Prepare the help message to print for this command
             let empty_str = "".to_string();
@@ -246,16 +252,21 @@ impl HelpCommand {
                         buf.push_str(&format!("  {}\n", name));
                     });
 
-                let first_desc_line = help_desc.first().unwrap_or(&empty_str);
+                let first_desc_line = help_desc.first().unwrap_or(&empty_str).trim();
                 let last_name_line = wrapped_name_and_len
                     .last()
                     .expect("Name should not be empty");
-                buf.push_str(&format!(
-                    "  {}{}{}\n",
-                    last_name_line.0,
-                    " ".repeat(ljust - last_name_line.1),
-                    first_desc_line,
-                ));
+
+                if first_desc_line.is_empty() {
+                    buf.push_str(&format!("  {}\n", last_name_line.0));
+                } else {
+                    buf.push_str(&format!(
+                        "  {}{}{}\n",
+                        last_name_line.0,
+                        " ".repeat(ljust - last_name_line.1),
+                        first_desc_line,
+                    ));
+                }
 
                 help_desc.iter().skip(1).for_each(|line| {
                     buf.push_str(&format!("{}{}\n", " ".repeat(ljust + 2), line));
