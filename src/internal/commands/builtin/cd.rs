@@ -10,6 +10,7 @@ use crate::internal::commands::utils::omni_cmd;
 use crate::internal::config::config;
 use crate::internal::config::CommandSyntax;
 use crate::internal::config::SyntaxOptArg;
+use crate::internal::config::SyntaxOptArgType;
 use crate::internal::env::omni_cmd_file;
 use crate::internal::env::user_home;
 use crate::internal::env::Shell;
@@ -238,7 +239,6 @@ impl BuiltinCommand for CdCommand {
 
     fn syntax(&self) -> Option<CommandSyntax> {
         Some(CommandSyntax {
-            usage: None,
             parameters: vec![
                 SyntaxOptArg {
                     name: "--locate".to_string(),
@@ -251,7 +251,8 @@ impl BuiltinCommand for CdCommand {
                         )
                         .to_string()
                     ),
-                    required: false,
+                    arg_type: SyntaxOptArgType::Flag,
+                    ..Default::default()
                 },
                 SyntaxOptArg {
                     name: "--[no-]include-packages".to_string(),
@@ -263,7 +264,8 @@ impl BuiltinCommand for CdCommand {
                         )
                         .to_string()
                     ),
-                    required: false,
+                    arg_type: SyntaxOptArgType::Flag,
+                    ..Default::default()
                 },
                 SyntaxOptArg {
                     name: "repo".to_string(),
@@ -276,9 +278,10 @@ impl BuiltinCommand for CdCommand {
                         )
                         .to_string()
                     ),
-                    required: false,
+                    ..Default::default()
                 },
             ],
+            ..Default::default()
         })
     }
 

@@ -1,0 +1,15 @@
+
+Usage: omni <command> [options] ARG...
+
+General
+  config ▶       Provides config commands
+  help           Show help for omni commands
+  hook ▶         Call one of omni's hooks for the shell
+  status         Show the status of omni
+
+Git commands
+  cd             Change directory to the git directory of the specified repository
+  clone          Clone the specified repository
+  up, down       Sets up or tear down a repository depending on its up configuration
+  scope          Runs an omni command in the context of the specified repository
+  tidy           Organize your git repositories using the configured format

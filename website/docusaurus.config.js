@@ -189,6 +189,7 @@ const config = {
           'lisp',
           'lua',
           'makefile',
+          'ruby',
           'rust',
           'shell-session',
           'vim',

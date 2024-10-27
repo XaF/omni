@@ -41,6 +41,7 @@ use crate::internal::config::ConfigExtendOptions;
 use crate::internal::config::ConfigLoader;
 use crate::internal::config::ConfigValue;
 use crate::internal::config::SyntaxOptArg;
+use crate::internal::config::SyntaxOptArgType;
 use crate::internal::env::shell_is_interactive;
 use crate::internal::errors::SyncUpdateError;
 use crate::internal::git::format_path_with_template;
@@ -1277,7 +1278,6 @@ impl BuiltinCommand for UpCommand {
 
     fn syntax(&self) -> Option<CommandSyntax> {
         Some(CommandSyntax {
-            usage: None,
             parameters: vec![
                 SyntaxOptArg {
                     name: "--no-cache".to_string(),
@@ -1288,7 +1288,8 @@ impl BuiltinCommand for UpCommand {
                         )
                         .to_string(),
                     ),
-                    required: false,
+                    arg_type: SyntaxOptArgType::Flag,
+                    ..Default::default()
                 },
                 SyntaxOptArg {
                     name: "--fail-on-upgrade".to_string(),
@@ -1300,7 +1301,8 @@ impl BuiltinCommand for UpCommand {
                         )
                         .to_string(),
                     ),
-                    required: false,
+                    arg_type: SyntaxOptArgType::Flag,
+                    ..Default::default()
                 },
                 SyntaxOptArg {
                     name: "--bootstrap".to_string(),
@@ -1312,19 +1314,25 @@ impl BuiltinCommand for UpCommand {
                         )
                         .to_string(),
                     ),
-                    required: false,
+                    arg_type: SyntaxOptArgType::Flag,
+                    ..Default::default()
                 },
                 SyntaxOptArg {
                     name: "--clone-suggested".to_string(),
                     desc: Some(
                         concat!(
                             "Whether we should clone suggested repositories found in the configuration ",
-                            "of the repository if any (yes/ask/no) ",
-                            "\x1B[90m(default: no)\x1B[0m",
+                            "of the repository if any (yes/ask/no)",
                         )
                         .to_string(),
                     ),
-                    required: false,
+                    arg_type: SyntaxOptArgType::Enum(vec![
+                        "yes".to_string(),
+                        "ask".to_string(),
+                        "no".to_string(),
+                    ]),
+                    default: Some("no".to_string()),
+                    ..Default::default()
                 },
                 SyntaxOptArg {
                     name: "--prompt".to_string(),
@@ -1335,7 +1343,8 @@ impl BuiltinCommand for UpCommand {
                         )
                         .to_string(),
                     ),
-                    required: false,
+                    arg_type: SyntaxOptArgType::Array(Box::new(SyntaxOptArgType::String)),
+                    ..Default::default()
                 },
                 SyntaxOptArg {
                     name: "--prompt-all".to_string(),
@@ -1346,7 +1355,8 @@ impl BuiltinCommand for UpCommand {
                         )
                         .to_string(),
                     ),
-                    required: false,
+                    arg_type: SyntaxOptArgType::Flag,
+                    ..Default::default()
                 },
                 SyntaxOptArg {
                     name: "--trust".to_string(),
@@ -1354,7 +1364,13 @@ impl BuiltinCommand for UpCommand {
                         "Define how to trust the repository (always/yes/no) to run the command"
                             .to_string(),
                     ),
-                    required: false,
+                    arg_type: SyntaxOptArgType::Enum(vec![
+                        "always".to_string(),
+                        "yes".to_string(),
+                        "no".to_string(),
+                    ]),
+                    default: Some("no".to_string()),
+                    ..Default::default()
                 },
                 SyntaxOptArg {
                     name: "--update-repository".to_string(),
@@ -1362,11 +1378,12 @@ impl BuiltinCommand for UpCommand {
                         concat!(
                             "Whether we should update the repository before running the command; ",
                             "if the repository is already up to date, the rest of the process will ",
-                            "be skipped \x1B[90m(default: no)\x1B[0m",
+                            "be skipped",
                         )
                         .to_string(),
                     ),
-                    required: false,
+                    arg_type: SyntaxOptArgType::Flag,
+                    ..Default::default()
                 },
                 SyntaxOptArg {
                     name: "--update-user-config".to_string(),
@@ -1375,12 +1392,17 @@ impl BuiltinCommand for UpCommand {
                             "Whether we should handle suggestions found in the configuration of ",
                             "the repository if any (yes/ask/no); When using \x1B[3mup\x1B[0m, the ",
                             "\x1B[3msuggest_config\x1B[0m configuration will be copied to the home ",
-                            "directory of the user to be loaded on every omni call ",
-                            "\x1B[90m(default: no)\x1B[0m",
+                            "directory of the user to be loaded on every omni call",
                         )
                         .to_string(),
                     ),
-                    required: false,
+                    arg_type: SyntaxOptArgType::Enum(vec![
+                        "yes".to_string(),
+                        "ask".to_string(),
+                        "no".to_string(),
+                    ]),
+                    default: Some("no".to_string()),
+                    ..Default::default()
                 },
                 SyntaxOptArg {
                     name: "--upgrade".to_string(),
@@ -1390,13 +1412,15 @@ impl BuiltinCommand for UpCommand {
                             "version already matches version constraints. If false, this also means ",
                             "that if an already installed version for another repository matches ",
                             "version contraints, we will avoid downloading and building a more ",
-                            "recent version \x1B[90m(default: false)\x1B[0m",
+                            "recent version",
                         )
                         .to_string(),
                     ),
-                    required: false,
+                    arg_type: SyntaxOptArgType::Flag,
+                    ..Default::default()
                 },
             ],
+            ..Default::default()
         })
     }
 

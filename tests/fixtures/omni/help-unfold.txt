@@ -1,0 +1,21 @@
+
+Usage: omni <command> [options] ARG...
+
+General
+  config bootstrap              Bootstraps the configuration of omni
+  config path switch            Switch the source of a repository in the omnipath
+  config reshim                 Regenerate the shims for the environments managed by omni
+  config trust, config untrust  Trust or untrust a work directory.
+  help                          Show help for omni commands
+  hook                          Call one of omni's hooks for the shell
+  hook env                      Hook used to update the dynamic environment
+  hook init                     Hook used to initialize the shell
+  hook uuid                     Hook to generate a UUID
+  status                        Show the status of omni
+
+Git commands
+  cd                            Change directory to the git directory of the specified repository
+  clone                         Clone the specified repository
+  up, down                      Sets up or tear down a repository depending on its up configuration
+  scope                         Runs an omni command in the context of the specified repository
+  tidy                          Organize your git repositories using the configured format

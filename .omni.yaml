@@ -69,6 +69,8 @@ commands:
 
   lint:
     desc: Runs the linter
+    aliases:
+      - clippy
     run: |
       # cargo fmt -- --check
       cargo clippy --all-features
@@ -77,4 +79,16 @@ commands:
     desc: Runs the tests
     run: |
       cargo test
-      bats tests/
+      GENERATE_FIXTURES=false bats tests/
+    subcommands:
+      generate:
+        desc: Generates the fixtures for the tests
+        run: |
+          GENERATE_FIXTURES=true bats --filter-tags generate tests/
+
+  fix:
+    desc: Fixes the code
+    run: |
+      cargo fix --all-features --color always --allow-dirty
+      cargo clippy --fix --all-features --color always --allow-dirty
+      cargo fmt

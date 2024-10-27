@@ -10,6 +10,8 @@ use crate::internal::commands::HelpCommand;
 use crate::internal::config::global_config;
 use crate::internal::config::CommandSyntax;
 use crate::internal::config::SyntaxOptArg;
+use crate::internal::config::SyntaxOptArgNumValues;
+use crate::internal::config::SyntaxOptArgType;
 use crate::internal::env::current_exe;
 use crate::internal::env::data_home;
 use crate::internal::env::shims_dir;
@@ -248,27 +250,29 @@ impl BuiltinCommand for HookInitCommand {
 
     fn syntax(&self) -> Option<CommandSyntax> {
         Some(CommandSyntax {
-            usage: None,
             parameters: vec![
                 SyntaxOptArg {
-                    name: "--alias <alias>".to_string(),
+                    name: "--alias".to_string(),
                     desc: Some(
                         "Create an alias for the omni command with autocompletion support."
                             .to_string(),
                     ),
-                    required: false,
+                    arg_type: SyntaxOptArgType::Array(Box::new(SyntaxOptArgType::String)),
+                    ..Default::default()
                 },
                 SyntaxOptArg {
-                    name: "--command-alias <alias> <subcommand>".to_string(),
+                    name: "--command-alias".to_string(),
                     desc: Some(
                         concat!(
                             "Create an alias for the specified omni subcommand with autocompletion ",
-                            "support. The <subcommand> argument can be any omni subcommand, including ",
+                            "support. The second argument can be any omni subcommand, including ",
                             "custom subcommands.",
                         )
                         .to_string(),
                     ),
-                    required: false,
+                    num_values: Some(SyntaxOptArgNumValues::Exactly(2)),
+                    arg_type: SyntaxOptArgType::Array(Box::new(SyntaxOptArgType::String)),
+                    ..Default::default()
                 },
                 SyntaxOptArg {
                     name: "--shims".to_string(),
@@ -276,7 +280,8 @@ impl BuiltinCommand for HookInitCommand {
                         "Only load the shims without setting up the dynamic environment."
                             .to_string(),
                     ),
-                    required: false,
+                    arg_type: SyntaxOptArgType::Flag,
+                    ..Default::default()
                 },
                 SyntaxOptArg {
                     name: "--keep-shims-in-path".to_string(),
@@ -285,7 +290,8 @@ impl BuiltinCommand for HookInitCommand {
                         "This can be useful if you are used to launch your IDE from the terminal and do ",
                         "not have other means to load the shims in its environment."
                     ).to_string()),
-                    required: false,
+                    arg_type: SyntaxOptArgType::Flag,
+                    ..Default::default()
                 },
                 SyntaxOptArg {
                     name: "--print-shims-path".to_string(),
@@ -293,7 +299,8 @@ impl BuiltinCommand for HookInitCommand {
                         "Print the path to the shims directory and exit. This should not be ",
                         "used to eval in a shell environment."
                     ).to_string()),
-                    required: false,
+                    arg_type: SyntaxOptArgType::Flag,
+                    ..Default::default()
                 },
                 SyntaxOptArg {
                     name: "shell".to_string(),
@@ -301,9 +308,10 @@ impl BuiltinCommand for HookInitCommand {
                         "Which shell to initialize omni for. Can be one of bash, zsh or fish."
                             .to_string(),
                     ),
-                    required: false,
+                    ..Default::default()
                 },
             ],
+            ..Default::default()
         })
     }
 

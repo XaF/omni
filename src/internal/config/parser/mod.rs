@@ -18,7 +18,10 @@ pub(crate) use clone::CloneConfig;
 mod command_definition;
 pub(crate) use command_definition::CommandDefinition;
 pub(crate) use command_definition::CommandSyntax;
+pub(crate) use command_definition::SyntaxGroup;
 pub(crate) use command_definition::SyntaxOptArg;
+pub(crate) use command_definition::SyntaxOptArgNumValues;
+pub(crate) use command_definition::SyntaxOptArgType;
 
 mod config_commands;
 pub(crate) use config_commands::ConfigCommandsConfig;
@@ -27,6 +30,9 @@ mod env;
 pub(crate) use env::EnvConfig;
 pub(crate) use env::EnvOperationConfig;
 pub(crate) use env::EnvOperationEnum;
+
+mod errors;
+pub(crate) use errors::ParseArgsErrorKind;
 
 mod github;
 pub(crate) use github::GithubAuthConfig;

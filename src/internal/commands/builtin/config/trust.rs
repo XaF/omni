@@ -9,6 +9,7 @@ use crate::internal::commands::base::BuiltinCommand;
 use crate::internal::commands::HelpCommand;
 use crate::internal::config::CommandSyntax;
 use crate::internal::config::SyntaxOptArg;
+use crate::internal::config::SyntaxOptArgType;
 use crate::internal::user_interface::StringColor;
 use crate::internal::workdir;
 use crate::internal::workdir::add_trust;
@@ -46,7 +47,7 @@ impl ConfigTrustCommandArgs {
                 match err.kind() {
                     clap::error::ErrorKind::DisplayHelp
                     | clap::error::ErrorKind::DisplayHelpOnMissingArgumentOrSubcommand => {
-                        HelpCommand::new().exec(vec!["cd".to_string()]);
+                        HelpCommand::new().exec(vec!["config".to_string(), "trust".to_string()]);
                     }
                     clap::error::ErrorKind::DisplayVersion => {
                         unreachable!("version flag is disabled");
@@ -132,31 +133,26 @@ impl BuiltinCommand for ConfigTrustCommand {
 
     fn syntax(&self) -> Option<CommandSyntax> {
         Some(CommandSyntax {
-            usage: None,
             parameters: vec![
                 SyntaxOptArg {
                     name: "--check".to_string(),
                     desc: Some(
-                        concat!(
-                            "Check the trust status of the repository instead of changing it ",
-                            "\x1B[90m(default: false)\x1B[0m",
-                        )
-                        .to_string(),
+                        "Check the trust status of the repository instead of changing it"
+                            .to_string(),
                     ),
-                    required: false,
+                    arg_type: SyntaxOptArgType::Flag,
+                    ..Default::default()
                 },
                 SyntaxOptArg {
                     name: "repo".to_string(),
                     desc: Some(
-                        concat!(
-                            "The repository to trust or untrust ",
-                            "\x1B[90m(default: current)\x1B[0m",
-                        )
-                        .to_string(),
+                        concat!("The repository to trust or untrust ", "[default: current]",)
+                            .to_string(),
                     ),
-                    required: false,
+                    ..Default::default()
                 },
             ],
+            ..Default::default()
         })
     }
 

@@ -22,13 +22,47 @@ Any command defined in a global configuration file will be available throughout 
 
 ### Syntax
 
-The syntax parameter takes a list of `parameter` objects. Each `parameter` object can take the following parameters:
+The syntax parameter can take a `parameters` key containing a list of `parameter` objects, and a `groups` key containing a list of `group` objects. If providing a list directly as the syntax parameter, it will be considered as the `parameters` key.
+
+:::info
+Some of the configuration options are only relevant when using the argument parser, these are marked below with a start `*`. Others can be helpful in anycase when showing the help for the custom command.
+
+The `groups` key is only useful when using the argument parser.
+:::
+
+Each `parameter` object can take the following parameters:
 
 | Parameter        | Type      | Description                                           |
 |------------------|-----------|-------------------------------------------------------|
 | `name` | string | the name of the parameter |
+| `dest`* | string | the name of the variable to store the value of the parameter, if not provided will use a sanitized version of the name |
+| `aliases` | string (list) | list of aliases for that parameter |
 | `desc` | string | the description/help for the parameter |
 | `required` | bool | whether or not this parameter is required |
+| `placeholder` | string | the placeholder to show in the help |
+| `type` | string | the type of the parameter, can be one of `str`, `int`, `float`, `bool`, `flag`, `counter`, `enum(vals, ...)` or `array/<type>` for any of those except `flag` and `counter`. See below for more details on the types. |
+| `default` | string | the default value for the parameter |
+| `num_values` | string | the number of values that the parameter can take. This can take ranges in the format `..max` (open), `..=max` (closed), `min..`, `min..max` (half-open), `min..=max` (closed) |
+| `delimiter`* | char | the delimiter to use when splitting the values of the parameter; when specified, the argument parser will split each value by this delimiter and provide them as separate values |
+| `last`* | bool | to indicate the last, or final, positional argument, which is only able to be accessed via the `--` syntax (i.e. `$ prog args -- last_arg`) |
+| `leftovers`* | bool | everything that follows that parameter should be captured by it, as if the user had used a `--` |
+| `allow_hyphen_values`* | bool | allow values that start with a hyphen to be considered as values, and not as options |
+| `requires`* | string (list) | list of parameters that are required when this parameter is present |
+| `conflicts_with`* | string (list) | list of parameters that cannot be used with this parameter |
+| `required_without`* | string (list) | this parameter is required when any of the parameters in the list is not present |
+| `required_without_all`* | string (list) | this parameter is required when all of the parameters in the list are not present |
+| `required_if_eq`* | map | this parameter is required when the parameter in the map is equal to the value in the map |
+| `required_if_eq_all`* | map | this parameter is required when all the parameters in the map are equal to the value in the map |
+
+Each `group`* object can take the following parameters:
+
+| Parameter        | Type      | Description                                           |
+|------------------|-----------|-------------------------------------------------------|
+| `name` | string | the name of the group |
+| `parameters` | string (list) | list of parameters that are part of that group |
+| `required` | bool | whether or not this group is required |
+| `requires` | string (list) | list of groups that are required when this group is present |
+| `conflicts_with` | string (list) | list of groups that cannot be used with this group |
 
 ## Example
 

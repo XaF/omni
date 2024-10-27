@@ -1,0 +1,9 @@
+
+Hook to generate a UUID
+
+The uuid hook provides and alternative to uuidgen, in case it is not installed, so that omni
+can work without extra dependencies..
+
+Usage: omni hook uuid
+
+Source: builtin

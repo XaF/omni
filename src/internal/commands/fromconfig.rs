@@ -170,6 +170,10 @@ impl ConfigCommand {
         Some(category)
     }
 
+    pub fn argparser(&self) -> bool {
+        self.details.argparser
+    }
+
     pub fn exec_dir(&self) -> Result<PathBuf, String> {
         let config_file = self.source();
         let config_dir = abs_path(

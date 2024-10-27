@@ -1,0 +1,16 @@
+
+Provides config commands
+
+Usage: omni config <subcommand> [options]...
+
+Arguments:
+  <subcommand>   Subcommand to be called
+  [options]...   Options to pass to the subcommand
+
+General
+  bootstrap       Bootstraps the configuration of omni
+  path switch     Switch the source of a repository in the omnipath
+  reshim          Regenerate the shims for the environments managed by omni
+  trust, untrust  Trust or untrust a work directory.
+
+Source: auto-generated

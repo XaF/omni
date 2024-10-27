@@ -1,3 +1,4 @@
+use std::collections::BTreeMap;
 use std::process::exit;
 
 use crate::internal::commands::fromconfig::ConfigCommand;
@@ -5,12 +6,18 @@ use crate::internal::commands::frommakefile::MakefileCommand;
 use crate::internal::commands::frompath::PathCommand;
 use crate::internal::commands::utils::abs_or_rel_path;
 use crate::internal::commands::void::VoidCommand;
+use crate::internal::config::parser::ParseArgsErrorKind;
 use crate::internal::config::CommandSyntax;
 use crate::internal::dynenv::update_dynamic_env_for_command;
+use crate::internal::user_interface::colors::strip_colors;
+use crate::internal::user_interface::colors::strip_colors_if_needed;
+use crate::internal::user_interface::term_width;
+use crate::internal::user_interface::wrap_text;
 use crate::internal::user_interface::StringColor;
 use crate::internal::workdir::is_trusted;
 use crate::internal::workdir::is_trusted_or_ask;
 use crate::omni_error;
+use crate::omni_print;
 
 pub trait BuiltinCommand: std::fmt::Debug + Send + Sync {
     fn new_command() -> Command
@@ -37,7 +44,7 @@ pub trait BuiltinCommand: std::fmt::Debug + Send + Sync {
 pub enum Command {
     // Take any BuiltinCommand that's also Debuggable
     Builtin(Box<dyn BuiltinCommand>),
-    FromConfig(ConfigCommand),
+    FromConfig(Box<ConfigCommand>),
     FromMakefile(MakefileCommand),
     FromPath(PathCommand),
     Void(VoidCommand),
@@ -228,19 +235,34 @@ impl Command {
         } else {
             self.name().join(" ")
         };
-        let mut usage = format!("omni {}", name);
+        let mut usage = format!("omni {}", name).bold();
 
         if let Some(syntax) = self.syntax() {
             if let Some(syntax_usage) = syntax.usage {
                 usage += &format!(" {}", syntax_usage);
             } else if !syntax.parameters.is_empty() {
-                for param in syntax.parameters {
-                    let param_usage = if param.required {
-                        format!(" <{}>", param.name)
-                    } else {
-                        format!(" [{}]", param.name)
-                    }
-                    .cyan();
+                let params = syntax.parameters.clone();
+
+                // Take all options, i.e. non-positional that are not required
+                let (options, params): (Vec<_>, Vec<_>) = params
+                    .into_iter()
+                    .partition(|param| !param.required && !param.is_positional());
+                if !options.is_empty() {
+                    usage += &" [OPTIONS]".cyan();
+                }
+
+                // Take all non-positional that are required
+                let (required_options, params): (Vec<_>, Vec<_>) = params
+                    .into_iter()
+                    .partition(|param| param.required && !param.is_positional());
+                for param in required_options {
+                    let param_usage = format!(" {}", param.usage());
+                    usage += &param_usage;
+                }
+
+                // Finally, we're only left with positional parameters
+                for param in params {
+                    let param_usage = format!(" {}", param.usage());
                     usage += &param_usage;
                 }
             }
@@ -297,18 +319,91 @@ impl Command {
         false
     }
 
+    pub fn exec_parse_args(
+        &self,
+        argv: Vec<String>,
+        called_as: Vec<String>,
+    ) -> Option<BTreeMap<String, String>> {
+        let should_parse_args = match self {
+            Command::FromConfig(command) => command.argparser(),
+            Command::FromPath(command) => command.argparser(),
+            _ => false,
+        };
+
+        if !should_parse_args {
+            return None;
+        }
+
+        let syntax = self.syntax().unwrap_or_default();
+
+        match syntax.parse_args(argv, called_as.clone()) {
+            Ok(parsed_args) => Some(parsed_args),
+            Err(ParseArgsErrorKind::ParserBuildError(err)) => {
+                omni_print!(format!("{} {}", "error building parser:".red(), err));
+                exit(1);
+            }
+            Err(ParseArgsErrorKind::ArgumentParsingError(err)) => {
+                let clap_rich_error = err.render().ansi().to_string();
+                let clap_rich_error = strip_colors_if_needed(&clap_rich_error);
+                let parts = clap_rich_error.trim().split('\n');
+
+                for (idx, line) in parts.enumerate() {
+                    let line_wo_colors = strip_colors(line);
+                    if line_wo_colors.starts_with("Usage: ") {
+                        // Print our own usage formatting
+                        let max_width = term_width() - 4;
+                        let command_usage = self.usage(Some(called_as.join(" ")));
+                        let wrapped_usage = wrap_text(&command_usage, max_width - 7); // 7 is the length of "Usage: "
+
+                        eprintln!("{} {}", "Usage:".underline().bold(), wrapped_usage[0]);
+                        wrapped_usage.iter().skip(1).for_each(|line| {
+                            eprintln!("       {}", line);
+                        });
+                        continue;
+                    }
+                    if idx > 0 {
+                        eprintln!("{}", line);
+                    } else {
+                        omni_print!(format!(
+                            "{} {}",
+                            format!("{}:", called_as.join(" ")).light_yellow(),
+                            line
+                        ));
+                    }
+                }
+                exit(1);
+            }
+        }
+    }
+
     pub fn exec(&self, argv: Vec<String>, called_as: Option<Vec<String>>) {
         // Load the dynamic environment for that command
         update_dynamic_env_for_command(self.exec_dir());
 
         // Set the general execution environment
-        let name = if let Some(ref called_as) = called_as {
-            called_as.clone()
-        } else {
-            self.name().clone()
+        let called_as = match called_as {
+            Some(called_as) => called_as,
+            None => self.name().clone(),
         };
-        let name = name.join(" ");
+        let name = called_as.join(" ");
         std::env::set_var("OMNI_SUBCOMMAND", name.clone());
+
+        // Add the omni version to the environment
+        std::env::set_var("OMNI_VERSION", env!("CARGO_PKG_VERSION"));
+
+        // Clear all `OMNI_ARG_` environment variables
+        for (key, _) in std::env::vars() {
+            if key.starts_with("OMNI_ARG_") {
+                std::env::remove_var(&key);
+            }
+        }
+
+        // Set environment variables for the parsed arguments, if we are parsing any
+        if let Some(args) = self.exec_parse_args(argv.clone(), called_as.clone()) {
+            for (key, value) in args {
+                std::env::set_var(key, value);
+            }
+        }
 
         match self {
             Command::FromConfig(cmd) if cmd.is_trusted() => {
@@ -335,7 +430,7 @@ impl Command {
 
         match self {
             Command::Builtin(command) => command.exec(argv),
-            Command::FromPath(command) => command.exec(argv, called_as),
+            Command::FromPath(command) => command.exec(argv, Some(called_as)),
             Command::FromConfig(command) => command.exec(argv),
             Command::FromMakefile(command) => command.exec(argv),
             Command::Void(_) => {}

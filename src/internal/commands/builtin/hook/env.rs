@@ -6,6 +6,7 @@ use crate::internal::commands::base::BuiltinCommand;
 use crate::internal::commands::HelpCommand;
 use crate::internal::config::CommandSyntax;
 use crate::internal::config::SyntaxOptArg;
+use crate::internal::config::SyntaxOptArgType;
 use crate::internal::dynenv::DynamicEnvExportOptions;
 use crate::internal::env::Shell;
 use crate::internal::git::report_update_error;
@@ -134,7 +135,6 @@ impl BuiltinCommand for HookEnvCommand {
 
     fn syntax(&self) -> Option<CommandSyntax> {
         Some(CommandSyntax {
-            usage: None,
             parameters: vec![
                 SyntaxOptArg {
                     name: "--quiet".to_string(),
@@ -145,7 +145,8 @@ impl BuiltinCommand for HookEnvCommand {
                         )
                         .to_string(),
                     ),
-                    required: false,
+                    arg_type: SyntaxOptArgType::Flag,
+                    ..Default::default()
                 },
                 SyntaxOptArg {
                     name: "--keep-shims".to_string(),
@@ -156,9 +157,22 @@ impl BuiltinCommand for HookEnvCommand {
                         )
                         .to_string(),
                     ),
-                    required: false,
+                    arg_type: SyntaxOptArgType::Flag,
+                    ..Default::default()
+                },
+                SyntaxOptArg {
+                    name: "shell".to_string(),
+                    desc: Some(
+                        concat!(
+                            "The shell for which to export the dynamic environment. ",
+                            "If not provided, the shell will be detected from the environment."
+                        )
+                        .to_string(),
+                    ),
+                    ..Default::default()
                 },
             ],
+            ..Default::default()
         })
     }
 

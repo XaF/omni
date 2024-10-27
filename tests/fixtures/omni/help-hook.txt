@@ -1,0 +1,15 @@
+
+Call one of omni's hooks for the shell
+
+Usage: omni hook <hook> [options]...
+
+Arguments:
+  <hook>         Which hook to call
+  [options]...   Any options to pass to the hook.
+
+General
+  env            Hook used to update the dynamic environment
+  init           Hook used to initialize the shell
+  uuid           Hook to generate a UUID
+
+Source: builtin

@@ -1,0 +1,22 @@
+
+Switch the source of a repository in the omnipath
+
+This allows to change the omnipath source from using a package or a development version in a
+worktree.
+
+When switching into a mode, if the source of the requested type does not exist, the
+repository will be cloned.
+
+Usage: omni config path switch [OPTIONS] [repo]
+
+Arguments:
+  [repo]         The name of the repository to switch the source from; this can be in the
+                 format <org>/<repo>, or just <repo>. If the repository is not provided, the
+                 current repository will be used, or the command will fail if not in a
+                 repository. If the repo is not found in the omnipath, the command will fail.
+
+Options:
+  --<source>     The source to use for the repository; this can be either --package or
+                 --worktree, or will toggle between the two if not specified.
+
+Source: builtin

@@ -27,6 +27,7 @@ use crate::internal::config::ConfigLoader;
 use crate::internal::config::ConfigValue;
 use crate::internal::config::OrgConfig;
 use crate::internal::config::SyntaxOptArg;
+use crate::internal::config::SyntaxOptArgType;
 use crate::internal::env::shell_integration_is_loaded;
 use crate::internal::env::user_home;
 use crate::internal::env::Shell;
@@ -183,29 +184,33 @@ impl BuiltinCommand for ConfigBootstrapCommand {
 
     fn syntax(&self) -> Option<CommandSyntax> {
         Some(CommandSyntax {
-            usage: None,
             parameters: vec![
                 SyntaxOptArg {
                     name: "--worktree".to_string(),
                     desc: Some("Bootstrap the main worktree location".to_string()),
-                    required: false,
+                    arg_type: SyntaxOptArgType::Flag,
+                    ..Default::default()
                 },
                 SyntaxOptArg {
                     name: "--repo-path-format".to_string(),
                     desc: Some("Bootstrap the repository path format".to_string()),
-                    required: false,
+                    arg_type: SyntaxOptArgType::Flag,
+                    ..Default::default()
                 },
                 SyntaxOptArg {
                     name: "--organizations".to_string(),
                     desc: Some("Bootstrap the organizations".to_string()),
-                    required: false,
+                    arg_type: SyntaxOptArgType::Flag,
+                    ..Default::default()
                 },
                 SyntaxOptArg {
                     name: "--shell".to_string(),
                     desc: Some("Bootstrap the shell integration".to_string()),
-                    required: false,
+                    arg_type: SyntaxOptArgType::Flag,
+                    ..Default::default()
                 },
             ],
+            ..Default::default()
         })
     }
 

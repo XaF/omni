@@ -1,0 +1,19 @@
+
+Clone the specified repository
+
+The clone operation will be handled using the first organization that matches the argument
+and for which the repository exists. The repository will be cloned in a path that matches
+omni's expectations, depending on your configuration.
+
+Usage: omni clone [OPTIONS] <repo> [options]...
+
+Arguments:
+  <repo>         The repository to clone; this can be in format <org>/<repo>, just <repo>, or
+                 the full URL. If the case where only the repo name is specified, OMNI_ORG
+                 will be used to search for the repository to clone.
+  [options]...   Any additional options to pass to git clone.
+
+Options:
+  --package      Clone the repository as a package (default: no)
+
+Source: builtin

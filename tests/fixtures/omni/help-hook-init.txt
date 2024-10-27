@@ -1,0 +1,35 @@
+
+Hook used to initialize the shell
+
+The init hook will provide you with the command to run to initialize omni in your shell. You
+can specify which shell you wish to load it for by specifying either one of zsh, bash, or
+fish as optional parameter. If no argument is specified, the login shell, as provided by the
+SHELL environment variable, will be used. You can load omni in your shell by using eval
+"$(omni hook init YOURSHELL)" for bash or zsh, or omni hook init fish | source for fish.
+
+The init hook supports the --alias <alias> option, which adds an alias to the omni command
+with autocompletion support. It also supports the --command-alias <alias> <subcommand>
+option, which adds an alias to the specified omni subcommand with autocompletion support.
+
+Usage: omni hook init [OPTIONS] [shell]
+
+Arguments:
+  [shell]        Which shell to initialize omni for. Can be one of bash, zsh or fish.
+
+Options:
+  --alias <ALIAS>                  Create an alias for the omni command with autocompletion
+                                   support.
+  --command-alias <COMMAND_ALIAS> <COMMAND_ALIAS>
+                                   Create an alias for the specified omni subcommand with
+                                   autocompletion support. The second argument can be any omni
+                                   subcommand, including custom subcommands.
+  --shims                          Only load the shims without setting up the dynamic
+                                   environment.
+  --keep-shims-in-path             Prevent the dynamic environment from removing the shims
+                                   directory from the PATH. This can be useful if you are used
+                                   to launch your IDE from the terminal and do not have other
+                                   means to load the shims in its environment.
+  --print-shims-path               Print the path to the shims directory and exit. This should
+                                   not be used to eval in a shell environment.
+
+Source: builtin

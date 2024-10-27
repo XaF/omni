@@ -19,6 +19,7 @@ use crate::internal::config::up::utils::run_command_with_handler;
 use crate::internal::config::up::utils::RunConfig;
 use crate::internal::config::CommandSyntax;
 use crate::internal::config::SyntaxOptArg;
+use crate::internal::config::SyntaxOptArgType;
 use crate::internal::env::omni_cmd_file;
 use crate::internal::env::shell_is_interactive;
 use crate::internal::git::format_path_with_template;
@@ -446,7 +447,6 @@ impl BuiltinCommand for CloneCommand {
 
     fn syntax(&self) -> Option<CommandSyntax> {
         Some(CommandSyntax {
-            usage: None,
             parameters: vec![
                 SyntaxOptArg {
                     name: "--package".to_string(),
@@ -454,7 +454,8 @@ impl BuiltinCommand for CloneCommand {
                         "Clone the repository as a package \x1B[90m(default: no)\x1B[0m"
                             .to_string(),
                     ),
-                    required: false,
+                    arg_type: SyntaxOptArgType::Flag,
+                    ..Default::default()
                 },
                 SyntaxOptArg {
                     name: "repo".to_string(),
@@ -468,13 +469,16 @@ impl BuiltinCommand for CloneCommand {
                         .to_string(),
                     ),
                     required: true,
+                    ..Default::default()
                 },
                 SyntaxOptArg {
-                    name: "options...".to_string(),
+                    name: "options".to_string(),
                     desc: Some("Any additional options to pass to git clone.".to_string()),
-                    required: false,
+                    leftovers: true,
+                    ..Default::default()
                 },
             ],
+            ..Default::default()
         })
     }
 

@@ -1,0 +1,19 @@
+
+Show the status of omni
+
+This will show the configuration that omni is loading when called from the current
+directory.
+
+Usage: omni status [OPTIONS]
+
+Options:
+  --shell-integration  Show if the shell integration is loaded or not.
+  --config             Show the configuration that omni is using for the current directory.
+                       This is not shown by default.
+  --config-files       Show the configuration files that omni is loading for the current
+                       directory.
+  --worktree           Show the default worktree.
+  --orgs               Show the organizations.
+  --path               Show the current omnipath.
+
+Source: builtin

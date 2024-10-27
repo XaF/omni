@@ -245,7 +245,6 @@ impl BuiltinCommand for ScopeCommand {
 
     fn syntax(&self) -> Option<CommandSyntax> {
         Some(CommandSyntax {
-            usage: None,
             parameters: vec![
                 SyntaxOptArg {
                     name: "repo".to_string(),
@@ -260,6 +259,7 @@ impl BuiltinCommand for ScopeCommand {
                         .to_string(),
                     ),
                     required: true,
+                    ..Default::default()
                 },
                 SyntaxOptArg {
                     name: "command".to_string(),
@@ -268,13 +268,16 @@ impl BuiltinCommand for ScopeCommand {
                             .to_string(),
                     ),
                     required: true,
+                    ..Default::default()
                 },
                 SyntaxOptArg {
-                    name: "options...".to_string(),
+                    name: "options".to_string(),
                     desc: Some("Any options to pass to the omni command.".to_string()),
-                    required: false,
+                    leftovers: true,
+                    ..Default::default()
                 },
             ],
+            ..Default::default()
         })
     }
 

@@ -1,0 +1,9 @@
+
+Regenerate the shims for the environments managed by omni
+
+This will get all the binaries that exist for at least one of the environments managed by
+omni and create a shim for them in the shim directory.
+
+Usage: omni config reshim
+
+Source: builtin

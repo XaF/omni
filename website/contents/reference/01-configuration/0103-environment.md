@@ -24,3 +24,7 @@ Omni supports a number of environment variables for its configuration. Setting t
 | Variable                | Type | Description                                                            |
 |-------------------------|------|------------------------------------------------------------------------|
 | `OMNI_LOCAL_LOOKUP` | `boolean` | When using `omni --local` to prioritize local commands lookup over global ones, this variable will be set to `true`. It is not used by omni in any way, but can be used by scripts to determine if omni is running in local mode. |
+| `OMNI_ARG_LIST` | `string` | The list of arguments parsed by the argument parser for the command. |
+| `OMNI_ARG_<argname>_TYPE` | `string` | The type of the argument `<argname>` parsed by the argument parser for the command. Can be one of `str`, `int`, `float`, `bool` for single-value arguments, or any `<type>/<size>` where `<type>` is one of the previous types and `<size>` is the number of values for multi-value arguments. |
+| `OMNI_ARG_<argname>_VALUE` | `string` | The value of the argument `<argname>` parsed by the argument parser for the command, if the type is a single-value type. |
+| `OMNI_ARG_<argname>_VALUE_<index>` | `string` | The value at index `<index>` of the argument `<argname>` parsed by the argument parser for the command, if the type is a multi-value type. The index is 0-based. |
