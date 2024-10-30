@@ -97,8 +97,9 @@ vim.env.PATH = vim.fn.system('omni hook init --print-shims-path') .. ':' .. vim.
 
 ```lisp
 ;; Add omni shims to the path
-(setenv "PATH" (concat (shell-command-to-string "omni hook init --print-shims-path") ":" (getenv "PATH")))
-(setq exec-path (append (split-string (shell-command-to-string "omni hook init --print-shims-path") ":") exec-path))
+(let ((omni-shim-path (string-trim (shell-command-to-string "omni hook init --print-shims-path"))))
+  (setenv "PATH" (concat omni-shim-path ":" (getenv "PATH")))
+  (setq exec-path (cons omni-shim-path exec-path)))
 ```
 
 
