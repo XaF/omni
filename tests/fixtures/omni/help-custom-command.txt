@@ -1,0 +1,11 @@
+
+Custom command.
+
+Usage: omni custom command -a <A> --beta <BETA> --charlie <MYPLACEHOLDER>
+
+Options:
+  -a <A>                         parameter a
+  --beta <BETA>                  parameter b
+  -c, --charlie <MYPLACEHOLDER>  parameter c
+
+Source: .config/omni/config.yaml

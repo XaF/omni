@@ -1061,7 +1061,7 @@ impl SyntaxOptArg {
             let short_name = short_name.first();
             let long_name = long_name.first();
 
-            if include_short {
+            if include_short || long_name.is_none() {
                 if let Some(short_name) = short_name {
                     let short_name = if use_colors {
                         short_name.bold().light_cyan()

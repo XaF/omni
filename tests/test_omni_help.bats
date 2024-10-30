@@ -229,3 +229,32 @@ EOF
   export COLUMNS=10
   validate_test_output omni/help-long-config-command-${COLUMNS}.txt exit_code=1 omni help
 }
+
+# bats test_tags=generate,omni:help
+@test "omni help shows command parameters in the help message of a custom command" {
+  local omni_config="${HOME}/.config/omni/config.yaml"
+  mkdir -p "$(dirname "$omni_config")"
+  cat <<EOF >>"$omni_config"
+commands:
+  custom-command:
+    syntax:
+      parameters:
+        - name: "-a"
+          desc: parameter a
+          required: true
+        - name: --beta
+          desc: parameter b
+          required: true
+        - name: -c
+          aliases: --charlie
+          placeholder: MYPLACEHOLDER
+          desc: parameter c
+          required: true
+    desc: |
+      Custom command.
+    run: |
+      echo "Hello, world!"
+EOF
+
+  validate_test_output omni/help-custom-command.txt omni help custom command
+}
