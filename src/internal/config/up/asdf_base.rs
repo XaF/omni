@@ -1299,10 +1299,10 @@ impl UpConfigAsdfBase {
                     "gdbm",
                     "gnumake",
                     "libffi",
-                    "xz",
                     "ncurses",
                     "pkg-config",
                     "sqlite",
+                    "xz",
                     "zlib",
                 ]);
             }
