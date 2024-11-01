@@ -1,6 +1,12 @@
 up:
   - rust
   - node: auto
+  - any:
+    - nix:
+        - bats
+    - homebrew:
+        install:
+          - bats
 
 commands:
   create-tag:
