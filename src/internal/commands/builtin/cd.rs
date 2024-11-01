@@ -241,7 +241,7 @@ impl BuiltinCommand for CdCommand {
         Some(CommandSyntax {
             parameters: vec![
                 SyntaxOptArg {
-                    name: "--locate".to_string(),
+                    names: vec!["--locate".to_string()],
                     desc: Some(
                         concat!(
                             "If provided, will only return the path to the repository instead of switching ",
@@ -255,7 +255,7 @@ impl BuiltinCommand for CdCommand {
                     ..Default::default()
                 },
                 SyntaxOptArg {
-                    name: "--[no-]include-packages".to_string(),
+                    names: vec!["--[no-]include-packages".to_string()],
                     desc: Some(
                         concat!(
                             "If provided, will include (or not include) packages when running the command; ",
@@ -268,7 +268,7 @@ impl BuiltinCommand for CdCommand {
                     ..Default::default()
                 },
                 SyntaxOptArg {
-                    name: "repo".to_string(),
+                    names: vec!["repo".to_string()],
                     desc: Some(
                         concat!(
                             "The name of the repo to change directory to; this can be in the format <org>/<repo>, ",

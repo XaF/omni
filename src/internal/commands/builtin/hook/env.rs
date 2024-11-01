@@ -137,7 +137,7 @@ impl BuiltinCommand for HookEnvCommand {
         Some(CommandSyntax {
             parameters: vec![
                 SyntaxOptArg {
-                    name: "--quiet".to_string(),
+                    names: vec!["--quiet".to_string()],
                     desc: Some(
                         concat!(
                             "Suppress the output of the hook showing information about the ",
@@ -149,7 +149,7 @@ impl BuiltinCommand for HookEnvCommand {
                     ..Default::default()
                 },
                 SyntaxOptArg {
-                    name: "--keep-shims".to_string(),
+                    names: vec!["--keep-shims".to_string()],
                     desc: Some(
                         concat!(
                             "Keep the shims directory in the PATH. This is useful for instance ",
@@ -161,7 +161,7 @@ impl BuiltinCommand for HookEnvCommand {
                     ..Default::default()
                 },
                 SyntaxOptArg {
-                    name: "shell".to_string(),
+                    names: vec!["shell".to_string()],
                     desc: Some(
                         concat!(
                             "The shell for which to export the dynamic environment. ",

@@ -18,6 +18,7 @@ use crate::internal::commands::utils::str_to_bool;
 use crate::internal::commands::utils::SplitOnSeparators;
 use crate::internal::config;
 use crate::internal::config::config_loader;
+use crate::internal::config::parser::parse_arg_name;
 use crate::internal::config::utils::is_executable;
 use crate::internal::config::CommandSyntax;
 use crate::internal::config::ConfigExtendOptions;
@@ -483,15 +484,11 @@ impl PathCommandFileDetails {
         }
 
         // Prepare all arguments
-        let mut main_name = None;
-        let mut aliases = Vec::new();
-        let mut placeholder = None;
         let mut dest = None;
         let mut default = None;
         let mut num_values = None;
         let mut value_delimiter = None;
         let mut last_arg_double_hyphen = false;
-        let mut leftovers = false;
         let mut allow_hyphen_values = false;
         let mut requires = vec![];
         let mut conflicts_with = vec![];
@@ -499,76 +496,11 @@ impl PathCommandFileDetails {
         let mut required_without_all = vec![];
         let mut required_if_eq = HashMap::new();
         let mut required_if_eq_all = HashMap::new();
-        let mut arg_type = "string".to_string();
         let mut description = String::new();
 
-        // Parse the argument name; it can be a single name or multiple names separated by commas.
-        // There can be short names (starting with `-`) and long names (starting with `--`).
-        // Each name can have a placeholder, or the placeholder can be put at the end.
-        // The placeholder is separated by a space from the name.
-        // If the argument name does not start with `-`, only this value will be kept as part of
-        // the names and the others will be ignored.
-        let def_parts: Vec<&str> = arg_name.split(',').map(str::trim).collect();
-
-        for part in def_parts {
-            let name_parts = part.splitn(2, ' ').collect::<Vec<&str>>();
-            if name_parts.is_empty() {
-                continue;
-            }
-
-            // TODO: separate the handling of allow_hyphens from leftovers
-            let name = name_parts[0];
-            let (name, ends_with_dots) = if name.ends_with("...") {
-                (name.trim_end_matches("..."), true)
-            } else {
-                (name, false)
-            };
-
-            if name.starts_with('-') {
-                if placeholder.is_none() && name_parts.len() > 1 {
-                    placeholder = Some(name_parts[1].to_string());
-                }
-
-                if ends_with_dots {
-                    // If the name ends with `...`, we consider it a counter
-                    arg_type = "counter".to_string();
-                }
-
-                if main_name.is_none() && name.trim_start_matches('-').len() > 1 {
-                    main_name = Some(name.to_string());
-                } else {
-                    aliases.push(name.to_string());
-                }
-            } else {
-                main_name = Some(name.to_string());
-
-                if ends_with_dots {
-                    // If the name ends with `...`, we consider it as a last argument
-                    leftovers = true;
-                }
-
-                aliases.clear();
-                if name_parts.len() > 1 {
-                    placeholder = Some(name_parts[1].to_string());
-                }
-
-                // If we have a parameter without a leading `-`, we stop parsing
-                // the rest of the arg name since this is a positional argument
-                break;
-            }
-        }
-
-        // Make sure we have a main name, even if the only parameter we get is a short one
-        let name = match main_name {
-            Some(name) => name,
-            None => {
-                if aliases.is_empty() {
-                    return None;
-                }
-
-                aliases.remove(0)
-            }
-        };
+        // Parse the argument name
+        let (names, arg_type, placeholder, mut leftovers) = parse_arg_name(arg_name);
+        let mut arg_type = arg_type.to_string();
 
         // Now parse the rest of the string
         // Split the value over either `:` or `\n`
@@ -685,9 +617,8 @@ impl PathCommandFileDetails {
         };
 
         Some(SyntaxOptArg {
-            name,
+            names,
             dest,
-            aliases,
             desc,
             required,
             placeholder,
@@ -1105,7 +1036,7 @@ mod tests {
             assert_eq!(
                 arg,
                 &SyntaxOptArg {
-                    name: "-a".to_string(),
+                    names: vec!["-a".to_string()],
                     desc: Some("test desc".to_string()),
                     required: true,
                     ..Default::default()
@@ -1130,7 +1061,7 @@ mod tests {
             assert_eq!(
                 arg,
                 &SyntaxOptArg {
-                    name: "--arg".to_string(),
+                    names: vec!["--arg".to_string()],
                     desc: Some("test desc".to_string()),
                     required: true,
                     ..Default::default()
@@ -1155,7 +1086,7 @@ mod tests {
             assert_eq!(
                 arg,
                 &SyntaxOptArg {
-                    name: "arg".to_string(),
+                    names: vec!["arg".to_string()],
                     desc: Some("test desc".to_string()),
                     required: true,
                     ..Default::default()
@@ -1180,7 +1111,7 @@ mod tests {
             assert_eq!(
                 arg,
                 &SyntaxOptArg {
-                    name: "-a".to_string(),
+                    names: vec!["-a".to_string()],
                     required: true,
                     ..Default::default()
                 }
@@ -1208,7 +1139,7 @@ mod tests {
             assert_eq!(
                 arg,
                 &SyntaxOptArg {
-                    name: "-a".to_string(),
+                    names: vec!["-a".to_string()],
                     desc: Some("test desc".to_string()),
                     required,
                     arg_type: type_enum,
@@ -1323,7 +1254,7 @@ mod tests {
             assert_eq!(
                 arg,
                 &SyntaxOptArg {
-                    name: "-a".to_string(),
+                    names: vec!["-a".to_string()],
                     desc: Some("test desc".to_string()),
                     required: true,
                     value_delimiter: Some(','),
@@ -1349,7 +1280,7 @@ mod tests {
             assert_eq!(
                 arg,
                 &SyntaxOptArg {
-                    name: "-a".to_string(),
+                    names: vec!["-a".to_string()],
                     desc: Some("test desc".to_string()),
                     required: true,
                     last_arg_double_hyphen: true,
@@ -1375,7 +1306,7 @@ mod tests {
             assert_eq!(
                 arg,
                 &SyntaxOptArg {
-                    name: "a".to_string(),
+                    names: vec!["a".to_string()],
                     desc: Some("test desc".to_string()),
                     required: true,
                     leftovers: true,
@@ -1401,7 +1332,7 @@ mod tests {
             assert_eq!(
                 arg,
                 &SyntaxOptArg {
-                    name: "-a".to_string(),
+                    names: vec!["-a".to_string()],
                     desc: Some("test desc".to_string()),
                     required: true,
                     leftovers: true,
@@ -1427,7 +1358,7 @@ mod tests {
             assert_eq!(
                 arg,
                 &SyntaxOptArg {
-                    name: "-a".to_string(),
+                    names: vec!["-a".to_string()],
                     desc: Some("test desc".to_string()),
                     required: true,
                     allow_hyphen_values: true,
@@ -1439,7 +1370,7 @@ mod tests {
             assert_eq!(
                 arg,
                 &SyntaxOptArg {
-                    name: "-b".to_string(),
+                    names: vec!["-b".to_string()],
                     desc: Some("test desc2".to_string()),
                     required: true,
                     allow_hyphen_values: true,
@@ -1465,7 +1396,7 @@ mod tests {
             assert_eq!(
                 arg,
                 &SyntaxOptArg {
-                    name: "-a".to_string(),
+                    names: vec!["-a".to_string()],
                     desc: Some("test desc".to_string()),
                     required: true,
                     requires: vec!["b".to_string()],
@@ -1491,7 +1422,7 @@ mod tests {
             assert_eq!(
                 arg,
                 &SyntaxOptArg {
-                    name: "-a".to_string(),
+                    names: vec!["-a".to_string()],
                     desc: Some("test desc".to_string()),
                     required: true,
                     requires: vec!["b".to_string(), "c".to_string()],
@@ -1518,7 +1449,7 @@ mod tests {
             assert_eq!(
                 arg,
                 &SyntaxOptArg {
-                    name: "-a".to_string(),
+                    names: vec!["-a".to_string()],
                     desc: Some("test desc".to_string()),
                     required: true,
                     requires: vec!["b".to_string(), "c".to_string()],
@@ -1544,7 +1475,7 @@ mod tests {
             assert_eq!(
                 arg,
                 &SyntaxOptArg {
-                    name: "-a".to_string(),
+                    names: vec!["-a".to_string()],
                     desc: Some("test desc".to_string()),
                     required: true,
                     conflicts_with: vec!["b".to_string()],
@@ -1571,7 +1502,7 @@ mod tests {
             assert_eq!(
                 arg,
                 &SyntaxOptArg {
-                    name: "-a".to_string(),
+                    names: vec!["-a".to_string()],
                     desc: Some("test desc".to_string()),
                     required: true,
                     conflicts_with: vec!["b".to_string(), "c".to_string()],
@@ -1599,7 +1530,7 @@ mod tests {
             assert_eq!(
                 arg,
                 &SyntaxOptArg {
-                    name: "-a".to_string(),
+                    names: vec!["-a".to_string()],
                     desc: Some("test desc".to_string()),
                     required: true,
                     conflicts_with: vec!["b".to_string(), "c".to_string()],
@@ -1626,7 +1557,7 @@ mod tests {
             assert_eq!(
                 arg,
                 &SyntaxOptArg {
-                    name: "-a".to_string(),
+                    names: vec!["-a".to_string()],
                     desc: Some("test desc".to_string()),
                     required: true,
                     required_without: vec!["b".to_string()],
@@ -1653,7 +1584,7 @@ mod tests {
             assert_eq!(
                 arg,
                 &SyntaxOptArg {
-                    name: "-a".to_string(),
+                    names: vec!["-a".to_string()],
                     desc: Some("test desc".to_string()),
                     required: true,
                     required_without: vec!["b".to_string(), "c".to_string()],
@@ -1681,7 +1612,7 @@ mod tests {
             assert_eq!(
                 arg,
                 &SyntaxOptArg {
-                    name: "-a".to_string(),
+                    names: vec!["-a".to_string()],
                     desc: Some("test desc".to_string()),
                     required: true,
                     required_without: vec!["b".to_string(), "c".to_string()],
@@ -1708,7 +1639,7 @@ mod tests {
             assert_eq!(
                 arg,
                 &SyntaxOptArg {
-                    name: "-a".to_string(),
+                    names: vec!["-a".to_string()],
                     desc: Some("test desc".to_string()),
                     required: true,
                     required_without_all: vec!["b".to_string(), "c".to_string()],
@@ -1735,7 +1666,7 @@ mod tests {
             assert_eq!(
                 arg,
                 &SyntaxOptArg {
-                    name: "-a".to_string(),
+                    names: vec!["-a".to_string()],
                     desc: Some("test desc".to_string()),
                     required: true,
                     required_if_eq: HashMap::from_iter(vec![
@@ -1765,7 +1696,7 @@ mod tests {
             assert_eq!(
                 arg,
                 &SyntaxOptArg {
-                    name: "-a".to_string(),
+                    names: vec!["-a".to_string()],
                     desc: Some("test desc".to_string()),
                     required: true,
                     required_if_eq_all: HashMap::from_iter(vec![
@@ -1795,7 +1726,7 @@ mod tests {
             assert_eq!(
                 arg,
                 &SyntaxOptArg {
-                    name: "-a".to_string(),
+                    names: vec!["-a".to_string()],
                     desc: Some("test desc".to_string()),
                     required: true,
                     default: Some("5".to_string()),
@@ -1823,7 +1754,7 @@ mod tests {
             assert_eq!(
                 arg,
                 &SyntaxOptArg {
-                    name: "-a".to_string(),
+                    names: vec!["-a".to_string()],
                     desc: Some("test desc".to_string()),
                     arg_type: SyntaxOptArgType::Integer,
                     value_delimiter: Some(','),
@@ -1852,7 +1783,7 @@ mod tests {
             assert_eq!(
                 arg,
                 &SyntaxOptArg {
-                    name: "-a".to_string(),
+                    names: vec!["-a".to_string()],
                     desc: Some("test desc".to_string()),
                     arg_type: SyntaxOptArgType::Integer,
                     value_delimiter: Some(','),
@@ -1880,7 +1811,7 @@ mod tests {
             assert_eq!(
                 arg,
                 &SyntaxOptArg {
-                    name: "-a".to_string(),
+                    names: vec!["-a".to_string()],
                     desc: Some("test desc\ncontinued desc".to_string()),
                     required: true,
                     ..Default::default()
@@ -1906,7 +1837,7 @@ mod tests {
             assert_eq!(
                 arg,
                 &SyntaxOptArg {
-                    name: "-a".to_string(),
+                    names: vec!["-a".to_string()],
                     desc: Some("test desc\ncontinued desc".to_string()),
                     required: true,
                     ..Default::default()
@@ -1931,7 +1862,7 @@ mod tests {
             assert_eq!(
                 arg,
                 &SyntaxOptArg {
-                    name: "-a".to_string(),
+                    names: vec!["-a".to_string()],
                     desc: Some("test desc".to_string()),
                     required: false,
                     ..Default::default()
@@ -1940,9 +1871,231 @@ mod tests {
         }
 
         #[test]
+        fn arggroup_simple() {
+            let mut reader = BufReader::new("# arggroup: a_group: a\n".as_bytes());
+            let details = PathCommandFileDetails::from_source_file_header(&mut reader);
+
+            assert!(details.is_some(), "Details are not present");
+            let details = details.unwrap();
+
+            assert!(details.syntax.is_some(), "Syntax is not present");
+
+            let syntax = details.syntax.unwrap();
+            assert_eq!(syntax.groups.len(), 1);
+
+            let group = &syntax.groups[0];
+            assert_eq!(
+                group,
+                &SyntaxGroup {
+                    name: "a_group".to_string(),
+                    parameters: vec!["a".to_string()],
+                    ..Default::default()
+                }
+            );
+        }
+
+        #[test]
+        fn arggroup_multiple() {
+            let mut reader =
+                BufReader::new("# arggroup: a_group: multiple=true: a b c\n".as_bytes());
+            let details = PathCommandFileDetails::from_source_file_header(&mut reader);
+
+            assert!(details.is_some(), "Details are not present");
+            let details = details.unwrap();
+
+            assert!(details.syntax.is_some(), "Syntax is not present");
+
+            let syntax = details.syntax.unwrap();
+            assert_eq!(syntax.groups.len(), 1);
+
+            let group = &syntax.groups[0];
+            assert_eq!(
+                group,
+                &SyntaxGroup {
+                    name: "a_group".to_string(),
+                    multiple: true,
+                    parameters: vec!["a".to_string(), "b".to_string(), "c".to_string()],
+                    ..Default::default()
+                }
+            );
+        }
+
+        #[test]
+        fn arggroup_required() {
+            let mut reader =
+                BufReader::new("# arggroup: a_group: required=true: a b c\n".as_bytes());
+            let details = PathCommandFileDetails::from_source_file_header(&mut reader);
+
+            assert!(details.is_some(), "Details are not present");
+            let details = details.unwrap();
+
+            assert!(details.syntax.is_some(), "Syntax is not present");
+
+            let syntax = details.syntax.unwrap();
+            assert_eq!(syntax.groups.len(), 1);
+
+            let group = &syntax.groups[0];
+            assert_eq!(
+                group,
+                &SyntaxGroup {
+                    name: "a_group".to_string(),
+                    required: true,
+                    parameters: vec!["a".to_string(), "b".to_string(), "c".to_string()],
+                    ..Default::default()
+                }
+            );
+        }
+
+        #[test]
+        fn arggroup_conflicts_with() {
+            let mut reader =
+                BufReader::new("# arggroup: a_group: conflicts_with=b_group: a b c\n".as_bytes());
+            let details = PathCommandFileDetails::from_source_file_header(&mut reader);
+
+            assert!(details.is_some(), "Details are not present");
+            let details = details.unwrap();
+
+            assert!(details.syntax.is_some(), "Syntax is not present");
+
+            let syntax = details.syntax.unwrap();
+            assert_eq!(syntax.groups.len(), 1);
+
+            let group = &syntax.groups[0];
+            assert_eq!(
+                group,
+                &SyntaxGroup {
+                    name: "a_group".to_string(),
+                    conflicts_with: vec!["b_group".to_string()],
+                    parameters: vec!["a".to_string(), "b".to_string(), "c".to_string()],
+                    ..Default::default()
+                }
+            );
+        }
+
+        #[test]
+        fn arggroup_requires() {
+            let mut reader =
+                BufReader::new("# arggroup: a_group: requires=b_group: a b c\n".as_bytes());
+            let details = PathCommandFileDetails::from_source_file_header(&mut reader);
+
+            assert!(details.is_some(), "Details are not present");
+            let details = details.unwrap();
+
+            assert!(details.syntax.is_some(), "Syntax is not present");
+
+            let syntax = details.syntax.unwrap();
+            assert_eq!(syntax.groups.len(), 1);
+
+            let group = &syntax.groups[0];
+            assert_eq!(
+                group,
+                &SyntaxGroup {
+                    name: "a_group".to_string(),
+                    requires: vec!["b_group".to_string()],
+                    parameters: vec!["a".to_string(), "b".to_string(), "c".to_string()],
+                    ..Default::default()
+                }
+            );
+        }
+
+        #[test]
+        fn arggroup_repeat() {
+            let mut reader = BufReader::new(
+                "# arggroup: a_group: a b c\n# arggroup: a_group: d e f\n".as_bytes(),
+            );
+            let details = PathCommandFileDetails::from_source_file_header(&mut reader);
+
+            assert!(details.is_some(), "Details are not present");
+            let details = details.unwrap();
+
+            assert!(details.syntax.is_some(), "Syntax is not present");
+
+            let syntax = details.syntax.unwrap();
+
+            assert_eq!(syntax.groups.len(), 1);
+
+            let group = &syntax.groups[0];
+            assert_eq!(
+                group,
+                &SyntaxGroup {
+                    name: "a_group".to_string(),
+                    parameters: vec![
+                        "a".to_string(),
+                        "b".to_string(),
+                        "c".to_string(),
+                        "d".to_string(),
+                        "e".to_string(),
+                        "f".to_string()
+                    ],
+                    ..Default::default()
+                }
+            );
+        }
+
+        #[test]
+        fn arggroup_repeat_plus() {
+            let mut reader = BufReader::new("# arggroup: a_group: a b c\n# +: d e f\n".as_bytes());
+            let details = PathCommandFileDetails::from_source_file_header(&mut reader);
+
+            assert!(details.is_some(), "Details are not present");
+            let details = details.unwrap();
+
+            assert!(details.syntax.is_some(), "Syntax is not present");
+
+            let syntax = details.syntax.unwrap();
+
+            assert_eq!(syntax.groups.len(), 1);
+
+            let group = &syntax.groups[0];
+            assert_eq!(
+                group,
+                &SyntaxGroup {
+                    name: "a_group".to_string(),
+                    parameters: vec![
+                        "a".to_string(),
+                        "b".to_string(),
+                        "c".to_string(),
+                        "d".to_string(),
+                        "e".to_string(),
+                        "f".to_string()
+                    ],
+                    ..Default::default()
+                }
+            );
+        }
+
+        #[test]
+        fn arggroup_repeat_with_required() {
+            let mut reader = BufReader::new(
+                "# arggroup: a_group: required=true\n# arggroup: a_group: a b c\n".as_bytes(),
+            );
+            let details = PathCommandFileDetails::from_source_file_header(&mut reader);
+
+            assert!(details.is_some(), "Details are not present");
+            let details = details.unwrap();
+
+            assert!(details.syntax.is_some(), "Syntax is not present");
+
+            let syntax = details.syntax.unwrap();
+
+            assert_eq!(syntax.groups.len(), 1);
+
+            let group = &syntax.groups[0];
+            assert_eq!(
+                group,
+                &SyntaxGroup {
+                    name: "a_group".to_string(),
+                    required: true,
+                    parameters: vec!["a".to_string(), "b".to_string(), "c".to_string(),],
+                    ..Default::default()
+                }
+            );
+        }
+
+        #[test]
         fn complex_multiline_everywhere() {
             let mut reader = BufReader::new(
-                "# category: test cat\n# +: more cat\n# autocompletion: true\n# argparser: true\n# sync_update: false\n# help: test help\n# +: more help\n# arg: -a: type=int\n# +: delimiter=,\n# +: test desc\n# opt: -b: type=string\n# +: delimiter=|\n# +: test desc\n".as_bytes(),
+                "# category: test cat\n# +: more cat\n# autocompletion: true\n# argparser: true\n# sync_update: false\n# help: test help\n# +: more help\n# arg: -a: type=int\n# +: delimiter=,\n# +: test desc\n# opt: -b: type=string\n# +: delimiter=|\n# +: test desc\n# arggroup: a_group: multiple=true: a".as_bytes(),
             );
             let details = PathCommandFileDetails::from_source_file_header(&mut reader);
 
@@ -1966,7 +2119,7 @@ mod tests {
             assert_eq!(
                 arg_a,
                 &SyntaxOptArg {
-                    name: "-a".to_string(),
+                    names: vec!["-a".to_string()],
                     desc: Some("test desc".to_string()),
                     arg_type: SyntaxOptArgType::Integer,
                     value_delimiter: Some(','),
@@ -1979,11 +2132,24 @@ mod tests {
             assert_eq!(
                 arg_b,
                 &SyntaxOptArg {
-                    name: "-b".to_string(),
+                    names: vec!["-b".to_string()],
                     desc: Some("test desc".to_string()),
                     arg_type: SyntaxOptArgType::String,
                     value_delimiter: Some('|'),
                     required: false,
+                    ..Default::default()
+                }
+            );
+
+            assert_eq!(syntax.groups.len(), 1);
+
+            let group_a = &syntax.groups[0];
+            assert_eq!(
+                group_a,
+                &SyntaxGroup {
+                    name: "a_group".to_string(),
+                    multiple: true,
+                    parameters: vec!["a".to_string()],
                     ..Default::default()
                 }
             );

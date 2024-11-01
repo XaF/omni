@@ -247,7 +247,7 @@ impl BuiltinCommand for ScopeCommand {
         Some(CommandSyntax {
             parameters: vec![
                 SyntaxOptArg {
-                    name: "repo".to_string(),
+                    names: vec!["repo".to_string()],
                     desc: Some(
                         concat!(
                             "The name of the repo to run commands in the context of; this ",
@@ -262,7 +262,7 @@ impl BuiltinCommand for ScopeCommand {
                     ..Default::default()
                 },
                 SyntaxOptArg {
-                    name: "command".to_string(),
+                    names: vec!["command".to_string()],
                     desc: Some(
                         "The omni command to run in the context of the specified repository."
                             .to_string(),
@@ -271,7 +271,7 @@ impl BuiltinCommand for ScopeCommand {
                     ..Default::default()
                 },
                 SyntaxOptArg {
-                    name: "options".to_string(),
+                    names: vec!["options".to_string()],
                     desc: Some("Any options to pass to the omni command.".to_string()),
                     leftovers: true,
                     ..Default::default()

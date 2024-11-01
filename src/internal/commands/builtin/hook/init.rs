@@ -252,7 +252,7 @@ impl BuiltinCommand for HookInitCommand {
         Some(CommandSyntax {
             parameters: vec![
                 SyntaxOptArg {
-                    name: "--alias".to_string(),
+                    names: vec!["--alias".to_string()],
                     desc: Some(
                         "Create an alias for the omni command with autocompletion support."
                             .to_string(),
@@ -261,7 +261,7 @@ impl BuiltinCommand for HookInitCommand {
                     ..Default::default()
                 },
                 SyntaxOptArg {
-                    name: "--command-alias".to_string(),
+                    names: vec!["--command-alias".to_string()],
                     desc: Some(
                         concat!(
                             "Create an alias for the specified omni subcommand with autocompletion ",
@@ -275,7 +275,7 @@ impl BuiltinCommand for HookInitCommand {
                     ..Default::default()
                 },
                 SyntaxOptArg {
-                    name: "--shims".to_string(),
+                    names: vec!["--shims".to_string()],
                     desc: Some(
                         "Only load the shims without setting up the dynamic environment."
                             .to_string(),
@@ -284,7 +284,7 @@ impl BuiltinCommand for HookInitCommand {
                     ..Default::default()
                 },
                 SyntaxOptArg {
-                    name: "--keep-shims-in-path".to_string(),
+                    names: vec!["--keep-shims-in-path".to_string()],
                     desc: Some(concat!(
                         "Prevent the dynamic environment from removing the shims directory from the PATH. ",
                         "This can be useful if you are used to launch your IDE from the terminal and do ",
@@ -294,7 +294,7 @@ impl BuiltinCommand for HookInitCommand {
                     ..Default::default()
                 },
                 SyntaxOptArg {
-                    name: "--print-shims-path".to_string(),
+                    names: vec!["--print-shims-path".to_string()],
                     desc: Some(concat!(
                         "Print the path to the shims directory and exit. This should not be ",
                         "used to eval in a shell environment."
@@ -303,7 +303,7 @@ impl BuiltinCommand for HookInitCommand {
                     ..Default::default()
                 },
                 SyntaxOptArg {
-                    name: "shell".to_string(),
+                    names: vec!["shell".to_string()],
                     desc: Some(
                         "Which shell to initialize omni for. Can be one of bash, zsh or fish."
                             .to_string(),

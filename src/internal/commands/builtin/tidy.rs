@@ -295,7 +295,7 @@ impl BuiltinCommand for TidyCommand {
         Some(CommandSyntax {
             parameters: vec![
                 SyntaxOptArg {
-                    name: "--yes".to_string(),
+                    names: vec!["--yes".to_string()],
                     desc: Some(
                         "Do not ask for confirmation before organizing repositories".to_string(),
                     ),
@@ -303,7 +303,7 @@ impl BuiltinCommand for TidyCommand {
                     ..Default::default()
                 },
                 SyntaxOptArg {
-                    name: "--search-path".to_string(),
+                    names: vec!["--search-path".to_string()],
                     desc: Some(
                         concat!(
                             "Extra path to search git repositories to tidy up ",
@@ -315,7 +315,7 @@ impl BuiltinCommand for TidyCommand {
                     ..Default::default()
                 },
                 SyntaxOptArg {
-                    name: "--up-all".to_string(),
+                    names: vec!["--up-all".to_string()],
                     desc: Some(
                         concat!(
                             "Run \x1B[3momni up\x1B[0m in all the repositories ",
@@ -330,7 +330,7 @@ impl BuiltinCommand for TidyCommand {
                     ..Default::default()
                 },
                 SyntaxOptArg {
-                    name: "up args".to_string(),
+                    names: vec!["up args".to_string()],
                     desc: Some(
                         concat!(
                             "Arguments to pass to \x1B[3momni up\x1B[0m when running ",
