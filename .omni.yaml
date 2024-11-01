@@ -1,7 +1,7 @@
 up:
   - rust
   - node: auto
-  - or:
+  - any:
     - nix:
         - bats
     - homebrew:
