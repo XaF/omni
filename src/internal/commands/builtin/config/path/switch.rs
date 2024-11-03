@@ -174,7 +174,7 @@ impl BuiltinCommand for ConfigPathSwitchCommand {
         Some(CommandSyntax {
             parameters: vec![
                 SyntaxOptArg {
-                    name: "--<source>".to_string(),
+                    names: vec!["--<source>".to_string()],
                     desc: Some(
                         concat!(
                             "The source to use for the repository; this can be either ",
@@ -187,7 +187,7 @@ impl BuiltinCommand for ConfigPathSwitchCommand {
                     ..Default::default()
                 },
                 SyntaxOptArg {
-                    name: "repo".to_string(),
+                    names: vec!["repo".to_string()],
                     desc: Some(
                         concat!(
                             "The name of the repository to switch the source from; this can be in the format ",

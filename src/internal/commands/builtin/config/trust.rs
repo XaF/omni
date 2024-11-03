@@ -135,7 +135,7 @@ impl BuiltinCommand for ConfigTrustCommand {
         Some(CommandSyntax {
             parameters: vec![
                 SyntaxOptArg {
-                    name: "--check".to_string(),
+                    names: vec!["--check".to_string()],
                     desc: Some(
                         "Check the trust status of the repository instead of changing it"
                             .to_string(),
@@ -144,7 +144,7 @@ impl BuiltinCommand for ConfigTrustCommand {
                     ..Default::default()
                 },
                 SyntaxOptArg {
-                    name: "repo".to_string(),
+                    names: vec!["repo".to_string()],
                     desc: Some(
                         concat!("The repository to trust or untrust ", "[default: current]",)
                             .to_string(),

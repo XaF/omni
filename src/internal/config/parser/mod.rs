@@ -16,6 +16,7 @@ mod clone;
 pub(crate) use clone::CloneConfig;
 
 mod command_definition;
+pub(crate) use command_definition::parse_arg_name;
 pub(crate) use command_definition::CommandDefinition;
 pub(crate) use command_definition::CommandSyntax;
 pub(crate) use command_definition::SyntaxGroup;

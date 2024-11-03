@@ -449,7 +449,7 @@ impl BuiltinCommand for CloneCommand {
         Some(CommandSyntax {
             parameters: vec![
                 SyntaxOptArg {
-                    name: "--package".to_string(),
+                    names: vec!["--package".to_string()],
                     desc: Some(
                         "Clone the repository as a package \x1B[90m(default: no)\x1B[0m"
                             .to_string(),
@@ -458,7 +458,7 @@ impl BuiltinCommand for CloneCommand {
                     ..Default::default()
                 },
                 SyntaxOptArg {
-                    name: "repo".to_string(),
+                    names: vec!["repo".to_string()],
                     desc: Some(
                         concat!(
                             "The repository to clone; this can be in format <org>/<repo>, ",
@@ -472,7 +472,7 @@ impl BuiltinCommand for CloneCommand {
                     ..Default::default()
                 },
                 SyntaxOptArg {
-                    name: "options".to_string(),
+                    names: vec!["options".to_string()],
                     desc: Some("Any additional options to pass to git clone.".to_string()),
                     leftovers: true,
                     ..Default::default()

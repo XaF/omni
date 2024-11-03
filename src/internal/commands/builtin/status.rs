@@ -354,13 +354,13 @@ impl BuiltinCommand for StatusCommand {
         Some(CommandSyntax {
             parameters: vec![
                 SyntaxOptArg {
-                    name: "--shell-integration".to_string(),
+                    names: vec!["--shell-integration".to_string()],
                     desc: Some("Show if the shell integration is loaded or not.".to_string()),
                     arg_type: SyntaxOptArgType::Flag,
                     ..Default::default()
                 },
                 SyntaxOptArg {
-                    name: "--config".to_string(),
+                    names: vec!["--config".to_string()],
                     desc: Some(
                         "Show the configuration that omni is using for the current directory. This is not shown by default."
                             .to_string(),
@@ -369,7 +369,7 @@ impl BuiltinCommand for StatusCommand {
                     ..Default::default()
                 },
                 SyntaxOptArg {
-                    name: "--config-files".to_string(),
+                    names: vec!["--config-files".to_string()],
                     desc: Some(
                         "Show the configuration files that omni is loading for the current directory."
                             .to_string(),
@@ -378,7 +378,7 @@ impl BuiltinCommand for StatusCommand {
                     ..Default::default()
                 },
                 SyntaxOptArg {
-                    name: "--worktree".to_string(),
+                    names: vec!["--worktree".to_string()],
                     desc: Some(
                         "Show the default worktree."
                             .to_string(),
@@ -387,7 +387,7 @@ impl BuiltinCommand for StatusCommand {
                     ..Default::default()
                 },
                 SyntaxOptArg {
-                    name: "--orgs".to_string(),
+                    names: vec!["--orgs".to_string()],
                     desc: Some(
                         "Show the organizations."
                             .to_string(),
@@ -396,7 +396,7 @@ impl BuiltinCommand for StatusCommand {
                     ..Default::default()
                 },
                 SyntaxOptArg {
-                    name: "--path".to_string(),
+                    names: vec!["--path".to_string()],
                     desc: Some(
                         "Show the current omnipath."
                             .to_string(),

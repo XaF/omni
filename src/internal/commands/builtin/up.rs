@@ -1280,7 +1280,7 @@ impl BuiltinCommand for UpCommand {
         Some(CommandSyntax {
             parameters: vec![
                 SyntaxOptArg {
-                    name: "--no-cache".to_string(),
+                    names: vec!["--no-cache".to_string()],
                     desc: Some(
                         concat!(
                             "Whether we should disable the cache while running the command ",
@@ -1292,7 +1292,7 @@ impl BuiltinCommand for UpCommand {
                     ..Default::default()
                 },
                 SyntaxOptArg {
-                    name: "--fail-on-upgrade".to_string(),
+                    names: vec!["--fail-on-upgrade".to_string()],
                     desc: Some(
                         concat!(
                             "If provided, will fail the operation if a resource failed to ",
@@ -1305,7 +1305,7 @@ impl BuiltinCommand for UpCommand {
                     ..Default::default()
                 },
                 SyntaxOptArg {
-                    name: "--bootstrap".to_string(),
+                    names: vec!["--bootstrap".to_string()],
                     desc: Some(
                         concat!(
                             "Same as using \x1B[1m--update-user-config --clone-suggested\x1B[0m; if ",
@@ -1318,7 +1318,7 @@ impl BuiltinCommand for UpCommand {
                     ..Default::default()
                 },
                 SyntaxOptArg {
-                    name: "--clone-suggested".to_string(),
+                    names: vec!["--clone-suggested".to_string()],
                     desc: Some(
                         concat!(
                             "Whether we should clone suggested repositories found in the configuration ",
@@ -1335,7 +1335,7 @@ impl BuiltinCommand for UpCommand {
                     ..Default::default()
                 },
                 SyntaxOptArg {
-                    name: "--prompt".to_string(),
+                    names: vec!["--prompt".to_string()],
                     desc: Some(
                         concat!(
                             "Trigger prompts for the given prompt ids, specified as arguments, as ",
@@ -1347,7 +1347,7 @@ impl BuiltinCommand for UpCommand {
                     ..Default::default()
                 },
                 SyntaxOptArg {
-                    name: "--prompt-all".to_string(),
+                    names: vec!["--prompt-all".to_string()],
                     desc: Some(
                         concat!(
                             "Trigger all prompts for the current work directory, even if they have ",
@@ -1359,7 +1359,7 @@ impl BuiltinCommand for UpCommand {
                     ..Default::default()
                 },
                 SyntaxOptArg {
-                    name: "--trust".to_string(),
+                    names: vec!["--trust".to_string()],
                     desc: Some(
                         "Define how to trust the repository (always/yes/no) to run the command"
                             .to_string(),
@@ -1373,7 +1373,7 @@ impl BuiltinCommand for UpCommand {
                     ..Default::default()
                 },
                 SyntaxOptArg {
-                    name: "--update-repository".to_string(),
+                    names: vec!["--update-repository".to_string()],
                     desc: Some(
                         concat!(
                             "Whether we should update the repository before running the command; ",
@@ -1386,7 +1386,7 @@ impl BuiltinCommand for UpCommand {
                     ..Default::default()
                 },
                 SyntaxOptArg {
-                    name: "--update-user-config".to_string(),
+                    names: vec!["--update-user-config".to_string()],
                     desc: Some(
                         concat!(
                             "Whether we should handle suggestions found in the configuration of ",
@@ -1405,7 +1405,7 @@ impl BuiltinCommand for UpCommand {
                     ..Default::default()
                 },
                 SyntaxOptArg {
-                    name: "--upgrade".to_string(),
+                    names: vec!["--upgrade".to_string()],
                     desc: Some(
                         concat!(
                             "Whether we should upgrade the resources when the currently-installed ",

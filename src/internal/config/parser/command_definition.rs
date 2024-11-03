@@ -219,7 +219,7 @@ impl CommandSyntax {
                 "only one argument can use {}; found {}",
                 "leftovers".light_yellow(),
                 leftovers_params
-                    .map(|param| param.name.light_yellow())
+                    .map(|param| param.name().light_yellow())
                     .collect::<Vec<_>>()
                     .join(", ")
             ));
@@ -234,7 +234,7 @@ impl CommandSyntax {
                 "only positional arguments can use {}; found {}",
                 "leftovers".light_yellow(),
                 nonpositional_leftovers
-                    .map(|param| param.name.light_yellow())
+                    .map(|param| param.name().light_yellow())
                     .collect::<Vec<_>>()
                     .join(", ")
             ));
@@ -278,7 +278,7 @@ impl CommandSyntax {
                 "only positional arguments can use {}; found {}",
                 "last".light_yellow(),
                 nonpositional_last
-                    .map(|param| param.name.light_yellow())
+                    .map(|param| param.name().light_yellow())
                     .collect::<Vec<_>>()
                     .join(", ")
             ));
@@ -302,14 +302,14 @@ impl CommandSyntax {
             if param.is_positional() {
                 return Err(format!(
                     "{}: counter argument cannot be positional",
-                    param.name.light_yellow()
+                    param.name().light_yellow()
                 ));
             }
 
             if param.num_values.is_some() {
                 return Err(format!(
                     "{}: counter argument cannot have a num_values (counters do not take any values)",
-                    param.name.light_yellow()
+                    param.name().light_yellow()
                 ));
             }
         }
@@ -490,7 +490,7 @@ impl CommandSyntax {
             if let Some(SyntaxOptArgNumValues::Exactly(0)) = param.num_values {
                 return Err(format!(
                     "{}: cannot use {} with 'num_values=0'",
-                    param.name.light_yellow(),
+                    param.name().light_yellow(),
                     "allow_hyphen_values".light_yellow(),
                 ));
             }
@@ -499,7 +499,7 @@ impl CommandSyntax {
                 SyntaxOptArgType::Flag | SyntaxOptArgType::Counter => {
                     return Err(format!(
                         "{}: cannot use {} on a {}",
-                        param.name.light_yellow(),
+                        param.name().light_yellow(),
                         "allow_hyphen_values".light_yellow(),
                         param.arg_type.to_str(),
                     ))
@@ -528,7 +528,7 @@ impl CommandSyntax {
                     if let Some(prev) = prev_positional_with_num_values {
                         return Err(format!(
                             "{}: positional need to be required or use '{}' if appearing after {} with num_values > 1",
-                            param.name.light_yellow(),
+                            param.name().light_yellow(),
                             "last=true".light_yellow(),
                             prev.light_yellow(),
                         ));
@@ -536,12 +536,12 @@ impl CommandSyntax {
                 }
 
                 if prev_positional_without_required.is_none() {
-                    prev_positional_without_required = Some(param.name.clone());
+                    prev_positional_without_required = Some(param.name().clone());
                 }
             } else if let Some(prev) = prev_positional_without_required {
                 return Err(format!(
                     "{}: required positional argument cannot appear after non-required one {}",
-                    param.name.light_yellow(),
+                    param.name().light_yellow(),
                     prev.light_yellow(),
                 ));
             } else if let Some(
@@ -552,12 +552,12 @@ impl CommandSyntax {
             {
                 return Err(format!(
                     "{}: positional argument cannot have 'num_values=0'",
-                    param.name.light_yellow(),
+                    param.name().light_yellow(),
                 ));
             }
 
             if param.num_values.is_some() && prev_positional_with_num_values.is_none() {
-                prev_positional_with_num_values = Some(param.name.clone());
+                prev_positional_with_num_values = Some(param.name().clone());
             }
         }
 
@@ -650,11 +650,10 @@ impl CommandSyntax {
 
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
 pub struct SyntaxOptArg {
-    pub name: String,
+    #[serde(alias = "name")]
+    pub names: Vec<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub dest: Option<String>,
-    #[serde(skip_serializing_if = "Vec::is_empty")]
-    pub aliases: Vec<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub desc: Option<String>,
     #[serde(skip_serializing_if = "cache_utils::is_false")]
@@ -692,9 +691,8 @@ pub struct SyntaxOptArg {
 impl Default for SyntaxOptArg {
     fn default() -> Self {
         Self {
-            name: "".to_string(),
+            names: vec![],
             dest: None,
-            aliases: vec![],
             desc: None,
             required: false,
             placeholder: None,
@@ -716,31 +714,22 @@ impl Default for SyntaxOptArg {
 }
 
 impl SyntaxOptArg {
-    #[allow(dead_code)]
-    pub fn new(name: String, desc: Option<String>, required: bool) -> Self {
-        Self {
-            name,
-            desc,
-            required,
-            ..Self::default()
-        }
-    }
-
     pub(super) fn from_config_value(
         config_value: &ConfigValue,
         required: Option<bool>,
     ) -> Option<Self> {
-        let name;
+        let mut names;
+        let mut arg_type;
+        let mut placeholder;
+        let mut leftovers;
+
         let mut desc = None;
         let mut dest = None;
         let mut required = required;
-        let mut arg_type = SyntaxOptArgType::String;
-        let mut placeholder = None;
         let mut default = None;
         let mut num_values = None;
         let mut value_delimiter = None;
         let mut last_arg_double_hyphen = false;
-        let mut leftovers = false;
         let mut allow_hyphen_values = false;
         let mut requires = vec![];
         let mut conflicts_with = vec![];
@@ -748,21 +737,20 @@ impl SyntaxOptArg {
         let mut required_without_all = vec![];
         let mut required_if_eq = HashMap::new();
         let mut required_if_eq_all = HashMap::new();
-        let mut aliases = vec![];
 
         if let Some(table) = config_value.as_table() {
             let value_for_details;
 
             if let Some(name_value) = table.get("name") {
                 if let Some(name_value) = name_value.as_str() {
-                    name = name_value.to_string();
+                    (names, arg_type, placeholder, leftovers) = parse_arg_name(&name_value);
                     value_for_details = Some(config_value.clone());
                 } else {
                     return None;
                 }
             } else if table.len() == 1 {
                 if let Some((key, value)) = table.into_iter().next() {
-                    name = key;
+                    (names, arg_type, placeholder, leftovers) = parse_arg_name(&key);
                     value_for_details = Some(value);
                 } else {
                     return None;
@@ -894,25 +882,26 @@ impl SyntaxOptArg {
 
                     if let Some(aliases_value) = value_table.get("aliases") {
                         if let Some(value) = aliases_value.as_str_forced() {
-                            aliases.push(value.to_string());
+                            names.push(value.to_string());
                         } else if let Some(array) = aliases_value.as_array() {
                             for value in array {
                                 if let Some(value) = value.as_str_forced() {
-                                    aliases.push(value.to_string());
+                                    names.push(value.to_string());
                                 }
                             }
                         }
                     }
                 }
             }
+        } else if let Some(value) = config_value.as_str() {
+            (names, arg_type, placeholder, leftovers) = parse_arg_name(&value);
         } else {
-            name = config_value.as_str().unwrap();
+            return None;
         }
 
         Some(Self {
-            name,
+            names,
             dest,
-            aliases,
             desc,
             required: required.unwrap_or(false),
             placeholder,
@@ -954,20 +943,68 @@ impl SyntaxOptArg {
     pub fn dest(&self) -> String {
         let dest = match self.dest {
             Some(ref dest) => dest.clone(),
-            None => self.name.clone(),
+            None => self.name().clone(),
         };
 
         sanitize_str(&dest)
     }
 
+    fn organized_names(
+        &self,
+    ) -> (
+        String,
+        Option<String>,
+        Option<String>,
+        Vec<String>,
+        Vec<String>,
+    ) {
+        let long_names = self
+            .names
+            .iter()
+            .filter(|name| name.starts_with("--"))
+            .map(|name| name.to_string())
+            .collect::<Vec<_>>();
+        let (main_long, long_names) = long_names
+            .split_first()
+            .map(|(f, r)| (Some(f.clone()), r.to_vec()))
+            .unwrap_or((None, vec![]));
+
+        let short_names = self
+            .names
+            .iter()
+            .filter(|name| name.starts_with('-') && !name.starts_with("--"))
+            .map(|name| name.to_string())
+            .collect::<Vec<_>>();
+        let (main_short, short_names) = short_names
+            .split_first()
+            .map(|(f, r)| (Some(f.clone()), r.to_vec()))
+            .unwrap_or((None, vec![]));
+
+        let main = if let Some(main_long) = &main_long {
+            main_long.clone()
+        } else if let Some(main_short) = &main_short {
+            main_short.clone()
+        } else {
+            self.names
+                .first()
+                .expect("name should have at least one value")
+                .clone()
+        };
+
+        (main, main_long, main_short, long_names, short_names)
+    }
+
+    pub fn name(&self) -> String {
+        let (main, _, _, _, _) = self.organized_names();
+        main
+    }
+
     pub fn all_names(&self) -> Vec<String> {
-        let mut names = vec![self.name.clone()];
-        names.extend(self.aliases.clone());
-        names
+        self.names.clone()
     }
 
     pub fn is_positional(&self) -> bool {
-        !self.name.starts_with('-')
+        !self.name().starts_with('-')
     }
 
     pub fn takes_value(&self) -> bool {
@@ -1005,7 +1042,7 @@ impl SyntaxOptArg {
             let placeholder = self
                 .placeholder
                 .clone()
-                .unwrap_or_else(|| self.name.clone());
+                .unwrap_or_else(|| self.name().clone());
 
             let repr = if self.required {
                 format!("<{}>", placeholder)
@@ -1090,7 +1127,7 @@ impl SyntaxOptArg {
                 let placeholder = self
                     .placeholder
                     .clone()
-                    .unwrap_or_else(|| sanitize_str(&self.name).to_uppercase());
+                    .unwrap_or_else(|| sanitize_str(&self.name()).to_uppercase());
 
                 let repr = format!("<{}>", placeholder);
                 let repr = if use_colors { repr.light_cyan() } else { repr };
@@ -1182,47 +1219,32 @@ impl SyntaxOptArg {
             );
         }
 
-        // Add the long aliases if any
-        if !self.aliases.is_empty() {
-            let all_names = self.all_names();
-            let (short_aliases, long_aliases): (Vec<_>, Vec<_>) =
-                all_names.iter().partition(|name| !name.starts_with("--"));
+        // Add the aliases if any
+        let (_, _, _, long_aliases, short_aliases) = self.organized_names();
 
-            // Skip the first element of each array, and map the elements to String
-            let short_aliases = short_aliases
-                .iter()
-                .skip(1)
-                .map(|name| name.to_string())
-                .collect::<Vec<_>>();
-            let long_aliases = long_aliases
-                .iter()
-                .skip(1)
-                .map(|name| name.to_string())
-                .collect::<Vec<_>>();
-
-            // Now add to the help description if any left
-            if !long_aliases.is_empty() {
-                if !help_desc.is_empty() {
-                    help_desc.push(' ');
-                }
-                help_desc.push_str(
-                    &format!("[{}: {}]", "aliases".italic(), long_aliases.join(", ")).light_black(),
-                );
+        if !long_aliases.is_empty() {
+            if !help_desc.is_empty() {
+                help_desc.push(' ');
             }
 
-            if !short_aliases.is_empty() {
-                if !help_desc.is_empty() {
-                    help_desc.push(' ');
-                }
-                help_desc.push_str(
-                    &format!(
-                        "[{}: {}]",
-                        "short aliases".italic(),
-                        short_aliases.join(", ")
-                    )
-                    .light_black(),
-                );
+            help_desc.push_str(
+                &format!("[{}: {}]", "aliases".italic(), long_aliases.join(", ")).light_black(),
+            );
+        }
+
+        if !short_aliases.is_empty() {
+            if !help_desc.is_empty() {
+                help_desc.push(' ');
             }
+
+            help_desc.push_str(
+                &format!(
+                    "[{}: {}]",
+                    "short aliases".italic(),
+                    short_aliases.join(", ")
+                )
+                .light_black(),
+            );
         }
 
         help_desc
@@ -1237,45 +1259,53 @@ impl SyntaxOptArg {
         }
 
         // Add all the names for that argument
-        if self.name.starts_with('-') {
-            let mut seen_short = false;
+        if !self.is_positional() {
+            let (_, main_long, main_short, long_names, short_names) = self.organized_names();
 
-            // Check that the sanitized name is not empty
-            if sanitize_str(&self.name).is_empty() {
-                // TODO: raise error ?
-                return parser;
-            }
-
-            let name = self.name.clone();
-            if let Some(trimmed) = name.strip_prefix("--") {
-                arg = arg.long(trimmed.to_string());
-            } else if let Some(trimmed) = name.strip_prefix("-") {
-                arg = arg.short(trimmed.chars().next().unwrap());
-                seen_short = true;
-            } else {
-                unreachable!("should not have non-dash names");
-            }
-
-            for alias in &self.aliases {
-                if sanitize_str(alias).is_empty() {
+            if let Some(main_long) = &main_long {
+                if sanitize_str(main_long).is_empty() {
                     // TODO: raise error ?
+                    return parser;
+                }
+
+                let long = main_long.trim_start_matches("-").to_string();
+                arg = arg.long(long);
+            }
+
+            if let Some(main_short) = &main_short {
+                if sanitize_str(main_short).is_empty() {
+                    // TODO: raise error ?
+                    return parser;
+                }
+
+                let short = main_short
+                    .trim_start_matches("-")
+                    .chars()
+                    .next()
+                    .expect("short name should have at least one character");
+                arg = arg.short(short);
+            }
+
+            for long_name in &long_names {
+                if sanitize_str(long_name).is_empty() {
                     continue;
                 }
 
-                let alias = alias.clone();
-                if let Some(trimmed) = alias.strip_prefix("--") {
-                    arg = arg.visible_alias(trimmed.to_string());
-                } else if let Some(trimmed) = alias.strip_prefix("-") {
-                    let short = trimmed.chars().next().unwrap();
-                    if seen_short {
-                        arg = arg.visible_short_alias(short);
-                    } else {
-                        arg = arg.short(short);
-                        seen_short = true;
-                    }
-                } else {
-                    unreachable!("should not have non-dash aliases")
+                let long = long_name.trim_start_matches("-").to_string();
+                arg = arg.visible_alias(long);
+            }
+
+            for short_name in &short_names {
+                if sanitize_str(short_name).is_empty() {
+                    continue;
                 }
+
+                let short = short_name
+                    .trim_start_matches("-")
+                    .chars()
+                    .next()
+                    .expect("short name should have at least one character");
+                arg = arg.visible_short_alias(short);
             }
         }
 
@@ -1507,6 +1537,66 @@ fn extract_value_from_parser<T: Any + Clone + Send + Sync + 'static + ToString +
     }
 }
 
+pub fn parse_arg_name(arg_name: &str) -> (Vec<String>, SyntaxOptArgType, Option<String>, bool) {
+    let mut names = Vec::new();
+    let mut arg_type = SyntaxOptArgType::String;
+    let mut placeholder = None;
+    let mut leftovers = false;
+
+    // Parse the argument name; it can be a single name or multiple names separated by commas.
+    // There can be short names (starting with `-`) and long names (starting with `--`).
+    // Each name can have a placeholder, or the placeholder can be put at the end.
+    // The placeholder is separated by a space from the name.
+    // If the argument name does not start with `-`, only this value will be kept as part of
+    // the names and the others will be ignored.
+    let def_parts: Vec<&str> = arg_name.split(',').map(str::trim).collect();
+
+    for part in def_parts {
+        let name_parts = part.splitn(2, ' ').collect::<Vec<&str>>();
+        if name_parts.is_empty() {
+            continue;
+        }
+
+        let name = name_parts[0];
+        let (name, ends_with_dots) = if name.ends_with("...") {
+            (name.trim_end_matches("..."), true)
+        } else {
+            (name, false)
+        };
+
+        if name.starts_with('-') {
+            if placeholder.is_none() && name_parts.len() > 1 {
+                placeholder = Some(name_parts[1].to_string());
+            }
+
+            if ends_with_dots {
+                // If the name ends with `...`, we consider it a counter
+                arg_type = SyntaxOptArgType::Counter;
+            }
+
+            names.push(name.to_string());
+        } else {
+            names.clear();
+            names.push(name.to_string());
+
+            if ends_with_dots {
+                // If the name ends with `...`, we consider it as a last argument
+                leftovers = true;
+            }
+
+            if name_parts.len() > 1 {
+                placeholder = Some(name_parts[1].to_string());
+            }
+
+            // If we have a parameter without a leading `-`, we stop parsing
+            // the rest of the arg name since this is a positional argument
+            break;
+        }
+    }
+
+    (names, arg_type, placeholder, leftovers)
+}
+
 fn extract_value_to_env<T: Any + Clone + Send + Sync + 'static + ToString + FromStr>(
     matches: &clap::ArgMatches,
     dest: &str,
@@ -1717,6 +1807,12 @@ pub enum SyntaxOptArgType {
     Enum(Vec<String>),
     #[serde(rename = "array")]
     Array(Box<SyntaxOptArgType>),
+}
+
+impl fmt::Display for SyntaxOptArgType {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.to_str())
+    }
 }
 
 impl SyntaxOptArgType {
@@ -2142,12 +2238,12 @@ mod tests {
                 let syntax = CommandSyntax {
                     parameters: vec![
                         SyntaxOptArg {
-                            name: "--param1".to_string(),
+                            names: vec!["--param1".to_string()],
                             dest: Some("paramdest".to_string()),
                             ..SyntaxOptArg::default()
                         },
                         SyntaxOptArg {
-                            name: "--param2".to_string(),
+                            names: vec!["--param2".to_string()],
                             dest: Some("paramdest".to_string()),
                             ..SyntaxOptArg::default()
                         },
@@ -2169,12 +2265,11 @@ mod tests {
                 let syntax = CommandSyntax {
                     parameters: vec![
                         SyntaxOptArg {
-                            name: "--param1".to_string(),
-                            aliases: vec!["--param2".to_string()],
+                            names: vec!["--param1".to_string(), "--param2".to_string()],
                             ..SyntaxOptArg::default()
                         },
                         SyntaxOptArg {
-                            name: "--param2".to_string(),
+                            names: vec!["--param2".to_string()],
                             ..SyntaxOptArg::default()
                         },
                     ],
@@ -2194,7 +2289,7 @@ mod tests {
 
                 let syntax = CommandSyntax {
                     parameters: vec![SyntaxOptArg {
-                        name: "--param1".to_string(),
+                        names: vec!["--param1".to_string()],
                         ..SyntaxOptArg::default()
                     }],
                     groups: vec![SyntaxGroup {
@@ -2220,7 +2315,7 @@ mod tests {
             fn test_param_requires() {
                 let syntax = CommandSyntax {
                     parameters: vec![SyntaxOptArg {
-                        name: "--param1".to_string(),
+                        names: vec!["--param1".to_string()],
                         requires: vec!["--param2".to_string()],
                         ..SyntaxOptArg::default()
                     }],
@@ -2239,7 +2334,7 @@ mod tests {
             fn test_param_conflicts_with() {
                 let syntax = CommandSyntax {
                     parameters: vec![SyntaxOptArg {
-                        name: "--param1".to_string(),
+                        names: vec!["--param1".to_string()],
                         conflicts_with: vec!["--param2".to_string()],
                         ..SyntaxOptArg::default()
                     }],
@@ -2258,7 +2353,7 @@ mod tests {
             fn test_param_required_without() {
                 let syntax = CommandSyntax {
                     parameters: vec![SyntaxOptArg {
-                        name: "--param1".to_string(),
+                        names: vec!["--param1".to_string()],
                         required_without: vec!["--param2".to_string()],
                         ..SyntaxOptArg::default()
                     }],
@@ -2277,7 +2372,7 @@ mod tests {
             fn test_param_required_without_all() {
                 let syntax = CommandSyntax {
                     parameters: vec![SyntaxOptArg {
-                        name: "--param1".to_string(),
+                        names: vec!["--param1".to_string()],
                         required_without_all: vec!["--param2".to_string()],
                         ..SyntaxOptArg::default()
                     }],
@@ -2296,7 +2391,7 @@ mod tests {
             fn test_param_required_if_eq() {
                 let syntax = CommandSyntax {
                     parameters: vec![SyntaxOptArg {
-                        name: "--param1".to_string(),
+                        names: vec!["--param1".to_string()],
                         required_if_eq: HashMap::from_iter(vec![(
                             "param2".to_string(),
                             "value".to_string(),
@@ -2318,7 +2413,7 @@ mod tests {
             fn test_param_required_if_eq_all() {
                 let syntax = CommandSyntax {
                     parameters: vec![SyntaxOptArg {
-                        name: "--param1".to_string(),
+                        names: vec!["--param1".to_string()],
                         required_if_eq_all: HashMap::from_iter(vec![(
                             "param2".to_string(),
                             "value".to_string(),
@@ -2381,7 +2476,7 @@ mod tests {
             fn test_group_requires_param_exists() {
                 let syntax = CommandSyntax {
                     parameters: vec![SyntaxOptArg {
-                        name: "--param1".to_string(),
+                        names: vec!["--param1".to_string()],
                         ..SyntaxOptArg::default()
                     }],
                     groups: vec![SyntaxGroup {
@@ -2447,12 +2542,12 @@ mod tests {
                 let syntax = CommandSyntax {
                     parameters: vec![
                         SyntaxOptArg {
-                            name: "param1".to_string(),
+                            names: vec!["param1".to_string()],
                             leftovers: true,
                             ..SyntaxOptArg::default()
                         },
                         SyntaxOptArg {
-                            name: "param2".to_string(),
+                            names: vec!["param2".to_string()],
                             leftovers: true,
                             ..SyntaxOptArg::default()
                         },
@@ -2471,16 +2566,16 @@ mod tests {
                 let syntax = CommandSyntax {
                     parameters: vec![
                         SyntaxOptArg {
-                            name: "param1".to_string(),
+                            names: vec!["param1".to_string()],
                             ..SyntaxOptArg::default()
                         },
                         SyntaxOptArg {
-                            name: "param2".to_string(),
+                            names: vec!["param2".to_string()],
                             leftovers: true,
                             ..SyntaxOptArg::default()
                         },
                         SyntaxOptArg {
-                            name: "param3".to_string(),
+                            names: vec!["param3".to_string()],
                             ..SyntaxOptArg::default()
                         },
                     ],
@@ -2498,11 +2593,11 @@ mod tests {
                 let syntax = CommandSyntax {
                     parameters: vec![
                         SyntaxOptArg {
-                            name: "param1".to_string(),
+                            names: vec!["param1".to_string()],
                             ..SyntaxOptArg::default()
                         },
                         SyntaxOptArg {
-                            name: "--param2".to_string(),
+                            names: vec!["--param2".to_string()],
                             leftovers: true,
                             ..SyntaxOptArg::default()
                         },
@@ -2524,7 +2619,7 @@ mod tests {
 
                 let syntax = CommandSyntax {
                     parameters: vec![SyntaxOptArg {
-                        name: "--param1".to_string(),
+                        names: vec!["--param1".to_string()],
                         last_arg_double_hyphen: true,
                         ..SyntaxOptArg::default()
                     }],
@@ -2545,7 +2640,7 @@ mod tests {
 
                 let syntax = CommandSyntax {
                     parameters: vec![SyntaxOptArg {
-                        name: "param1".to_string(),
+                        names: vec!["param1".to_string()],
                         arg_type: SyntaxOptArgType::Counter,
                         ..SyntaxOptArg::default()
                     }],
@@ -2562,7 +2657,7 @@ mod tests {
 
                 let syntax = CommandSyntax {
                     parameters: vec![SyntaxOptArg {
-                        name: "--param1".to_string(),
+                        names: vec!["--param1".to_string()],
                         arg_type: SyntaxOptArgType::Counter,
                         num_values: Some(SyntaxOptArgNumValues::Exactly(1)),
                         ..SyntaxOptArg::default()
@@ -2584,7 +2679,7 @@ mod tests {
 
                 let syntax = CommandSyntax {
                     parameters: vec![SyntaxOptArg {
-                        name: "--param1".to_string(),
+                        names: vec!["--param1".to_string()],
                         arg_type: SyntaxOptArgType::String,
                         num_values: Some(SyntaxOptArgNumValues::Exactly(0)),
                         allow_hyphen_values: true,
@@ -2606,7 +2701,7 @@ mod tests {
 
                 let syntax = CommandSyntax {
                     parameters: vec![SyntaxOptArg {
-                        name: "--param1".to_string(),
+                        names: vec!["--param1".to_string()],
                         arg_type: SyntaxOptArgType::Counter,
                         allow_hyphen_values: true,
                         ..SyntaxOptArg::default()
@@ -2627,7 +2722,7 @@ mod tests {
 
                 let syntax = CommandSyntax {
                     parameters: vec![SyntaxOptArg {
-                        name: "--param1".to_string(),
+                        names: vec!["--param1".to_string()],
                         arg_type: SyntaxOptArgType::Flag,
                         allow_hyphen_values: true,
                         ..SyntaxOptArg::default()
@@ -2653,12 +2748,12 @@ mod tests {
                 let syntax = CommandSyntax {
                     parameters: vec![
                         SyntaxOptArg {
-                            name: "param1".to_string(),
+                            names: vec!["param1".to_string()],
                             required: false,
                             ..SyntaxOptArg::default()
                         },
                         SyntaxOptArg {
-                            name: "param2".to_string(),
+                            names: vec!["param2".to_string()],
                             required: true,
                             ..SyntaxOptArg::default()
                         },
@@ -2681,12 +2776,12 @@ mod tests {
                 let syntax = CommandSyntax {
                     parameters: vec![
                         SyntaxOptArg {
-                            name: "param1".to_string(),
+                            names: vec!["param1".to_string()],
                             num_values: Some(SyntaxOptArgNumValues::Exactly(2)),
                             ..SyntaxOptArg::default()
                         },
                         SyntaxOptArg {
-                            name: "param2".to_string(),
+                            names: vec!["param2".to_string()],
                             required: false,
                             ..SyntaxOptArg::default()
                         },
@@ -2706,13 +2801,13 @@ mod tests {
                 let syntax = CommandSyntax {
                     parameters: vec![
                         SyntaxOptArg {
-                            name: "param1".to_string(),
+                            names: vec!["param1".to_string()],
                             num_values: Some(SyntaxOptArgNumValues::Exactly(2)),
                             required: true,
                             ..SyntaxOptArg::default()
                         },
                         SyntaxOptArg {
-                            name: "param2".to_string(),
+                            names: vec!["param2".to_string()],
                             required: true,
                             ..SyntaxOptArg::default()
                         },
@@ -2728,12 +2823,12 @@ mod tests {
                 let syntax = CommandSyntax {
                     parameters: vec![
                         SyntaxOptArg {
-                            name: "param1".to_string(),
+                            names: vec!["param1".to_string()],
                             num_values: Some(SyntaxOptArgNumValues::Exactly(2)),
                             ..SyntaxOptArg::default()
                         },
                         SyntaxOptArg {
-                            name: "param2".to_string(),
+                            names: vec!["param2".to_string()],
                             last_arg_double_hyphen: true,
                             ..SyntaxOptArg::default()
                         },
@@ -2750,7 +2845,7 @@ mod tests {
 
                 let syntax = CommandSyntax {
                     parameters: vec![SyntaxOptArg {
-                        name: "param1".to_string(),
+                        names: vec!["param1".to_string()],
                         required: true,
                         num_values: Some(SyntaxOptArgNumValues::Exactly(0)),
                         ..SyntaxOptArg::default()
@@ -2771,7 +2866,7 @@ mod tests {
 
                 let syntax = CommandSyntax {
                     parameters: vec![SyntaxOptArg {
-                        name: "param1".to_string(),
+                        names: vec!["param1".to_string()],
                         required: true,
                         num_values: Some(SyntaxOptArgNumValues::AtMost(0)),
                         ..SyntaxOptArg::default()
@@ -2792,7 +2887,7 @@ mod tests {
 
                 let syntax = CommandSyntax {
                     parameters: vec![SyntaxOptArg {
-                        name: "param1".to_string(),
+                        names: vec!["param1".to_string()],
                         required: true,
                         num_values: Some(SyntaxOptArgNumValues::Between(0, 0)),
                         ..SyntaxOptArg::default()
@@ -2887,13 +2982,13 @@ mod tests {
                 let syntax = CommandSyntax {
                     parameters: vec![
                         SyntaxOptArg {
-                            name: "--param1".to_string(),
+                            names: vec!["--param1".to_string()],
                             arg_type: SyntaxOptArgType::String,
                             required: true,
                             ..SyntaxOptArg::default()
                         },
                         SyntaxOptArg {
-                            name: "--param2".to_string(),
+                            names: vec!["--param2".to_string()],
                             arg_type: SyntaxOptArgType::Integer,
                             desc: Some("takes an int".to_string()),
                             required: false,
@@ -2932,7 +3027,7 @@ mod tests {
             fn test_value_string() {
                 let syntax = CommandSyntax {
                     parameters: vec![SyntaxOptArg {
-                        name: "--param1".to_string(),
+                        names: vec!["--param1".to_string()],
                         arg_type: SyntaxOptArgType::String,
                         ..SyntaxOptArg::default()
                     }],
@@ -2953,7 +3048,7 @@ mod tests {
             fn test_value_int() {
                 let syntax = CommandSyntax {
                     parameters: vec![SyntaxOptArg {
-                        name: "--param1".to_string(),
+                        names: vec!["--param1".to_string()],
                         arg_type: SyntaxOptArgType::Integer,
                         allow_hyphen_values: true,
                         ..SyntaxOptArg::default()
@@ -2978,7 +3073,7 @@ mod tests {
             fn test_value_float() {
                 let syntax = CommandSyntax {
                     parameters: vec![SyntaxOptArg {
-                        name: "--param1".to_string(),
+                        names: vec!["--param1".to_string()],
                         arg_type: SyntaxOptArgType::Float,
                         allow_hyphen_values: true,
                         ..SyntaxOptArg::default()
@@ -3003,7 +3098,7 @@ mod tests {
             fn test_value_bool() {
                 let syntax = CommandSyntax {
                     parameters: vec![SyntaxOptArg {
-                        name: "--param1".to_string(),
+                        names: vec!["--param1".to_string()],
                         arg_type: SyntaxOptArgType::Boolean,
                         ..SyntaxOptArg::default()
                     }],
@@ -3029,7 +3124,7 @@ mod tests {
             fn test_value_enum() {
                 let syntax = CommandSyntax {
                     parameters: vec![SyntaxOptArg {
-                        name: "--param1".to_string(),
+                        names: vec!["--param1".to_string()],
                         arg_type: SyntaxOptArgType::Enum(vec![
                             "a".to_string(),
                             "b".to_string(),
@@ -3055,7 +3150,7 @@ mod tests {
             fn test_value_flag() {
                 let syntax = CommandSyntax {
                     parameters: vec![SyntaxOptArg {
-                        name: "--param1".to_string(),
+                        names: vec!["--param1".to_string()],
                         arg_type: SyntaxOptArgType::Flag,
                         ..SyntaxOptArg::default()
                     }],
@@ -3076,8 +3171,7 @@ mod tests {
             fn test_value_counter() {
                 let syntax = CommandSyntax {
                     parameters: vec![SyntaxOptArg {
-                        name: "--count".to_string(),
-                        aliases: vec!["-c".to_string()],
+                        names: vec!["--count".to_string(), "-c".to_string()],
                         arg_type: SyntaxOptArgType::Counter,
                         ..SyntaxOptArg::default()
                     }],
@@ -3106,13 +3200,13 @@ mod tests {
                 let syntax = CommandSyntax {
                     parameters: vec![
                         SyntaxOptArg {
-                            name: "--param1".to_string(),
+                            names: vec!["--param1".to_string()],
                             arg_type: SyntaxOptArgType::String,
                             required: true,
                             ..SyntaxOptArg::default()
                         },
                         SyntaxOptArg {
-                            name: "--param2".to_string(),
+                            names: vec!["--param2".to_string()],
                             arg_type: SyntaxOptArgType::Integer,
                             desc: Some("takes an int".to_string()),
                             required: false,
@@ -3139,34 +3233,34 @@ mod tests {
                 let syntax = CommandSyntax {
                     parameters: vec![
                         SyntaxOptArg {
-                            name: "--str".to_string(),
+                            names: vec!["--str".to_string()],
                             arg_type: SyntaxOptArgType::String,
                             default: Some("default1".to_string()),
                             ..SyntaxOptArg::default()
                         },
                         SyntaxOptArg {
-                            name: "--int".to_string(),
+                            names: vec!["--int".to_string()],
                             arg_type: SyntaxOptArgType::Integer,
                             desc: Some("takes an int".to_string()),
                             default: Some("42".to_string()),
                             ..SyntaxOptArg::default()
                         },
                         SyntaxOptArg {
-                            name: "--float".to_string(),
+                            names: vec!["--float".to_string()],
                             arg_type: SyntaxOptArgType::Float,
                             desc: Some("takes a float".to_string()),
                             default: Some("3.14".to_string()),
                             ..SyntaxOptArg::default()
                         },
                         SyntaxOptArg {
-                            name: "--bool".to_string(),
+                            names: vec!["--bool".to_string()],
                             arg_type: SyntaxOptArgType::Boolean,
                             desc: Some("takes a boolean".to_string()),
                             default: Some("true".to_string()),
                             ..SyntaxOptArg::default()
                         },
                         SyntaxOptArg {
-                            name: "--enum".to_string(),
+                            names: vec!["--enum".to_string()],
                             arg_type: SyntaxOptArgType::Enum(vec![
                                 "a".to_string(),
                                 "b".to_string(),
@@ -3176,14 +3270,14 @@ mod tests {
                             ..SyntaxOptArg::default()
                         },
                         SyntaxOptArg {
-                            name: "--flag".to_string(),
+                            names: vec!["--flag".to_string()],
                             arg_type: SyntaxOptArgType::Flag,
                             desc: Some("takes a flag (default to false)".to_string()),
                             default: Some("false".to_string()),
                             ..SyntaxOptArg::default()
                         },
                         SyntaxOptArg {
-                            name: "--no-flag".to_string(),
+                            names: vec!["--no-flag".to_string()],
                             arg_type: SyntaxOptArgType::Flag,
                             desc: Some("takes a flag (default to true)".to_string()),
                             default: Some("true".to_string()),
@@ -3227,35 +3321,35 @@ mod tests {
                 let syntax = CommandSyntax {
                     parameters: vec![
                         SyntaxOptArg {
-                            name: "--arr-str".to_string(),
+                            names: vec!["--arr-str".to_string()],
                             arg_type: SyntaxOptArgType::Array(Box::new(SyntaxOptArgType::String)),
                             default: Some("default1,default2".to_string()),
                             value_delimiter: Some(','),
                             ..SyntaxOptArg::default()
                         },
                         SyntaxOptArg {
-                            name: "--arr-int".to_string(),
+                            names: vec!["--arr-int".to_string()],
                             arg_type: SyntaxOptArgType::Array(Box::new(SyntaxOptArgType::Integer)),
                             default: Some("42|43|44".to_string()),
                             value_delimiter: Some('|'),
                             ..SyntaxOptArg::default()
                         },
                         SyntaxOptArg {
-                            name: "--arr-float".to_string(),
+                            names: vec!["--arr-float".to_string()],
                             arg_type: SyntaxOptArgType::Array(Box::new(SyntaxOptArgType::Float)),
                             default: Some("3.14/2.71".to_string()),
                             value_delimiter: Some('/'),
                             ..SyntaxOptArg::default()
                         },
                         SyntaxOptArg {
-                            name: "--arr-bool".to_string(),
+                            names: vec!["--arr-bool".to_string()],
                             arg_type: SyntaxOptArgType::Array(Box::new(SyntaxOptArgType::Boolean)),
                             default: Some("true%false".to_string()),
                             value_delimiter: Some('%'),
                             ..SyntaxOptArg::default()
                         },
                         SyntaxOptArg {
-                            name: "--arr-enum".to_string(),
+                            names: vec!["--arr-enum".to_string()],
                             arg_type: SyntaxOptArgType::Array(Box::new(SyntaxOptArgType::Enum(
                                 vec!["a".to_string(), "b".to_string()],
                             ))),
@@ -3308,7 +3402,7 @@ mod tests {
             fn test_param_value_delimiter_on_non_array() {
                 let syntax = CommandSyntax {
                     parameters: vec![SyntaxOptArg {
-                        name: "--param1".to_string(),
+                        names: vec!["--param1".to_string()],
                         arg_type: SyntaxOptArgType::String,
                         value_delimiter: Some(','),
                         ..SyntaxOptArg::default()
@@ -3345,13 +3439,13 @@ mod tests {
                 let syntax = CommandSyntax {
                     parameters: vec![
                         SyntaxOptArg {
-                            name: "--param1".to_string(),
+                            names: vec!["--param1".to_string()],
                             arg_type: SyntaxOptArgType::String,
                             num_values: Some(SyntaxOptArgNumValues::Exactly(2)),
                             ..SyntaxOptArg::default()
                         },
                         SyntaxOptArg {
-                            name: "--param2".to_string(),
+                            names: vec!["--param2".to_string()],
                             arg_type: SyntaxOptArgType::Integer,
                             desc: Some("takes an int".to_string()),
                             num_values: Some(SyntaxOptArgNumValues::Exactly(3)),
@@ -3394,31 +3488,31 @@ mod tests {
                 let syntax = CommandSyntax {
                     parameters: vec![
                         SyntaxOptArg {
-                            name: "--exactly".to_string(),
+                            names: vec!["--exactly".to_string()],
                             arg_type: SyntaxOptArgType::Integer,
                             num_values: Some(SyntaxOptArgNumValues::Exactly(2)),
                             ..SyntaxOptArg::default()
                         },
                         SyntaxOptArg {
-                            name: "--at-most-3".to_string(),
+                            names: vec!["--at-most-3".to_string()],
                             arg_type: SyntaxOptArgType::Integer,
                             num_values: Some(SyntaxOptArgNumValues::AtMost(3)),
                             ..SyntaxOptArg::default()
                         },
                         SyntaxOptArg {
-                            name: "--at-least-2".to_string(),
+                            names: vec!["--at-least-2".to_string()],
                             arg_type: SyntaxOptArgType::Integer,
                             num_values: Some(SyntaxOptArgNumValues::AtLeast(2)),
                             ..SyntaxOptArg::default()
                         },
                         SyntaxOptArg {
-                            name: "--between-2-4".to_string(),
+                            names: vec!["--between-2-4".to_string()],
                             arg_type: SyntaxOptArgType::Integer,
                             num_values: Some(SyntaxOptArgNumValues::Between(2, 4)),
                             ..SyntaxOptArg::default()
                         },
                         SyntaxOptArg {
-                            name: "--any".to_string(),
+                            names: vec!["--any".to_string()],
                             arg_type: SyntaxOptArgType::Integer,
                             num_values: Some(SyntaxOptArgNumValues::Any),
                             ..SyntaxOptArg::default()
@@ -3533,12 +3627,12 @@ mod tests {
                 let syntax = CommandSyntax {
                     parameters: vec![
                         SyntaxOptArg {
-                            name: "param1".to_string(),
+                            names: vec!["param1".to_string()],
                             arg_type: SyntaxOptArgType::String,
                             ..SyntaxOptArg::default()
                         },
                         SyntaxOptArg {
-                            name: "param2".to_string(),
+                            names: vec!["param2".to_string()],
                             arg_type: SyntaxOptArgType::Array(Box::new(SyntaxOptArgType::String)),
                             last_arg_double_hyphen: true,
                             ..SyntaxOptArg::default()
@@ -3578,12 +3672,12 @@ mod tests {
                 let syntax = CommandSyntax {
                     parameters: vec![
                         SyntaxOptArg {
-                            name: "param1".to_string(),
+                            names: vec!["param1".to_string()],
                             arg_type: SyntaxOptArgType::String,
                             ..SyntaxOptArg::default()
                         },
                         SyntaxOptArg {
-                            name: "param2".to_string(),
+                            names: vec!["param2".to_string()],
                             arg_type: SyntaxOptArgType::String,
                             last_arg_double_hyphen: true,
                             ..SyntaxOptArg::default()
@@ -3614,12 +3708,12 @@ mod tests {
                 let syntax = CommandSyntax {
                     parameters: vec![
                         SyntaxOptArg {
-                            name: "param1".to_string(),
+                            names: vec!["param1".to_string()],
                             arg_type: SyntaxOptArgType::String,
                             ..SyntaxOptArg::default()
                         },
                         SyntaxOptArg {
-                            name: "param2".to_string(),
+                            names: vec!["param2".to_string()],
                             arg_type: SyntaxOptArgType::String,
                             leftovers: true,
                             ..SyntaxOptArg::default()
@@ -3659,12 +3753,12 @@ mod tests {
                 let syntax = CommandSyntax {
                     parameters: vec![
                         SyntaxOptArg {
-                            name: "param1".to_string(),
+                            names: vec!["param1".to_string()],
                             arg_type: SyntaxOptArgType::String,
                             ..SyntaxOptArg::default()
                         },
                         SyntaxOptArg {
-                            name: "param2".to_string(),
+                            names: vec!["param2".to_string()],
                             arg_type: SyntaxOptArgType::String,
                             leftovers: true,
                             ..SyntaxOptArg::default()
@@ -3692,12 +3786,12 @@ mod tests {
                 let syntax = CommandSyntax {
                     parameters: vec![
                         SyntaxOptArg {
-                            name: "param1".to_string(),
+                            names: vec!["param1".to_string()],
                             arg_type: SyntaxOptArgType::String,
                             ..SyntaxOptArg::default()
                         },
                         SyntaxOptArg {
-                            name: "param2".to_string(),
+                            names: vec!["param2".to_string()],
                             arg_type: SyntaxOptArgType::String,
                             leftovers: true,
                             allow_hyphen_values: true,
@@ -3738,13 +3832,13 @@ mod tests {
                 let syntax = CommandSyntax {
                     parameters: vec![
                         SyntaxOptArg {
-                            name: "--param1".to_string(),
+                            names: vec!["--param1".to_string()],
                             arg_type: SyntaxOptArgType::String,
                             required: true,
                             ..SyntaxOptArg::default()
                         },
                         SyntaxOptArg {
-                            name: "--param2".to_string(),
+                            names: vec!["--param2".to_string()],
                             arg_type: SyntaxOptArgType::Integer,
                             desc: Some("takes an int".to_string()),
                             ..SyntaxOptArg::default()
@@ -3777,24 +3871,24 @@ mod tests {
                 let syntax = CommandSyntax {
                     parameters: vec![
                         SyntaxOptArg {
-                            name: "--param1".to_string(),
+                            names: vec!["--param1".to_string()],
                             arg_type: SyntaxOptArgType::String,
                             ..SyntaxOptArg::default()
                         },
                         SyntaxOptArg {
-                            name: "--param2".to_string(),
+                            names: vec!["--param2".to_string()],
                             arg_type: SyntaxOptArgType::Integer,
                             desc: Some("takes an int".to_string()),
                             ..SyntaxOptArg::default()
                         },
                         SyntaxOptArg {
-                            name: "--param3".to_string(),
+                            names: vec!["--param3".to_string()],
                             arg_type: SyntaxOptArgType::Float,
                             desc: Some("takes a float".to_string()),
                             ..SyntaxOptArg::default()
                         },
                         SyntaxOptArg {
-                            name: "--param4".to_string(),
+                            names: vec!["--param4".to_string()],
                             arg_type: SyntaxOptArgType::Boolean,
                             desc: Some("takes a boolean".to_string()),
                             ..SyntaxOptArg::default()
@@ -3835,18 +3929,18 @@ mod tests {
                 let syntax = CommandSyntax {
                     parameters: vec![
                         SyntaxOptArg {
-                            name: "--param1".to_string(),
+                            names: vec!["--param1".to_string()],
                             arg_type: SyntaxOptArgType::String,
                             ..SyntaxOptArg::default()
                         },
                         SyntaxOptArg {
-                            name: "--param2".to_string(),
+                            names: vec!["--param2".to_string()],
                             arg_type: SyntaxOptArgType::Integer,
                             desc: Some("takes an int".to_string()),
                             ..SyntaxOptArg::default()
                         },
                         SyntaxOptArg {
-                            name: "--param3".to_string(),
+                            names: vec!["--param3".to_string()],
                             arg_type: SyntaxOptArgType::Float,
                             desc: Some("takes a float".to_string()),
                             ..SyntaxOptArg::default()
@@ -3878,17 +3972,17 @@ mod tests {
                 let syntax = CommandSyntax {
                     parameters: vec![
                         SyntaxOptArg {
-                            name: "--param1".to_string(),
+                            names: vec!["--param1".to_string()],
                             arg_type: SyntaxOptArgType::String,
                             ..SyntaxOptArg::default()
                         },
                         SyntaxOptArg {
-                            name: "--param2".to_string(),
+                            names: vec!["--param2".to_string()],
                             arg_type: SyntaxOptArgType::Integer,
                             ..SyntaxOptArg::default()
                         },
                         SyntaxOptArg {
-                            name: "--param3".to_string(),
+                            names: vec!["--param3".to_string()],
                             arg_type: SyntaxOptArgType::Float,
                             ..SyntaxOptArg::default()
                         },
@@ -3931,17 +4025,17 @@ mod tests {
                 let syntax = CommandSyntax {
                     parameters: vec![
                         SyntaxOptArg {
-                            name: "--param1".to_string(),
+                            names: vec!["--param1".to_string()],
                             arg_type: SyntaxOptArgType::String,
                             ..SyntaxOptArg::default()
                         },
                         SyntaxOptArg {
-                            name: "--param2".to_string(),
+                            names: vec!["--param2".to_string()],
                             arg_type: SyntaxOptArgType::Integer,
                             ..SyntaxOptArg::default()
                         },
                         SyntaxOptArg {
-                            name: "--param3".to_string(),
+                            names: vec!["--param3".to_string()],
                             arg_type: SyntaxOptArgType::Float,
                             ..SyntaxOptArg::default()
                         },
@@ -3986,30 +4080,30 @@ mod tests {
                 let syntax = CommandSyntax {
                     parameters: vec![
                         SyntaxOptArg {
-                            name: "--param1".to_string(),
+                            names: vec!["--param1".to_string()],
                             arg_type: SyntaxOptArgType::String,
                             requires: vec!["param2".to_string()],
                             ..SyntaxOptArg::default()
                         },
                         SyntaxOptArg {
-                            name: "--param2".to_string(),
+                            names: vec!["--param2".to_string()],
                             arg_type: SyntaxOptArgType::Integer,
                             ..SyntaxOptArg::default()
                         },
                         SyntaxOptArg {
-                            name: "--param3".to_string(),
+                            names: vec!["--param3".to_string()],
                             arg_type: SyntaxOptArgType::Float,
                             requires: vec!["group2".to_string()],
                             ..SyntaxOptArg::default()
                         },
                         SyntaxOptArg {
-                            name: "--param4".to_string(),
+                            names: vec!["--param4".to_string()],
                             arg_type: SyntaxOptArgType::Integer,
                             requires: vec!["param1".to_string()],
                             ..SyntaxOptArg::default()
                         },
                         SyntaxOptArg {
-                            name: "--param5".to_string(),
+                            names: vec!["--param5".to_string()],
                             arg_type: SyntaxOptArgType::Integer,
                             requires: vec!["group1".to_string()],
                             ..SyntaxOptArg::default()
@@ -4057,18 +4151,18 @@ mod tests {
                 let syntax = CommandSyntax {
                     parameters: vec![
                         SyntaxOptArg {
-                            name: "--param1".to_string(),
+                            names: vec!["--param1".to_string()],
                             arg_type: SyntaxOptArgType::String,
                             conflicts_with: vec!["param2".to_string()],
                             ..SyntaxOptArg::default()
                         },
                         SyntaxOptArg {
-                            name: "--param2".to_string(),
+                            names: vec!["--param2".to_string()],
                             arg_type: SyntaxOptArgType::Integer,
                             ..SyntaxOptArg::default()
                         },
                         SyntaxOptArg {
-                            name: "--param3".to_string(),
+                            names: vec!["--param3".to_string()],
                             arg_type: SyntaxOptArgType::Float,
                             conflicts_with: vec!["group2".to_string()],
                             ..SyntaxOptArg::default()
@@ -4108,25 +4202,25 @@ mod tests {
                 let syntax = CommandSyntax {
                     parameters: vec![
                         SyntaxOptArg {
-                            name: "--param1".to_string(),
+                            names: vec!["--param1".to_string()],
                             arg_type: SyntaxOptArgType::String,
                             required_without: vec!["param2".to_string(), "param3".to_string()],
                             ..SyntaxOptArg::default()
                         },
                         SyntaxOptArg {
-                            name: "--param2".to_string(),
+                            names: vec!["--param2".to_string()],
                             arg_type: SyntaxOptArgType::Integer,
                             required: false,
                             ..SyntaxOptArg::default()
                         },
                         SyntaxOptArg {
-                            name: "--param3".to_string(),
+                            names: vec!["--param3".to_string()],
                             arg_type: SyntaxOptArgType::Float,
                             required: false,
                             ..SyntaxOptArg::default()
                         },
                         SyntaxOptArg {
-                            name: "--param4".to_string(),
+                            names: vec!["--param4".to_string()],
                             arg_type: SyntaxOptArgType::Integer,
                             required_without: vec!["group1".to_string()],
                             ..SyntaxOptArg::default()
@@ -4158,31 +4252,31 @@ mod tests {
                 let syntax = CommandSyntax {
                     parameters: vec![
                         SyntaxOptArg {
-                            name: "--param1".to_string(),
+                            names: vec!["--param1".to_string()],
                             arg_type: SyntaxOptArgType::String,
                             required_without_all: vec!["param2".to_string(), "param3".to_string()],
                             ..SyntaxOptArg::default()
                         },
                         SyntaxOptArg {
-                            name: "--param2".to_string(),
+                            names: vec!["--param2".to_string()],
                             arg_type: SyntaxOptArgType::Integer,
                             required: false,
                             ..SyntaxOptArg::default()
                         },
                         SyntaxOptArg {
-                            name: "--param3".to_string(),
+                            names: vec!["--param3".to_string()],
                             arg_type: SyntaxOptArgType::Float,
                             required: false,
                             ..SyntaxOptArg::default()
                         },
                         SyntaxOptArg {
-                            name: "--param4".to_string(),
+                            names: vec!["--param4".to_string()],
                             arg_type: SyntaxOptArgType::Integer,
                             required_without_all: vec!["group5".to_string(), "group2".to_string()],
                             ..SyntaxOptArg::default()
                         },
                         SyntaxOptArg {
-                            name: "--param5".to_string(),
+                            names: vec!["--param5".to_string()],
                             arg_type: SyntaxOptArgType::Integer,
                             ..SyntaxOptArg::default()
                         },
@@ -4222,7 +4316,7 @@ mod tests {
                 let syntax = CommandSyntax {
                     parameters: vec![
                         SyntaxOptArg {
-                            name: "--param1".to_string(),
+                            names: vec!["--param1".to_string()],
                             arg_type: SyntaxOptArgType::String,
                             required_if_eq: HashMap::from_iter(vec![(
                                 "param2".to_string(),
@@ -4231,12 +4325,12 @@ mod tests {
                             ..SyntaxOptArg::default()
                         },
                         SyntaxOptArg {
-                            name: "--param2".to_string(),
+                            names: vec!["--param2".to_string()],
                             arg_type: SyntaxOptArgType::Integer,
                             ..SyntaxOptArg::default()
                         },
                         SyntaxOptArg {
-                            name: "--param3".to_string(),
+                            names: vec!["--param3".to_string()],
                             arg_type: SyntaxOptArgType::Float,
                             required_if_eq: HashMap::from_iter(vec![(
                                 "param4".to_string(),
@@ -4245,7 +4339,7 @@ mod tests {
                             ..SyntaxOptArg::default()
                         },
                         SyntaxOptArg {
-                            name: "--param4".to_string(),
+                            names: vec!["--param4".to_string()],
                             arg_type: SyntaxOptArgType::Boolean,
                             ..SyntaxOptArg::default()
                         },
@@ -4288,7 +4382,7 @@ mod tests {
                 let syntax = CommandSyntax {
                     parameters: vec![
                         SyntaxOptArg {
-                            name: "--param1".to_string(),
+                            names: vec!["--param1".to_string()],
                             arg_type: SyntaxOptArgType::String,
                             required_if_eq_all: HashMap::from_iter(vec![
                                 ("param2".to_string(), "42".to_string()),
@@ -4297,12 +4391,12 @@ mod tests {
                             ..SyntaxOptArg::default()
                         },
                         SyntaxOptArg {
-                            name: "--param2".to_string(),
+                            names: vec!["--param2".to_string()],
                             arg_type: SyntaxOptArgType::Integer,
                             ..SyntaxOptArg::default()
                         },
                         SyntaxOptArg {
-                            name: "--param3".to_string(),
+                            names: vec!["--param3".to_string()],
                             arg_type: SyntaxOptArgType::Float,
                             required_if_eq_all: HashMap::from_iter(vec![(
                                 "param4".to_string(),
@@ -4311,7 +4405,7 @@ mod tests {
                             ..SyntaxOptArg::default()
                         },
                         SyntaxOptArg {
-                            name: "--param4".to_string(),
+                            names: vec!["--param4".to_string()],
                             arg_type: SyntaxOptArgType::Boolean,
                             ..SyntaxOptArg::default()
                         },
