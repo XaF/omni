@@ -290,7 +290,7 @@ impl UpConfigGithubReleases {
 
             // Use 'retain' so we can cleanup the github release cache of the releases
             // that are being removed entirely
-            ghrelease.installed.retain(|install| {
+            ghrelease.installed.retain_mut(|install| {
                 // Cleanup the references to this repository for
                 // any installed github release that is not currently
                 // listed in the up configuration
