@@ -288,30 +288,32 @@ impl UpConfigGithubReleases {
 
             let mut updated = false;
 
+            // Use 'retain' so we can cleanup the github release cache of the releases
+            // that are being removed entirely
+            ghrelease.installed.retain(|install| {
+                // Cleanup the references to this repository for
+                // any installed github release that is not currently
+                // listed in the up configuration
+                if install.required_by.contains(&wd_id) && install.stale() {
+                    install.required_by.retain(|id| id != &wd_id);
+                    updated = true;
+                }
+
+                if install.removable() {
+                    updated = true;
+                    false
+                } else {
+                    true
+                }
+            });
+
             let expected_paths = ghrelease
                 .installed
-                .iter_mut()
-                .filter_map(|install| {
-                    // Cleanup the references to this repository for
-                    // any installed github release that is not currently
-                    // listed in the up configuration
-                    if install.required_by.contains(&wd_id) && install.stale() {
-                        install.required_by.retain(|id| id != &wd_id);
-                        updated = true;
-                    }
-
-                    // Only return the path if the github release is
-                    // expected, as we will clear the bin path from
-                    // all unexpected github releases
-                    if install.removable() {
-                        None
-                    } else {
-                        Some(
-                            github_releases_bin_path()
-                                .join(&install.repository)
-                                .join(&install.version),
-                        )
-                    }
+                .iter()
+                .map(|install| {
+                    github_releases_bin_path()
+                        .join(&install.repository)
+                        .join(&install.version)
                 })
                 .collect::<Vec<PathBuf>>();
 
