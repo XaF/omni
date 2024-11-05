@@ -15,11 +15,11 @@ use once_cell::sync::OnceCell;
 use serde::Serialize;
 use tokio::process::Command as TokioCommand;
 
+use crate::internal::cache::up_environments::UpEnvironment;
 use crate::internal::cache::utils::Empty;
 use crate::internal::cache::CacheObject;
 use crate::internal::cache::PromptsCache;
 use crate::internal::cache::RepositoriesCache;
-use crate::internal::cache::UpEnvironmentsCache;
 use crate::internal::commands::base::BuiltinCommand;
 use crate::internal::commands::builtin::HelpCommand;
 use crate::internal::config::config;
@@ -1548,8 +1548,6 @@ impl BuiltinCommand for UpCommand {
                 "No {} configuration found, nothing to do.",
                 "up".italic(),
             ));
-            // TODO: on top of clearing the cache, do we need to run some resource
-            //       cleanup process too ?
             UpConfig::clear_cache();
             exit(0);
         }
@@ -1629,51 +1627,44 @@ impl BuiltinCommand for UpCommand {
         // Prepare the options for the up command
         let options = UpOptions::new().lock_file(&lock_file);
 
-        // No matter what's happening after, we want a clean cache for that
-        // repository, as we're rebuilding the up environment from scratch
-        UpConfig::clear_cache();
-
-        // If there are environment variables to set, do it
-        if has_up_config && self.is_up() {
-            if let Err(err) = UpEnvironmentsCache::exclusive(|up_env| {
-                let wd = workdir(".");
-                if let Some(workdir_id) = wd.id() {
-                    if let Some(env_vars) = env_vars.clone() {
-                        up_env.set_env_vars(&workdir_id, env_vars.into());
-                    }
-                    up_env.set_config_hash(&workdir_id);
-                    up_env.set_config_modtimes(&workdir_id);
-                    true
-                } else {
-                    false
-                }
-            }) {
-                self.handle_sync_operation(
-                    SyncUpdateOperation::OmniWarning(format!(
-                        "failed to update environment cache: {}",
-                        err
-                    )),
-                    &options,
-                );
-            } else if env_vars.is_some() {
-                self.handle_sync_operation(
-                    SyncUpdateOperation::OmniInfo("Repository environment configured".to_string()),
-                    &options,
-                );
-            }
-        }
-
         // If it has an up configuration, handle it
         if has_up_config {
-            let up_config = up_config.unwrap();
-
             if self.is_up() {
+                let wd = workdir(".");
+                let workdir_id = match wd.id() {
+                    Some(workdir_id) => workdir_id,
+                    None => {
+                        self.handle_sync_operation(
+                            SyncUpdateOperation::OmniError("failed to get workdir id".to_string()),
+                            &options,
+                        );
+                        self.handle_sync_operation(SyncUpdateOperation::Exit(1), &options);
+                        unreachable!();
+                    }
+                };
+
+                let up_config = up_config.unwrap();
                 let options = options
                     .clone()
+                    .commit_sha(&head_commit)
                     .cache(self.cli_args().cache_enabled)
                     .fail_on_upgrade(self.cli_args().fail_on_upgrade)
                     .upgrade(self.cli_args().upgrade);
-                if let Err(err) = up_config.up(&options) {
+
+                // Create the new environment we are going to build
+                let mut environment = UpEnvironment::new().init();
+
+                // Set environment variables
+                if let Some(env_vars) = env_vars.clone() {
+                    environment.env_vars = env_vars.into();
+                    self.handle_sync_operation(
+                        SyncUpdateOperation::OmniInfo("workdir environment configured".to_string()),
+                        &options,
+                    );
+                }
+
+                // Configure the rest of the environment
+                if let Err(err) = up_config.up(&options, &mut environment) {
                     self.handle_sync_operation(
                         SyncUpdateOperation::OmniError(format!(
                             "issue while setting repo up: {}",
@@ -1684,9 +1675,14 @@ impl BuiltinCommand for UpCommand {
                     self.handle_sync_operation(SyncUpdateOperation::Exit(1), &options);
                 }
 
-                if let (Some(wd_id), Some(git_commit)) = (wd.id(), head_commit) {
+                // Save the head commit fingerprint to the repositories cache
+                if let Some(git_commit) = head_commit {
                     if let Err(err) = RepositoriesCache::exclusive(|repos| {
-                        repos.update_fingerprint(&wd_id, "head_commit", fingerprint(&git_commit))
+                        repos.update_fingerprint(
+                            &workdir_id,
+                            "head_commit",
+                            fingerprint(&git_commit),
+                        )
                     }) {
                         self.handle_sync_operation(
                             SyncUpdateOperation::OmniWarning(format!(
@@ -1697,15 +1693,20 @@ impl BuiltinCommand for UpCommand {
                         );
                     }
                 }
-            } else if let Err(err) = up_config.down(&options) {
-                self.handle_sync_operation(
-                    SyncUpdateOperation::OmniError(format!(
-                        "issue while tearing repo down: {}",
-                        err
-                    )),
-                    &options,
-                );
-                self.handle_sync_operation(SyncUpdateOperation::Exit(1), &options);
+            } else {
+                UpConfig::clear_cache();
+
+                let up_config = up_config.unwrap();
+                if let Err(err) = up_config.down(&options) {
+                    self.handle_sync_operation(
+                        SyncUpdateOperation::OmniError(format!(
+                            "issue while tearing repo down: {}",
+                            err
+                        )),
+                        &options,
+                    );
+                    self.handle_sync_operation(SyncUpdateOperation::Exit(1), &options);
+                }
             }
         }
 

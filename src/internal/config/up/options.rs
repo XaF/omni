@@ -3,6 +3,7 @@ use serde::Serialize;
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct UpOptions<'a> {
+    pub commit_sha: Option<String>,
     pub read_cache: bool,
     pub write_cache: bool,
     pub fail_on_upgrade: bool,
@@ -14,6 +15,7 @@ pub struct UpOptions<'a> {
 impl Default for UpOptions<'_> {
     fn default() -> Self {
         Self {
+            commit_sha: None,
             read_cache: true,
             write_cache: true,
             fail_on_upgrade: false,
@@ -26,6 +28,11 @@ impl Default for UpOptions<'_> {
 impl<'a> UpOptions<'a> {
     pub fn new() -> Self {
         Self::default()
+    }
+
+    pub fn commit_sha(mut self, commit_sha: &Option<String>) -> Self {
+        self.commit_sha = commit_sha.clone();
+        self
     }
 
     pub fn cache(mut self, read_cache: bool) -> Self {

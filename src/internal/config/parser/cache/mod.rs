@@ -9,3 +9,6 @@ pub(crate) use github_release::GithubReleaseCacheConfig;
 
 mod homebrew;
 pub(crate) use homebrew::HomebrewCacheConfig;
+
+mod up_environment;
+pub(crate) use up_environment::UpEnvironmentCacheConfig;

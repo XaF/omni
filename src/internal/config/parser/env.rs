@@ -321,7 +321,7 @@ impl Serialize for EnvOperationConfig {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq, Copy, Default)]
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq, Copy, Default, Hash)]
 pub enum EnvOperationEnum {
     #[default]
     #[serde(rename = "s", alias = "set")]

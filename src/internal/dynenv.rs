@@ -8,6 +8,7 @@ use serde::Deserialize;
 use serde::Serialize;
 use shell_escape::escape;
 
+use crate::internal::cache::up_environments::UpEnvironment;
 use crate::internal::cache::CacheObject;
 use crate::internal::cache::UpEnvironmentsCache;
 use crate::internal::config;
@@ -27,6 +28,13 @@ const WD_CONFIG_MODTIME_VAR: &str = "__omni_wd_config_modtime";
 pub fn update_dynamic_env_for_command<T: ToString>(path: T) {
     DynamicEnvExportOptions::new(DynamicEnvExportMode::Env)
         .path(path.to_string())
+        .apply();
+}
+
+pub fn update_dynamic_env_for_command_from_env<T: ToString>(path: T, environment: &UpEnvironment) {
+    DynamicEnvExportOptions::new(DynamicEnvExportMode::Env)
+        .path(path.to_string())
+        .environment(environment)
         .apply();
 }
 
@@ -73,7 +81,7 @@ fn check_workdir_config_updated(
     // Get the cache for the workdir
     let mut notify_change = false;
     let mut change_type = "update";
-    if let Some(wdcache) = cache.env.get(&wdid) {
+    if let Some(wdcache) = cache.get_env(&wdid) {
         if notify_updated {
             for config_file in wdcache.config_modtimes.keys() {
                 if !modtimes.contains_key(config_file) {
@@ -133,7 +141,7 @@ fn check_workdir_config_updated(
     // in the cache. If it is, we don't need to notify the user, but we
     // still need to set the environment variable to avoid checking on
     // every prompt.
-    if let Some(wdcache) = cache.env.get(&wdid) {
+    if let Some(wdcache) = cache.get_env(&wdid) {
         if wdcache.config_hash == config.up_hash() {
             notify_change = false;
         }
@@ -164,7 +172,9 @@ pub fn update_dynamic_env(options: &DynamicEnvExportOptions) {
 
     let cache = UpEnvironmentsCache::get();
     let mut current_env = DynamicEnv::from_env(cache.clone());
-    let mut expected_env = DynamicEnv::new_with_path(options.path.clone(), cache.clone());
+    let mut expected_env = DynamicEnv::new(cache.clone())
+        .with_path(options.path.clone())
+        .with_environment(options.environment.as_ref());
 
     if !options.is_quiet() {
         check_workdir_config_updated(options.mode.clone(), options.path.clone(), &cache);
@@ -245,6 +255,7 @@ pub struct DynamicEnvExportOptions {
     quiet: bool,
     keep_shims: bool,
     path: Option<String>,
+    environment: Option<UpEnvironment>,
 }
 
 impl DynamicEnvExportOptions {
@@ -270,6 +281,11 @@ impl DynamicEnvExportOptions {
         self
     }
 
+    pub fn environment(mut self, environment: &UpEnvironment) -> Self {
+        self.environment = Some(environment.clone());
+        self
+    }
+
     pub fn is_quiet(&self) -> bool {
         self.quiet || self.mode == DynamicEnvExportMode::Env
     }
@@ -289,6 +305,7 @@ pub enum DynamicEnvExportMode {
 
 pub struct DynamicEnv {
     path: Option<String>,
+    environment: Option<UpEnvironment>,
     id: OnceCell<u64>,
     data_str: Option<String>,
     data: Option<DynamicEnvData>,
@@ -296,16 +313,36 @@ pub struct DynamicEnv {
     cache: UpEnvironmentsCache,
 }
 
-impl DynamicEnv {
-    fn new_with_path(path: Option<String>, cache: UpEnvironmentsCache) -> Self {
+impl Default for DynamicEnv {
+    fn default() -> Self {
         Self {
-            path,
+            path: None,
+            environment: None,
             id: OnceCell::new(),
             data_str: None,
             data: None,
             features: Vec::new(),
-            cache,
+            cache: UpEnvironmentsCache::get(),
         }
+    }
+}
+
+impl DynamicEnv {
+    fn new(cache: UpEnvironmentsCache) -> Self {
+        Self {
+            cache,
+            ..Default::default()
+        }
+    }
+
+    fn with_path(mut self, path: Option<String>) -> Self {
+        self.path = path;
+        self
+    }
+
+    fn with_environment(mut self, environment: Option<&UpEnvironment>) -> Self {
+        self.environment = environment.cloned();
+        self
     }
 
     pub fn from_env(cache: UpEnvironmentsCache) -> Self {
@@ -315,12 +352,10 @@ impl DynamicEnv {
         id.set(cur_id).unwrap();
 
         Self {
-            path: None,
             id,
             data_str: cur_data,
-            data: None,
-            features: Vec::new(),
             cache,
+            ..Default::default()
         }
     }
 
@@ -345,10 +380,14 @@ impl DynamicEnv {
             let dir = workdir.reldir(&path).unwrap_or("".to_string());
 
             // Check if repo is 'up' and should have its environment loaded
-            let up_env = if let Some(up_env) = self.cache.get_env(&workdir_id) {
-                up_env
+            let up_env = if let Some(environment) = &self.environment {
+                Some(environment)
             } else {
-                return 0;
+                self.cache.get_env(&workdir_id)
+            };
+            let up_env = match up_env {
+                Some(up_env) => up_env,
+                None => return 0,
             };
 
             // Prepare the hash
@@ -415,8 +454,10 @@ impl DynamicEnv {
         let path = self.path.clone().unwrap_or(".".to_string());
         let workdir = workdir(&path);
         if workdir.in_workdir() {
-            if let Some(workdir_id) = workdir.id() {
-                up_env = self.cache.get_env(&workdir_id);
+            up_env = if let Some(environment) = &self.environment {
+                Some(environment)
+            } else if let Some(workdir_id) = workdir.id() {
+                self.cache.get_env(&workdir_id)
             } else {
                 return;
             }

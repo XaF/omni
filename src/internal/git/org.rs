@@ -412,26 +412,41 @@ impl OrgLoader {
     pub fn find_repo(
         &self,
         repo: &str,
-        include_packages: bool,
+        only_worktree: bool,
+        only_packages: bool,
         allow_interactive: bool,
     ) -> Option<PathBuf> {
-        if let Some(path) = self.omnipath_lookup(repo, include_packages) {
+        let (repo, only_worktree, only_packages) = if let Some(repo) = repo.strip_prefix("package#")
+        {
+            (repo, only_worktree, true)
+        } else {
+            (repo, only_worktree, only_packages)
+        };
+
+        if let Some(path) = self.omnipath_lookup(repo, only_worktree, only_packages) {
             return Some(path);
         }
-        if let Some(path) = self.basic_naive_lookup(repo, include_packages) {
+        if let Some(path) = self.basic_naive_lookup(repo, only_worktree, only_packages) {
             return Some(path);
         }
-        if let Some(path) = self.file_system_lookup(repo, include_packages, allow_interactive) {
+        if let Some(path) =
+            self.file_system_lookup(repo, only_worktree, only_packages, allow_interactive)
+        {
             return Some(path);
         }
         None
     }
 
-    fn omnipath_lookup(&self, repo: &str, include_packages: bool) -> Option<PathBuf> {
+    fn omnipath_lookup(
+        &self,
+        repo: &str,
+        only_worktree: bool,
+        only_packages: bool,
+    ) -> Option<PathBuf> {
         if let Ok(repo) = Repo::parse(repo) {
             for path in omnipath_entries() {
                 let (path_repo, path_root) = if let Some(package) = &path.package {
-                    if !include_packages {
+                    if only_worktree {
                         continue;
                     }
 
@@ -440,6 +455,10 @@ impl OrgLoader {
                         package_path_from_handle(package).unwrap(),
                     )
                 } else {
+                    if only_packages {
+                        continue;
+                    }
+
                     let git_env = git_env(&path.full_path);
                     if let (Some(id), Some(root)) = (git_env.id(), git_env.root()) {
                         (Repo::parse(&id), PathBuf::from(root))
@@ -474,16 +493,23 @@ impl OrgLoader {
         None
     }
 
-    pub fn basic_naive_lookup(&self, repo: &str, include_packages: bool) -> Option<PathBuf> {
-        for org in self.orgs.iter() {
-            if let Some(path) = org.get_repo_path(repo) {
-                if path.is_dir() {
-                    return Some(path);
+    pub fn basic_naive_lookup(
+        &self,
+        repo: &str,
+        only_worktree: bool,
+        only_packages: bool,
+    ) -> Option<PathBuf> {
+        if !only_packages {
+            for org in self.orgs.iter() {
+                if let Some(path) = org.get_repo_path(repo) {
+                    if path.is_dir() {
+                        return Some(path);
+                    }
                 }
             }
         }
 
-        if include_packages {
+        if !only_worktree {
             if let Ok(parsed) = Repo::parse(repo) {
                 let glob_path = PathBuf::from(&package_root_path())
                     .join(parsed.host.as_deref().unwrap_or("*"))
@@ -508,7 +534,8 @@ impl OrgLoader {
     fn file_system_lookup(
         &self,
         repo: &str,
-        include_packages: bool,
+        only_worktree: bool,
+        only_packages: bool,
         allow_interactive: bool,
     ) -> Option<PathBuf> {
         let interactive = allow_interactive && shell_is_interactive();
@@ -522,7 +549,8 @@ impl OrgLoader {
 
         let mut all_repos = Vec::new();
 
-        if config(".").cd.fast_search {
+        // TODO: improve search glob org to support packages
+        if config(".").cd.fast_search && !only_packages {
             self.search_glob_org("")
                 .into_iter()
                 .map(|result| (result.path.clone(), result.rel_path.clone()))
@@ -539,18 +567,21 @@ impl OrgLoader {
             // Get worktrees
             let mut worktrees = Vec::new();
             let mut seen = HashSet::new();
-            for org in self.orgs.iter() {
-                if seen.insert(org.worktree()) {
-                    worktrees.push(org.worktree());
+
+            if !only_packages {
+                for org in self.orgs.iter() {
+                    if seen.insert(org.worktree()) {
+                        worktrees.push(org.worktree());
+                    }
+                }
+
+                let worktree = config(".").worktree();
+                if seen.insert(worktree.clone()) {
+                    worktrees.push(worktree.clone());
                 }
             }
 
-            let worktree = config(".").worktree();
-            if seen.insert(worktree.clone()) {
-                worktrees.push(worktree.clone());
-            }
-
-            if include_packages {
+            if !only_worktree {
                 worktrees.push(package_root_path());
             }
 

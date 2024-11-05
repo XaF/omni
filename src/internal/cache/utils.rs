@@ -71,3 +71,29 @@ pub fn is_origin_of_time(value: &OffsetDateTime) -> bool {
 // true
 // }
 // }
+
+pub mod optional_rfc3339 {
+    use serde::{Deserialize, Deserializer, Serializer};
+    use time::OffsetDateTime;
+
+    pub fn serialize<S>(date: &Option<OffsetDateTime>, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        match date {
+            Some(date) => time::serde::rfc3339::serialize(date, serializer),
+            None => serializer.serialize_none(),
+        }
+    }
+
+    pub fn deserialize<'de, D>(deserializer: D) -> Result<Option<OffsetDateTime>, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        Option::deserialize(deserializer).and_then(|opt: Option<String>| {
+            opt.map(|s| OffsetDateTime::parse(&s, &time::format_description::well_known::Rfc3339))
+                .transpose()
+                .map_err(serde::de::Error::custom)
+        })
+    }
+}

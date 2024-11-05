@@ -195,11 +195,10 @@ impl CdCommand {
             return Some(format!("{}", repo_path.display()));
         }
 
-        if let Some(repo_path) = ORG_LOADER.find_repo(
-            repo,
-            self.cli_args().include_packages,
-            !self.cli_args().locate,
-        ) {
+        let only_worktree = !self.cli_args().include_packages;
+        let allow_interactive = !self.cli_args().locate;
+        if let Some(repo_path) = ORG_LOADER.find_repo(repo, only_worktree, false, allow_interactive)
+        {
             return Some(format!("{}", repo_path.display()));
         }
 

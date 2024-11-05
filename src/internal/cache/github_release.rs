@@ -94,15 +94,26 @@ impl GithubReleaseOperationCache {
         self.releases.get(repository)
     }
 
-    pub fn add_installed(&mut self, workdir_id: &str, repository: &str, version: &str) -> bool {
+    pub fn add_installed(&mut self, repository: &str, version: &str) -> bool {
+        self.add_required_by("", repository, version)
+    }
+
+    pub fn add_required_by(
+        &mut self,
+        env_version_id: &str,
+        repository: &str,
+        version: &str,
+    ) -> bool {
         let inserted = if let Some(install) = self
             .installed
             .iter_mut()
             .find(|i| i.repository == repository && i.version == version)
         {
-            if install.required_by.insert(workdir_id.to_string())
-                || install.last_required_at < omni_now()
-            {
+            let inserted = match env_version_id.is_empty() {
+                true => false,
+                false => install.required_by.insert(env_version_id.to_string()),
+            };
+            if inserted || install.last_required_at < omni_now() {
                 install.last_required_at = omni_now();
                 true
             } else {
@@ -112,7 +123,7 @@ impl GithubReleaseOperationCache {
             let install = GithubReleaseInstalled {
                 repository: repository.to_string(),
                 version: version.to_string(),
-                required_by: [workdir_id.to_string()].iter().cloned().collect(),
+                required_by: [env_version_id.to_string()].iter().cloned().collect(),
                 last_required_at: omni_now(),
             };
             self.installed.push(install);
@@ -175,10 +186,6 @@ pub struct GithubReleaseInstalled {
 }
 
 impl GithubReleaseInstalled {
-    pub fn stale(&self) -> bool {
-        self.last_required_at < omni_now()
-    }
-
     pub fn removable(&self) -> bool {
         if !self.required_by.is_empty() {
             return false;

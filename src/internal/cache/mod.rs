@@ -25,6 +25,8 @@ pub(crate) use prompts::PromptsCache;
 pub(crate) mod repositories;
 pub(crate) use repositories::RepositoriesCache;
 
+mod migration;
+
 pub(crate) mod up_environments;
 pub(crate) use up_environments::UpEnvironmentsCache;
 

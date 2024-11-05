@@ -2,6 +2,7 @@ use itertools::Itertools;
 use serde::Deserialize;
 use serde::Serialize;
 
+use crate::internal::cache::up_environments::UpEnvironment;
 use crate::internal::cache::utils::Empty;
 use crate::internal::cache::CacheObject;
 use crate::internal::cache::UpEnvironmentsCache;
@@ -136,7 +137,7 @@ impl UpConfig {
         }
     }
 
-    pub fn up(&self, options: &UpOptions) -> Result<(), UpError> {
+    pub fn up(&self, options: &UpOptions, environment: &mut UpEnvironment) -> Result<(), UpError> {
         // Get current directory
         let current_dir = std::env::current_dir().expect("Failed to get current directory");
 
@@ -148,7 +149,7 @@ impl UpConfig {
             .collect::<Vec<&UpConfigTool>>();
 
         // Go through the steps
-        let num_steps = steps.len() + 1;
+        let num_steps = steps.len() + 2;
         for (idx, step) in steps.iter().enumerate() {
             // Make sure that we're in the right directory
             let step_dir = current_dir.join(step.dir().unwrap_or("".to_string()));
@@ -165,11 +166,94 @@ impl UpConfig {
                 progress_handler.set_sync_file(sync_file);
             }
 
-            step.up(options, &progress_handler)?
+            step.up(options, environment, &progress_handler)?
         }
+
+        // Save and assign the environment
+        self.assign_environment(environment, Some((num_steps - 1, num_steps)), options)?;
 
         // Cleanup anything that's not needed
         self.cleanup(Some((num_steps, num_steps)), options)?;
+
+        Ok(())
+    }
+
+    fn assign_environment(
+        &self,
+        environment: &mut UpEnvironment,
+        progress: Option<(usize, usize)>,
+        options: &UpOptions,
+    ) -> Result<(), UpError> {
+        let mut progress_handler = UpProgressHandler::new(progress);
+        if let Some(sync_file) = &options.lock_file {
+            progress_handler.set_sync_file(sync_file);
+        }
+        progress_handler.init("apply environment:".light_blue());
+
+        let workdir = workdir(".");
+        let workdir_id = match workdir.id() {
+            Some(workdir_id) => workdir_id,
+            None => {
+                let err = "failed to get workdir id".to_string();
+                progress_handler.error_with_message(err.clone());
+                return Err(UpError::Exec(err));
+            }
+        };
+
+        // Assign the version id to the workdir now that we have successfully set it up
+        progress_handler.progress("associating workdir to environment".to_string());
+        let mut new_env = true;
+        let mut assigned_environment = "".to_string();
+        if let Err(err) = UpEnvironmentsCache::exclusive(|up_env| {
+            (new_env, assigned_environment) =
+                up_env.assign_environment(&workdir_id, options.commit_sha.clone(), environment);
+            true
+        }) {
+            progress_handler.error_with_message(format!("failed to update cache: {}", err));
+            return Err(UpError::Cache(err.to_string()));
+        }
+
+        if assigned_environment.is_empty() {
+            progress_handler.error_with_message("failed to assign environment".to_string());
+            return Err(UpError::Cache("failed to assign environment".to_string()));
+        }
+
+        // Go over the up configuration again, but this time to set the dependencies
+        // as required by the `assigned_environment`
+        if new_env {
+            progress_handler.progress("committing environment dependencies".to_string());
+            if let Err(err) = self.commit(&options, &assigned_environment) {
+                progress_handler.error_with_message(format!(
+                    "failed to commit environment dependencies: {}",
+                    err
+                ));
+                return Err(UpError::Cache(err.to_string()));
+            }
+        }
+
+        progress_handler.success_with_message("done".light_green());
+
+        Ok(())
+    }
+
+    fn commit(&self, options: &UpOptions, env_version_id: &str) -> Result<(), UpError> {
+        // Filter the steps to only the available ones
+        let steps = self
+            .steps
+            .iter()
+            .filter(|step| step.is_available())
+            .collect::<Vec<&UpConfigTool>>();
+
+        // Go through the steps
+        let num_steps = steps.len() + 1;
+        for (idx, step) in steps.iter().enumerate() {
+            let mut progress_handler = UpProgressHandler::new(Some((idx + 1, num_steps)));
+            if let Some(sync_file) = &options.lock_file {
+                progress_handler.set_sync_file(sync_file);
+            }
+
+            step.commit(options, env_version_id)?
+        }
 
         Ok(())
     }

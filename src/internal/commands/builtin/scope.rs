@@ -191,7 +191,8 @@ impl ScopeCommand {
             return Ok(());
         }
 
-        if let Some(repo_path) = ORG_LOADER.find_repo(repo, include_packages, true) {
+        let only_worktree = !include_packages;
+        if let Some(repo_path) = ORG_LOADER.find_repo(repo, only_worktree, false, true) {
             if let Err(err) = std::env::set_current_dir(&repo_path) {
                 if !silent_failure {
                     omni_error!(format!(

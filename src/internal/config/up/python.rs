@@ -6,8 +6,7 @@ use serde::Deserialize;
 use serde::Serialize;
 use tokio::process::Command as TokioCommand;
 
-use crate::internal::cache::utils::CacheObject;
-use crate::internal::cache::UpEnvironmentsCache;
+use crate::internal::cache::up_environments::UpEnvironment;
 use crate::internal::commands::utils::abs_path;
 use crate::internal::config::up::asdf_tool_path;
 use crate::internal::config::up::utils::data_path_dir_hash;
@@ -19,7 +18,7 @@ use crate::internal::config::up::AsdfToolUpVersion;
 use crate::internal::config::up::UpConfigAsdfBase;
 use crate::internal::config::up::UpError;
 use crate::internal::config::up::UpOptions;
-use crate::internal::dynenv::update_dynamic_env_for_command;
+use crate::internal::dynenv::update_dynamic_env_for_command_from_env;
 use crate::internal::env::current_dir;
 use crate::internal::env::workdir;
 use crate::internal::ConfigValue;
@@ -112,9 +111,10 @@ impl UpConfigPython {
     pub fn up(
         &self,
         options: &UpOptions,
+        environment: &mut UpEnvironment,
         progress_handler: &UpProgressHandler,
     ) -> Result<(), UpError> {
-        self.asdf_base.up(options, progress_handler)
+        self.asdf_base.up(options, environment, progress_handler)
     }
 
     pub fn down(&self, progress_handler: &UpProgressHandler) -> Result<(), UpError> {
@@ -123,6 +123,8 @@ impl UpConfigPython {
 }
 
 fn setup_python_venv(
+    options: &UpOptions,
+    environment: &mut UpEnvironment,
     progress_handler: &dyn ProgressHandler,
     _config_value: Option<ConfigValue>,
     tool: String,
@@ -136,13 +138,21 @@ fn setup_python_venv(
 
     // Handle each version individually
     for version in &versions {
-        setup_python_venv_per_version(progress_handler, &tool, version.clone())?;
+        setup_python_venv_per_version(
+            options,
+            environment,
+            progress_handler,
+            &tool,
+            version.clone(),
+        )?;
     }
 
     Ok(())
 }
 
 fn setup_python_venv_per_version(
+    options: &UpOptions,
+    environment: &mut UpEnvironment,
     progress_handler: &dyn ProgressHandler,
     tool: &str,
     version: AsdfToolUpVersion,
@@ -168,13 +178,22 @@ fn setup_python_venv_per_version(
     }
 
     for dir in version.dirs {
-        setup_python_venv_per_dir(progress_handler, tool, version.version.clone(), dir)?;
+        setup_python_venv_per_dir(
+            options,
+            environment,
+            progress_handler,
+            tool,
+            version.version.clone(),
+            dir,
+        )?;
     }
 
     Ok(())
 }
 
 fn setup_python_venv_per_dir(
+    _options: &UpOptions,
+    environment: &mut UpEnvironment,
     progress_handler: &dyn ProgressHandler,
     tool: &str,
     version: String,
@@ -182,15 +201,6 @@ fn setup_python_venv_per_dir(
 ) -> Result<(), UpError> {
     // Get the data path for the work directory
     let workdir = workdir(".");
-
-    let workdir_id = if let Some(workdir_id) = workdir.id() {
-        workdir_id
-    } else {
-        return Err(UpError::Exec(format!(
-            "failed to get workdir id for {}",
-            current_dir().display()
-        )));
-    };
 
     let data_path = if let Some(data_path) = workdir.data_path() {
         data_path
@@ -264,26 +274,14 @@ fn setup_python_venv_per_dir(
     }
 
     // Update the cache
-    if let Err(err) = UpEnvironmentsCache::exclusive(|up_env| {
-        up_env.add_version_data_path(
-            &workdir_id,
-            tool,
-            &version,
-            &dir,
-            &venv_path.to_string_lossy(),
-        )
-    }) {
-        progress_handler.progress(format!("failed to update tool cache: {}", err));
-        return Err(UpError::Cache(format!(
-            "failed to update tool cache: {}",
-            err
-        )));
-    }
+    environment.add_version_data_path(tool, &version, &dir, &venv_path.to_string_lossy());
 
     Ok(())
 }
 
 fn setup_python_pip(
+    _options: &UpOptions,
+    environment: &mut UpEnvironment,
     progress_handler: &dyn ProgressHandler,
     config_value: Option<ConfigValue>,
     _tool: String,
@@ -322,7 +320,7 @@ fn setup_python_pip(
         }
 
         // Load the environment for that directory
-        update_dynamic_env_for_command(full_path.to_string_lossy());
+        update_dynamic_env_for_command_from_env(full_path.to_string_lossy(), environment);
 
         if pip_auto {
             // If auto, use the requirements.txt file in the directory

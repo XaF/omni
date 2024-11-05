@@ -8,9 +8,8 @@ use serde::Deserialize;
 use serde::Serialize;
 use tokio::process::Command as TokioCommand;
 
+use crate::internal::cache::up_environments::UpEnvironment;
 use crate::internal::cache::utils as cache_utils;
-use crate::internal::cache::utils::CacheObject;
-use crate::internal::cache::UpEnvironmentsCache;
 use crate::internal::config::up::utils::data_path_dir_hash;
 use crate::internal::config::up::utils::run_progress;
 use crate::internal::config::up::utils::ProgressHandler;
@@ -20,7 +19,7 @@ use crate::internal::config::up::AsdfToolUpVersion;
 use crate::internal::config::up::UpConfigAsdfBase;
 use crate::internal::config::up::UpError;
 use crate::internal::config::up::UpOptions;
-use crate::internal::dynenv::update_dynamic_env_for_command;
+use crate::internal::dynenv::update_dynamic_env_for_command_from_env;
 use crate::internal::env::current_dir;
 use crate::internal::workdir;
 use crate::internal::ConfigValue;
@@ -114,9 +113,10 @@ impl UpConfigNodejs {
     pub fn up(
         &self,
         options: &UpOptions,
+        environment: &mut UpEnvironment,
         progress_handler: &UpProgressHandler,
     ) -> Result<(), UpError> {
-        self.asdf_base.up(options, progress_handler)
+        self.asdf_base.up(options, environment, progress_handler)
     }
 
     pub fn down(&self, progress_handler: &UpProgressHandler) -> Result<(), UpError> {
@@ -180,6 +180,8 @@ fn detect_version_from_nvmrc(_tool_name: String, path: PathBuf) -> Option<String
 }
 
 fn setup_individual_npm_prefix(
+    _options: &UpOptions,
+    environment: &mut UpEnvironment,
     progress_handler: &dyn ProgressHandler,
     config_value: Option<ConfigValue>,
     tool: String,
@@ -196,16 +198,6 @@ fn setup_individual_npm_prefix(
 
     // Get the data path for the work directory
     let workdir = workdir(".");
-
-    let workdir_id = match workdir.id() {
-        Some(workdir_id) => workdir_id,
-        None => {
-            return Err(UpError::Exec(format!(
-                "failed to get workdir id for {}",
-                current_dir().display()
-            )));
-        }
-    };
 
     let data_path = match workdir.data_path() {
         Some(data_path) => data_path,
@@ -230,26 +222,10 @@ fn setup_individual_npm_prefix(
     };
 
     for version in &versions {
-        if let Err(err) = UpEnvironmentsCache::exclusive(|up_env| {
-            let mut any_changed = false;
-            for dir in &version.dirs {
-                let npm_prefix = per_version_per_dir_data_path(version, dir);
+        for dir in &version.dirs {
+            let npm_prefix = per_version_per_dir_data_path(version, dir);
 
-                any_changed = up_env.add_version_data_path(
-                    &workdir_id,
-                    &tool,
-                    &version.version,
-                    dir,
-                    &npm_prefix,
-                ) || any_changed;
-            }
-            any_changed
-        }) {
-            progress_handler.progress(format!("failed to update tool cache: {}", err));
-            return Err(UpError::Cache(format!(
-                "failed to update tool cache: {}",
-                err
-            )));
+            environment.add_version_data_path(&tool, &version.version, dir, &npm_prefix);
         }
     }
 
@@ -303,7 +279,7 @@ fn setup_individual_npm_prefix(
             };
 
             // Load the environment for that directory
-            update_dynamic_env_for_command(actual_dir.to_str().unwrap());
+            update_dynamic_env_for_command_from_env(actual_dir.to_str().unwrap(), environment);
 
             if params.install_engines {
                 // Install the engines
@@ -378,7 +354,7 @@ fn setup_individual_npm_prefix(
     }
 
     // Load the environment for the current directory
-    update_dynamic_env_for_command(".");
+    update_dynamic_env_for_command_from_env(".", environment);
 
     Ok(())
 }
