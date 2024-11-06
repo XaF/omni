@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::fmt;
 use std::path::PathBuf;
 
 use serde::Deserialize;
@@ -53,6 +54,12 @@ pub struct PathEntryConfig {
     pub package: Option<String>,
     #[serde(skip)]
     pub full_path: String,
+}
+
+impl fmt::Display for PathEntryConfig {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}", self.full_path)
+    }
 }
 
 impl PathEntryConfig {
@@ -143,10 +150,6 @@ impl PathEntryConfig {
 
     pub fn is_valid(&self) -> bool {
         !self.full_path.is_empty() && self.full_path.starts_with('/')
-    }
-
-    pub fn as_string(&self) -> String {
-        self.full_path.clone()
     }
 
     pub fn starts_with(&self, path_entry: &PathEntryConfig) -> bool {

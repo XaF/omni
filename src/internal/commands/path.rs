@@ -38,8 +38,8 @@ fn omnipath_from_config(config: &OmniConfig) -> Vec<String> {
     let mut omnipath_seen = HashSet::new();
 
     for path in &config.path.prepend {
-        if path.is_valid() && omnipath_seen.insert(path.as_string()) {
-            omnipath.push(path.as_string());
+        if path.is_valid() && omnipath_seen.insert(path.to_string()) {
+            omnipath.push(path.to_string());
         }
     }
 
@@ -50,8 +50,8 @@ fn omnipath_from_config(config: &OmniConfig) -> Vec<String> {
     }
 
     for path in &config.path.append {
-        if path.is_valid() && omnipath_seen.insert(path.as_string()) {
-            omnipath.push(path.as_string());
+        if path.is_valid() && omnipath_seen.insert(path.to_string()) {
+            omnipath.push(path.to_string());
         }
     }
 
@@ -63,7 +63,7 @@ fn omnipath_entries_from_config(config: &OmniConfig) -> Vec<PathEntryConfig> {
     let mut omnipath_seen = HashSet::new();
 
     for path in &config.path.prepend {
-        if path.is_valid() && omnipath_seen.insert(path.as_string()) {
+        if path.is_valid() && omnipath_seen.insert(path.to_string()) {
             omnipath.push(path.to_owned());
         }
     }
@@ -78,7 +78,7 @@ fn omnipath_entries_from_config(config: &OmniConfig) -> Vec<PathEntryConfig> {
     }
 
     for path in &config.path.append {
-        if path.is_valid() && omnipath_seen.insert(path.as_string()) {
+        if path.is_valid() && omnipath_seen.insert(path.to_string()) {
             omnipath.push(path.to_owned());
         }
     }

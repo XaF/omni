@@ -417,7 +417,7 @@ pub fn update(options: &UpdateOptions) -> (HashSet<PathBuf>, HashSet<PathBuf>) {
     if config.path_repo_updates.pre_auth {
         let mut auth_hosts = HashMap::new();
         for path_entry in &omnipath_entries {
-            let git_env = git_env(path_entry.as_string());
+            let git_env = git_env(path_entry.to_string());
             let repo_id = match git_env.id() {
                 Some(repo_id) => repo_id,
                 None => continue,
@@ -481,7 +481,7 @@ pub fn update(options: &UpdateOptions) -> (HashSet<PathBuf>, HashSet<PathBuf>) {
         let mut seen = HashSet::new();
 
         for path_entry in omnipath_entries {
-            let path = path_entry.as_string();
+            let path = path_entry.to_string();
 
             let git_env = git_env(&path).clone();
             let repo_id = match git_env.id() {
@@ -589,7 +589,7 @@ pub fn update(options: &UpdateOptions) -> (HashSet<PathBuf>, HashSet<PathBuf>) {
                     Some(ref package) => {
                         format!("{}:{}", "package".underline(), package.light_cyan(),)
                     }
-                    None => path_entry.as_string().light_cyan(),
+                    None => path_entry.to_string().light_cyan(),
                 };
 
                 omni_info!(format!(

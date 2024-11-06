@@ -214,7 +214,7 @@ impl TidyCommand {
 
             let location = match path_entry.package {
                 Some(ref package) => format!("{}:{}", "package".underline(), package.light_cyan()),
-                None => path_entry.as_string().light_cyan(),
+                None => path_entry.to_string().light_cyan(),
             };
 
             omni_info!(format!(
