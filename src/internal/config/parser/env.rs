@@ -156,9 +156,15 @@ impl EnvOperationConfig {
                 // before returning it. We can use the value ConfigSource
                 // to determine the current scope.
                 if value_type == "path" {
-                    match config_value.get_source() {
-                        ConfigSource::File(path) => {
-                            let parent_path = PathBuf::from(path)
+                    let source_path = match config_value.get_source() {
+                        ConfigSource::File(path) => Some(path.to_string()),
+                        ConfigSource::Package(path_entry) => Some(path_entry.to_string()),
+                        _ => None,
+                    };
+
+                    match source_path {
+                        Some(source_path) => {
+                            let parent_path = PathBuf::from(source_path)
                                 .parent()
                                 .expect("config file path has no parent")
                                 .to_string_lossy()
@@ -169,8 +175,7 @@ impl EnvOperationConfig {
                                     .to_string(),
                             )
                         }
-                        // Unsupported source type for the "path" value type
-                        _ => Some(value.to_string()),
+                        None => Some(value.to_string()),
                     }
                 } else {
                     Some(value.to_string())
