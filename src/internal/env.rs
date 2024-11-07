@@ -82,8 +82,9 @@ lazy_static! {
         if let Ok(output) = output {
             if output.status.success() {
                 if let Ok(prefix) = String::from_utf8(output.stdout) {
+                    let prefix = prefix.trim();
                     if !prefix.is_empty() {
-                        return Some(prefix);
+                        return Some(prefix.to_string());
                     }
                 }
             }
