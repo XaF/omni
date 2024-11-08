@@ -85,15 +85,16 @@ Which would instruct omni to update the repository synchronously before running 
 
 ### `arg` and `opt`
 
-The `arg` and `opt` headers allows to define respectively required arguments and optional parameters for the command. These will be shown when running `omni help <command>`, and can be parsed by omni if setting enabling the argument parser. When using the `arg` or `opt` header, you need to define the argument name or format, and the description/help for that argument. You can also define a number of options between the argument name and the description, in the format `<key>: <value>`, separated by colons.
+The `arg` and `opt` headers allows to define respectively required arguments and optional parameters for the command. These will be shown when running `omni help <command>`, and can be parsed by omni if setting enabling the argument parser. When using the `arg` or `opt` header, you need to define the argument name or format, and the description/help for that argument. The argument name can be a value starting with two dashes for a long parameter (e.g. `--min`) or a single dash for a short parameter (e.g. `-m`), or again without any dash for a positional parameter (e.g. `min`). When using short or long parameters, you can specify multiple of them by comma-separating them. You can also specify a custom placeholder which will be shown in the help message instead of the default, capitalized parameter.
 
+You can also define a number of options between the argument name and the description, in the format `<key>: <value>`, separated by colons.
 This can be provided as follows:
 ```bash
 # arg: name: Name to give to the number
-# arg: min: type=int: Minimum value for the random number
+# arg: -m, --min MIN_PLACEHOLDER: type=int: Minimum value for the random number
 ```
 
-The accepted parameters are the following:
+The accepted configuration parameters for options and arguments are the following:
 
 | Parameter | Description | Example |
 |-----------|-------------|---------|
@@ -114,15 +115,15 @@ The accepted parameters are the following:
 
 It is also possible to span the description across multiple lines, on the condition that the header is repeated, or by using the special `+:` header. Descriptions will be concatenated automatically by omni:
 ```bash
-# arg: min: tupe=int
-# arg: min: Minimum value for the random number, this will
-# arg: min: be used alongside the maximum value to return
-# arg: min: a valid random number.
+# arg: -m, --min: tupe=int
+# arg: -m, --min: Minimum value for the random number, this will
+# arg: -m, --min: be used alongside the maximum value to return
+# arg: -m, --min: a valid random number.
 ```
 
 or:
 ```bash
-# opt: min: type=int
+# opt: -m, --min: type=int
 # +: Minimum value for the random number, this will
 # +: be used alongside the maximum value to return
 # +: a valid random number.
