@@ -313,10 +313,10 @@ impl OmniRelease {
                 "{} version {} is available{}",
                 "omni:".light_cyan(),
                 self.version.light_blue(),
-                if !can_update {
-                    format!("; use {} to update", "sudo omni --update".light_yellow())
-                } else {
+                if config.path_repo_updates.self_update.is_false() {
                     "".to_string()
+                } else {
+                    format!("; use {} to update", "sudo omni --update".light_yellow())
                 }
             );
             progress_handler.success_with_message(msg);
