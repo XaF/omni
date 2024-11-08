@@ -32,7 +32,7 @@ clap = { version = "4.5.20", features = ["string"] }
 ctrlc = { version = "3.4.5", features = ["termination"] }
 duct = "0.13.6"
 flate2 = "1.0.34"
-fs4 = "0.11.0"
+fs4 = "0.11.1"
 gethostname = "0.5.0"
 git-url-parse = "0.4.5"
 git2 = { version = "0.19.0", features = ["vendored-libgit2"] }
@@ -71,13 +71,13 @@ shell-escape = "0.1.5"
 shell-words = "1.1.0"
 strsim = "0.11.1"
 tar = "0.4.42"
-tempfile = "3.12.0"
+tempfile = "3.14.0"
 tera = "1.20.0"
 term_cursor = "0.2.1"
 term_size = "0.3.2"
 thiserror = "2.0.0"
 time = { version = "0.3.36", features = ["serde-well-known"] }
-tokio = { version = "1.41.0", features = ["full"] }
+tokio = { version = "1.41.1", features = ["full"] }
 url = "2.5.3"
 uuid = { version = "1.11.0", features = ["v4", "fast-rng"] }
 walkdir = "2.4.0"
