@@ -27,6 +27,7 @@ use crate::internal::config::up::utils::ProgressHandler;
 use crate::internal::config::up::utils::RunConfig;
 use crate::internal::config::up::utils::SpinnerProgressHandler;
 use crate::internal::env::current_exe;
+use crate::internal::env::running_as_sudo;
 use crate::internal::env::shell_is_interactive;
 use crate::internal::git::full_git_url_parse;
 use crate::internal::git::path_entry_config;
@@ -405,8 +406,9 @@ pub fn update(options: &UpdateOptions) -> (HashSet<PathBuf>, HashSet<PathBuf>) {
 
     self_update();
 
-    // Nothing more to do if nothing is in the omnipath
-    if omnipath_entries.is_empty() {
+    // Nothing more to do if nothing is in the omnipath, or if we are running
+    // as sudo since we don't want the repositories to be updated in that case
+    if running_as_sudo() || omnipath_entries.is_empty() {
         return (HashSet::new(), HashSet::new());
     }
 
