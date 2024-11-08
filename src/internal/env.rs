@@ -105,6 +105,13 @@ lazy_static! {
 
     #[derive(Debug)]
     static ref NOW: OffsetDateTime = OffsetDateTime::now_utc();
+
+    #[derive(Debug)]
+    static ref RUNNING_AS_SUDO: bool = std::env::var_os("SUDO_USER").is_some()
+        && match std::env::var("USER") {
+            Ok(user) => user == "root",
+            Err(_) => false,
+        };
 }
 
 /// Get the time of the current execution of omni in UTC.
@@ -114,6 +121,11 @@ lazy_static! {
 /// greater or equal to the one of the calling process.
 pub fn now() -> OffsetDateTime {
     *NOW
+}
+
+/// Indicates if the current shell is a sudo shell.
+pub fn running_as_sudo() -> bool {
+    *RUNNING_AS_SUDO
 }
 
 /// Cleanup temporary directories created by omni in the system's

@@ -254,6 +254,42 @@ impl OmniRelease {
             .find(|&binary| binary.os == *RELEASE_OS && binary.arch == *RELEASE_ARCH)
     }
 
+    /// Check if we have write permissions for the current exe and for the directory
+    /// of the current exe, since this is required for the self-update to work
+    fn check_write_permissions(&self) -> bool {
+        let current_exe = current_exe();
+        if !current_exe.exists() {
+            return false;
+        }
+
+        // Check first the exe itself
+        match std::fs::metadata(&current_exe) {
+            Ok(metadata) => {
+                if metadata.permissions().readonly() {
+                    return false;
+                }
+            }
+            Err(_) => return false,
+        }
+
+        // Check the directory of the exe
+        let parent = match current_exe.parent() {
+            Some(parent) => parent,
+            None => return false,
+        };
+
+        match std::fs::metadata(parent) {
+            Ok(metadata) => {
+                if metadata.permissions().readonly() {
+                    return false;
+                }
+            }
+            Err(_) => return false,
+        }
+
+        true
+    }
+
     fn check_and_update(&self) {
         let config = config(".");
 
@@ -271,12 +307,19 @@ impl OmniRelease {
             return;
         }
 
-        if config.path_repo_updates.self_update.is_false() {
-            progress_handler.success_with_message(format!(
-                "{} version {} is available",
+        let can_update = self.check_write_permissions() || *INSTALLED_WITH_BREW;
+        if config.path_repo_updates.self_update.is_false() || !can_update {
+            let msg = format!(
+                "{} version {} is available{}",
                 "omni:".light_cyan(),
                 self.version.light_blue(),
-            ));
+                if config.path_repo_updates.self_update.is_false() {
+                    "".to_string()
+                } else {
+                    format!("; use {} to update", "sudo omni --update".light_yellow())
+                }
+            );
+            progress_handler.success_with_message(msg);
             return;
         }
 
