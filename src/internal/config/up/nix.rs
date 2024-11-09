@@ -9,8 +9,7 @@ use serde::Deserialize;
 use serde::Serialize;
 use tokio::process::Command as TokioCommand;
 
-use crate::internal::cache::CacheObject;
-use crate::internal::cache::UpEnvironmentsCache;
+use crate::internal::cache::up_environments::UpEnvironment;
 use crate::internal::commands::utils::abs_path;
 use crate::internal::config::parser::EnvOperationEnum;
 use crate::internal::config::up::utils::get_command_output;
@@ -153,6 +152,7 @@ impl UpConfigNix {
     pub fn up(
         &self,
         options: &UpOptions,
+        environment: &mut UpEnvironment,
         progress_handler: &UpProgressHandler,
     ) -> Result<(), UpError> {
         let nix_handler = NixHandler::new(&self.nixfile, &self.packages)?;
@@ -167,7 +167,7 @@ impl UpConfigNix {
                 omni_warning!("failed to save nix profile path".to_string());
             }
 
-            self.update_cache(progress_handler)?;
+            self.update_cache(environment, progress_handler)?;
 
             progress_handler.success_with_message("already configured".light_black());
             return Ok(());
@@ -178,7 +178,7 @@ impl UpConfigNix {
             omni_warning!("failed to save nix profile path".to_string());
         }
 
-        self.update_cache(progress_handler)?;
+        self.update_cache(environment, progress_handler)?;
 
         // We are all done, the temporary directory will be removed automatically,
         // so we don't need to worry about it, hence removing our temporary profile
@@ -198,7 +198,11 @@ impl UpConfigNix {
         Ok(())
     }
 
-    fn update_cache(&self, progress_handler: &dyn ProgressHandler) -> Result<(), UpError> {
+    fn update_cache(
+        &self,
+        environment: &mut UpEnvironment,
+        progress_handler: &dyn ProgressHandler,
+    ) -> Result<(), UpError> {
         // Get the nix profile path
         let profile_path = match self.data_paths.get() {
             Some(data_paths) => data_paths[0].clone(),
@@ -225,45 +229,27 @@ impl UpConfigNix {
             return Ok(());
         }
 
-        let wd = workdir(".");
-        let wd_id = match wd.id() {
-            Some(wd_id) => wd_id,
-            None => {
-                return Err(UpError::Exec(format!(
-                    "failed to get work directory id for {}",
-                    current_dir().display()
-                )));
-            }
-        };
-
         progress_handler.progress("updating cache".to_string());
 
-        if let Err(err) = UpEnvironmentsCache::exclusive(|up_env| {
-            if !paths.is_empty() {
-                up_env.add_paths(&wd_id, profile.get_paths());
-            }
+        if !paths.is_empty() {
+            environment.add_paths(profile.get_paths());
+        }
 
-            if let Some(cflags) = cflags {
-                up_env.add_env_var_operation(&wd_id, "CFLAGS", &cflags, EnvOperationEnum::Suffix);
-                up_env.add_env_var_operation(&wd_id, "CPPFLAGS", &cflags, EnvOperationEnum::Suffix);
-            }
+        if let Some(cflags) = cflags {
+            environment.add_env_var_operation("CFLAGS", &cflags, EnvOperationEnum::Suffix);
+            environment.add_env_var_operation("CPPFLAGS", &cflags, EnvOperationEnum::Suffix);
+        }
 
-            if let Some(ldflags) = ldflags {
-                up_env.add_env_var_operation(&wd_id, "LDFLAGS", &ldflags, EnvOperationEnum::Suffix);
-            }
+        if let Some(ldflags) = ldflags {
+            environment.add_env_var_operation("LDFLAGS", &ldflags, EnvOperationEnum::Suffix);
+        }
 
-            for pkg_config_path in pkg_config_paths.iter().rev() {
-                up_env.add_env_var_operation(
-                    &wd_id,
-                    "PKG_CONFIG_PATH",
-                    pkg_config_path,
-                    EnvOperationEnum::Prepend,
-                );
-            }
-
-            true
-        }) {
-            progress_handler.progress(format!("failed to update cache: {}", err));
+        for pkg_config_path in pkg_config_paths.iter().rev() {
+            environment.add_env_var_operation(
+                "PKG_CONFIG_PATH",
+                pkg_config_path,
+                EnvOperationEnum::Prepend,
+            );
         }
 
         progress_handler.progress("cache updated".to_string());

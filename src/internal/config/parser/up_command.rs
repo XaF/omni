@@ -9,6 +9,7 @@ pub struct UpCommandConfig {
     pub auto_bootstrap: bool,
     pub notify_workdir_config_updated: bool,
     pub notify_workdir_config_available: bool,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub preferred_tools: Vec<String>,
     pub upgrade: bool,
 }

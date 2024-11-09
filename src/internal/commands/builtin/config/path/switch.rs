@@ -223,7 +223,7 @@ impl BuiltinCommand for ConfigPathSwitchCommand {
         let mut package_path = None;
 
         if let Some(repo) = self.cli_args().repository.clone() {
-            let repo_path = ORG_LOADER.find_repo(&repo, true, false);
+            let repo_path = ORG_LOADER.find_repo(&repo, true, false, false);
             if let Some(repo_path) = repo_path {
                 let git = git_env(repo_path.to_string_lossy());
                 if git.in_repo() && git.has_origin() {

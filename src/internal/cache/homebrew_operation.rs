@@ -43,10 +43,23 @@ impl HomebrewOperationCache {
         self.updated_at = OffsetDateTime::now_utc();
     }
 
-    pub fn add_tap(&mut self, workdir_id: &str, tap_name: &str, tapped: bool) -> bool {
+    pub fn add_tap(&mut self, tap_name: &str, tapped: bool) -> bool {
+        self.add_tap_required_by("", tap_name, tapped)
+    }
+
+    pub fn add_tap_required_by(
+        &mut self,
+        env_version_id: &str,
+        tap_name: &str,
+        tapped: bool,
+    ) -> bool {
         let inserted = if let Some(tap) = self.tapped.iter_mut().find(|t| t.name == tap_name) {
             tap.tapped = tap.tapped || tapped;
-            if tap.required_by.insert(workdir_id.to_string()) || tap.last_required_at < omni_now() {
+            let inserted = match env_version_id.is_empty() {
+                true => true,
+                false => tap.required_by.insert(env_version_id.to_string()),
+            };
+            if inserted || tap.last_required_at < omni_now() {
                 tap.last_required_at = omni_now();
                 true
             } else {
@@ -56,7 +69,7 @@ impl HomebrewOperationCache {
             let tap = HomebrewTapped {
                 name: tap_name.to_string(),
                 tapped,
-                required_by: [workdir_id.to_string()].iter().cloned().collect(),
+                required_by: [env_version_id.to_string()].iter().cloned().collect(),
                 last_required_at: omni_now(),
             };
             self.tapped.push(tap);
@@ -72,7 +85,17 @@ impl HomebrewOperationCache {
 
     pub fn add_install(
         &mut self,
-        workdir_id: &str,
+        install_name: &str,
+        install_version: Option<String>,
+        is_cask: bool,
+        installed: bool,
+    ) -> bool {
+        self.add_install_required_by("", install_name, install_version, is_cask, installed)
+    }
+
+    pub fn add_install_required_by(
+        &mut self,
+        env_version_id: &str,
         install_name: &str,
         install_version: Option<String>,
         is_cask: bool,
@@ -83,9 +106,11 @@ impl HomebrewOperationCache {
                 i.name == install_name && i.cask == is_cask && i.version == install_version
             }) {
                 install.installed = install.installed || installed;
-                if install.required_by.insert(workdir_id.to_string())
-                    || install.last_required_at < omni_now()
-                {
+                let inserted = match env_version_id.is_empty() {
+                    true => true,
+                    false => install.required_by.insert(env_version_id.to_string()),
+                };
+                if inserted || install.last_required_at < omni_now() {
                     install.last_required_at = omni_now();
                     true
                 } else {
@@ -97,7 +122,7 @@ impl HomebrewOperationCache {
                     version: install_version,
                     cask: is_cask,
                     installed,
-                    required_by: [workdir_id.to_string()].iter().cloned().collect(),
+                    required_by: [env_version_id.to_string()].iter().cloned().collect(),
                     last_required_at: omni_now(),
                 };
                 self.installed.push(install);
@@ -274,10 +299,6 @@ pub struct HomebrewInstalled {
 }
 
 impl HomebrewInstalled {
-    pub fn stale(&self) -> bool {
-        self.last_required_at < omni_now()
-    }
-
     pub fn removable(&self) -> bool {
         // If the formula is required by any workdir, it should not be removed.
         if !self.required_by.is_empty() {
@@ -312,10 +333,6 @@ pub struct HomebrewTapped {
 }
 
 impl HomebrewTapped {
-    pub fn stale(&self) -> bool {
-        self.last_required_at < omni_now()
-    }
-
     pub fn removable(&self) -> bool {
         // If the tap is required by any workdir, it should not be removed.
         if !self.required_by.is_empty() {

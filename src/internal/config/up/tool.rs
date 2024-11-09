@@ -6,6 +6,7 @@ use itertools::Itertools;
 use serde::Deserialize;
 use serde::Serialize;
 
+use crate::internal::cache::up_environments::UpEnvironment;
 use crate::internal::config::global_config;
 use crate::internal::config::up::utils::UpProgressHandler;
 use crate::internal::config::up::UpConfig;
@@ -22,7 +23,7 @@ use crate::internal::config::up::UpConfigPython;
 use crate::internal::config::up::UpError;
 use crate::internal::config::up::UpOptions;
 use crate::internal::config::ConfigValue;
-use crate::internal::dynenv::update_dynamic_env_for_command;
+use crate::internal::dynenv::update_dynamic_env_for_command_from_env;
 
 /// UpConfigTool represents a tool that can be upped or downed.
 /// It can be a single tool or a combination of tools.
@@ -190,6 +191,7 @@ impl UpConfigTool {
     pub fn up(
         &self,
         options: &UpOptions,
+        environment: &mut UpEnvironment,
         progress_handler: &UpProgressHandler,
     ) -> Result<(), UpError> {
         match self {
@@ -197,14 +199,14 @@ impl UpConfigTool {
             _ => {
                 // Update the dynamic environment so that if anything has changed
                 // the command can consider it right away
-                update_dynamic_env_for_command(".");
+                update_dynamic_env_for_command_from_env(".", environment);
             }
         }
 
         match self {
             UpConfigTool::And(configs) => {
                 for config in configs {
-                    config.up(options, progress_handler)?;
+                    config.up(options, environment, progress_handler)?;
                 }
                 Ok(())
             }
@@ -212,7 +214,7 @@ impl UpConfigTool {
                 let mut result = Ok(());
                 for config in ordered_configs(configs) {
                     if config.is_available() {
-                        result = config.up(options, progress_handler);
+                        result = config.up(options, environment, progress_handler);
                         if result.is_ok() {
                             break;
                         }
@@ -220,22 +222,24 @@ impl UpConfigTool {
                 }
                 result
             }
-            UpConfigTool::Asdf(config) => config.up(options, progress_handler),
-            UpConfigTool::Bash(config) => config.up(options, progress_handler),
-            UpConfigTool::Bundler(config) => config.up(progress_handler),
+            UpConfigTool::Asdf(config) => config.up(options, environment, progress_handler),
+            UpConfigTool::Bash(config) => config.up(options, environment, progress_handler),
+            UpConfigTool::Bundler(config) => config.up(options, environment, progress_handler),
             UpConfigTool::Custom(config) => config.up(progress_handler),
-            UpConfigTool::GithubRelease(config) => config.up(options, progress_handler),
-            UpConfigTool::Go(config) => config.up(options, progress_handler),
-            UpConfigTool::Homebrew(config) => config.up(options, progress_handler),
-            UpConfigTool::Nix(config) => config.up(options, progress_handler),
-            UpConfigTool::Nodejs(config) => config.up(options, progress_handler),
+            UpConfigTool::GithubRelease(config) => {
+                config.up(options, environment, progress_handler)
+            }
+            UpConfigTool::Go(config) => config.up(options, environment, progress_handler),
+            UpConfigTool::Homebrew(config) => config.up(options, environment, progress_handler),
+            UpConfigTool::Nix(config) => config.up(options, environment, progress_handler),
+            UpConfigTool::Nodejs(config) => config.up(options, environment, progress_handler),
             UpConfigTool::Or(configs) => {
                 // We stop at the first successful up, we only return
                 // an error if all the configs failed.
                 let mut result = Ok(());
                 for config in configs {
                     if config.is_available() {
-                        result = config.up(options, progress_handler);
+                        result = config.up(options, environment, progress_handler);
                         if result.is_ok() {
                             break;
                         }
@@ -243,8 +247,58 @@ impl UpConfigTool {
                 }
                 result
             }
-            UpConfigTool::Python(config) => config.up(options, progress_handler),
+            UpConfigTool::Python(config) => config.up(options, environment, progress_handler),
         }
+    }
+
+    pub fn commit(&self, options: &UpOptions, env_version_id: &str) -> Result<(), UpError> {
+        match self {
+            UpConfigTool::And(configs) | UpConfigTool::Any(configs) | UpConfigTool::Or(configs) => {
+                for config in configs {
+                    config.commit(options, env_version_id)?;
+                }
+            }
+            UpConfigTool::Asdf(config) => {
+                if config.was_upped() {
+                    config.commit(options, env_version_id)?;
+                }
+            }
+            UpConfigTool::Bash(config) => {
+                if config.was_upped() {
+                    config.commit(options, env_version_id)?;
+                }
+            }
+            UpConfigTool::Bundler(_config) => {}
+            UpConfigTool::Custom(_config) => {}
+            UpConfigTool::GithubRelease(config) => {
+                if config.was_upped() {
+                    config.commit(options, env_version_id)?;
+                }
+            }
+            UpConfigTool::Go(config) => {
+                if config.was_upped() {
+                    config.commit(options, env_version_id)?;
+                }
+            }
+            UpConfigTool::Homebrew(config) => {
+                if config.was_upped() {
+                    config.commit(options, env_version_id)?;
+                }
+            }
+            UpConfigTool::Nix(_config) => {}
+            UpConfigTool::Nodejs(config) => {
+                if config.asdf_base.was_upped() {
+                    config.asdf_base.commit(options, env_version_id)?;
+                }
+            }
+            UpConfigTool::Python(config) => {
+                if config.asdf_base.was_upped() {
+                    config.asdf_base.commit(options, env_version_id)?;
+                }
+            }
+        }
+
+        Ok(())
     }
 
     pub fn down(&self, progress_handler: &UpProgressHandler) -> Result<(), UpError> {

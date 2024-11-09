@@ -10,14 +10,13 @@ use once_cell::sync::OnceCell;
 use serde::Deserialize;
 use serde::Serialize;
 
+use crate::internal::cache::up_environments::UpEnvironment;
 use crate::internal::cache::utils as cache_utils;
-use crate::internal::cache::utils::CacheObject;
-use crate::internal::cache::UpEnvironmentsCache;
 use crate::internal::commands::utils::abs_path;
+use crate::internal::config::up::asdf_base::PostInstallFuncArgs;
 use crate::internal::config::up::utils::data_path_dir_hash;
 use crate::internal::config::up::utils::ProgressHandler;
 use crate::internal::config::up::utils::UpProgressHandler;
-use crate::internal::config::up::AsdfToolUpVersion;
 use crate::internal::config::up::UpConfigAsdfBase;
 use crate::internal::config::up::UpError;
 use crate::internal::config::up::UpOptions;
@@ -126,9 +125,14 @@ impl UpConfigGolang {
     pub fn up(
         &self,
         options: &UpOptions,
+        environment: &mut UpEnvironment,
         progress_handler: &UpProgressHandler,
     ) -> Result<(), UpError> {
-        self.asdf_base()?.up(options, progress_handler)
+        self.asdf_base()?.up(options, environment, progress_handler)
+    }
+
+    pub fn commit(&self, options: &UpOptions, env_version_id: &str) -> Result<(), UpError> {
+        self.asdf_base()?.commit(options, env_version_id)
     }
 
     pub fn down(&self, progress_handler: &UpProgressHandler) -> Result<(), UpError> {
@@ -232,29 +236,20 @@ fn extract_version_from_gomod_file(
 }
 
 fn setup_individual_gopath(
-    progress_handler: &dyn ProgressHandler,
-    _config_value: Option<ConfigValue>,
-    tool: String,
-    tool_real_name: String,
-    _requested_version: String,
-    versions: Vec<AsdfToolUpVersion>,
+    _options: &UpOptions,
+    environment: &mut UpEnvironment,
+    _progress_handler: &dyn ProgressHandler,
+    args: &PostInstallFuncArgs,
 ) -> Result<(), UpError> {
-    if tool_real_name != "golang" {
-        panic!("setup_individual_gopath called with wrong tool: {}", tool);
+    if args.tool_real_name != "golang" {
+        panic!(
+            "setup_individual_gopath called with wrong tool: {}",
+            args.tool
+        );
     }
 
     // Get the data path for the work directory
     let workdir = workdir(".");
-
-    let workdir_id = match workdir.id() {
-        Some(workdir_id) => workdir_id,
-        None => {
-            return Err(UpError::Exec(format!(
-                "failed to get workdir id for {}",
-                current_dir().display()
-            )));
-        }
-    };
 
     let data_path = match workdir.data_path() {
         Some(data_path) => data_path,
@@ -267,32 +262,21 @@ fn setup_individual_gopath(
     };
 
     // Handle each version individually
-    for version in &versions {
-        if let Err(err) = UpEnvironmentsCache::exclusive(|up_env| {
-            let mut any_changed = false;
-            for dir in &version.dirs {
-                let gopath_dir = data_path_dir_hash(dir);
+    for version in &args.versions {
+        for dir in &version.dirs {
+            let gopath_dir = data_path_dir_hash(dir);
 
-                let gopath = data_path
-                    .join(&tool)
-                    .join(&version.version)
-                    .join(&gopath_dir);
+            let gopath = data_path
+                .join(&args.tool)
+                .join(&version.version)
+                .join(&gopath_dir);
 
-                any_changed = up_env.add_version_data_path(
-                    &workdir_id,
-                    &tool,
-                    &version.version,
-                    dir,
-                    &gopath.to_string_lossy(),
-                ) || any_changed;
-            }
-            any_changed
-        }) {
-            progress_handler.progress(format!("failed to update tool cache: {}", err));
-            return Err(UpError::Cache(format!(
-                "failed to update tool cache: {}",
-                err
-            )));
+            environment.add_version_data_path(
+                &args.tool,
+                &version.version,
+                dir,
+                &gopath.to_string_lossy(),
+            );
         }
     }
 

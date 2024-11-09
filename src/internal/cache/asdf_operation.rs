@@ -84,7 +84,16 @@ impl AsdfOperationCache {
 
     pub fn add_installed(
         &mut self,
-        workdir_id: &str,
+        tool: &str,
+        version: &str,
+        tool_real_name: Option<&str>,
+    ) -> bool {
+        self.add_required_by("", tool, version, tool_real_name)
+    }
+
+    pub fn add_required_by(
+        &mut self,
+        env_version_id: &str,
         tool: &str,
         version: &str,
         tool_real_name: Option<&str>,
@@ -94,9 +103,11 @@ impl AsdfOperationCache {
             .iter_mut()
             .find(|i| i.tool == tool && i.version == version)
         {
-            if install.required_by.insert(workdir_id.to_string())
-                || install.last_required_at < omni_now()
-            {
+            let inserted = match env_version_id.is_empty() {
+                true => false,
+                false => install.required_by.insert(env_version_id.to_string()),
+            };
+            if inserted || install.last_required_at < omni_now() {
                 install.last_required_at = omni_now();
                 true
             } else {
@@ -107,7 +118,7 @@ impl AsdfOperationCache {
                 tool: tool.to_string(),
                 tool_real_name: tool_real_name.map(|s| s.to_string()),
                 version: version.to_string(),
-                required_by: [workdir_id.to_string()].iter().cloned().collect(),
+                required_by: [env_version_id.to_string()].iter().cloned().collect(),
                 last_required_at: omni_now(),
             };
             self.installed.push(install);
@@ -170,10 +181,6 @@ pub struct AsdfInstalled {
 }
 
 impl AsdfInstalled {
-    pub fn stale(&self) -> bool {
-        self.last_required_at < omni_now()
-    }
-
     pub fn removable(&self) -> bool {
         if !self.required_by.is_empty() {
             return false;

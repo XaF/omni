@@ -4,17 +4,16 @@ use serde::Deserialize;
 use serde::Serialize;
 use tokio::process::Command as TokioCommand;
 
-use crate::internal::cache::CacheObject;
-use crate::internal::cache::UpEnvironmentsCache;
+use crate::internal::cache::up_environments::UpEnvironment;
 use crate::internal::commands::utils::abs_path;
 use crate::internal::config::up::utils::run_progress;
 use crate::internal::config::up::utils::ProgressHandler;
 use crate::internal::config::up::utils::RunConfig;
 use crate::internal::config::up::utils::UpProgressHandler;
 use crate::internal::config::up::UpError;
+use crate::internal::config::up::UpOptions;
 use crate::internal::config::ConfigValue;
 use crate::internal::user_interface::StringColor;
-use crate::internal::workdir;
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct UpConfigBundler {
@@ -44,27 +43,12 @@ impl UpConfigBundler {
         UpConfigBundler { gemfile, path }
     }
 
-    fn update_cache(&self, progress_handler: &dyn ProgressHandler) {
-        let workdir = workdir(".");
-        let workdir_id = workdir.id();
-        if workdir_id.is_none() {
-            return;
-        }
-        let workdir_id = workdir_id.unwrap();
-
-        progress_handler.progress("updating cache".to_string());
-
-        if let Err(err) = UpEnvironmentsCache::exclusive(|up_env| {
-            up_env.add_env_var(&workdir_id, "BUNDLE_GEMFILE", &self.gemfile_abs_path());
-            true
-        }) {
-            progress_handler.progress(format!("failed to update cache: {}", err));
-        } else {
-            progress_handler.progress("updated cache".to_string());
-        }
-    }
-
-    pub fn up(&self, progress_handler: &UpProgressHandler) -> Result<(), UpError> {
+    pub fn up(
+        &self,
+        _options: &UpOptions,
+        environment: &mut UpEnvironment,
+        progress_handler: &UpProgressHandler,
+    ) -> Result<(), UpError> {
         progress_handler.init("bundler".light_blue());
         progress_handler.progress("install Gemfile dependencies".to_string());
 
@@ -108,7 +92,7 @@ impl UpConfigBundler {
             return result;
         }
 
-        self.update_cache(progress_handler);
+        environment.add_env_var("BUNDLE_GEMFILE", &self.gemfile_abs_path());
 
         progress_handler.success();
 
