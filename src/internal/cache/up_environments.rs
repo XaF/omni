@@ -42,12 +42,6 @@ pub struct UpEnvironmentsCache {
 }
 
 impl UpEnvironmentsCache {
-    pub fn generate_version_id(workdir_id: &str) -> String {
-        let uuid = uuid::Uuid::new_v4();
-        let short_uuid = uuid.to_string()[..8].to_string();
-        format!("{}%{}", workdir_id, short_uuid)
-    }
-
     fn updated(&mut self) {
         self.updated_at = OffsetDateTime::now_utc();
     }
