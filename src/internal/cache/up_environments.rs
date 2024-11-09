@@ -498,11 +498,9 @@ impl UpEnvironmentHistory {
         // Go over all the entries to make sure that we have only one open per work directory
         let mut workdirs_open: BTreeSet<String> = BTreeSet::new();
         for entry in self.entries.iter_mut() {
-            if entry.is_open() {
-                if !workdirs_open.insert(entry.workdir_id.clone()) {
-                    // If we already have an open entry for this workdir, close this one
-                    entry.used_until_date = Some(now);
-                }
+            if entry.is_open() && !workdirs_open.insert(entry.workdir_id.clone()) {
+                // If we already have an open entry for this workdir, close this one
+                entry.used_until_date = Some(now);
             }
         }
 

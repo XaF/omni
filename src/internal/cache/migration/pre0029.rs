@@ -139,7 +139,7 @@ pub fn convert_cache_pre_0_0_29() -> io::Result<()> {
             .history
             .push(Post0029UpEnvironmentHistoryEntry {
                 workdir_id: wd_id,
-                head_sha: head_sha,
+                head_sha,
                 env_version_id: version,
                 used_from_date: post0029_cache.updated_at.clone(),
             });
