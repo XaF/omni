@@ -593,6 +593,67 @@ impl UpEnvironmentHistoryEntry {
 mod tests {
     use super::*;
 
+    mod up_environments_cache {
+        use super::*;
+
+        #[test]
+        fn test_environment_management() {
+            let mut cache = UpEnvironmentsCache::new_empty();
+            let workdir_id = "test_workdir";
+            let mut env = UpEnvironment::new();
+            env.add_version(
+                "python",
+                Some("python"),
+                "3.9.0",
+                BTreeSet::from(["".to_string()]),
+            );
+
+            // Test environment assignment
+            let (is_new, version_id) =
+                cache.assign_environment(workdir_id, Some("abc123".to_string()), &mut env);
+            assert!(is_new);
+            assert!(cache.contains(workdir_id));
+
+            // Test getting environment
+            let stored_env = cache.get_env(workdir_id);
+            assert!(stored_env.is_some());
+            assert_eq!(stored_env.unwrap().versions.len(), 1);
+
+            // Test getting environment by version
+            let version_env = cache.get_env_version(&version_id);
+            assert!(version_env.is_some());
+            assert_eq!(version_env.unwrap().versions.len(), 1);
+
+            // Test clearing environment
+            assert!(cache.clear(workdir_id));
+            assert!(!cache.contains(workdir_id));
+        }
+
+        #[test]
+        fn test_cleanup() {
+            let mut cache = UpEnvironmentsCache::new_empty();
+            let workdir_id = "test_workdir";
+            let mut env = UpEnvironment::new();
+
+            // Add multiple environments
+            for i in 0..3 {
+                env.add_version(
+                    "python",
+                    Some("python"),
+                    &format!("3.{}.0", i),
+                    BTreeSet::from(["".to_string()]),
+                );
+                let (_, _) =
+                    cache.assign_environment(workdir_id, Some(format!("sha{}", i)), &mut env);
+            }
+
+            let initial_count = cache.versioned_env.len();
+            cache.cleanup();
+            // Cleanup should maintain active environments
+            assert!(cache.versioned_env.len() <= initial_count);
+        }
+    }
+
     mod up_environment_history {
         use super::*;
 

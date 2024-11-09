@@ -12,7 +12,6 @@ use crate::internal::cache::up_environments::UpEnvironment;
 use crate::internal::cache::AsdfOperationCache;
 use crate::internal::cache::GithubReleaseOperationCache;
 use crate::internal::cache::HomebrewOperationCache;
-use crate::internal::cache::UpEnvironmentsCache;
 use crate::internal::config::global_config;
 use crate::internal::git_env_fresh;
 use crate::internal::ORG_LOADER;
@@ -120,7 +119,7 @@ pub fn convert_cache_pre_0_0_29() -> io::Result<()> {
     for (wd_id, env) in pre0029_cache.env {
         let uuid = uuid::Uuid::new_v4();
         let short_uuid = uuid.to_string()[..8].to_string();
-        let version = format!("{}%{}", workdir_id, short_uuid);
+        let version = format!("{}%{}", wd_id, short_uuid);
 
         post0029_cache
             .workdir_env
