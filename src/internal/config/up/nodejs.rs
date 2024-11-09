@@ -10,6 +10,7 @@ use tokio::process::Command as TokioCommand;
 
 use crate::internal::cache::up_environments::UpEnvironment;
 use crate::internal::cache::utils as cache_utils;
+use crate::internal::config::up::asdf_base::PostInstallFuncArgs;
 use crate::internal::config::up::utils::data_path_dir_hash;
 use crate::internal::config::up::utils::run_progress;
 use crate::internal::config::up::utils::ProgressHandler;
@@ -183,16 +184,12 @@ fn setup_individual_npm_prefix(
     _options: &UpOptions,
     environment: &mut UpEnvironment,
     progress_handler: &dyn ProgressHandler,
-    config_value: Option<ConfigValue>,
-    tool: String,
-    tool_real_name: String,
-    _requested_version: String,
-    versions: Vec<AsdfToolUpVersion>,
+    args: &PostInstallFuncArgs,
 ) -> Result<(), UpError> {
-    if tool_real_name != "nodejs" {
+    if args.tool_real_name != "nodejs" {
         panic!(
             "setup_individual_npm_prefix called with wrong tool: {}",
-            tool
+            args.tool
         );
     }
 
@@ -214,18 +211,18 @@ fn setup_individual_npm_prefix(
         let npm_prefix_dir = data_path_dir_hash(dir);
 
         let npm_prefix = data_path
-            .join(&tool)
+            .join(&args.tool)
             .join(&version.version)
             .join(npm_prefix_dir);
 
         npm_prefix.to_string_lossy().to_string()
     };
 
-    for version in &versions {
+    for version in &args.versions {
         for dir in &version.dirs {
             let npm_prefix = per_version_per_dir_data_path(version, dir);
 
-            environment.add_version_data_path(&tool, &version.version, dir, &npm_prefix);
+            environment.add_version_data_path(&args.tool, &version.version, dir, &npm_prefix);
         }
     }
 
@@ -239,14 +236,14 @@ fn setup_individual_npm_prefix(
         }
     };
 
-    let params = UpConfigNodejsParams::from_config_value(config_value.as_ref());
+    let params = UpConfigNodejsParams::from_config_value(args.config_value.as_ref());
     if !params.install_engines && !params.install_packages {
         // Exit early if we don't need to install engines or packages
         return Ok(());
     }
 
     // Handle auto-installing the right engines in the right versions, and the packages
-    for version in &versions {
+    for version in &args.versions {
         for dir in &version.dirs {
             let actual_dir = PathBuf::from(workdir_root).join(dir);
 

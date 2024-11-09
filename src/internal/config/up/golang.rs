@@ -13,10 +13,10 @@ use serde::Serialize;
 use crate::internal::cache::up_environments::UpEnvironment;
 use crate::internal::cache::utils as cache_utils;
 use crate::internal::commands::utils::abs_path;
+use crate::internal::config::up::asdf_base::PostInstallFuncArgs;
 use crate::internal::config::up::utils::data_path_dir_hash;
 use crate::internal::config::up::utils::ProgressHandler;
 use crate::internal::config::up::utils::UpProgressHandler;
-use crate::internal::config::up::AsdfToolUpVersion;
 use crate::internal::config::up::UpConfigAsdfBase;
 use crate::internal::config::up::UpError;
 use crate::internal::config::up::UpOptions;
@@ -239,14 +239,13 @@ fn setup_individual_gopath(
     _options: &UpOptions,
     environment: &mut UpEnvironment,
     _progress_handler: &dyn ProgressHandler,
-    _config_value: Option<ConfigValue>,
-    tool: String,
-    tool_real_name: String,
-    _requested_version: String,
-    versions: Vec<AsdfToolUpVersion>,
+    args: &PostInstallFuncArgs,
 ) -> Result<(), UpError> {
-    if tool_real_name != "golang" {
-        panic!("setup_individual_gopath called with wrong tool: {}", tool);
+    if args.tool_real_name != "golang" {
+        panic!(
+            "setup_individual_gopath called with wrong tool: {}",
+            args.tool
+        );
     }
 
     // Get the data path for the work directory
@@ -263,17 +262,17 @@ fn setup_individual_gopath(
     };
 
     // Handle each version individually
-    for version in &versions {
+    for version in &args.versions {
         for dir in &version.dirs {
             let gopath_dir = data_path_dir_hash(dir);
 
             let gopath = data_path
-                .join(&tool)
+                .join(&args.tool)
                 .join(&version.version)
                 .join(&gopath_dir);
 
             environment.add_version_data_path(
-                &tool,
+                &args.tool,
                 &version.version,
                 dir,
                 &gopath.to_string_lossy(),

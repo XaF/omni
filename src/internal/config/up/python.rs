@@ -8,6 +8,7 @@ use tokio::process::Command as TokioCommand;
 
 use crate::internal::cache::up_environments::UpEnvironment;
 use crate::internal::commands::utils::abs_path;
+use crate::internal::config::up::asdf_base::PostInstallFuncArgs;
 use crate::internal::config::up::asdf_tool_path;
 use crate::internal::config::up::utils::data_path_dir_hash;
 use crate::internal::config::up::utils::run_progress;
@@ -126,23 +127,19 @@ fn setup_python_venv(
     options: &UpOptions,
     environment: &mut UpEnvironment,
     progress_handler: &dyn ProgressHandler,
-    _config_value: Option<ConfigValue>,
-    tool: String,
-    tool_real_name: String,
-    _requested_version: String,
-    versions: Vec<AsdfToolUpVersion>,
+    args: &PostInstallFuncArgs,
 ) -> Result<(), UpError> {
-    if tool_real_name != "python" {
-        panic!("setup_python_venv called with wrong tool: {}", tool);
+    if args.tool_real_name != "python" {
+        panic!("setup_python_venv called with wrong tool: {}", args.tool);
     }
 
     // Handle each version individually
-    for version in &versions {
+    for version in &args.versions {
         setup_python_venv_per_version(
             options,
             environment,
             progress_handler,
-            &tool,
+            &args.tool,
             version.clone(),
         )?;
     }
@@ -283,26 +280,23 @@ fn setup_python_pip(
     _options: &UpOptions,
     environment: &mut UpEnvironment,
     progress_handler: &dyn ProgressHandler,
-    config_value: Option<ConfigValue>,
-    _tool: String,
-    _tool_real_name: String,
-    requested_version: String,
-    versions: Vec<AsdfToolUpVersion>,
+    args: &PostInstallFuncArgs,
 ) -> Result<(), UpError> {
-    let params = UpConfigPythonParams::from_config_value(config_value.as_ref());
+    let params = UpConfigPythonParams::from_config_value(args.config_value.as_ref());
     let mut pip_auto = params.pip_auto;
 
     // TODO: should we default set pip_auto to true if no pip_files are specified?
     //       if yes, this should come with an option to disable it entirely too
     if params.pip_files.is_empty() && !pip_auto {
-        if requested_version == "auto" {
+        if args.requested_version == "auto" {
             pip_auto = true;
         } else {
             return Ok(());
         }
     }
 
-    let tool_dirs = versions
+    let tool_dirs = args
+        .versions
         .iter()
         .flat_map(|version| version.dirs.clone())
         .collect::<Vec<String>>();

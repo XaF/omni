@@ -51,12 +51,18 @@ type PostInstallFunc = fn(
     options: &UpOptions,
     environment: &mut UpEnvironment,
     progress_handler: &dyn ProgressHandler,
-    config_value: Option<ConfigValue>,
-    tool: String,
-    tool_real_name: String,
-    requested_version: String,
-    versions: Vec<AsdfToolUpVersion>,
+    args: &PostInstallFuncArgs,
 ) -> Result<(), UpError>;
+
+/// A struct representing the arguments that will be passed to the post-install
+/// functions as they are being called.
+pub struct PostInstallFuncArgs {
+    pub config_value: Option<ConfigValue>,
+    pub tool: String,
+    pub tool_real_name: String,
+    pub requested_version: String,
+    pub versions: Vec<AsdfToolUpVersion>,
+}
 
 pub fn asdf_path() -> String {
     (*ASDF_PATH).clone()
@@ -515,16 +521,20 @@ impl UpConfigAsdfBase {
                         installed,
                     }];
 
+                    let post_install_func_args = PostInstallFuncArgs {
+                        config_value: self.config_value.clone(),
+                        tool: self.tool.clone(),
+                        tool_real_name: self.name(),
+                        requested_version: self.version.clone(),
+                        versions: post_install_versions,
+                    };
+
                     for func in self.post_install_funcs.iter() {
                         if let Err(err) = func(
                             options,
                             environment,
                             progress_handler,
-                            self.config_value.clone(),
-                            self.tool.clone(),
-                            self.name(),
-                            self.version.clone(),
-                            post_install_versions.clone(),
+                            &post_install_func_args,
                         ) {
                             progress_handler.error_with_message(format!("error: {}", err));
                             return Err(err);
@@ -689,16 +699,20 @@ impl UpConfigAsdfBase {
                 })
                 .collect::<Vec<AsdfToolUpVersion>>();
 
+            let post_install_func_args = PostInstallFuncArgs {
+                config_value: self.config_value.clone(),
+                tool: self.tool.clone(),
+                tool_real_name: self.name(),
+                requested_version: self.version.clone(),
+                versions: post_install_versions,
+            };
+
             for func in self.post_install_funcs.iter() {
                 if let Err(err) = func(
                     options,
                     environment,
                     progress_handler,
-                    self.config_value.clone(),
-                    self.tool.clone(),
-                    self.name(),
-                    self.version.clone(),
-                    post_install_versions.clone(),
+                    &post_install_func_args,
                 ) {
                     progress_handler.error_with_message(format!("error: {}", err));
                     return Err(err);
