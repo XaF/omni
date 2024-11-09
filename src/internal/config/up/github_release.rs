@@ -761,11 +761,10 @@ impl UpConfigGithubRelease {
     }
 
     pub fn was_upped(&self) -> bool {
-        match self.was_handled.get() {
-            Some(GithubReleaseHandled::Handled) => true,
-            Some(GithubReleaseHandled::Noop) => true,
-            _ => false,
-        }
+        matches!(
+            self.was_handled.get(),
+            Some(GithubReleaseHandled::Handled) | Some(GithubReleaseHandled::Noop)
+        )
     }
 
     pub fn commit(&self, _options: &UpOptions, env_version_id: &str) -> Result<(), UpError> {
