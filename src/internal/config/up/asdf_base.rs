@@ -1179,7 +1179,7 @@ impl UpConfigAsdfBase {
             let mut updated = false;
             let mut to_remove = Vec::new();
 
-            let environment_ids = if asdf_cache.installed.len() > 0 {
+            let environment_ids = if !asdf_cache.installed.is_empty() {
                 UpEnvironmentsCache::get().environment_ids()
             } else {
                 BTreeSet::new()

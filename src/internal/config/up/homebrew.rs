@@ -250,11 +250,12 @@ impl UpConfigHomebrew {
             progress_handler.init("homebrew:".light_blue());
             progress_handler.progress("checking for unused homebrew dependencies".to_string());
 
-            let environment_ids = if brew_cache.installed.len() > 0 || brew_cache.tapped.len() > 0 {
-                UpEnvironmentsCache::get().environment_ids()
-            } else {
-                BTreeSet::new()
-            };
+            let environment_ids =
+                if !brew_cache.installed.is_empty() || !brew_cache.tapped.is_empty() {
+                    UpEnvironmentsCache::get().environment_ids()
+                } else {
+                    BTreeSet::new()
+                };
 
             // Cleanup the references to this repository for
             // any installed formulae or casks that is not currently
@@ -619,7 +620,7 @@ impl HomebrewTap {
     fn commit(&self, _options: &UpOptions, env_version_id: &str) -> Result<(), UpError> {
         if self.was_handled() {
             if let Err(err) = HomebrewOperationCache::exclusive(|brew_cache| {
-                brew_cache.add_tap_required_by(&env_version_id, &self.name, self.was_handled())
+                brew_cache.add_tap_required_by(env_version_id, &self.name, self.was_handled())
             }) {
                 return Err(UpError::Cache(err.to_string()));
             }
@@ -1064,7 +1065,7 @@ impl HomebrewInstall {
         if self.was_handled() {
             if let Err(err) = HomebrewOperationCache::exclusive(|brew_cache| {
                 brew_cache.add_install_required_by(
-                    &env_version_id,
+                    env_version_id,
                     &self.name,
                     self.version.clone(),
                     self.is_cask(),

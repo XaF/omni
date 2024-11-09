@@ -222,7 +222,7 @@ impl UpConfig {
         // as required by the `assigned_environment`
         if new_env {
             progress_handler.progress("committing environment dependencies".to_string());
-            if let Err(err) = self.commit(&options, &assigned_environment) {
+            if let Err(err) = self.commit(options, &assigned_environment) {
                 progress_handler.error_with_message(format!(
                     "failed to commit environment dependencies: {}",
                     err

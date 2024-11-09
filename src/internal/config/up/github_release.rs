@@ -301,7 +301,7 @@ impl UpConfigGithubReleases {
 
             let mut updated = false;
 
-            let environment_ids = if ghrelease.installed.len() > 0 {
+            let environment_ids = if !ghrelease.installed.is_empty() {
                 UpEnvironmentsCache::get().environment_ids()
             } else {
                 BTreeSet::new()

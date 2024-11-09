@@ -608,11 +608,11 @@ mod tests {
                 entries: Vec::new(),
             };
 
-            assert!(history.add("work1", "sha1", "env1"));
+            assert!(history.add("work1", Some("sha1".to_string()), "env1"));
             assert_eq!(history.entries.len(), 1);
             assert!(history.entries[0].is_open());
             assert_eq!(history.entries[0].workdir_id, "work1");
-            assert_eq!(history.entries[0].head_sha, "sha1");
+            assert_eq!(history.entries[0].head_sha, Some("sha1".to_string()));
             assert_eq!(history.entries[0].env_version_id, "env1");
         }
 
@@ -622,8 +622,8 @@ mod tests {
                 entries: Vec::new(),
             };
 
-            assert!(history.add("work1", "sha1", "env1"));
-            assert!(!history.add("work1", "sha1", "env1")); // Should return false for same environment
+            assert!(history.add("work1", Some("sha1".to_string()), "env1"));
+            assert!(!history.add("work1", Some("sha1".to_string()), "env1")); // Should return false for same environment
             assert_eq!(history.entries.len(), 1);
             assert!(history.entries[0].is_open());
         }
@@ -634,8 +634,8 @@ mod tests {
                 entries: Vec::new(),
             };
 
-            assert!(history.add("work1", "sha1", "env1"));
-            assert!(history.add("work1", "sha2", "env2"));
+            assert!(history.add("work1", Some("sha1".to_string()), "env1"));
+            assert!(history.add("work1", Some("sha2".to_string()), "env2"));
 
             assert_eq!(history.entries.len(), 2);
             assert!(history.entries[0].is_open());
@@ -651,8 +651,8 @@ mod tests {
                 entries: Vec::new(),
             };
 
-            assert!(history.add("work1", "sha1", "env1"));
-            assert!(history.add("work2", "sha2", "env2"));
+            assert!(history.add("work1", Some("sha1".to_string()), "env1"));
+            assert!(history.add("work2", Some("sha2".to_string()), "env2"));
 
             assert_eq!(history.entries.len(), 2);
             // Both entries should be open since they're for different workdirs
@@ -666,11 +666,13 @@ mod tests {
             };
 
             // Add multiple open entries for same workdir
-            history.add("work1", "sha1", "env1");
+            history.add("work1", Some("sha1".to_string()), "env1");
             // Manually add another open entry for the same workdir
-            history
-                .entries
-                .push(UpEnvironmentHistoryEntry::new("work1", "sha2", "env2"));
+            history.entries.push(UpEnvironmentHistoryEntry::new(
+                "work1",
+                Some("sha2".to_string()),
+                "env2",
+            ));
 
             history.cleanup(None, None, None);
 
@@ -685,9 +687,9 @@ mod tests {
             };
 
             // Add multiple entries for same workdir
-            history.add("work1", "sha1", "env1");
-            history.add("work1", "sha2", "env2");
-            history.add("work1", "sha3", "env3");
+            history.add("work1", Some("sha1".to_string()), "env1");
+            history.add("work1", Some("sha2".to_string()), "env2");
+            history.add("work1", Some("sha3".to_string()), "env3");
 
             history.cleanup(None, Some(2), None);
 
@@ -704,13 +706,14 @@ mod tests {
             let now = omni_now();
 
             // Add an old entry
-            let mut old_entry = UpEnvironmentHistoryEntry::new("work1", "sha1", "env1");
+            let mut old_entry =
+                UpEnvironmentHistoryEntry::new("work1", Some("sha1".to_string()), "env1");
             old_entry.used_from_date = now - Duration::hours(5);
             old_entry.used_until_date = Some(now - Duration::hours(4));
             history.entries.push(old_entry);
 
             // Add a recent entry
-            history.add("work1", "sha2", "env2");
+            history.add("work1", Some("sha2".to_string()), "env2");
 
             history.cleanup(Some(Duration::hours(3)), None, None);
 
@@ -725,12 +728,12 @@ mod tests {
             };
 
             // Add entries for different workdirs
-            history.add("work1", "sha1.1", "env1.1");
-            history.add("work1", "sha1.2", "env1.2");
-            history.add("work2", "sha2.1", "env2.1");
-            history.add("work2", "sha2.2", "env2.2");
-            history.add("work3", "sha3.1", "env3.1");
-            history.add("work3", "sha3.2", "env3.2");
+            history.add("work1", Some("sha1.1".to_string()), "env1.1");
+            history.add("work1", Some("sha1.2".to_string()), "env1.2");
+            history.add("work2", Some("sha2.1".to_string()), "env2.1");
+            history.add("work2", Some("sha2.2".to_string()), "env2.2");
+            history.add("work3", Some("sha3.1".to_string()), "env3.1");
+            history.add("work3", Some("sha3.2".to_string()), "env3.2");
 
             history.cleanup(None, None, Some(5));
 
@@ -761,15 +764,17 @@ mod tests {
             let now = omni_now();
 
             // Add entries in mixed order with same close dates
-            let mut entry1 = UpEnvironmentHistoryEntry::new("work1", "sha1", "env1");
+            let mut entry1 =
+                UpEnvironmentHistoryEntry::new("work1", Some("sha1".to_string()), "env1");
             entry1.used_from_date = now - Duration::hours(3);
             entry1.used_until_date = Some(now - Duration::hours(1));
 
-            let mut entry2 = UpEnvironmentHistoryEntry::new("work1", "sha2", "env2");
+            let mut entry2 =
+                UpEnvironmentHistoryEntry::new("work1", Some("sha2".to_string()), "env2");
             entry2.used_from_date = now - Duration::hours(2);
             entry2.used_until_date = Some(now - Duration::hours(1));
 
-            let entry3 = UpEnvironmentHistoryEntry::new("work2", "sha3", "env3");
+            let entry3 = UpEnvironmentHistoryEntry::new("work2", Some("sha3".to_string()), "env3");
 
             history.entries.extend([entry1, entry2, entry3]);
 
@@ -793,7 +798,7 @@ mod tests {
             for i in 0..10 {
                 let mut entry = UpEnvironmentHistoryEntry::new(
                     &format!("work{}", i % 2),
-                    &format!("sha{}", i),
+                    Some(format!("sha{}", i)),
                     &format!("env{}", i),
                 );
                 if i < 4 {
