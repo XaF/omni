@@ -1,4 +1,3 @@
-use std::any::Any;
 use std::collections::BTreeMap;
 use std::collections::HashMap;
 use std::collections::HashSet;
@@ -9,10 +8,10 @@ use serde::Deserialize;
 use serde::Serialize;
 
 use crate::internal::cache::utils as cache_utils;
-use crate::internal::commands::base::BuiltinCommand;
 use crate::internal::commands::utils::str_to_bool;
 use crate::internal::commands::HelpCommand;
 use crate::internal::config::parser::ParseArgsErrorKind;
+use crate::internal::config::parser::ParseArgsValue;
 use crate::internal::config::ConfigScope;
 use crate::internal::config::ConfigSource;
 use crate::internal::config::ConfigValue;
@@ -564,6 +563,26 @@ impl CommandSyntax {
         Ok(())
     }
 
+    /// The flag parameters have some constraints that could lead the
+    /// building of the argument parser to panic:
+    /// - If a flag has num_values set
+    fn check_parameters_flag(&self) -> Result<(), String> {
+        for param in self
+            .parameters
+            .iter()
+            .filter(|param| param.arg_type == SyntaxOptArgType::Flag)
+        {
+            if param.num_values.is_some() {
+                return Err(format!(
+                    "{}: flag argument cannot have 'num_values' set",
+                    param.name().light_yellow(),
+                ));
+            }
+        }
+
+        Ok(())
+    }
+
     fn check_parameters(&self) -> Result<(), String> {
         self.check_parameters_unique_names()?;
         self.check_parameters_references()?;
@@ -572,6 +591,7 @@ impl CommandSyntax {
         self.check_parameters_counter()?;
         self.check_parameters_allow_hyphen_values()?;
         self.check_parameters_positional()?;
+        self.check_parameters_flag()?;
 
         Ok(())
     }
@@ -594,11 +614,11 @@ impl CommandSyntax {
         Ok(parser)
     }
 
-    pub fn parse_args(
+    pub fn parse_args_typed(
         &self,
         argv: Vec<String>,
         called_as: Vec<String>,
-    ) -> Result<BTreeMap<String, String>, ParseArgsErrorKind> {
+    ) -> Result<BTreeMap<String, ParseArgsValue>, ParseArgsErrorKind> {
         let mut parse_argv = vec!["".to_string()];
         parse_argv.extend(argv);
 
@@ -609,15 +629,15 @@ impl CommandSyntax {
             }
         };
 
-        // TODO: REMOVE DEBUG
-        // let _matches = parser.clone().get_matches_from(&parse_argv);
-
         let matches = match parser.try_get_matches_from(&parse_argv) {
             Err(err) => match err.kind() {
-                clap::error::ErrorKind::DisplayHelp
-                | clap::error::ErrorKind::DisplayHelpOnMissingArgumentOrSubcommand => {
-                    HelpCommand::new().exec(called_as);
-                    panic!("help command should have exited");
+                clap::error::ErrorKind::DisplayHelp => {
+                    HelpCommand::new().exec_with_exit_code(called_as, 0);
+                    unreachable!("help command should have exited");
+                }
+                clap::error::ErrorKind::DisplayHelpOnMissingArgumentOrSubcommand => {
+                    HelpCommand::new().exec_with_exit_code(called_as, 1);
+                    unreachable!("help command should have exited");
                 }
                 clap::error::ErrorKind::DisplayVersion => {
                     unreachable!("version flag is disabled");
@@ -630,18 +650,37 @@ impl CommandSyntax {
         };
 
         let mut args = BTreeMap::new();
-        let mut all_args = Vec::new();
 
         for param in &self.parameters {
-            all_args.push(param.dest());
             param.add_to_args(&mut args, &matches, None);
         }
 
         for group in &self.groups {
-            all_args.push(group.dest());
             group.add_to_args(&mut args, &matches, &self.parameters);
         }
 
+        Ok(args)
+    }
+
+    pub fn parse_args(
+        &self,
+        argv: Vec<String>,
+        called_as: Vec<String>,
+    ) -> Result<BTreeMap<String, String>, ParseArgsErrorKind> {
+        let typed_args = self.parse_args_typed(argv, called_as)?;
+
+        let mut args = BTreeMap::new();
+        for (key, value) in typed_args {
+            value.export_to_env(&key, &mut args);
+        }
+
+        let mut all_args = Vec::new();
+        for param in &self.parameters {
+            all_args.push(param.dest());
+        }
+        for group in &self.groups {
+            all_args.push(group.dest());
+        }
         args.insert("OMNI_ARG_LIST".to_string(), all_args.join(" "));
 
         Ok(args)
@@ -665,6 +704,8 @@ pub struct SyntaxOptArg {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub default: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    pub default_missing_value: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub num_values: Option<SyntaxOptArgNumValues>,
     #[serde(rename = "delimiter", skip_serializing_if = "Option::is_none")]
     pub value_delimiter: Option<char>,
@@ -674,6 +715,10 @@ pub struct SyntaxOptArg {
     pub leftovers: bool,
     #[serde(skip_serializing_if = "cache_utils::is_false")]
     pub allow_hyphen_values: bool,
+    #[serde(skip_serializing_if = "cache_utils::is_false")]
+    pub allow_negative_numbers: bool,
+    #[serde(skip_serializing_if = "cache_utils::is_false")]
+    pub group_occurrences: bool,
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub requires: Vec<String>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
@@ -698,11 +743,14 @@ impl Default for SyntaxOptArg {
             placeholder: None,
             arg_type: SyntaxOptArgType::String,
             default: None,
+            default_missing_value: None,
             num_values: None,
             value_delimiter: None,
             last_arg_double_hyphen: false,
             leftovers: false,
             allow_hyphen_values: false,
+            allow_negative_numbers: false,
+            group_occurrences: false,
             requires: vec![],
             conflicts_with: vec![],
             required_without: vec![],
@@ -727,10 +775,13 @@ impl SyntaxOptArg {
         let mut dest = None;
         let mut required = required;
         let mut default = None;
+        let mut default_missing_value = None;
         let mut num_values = None;
         let mut value_delimiter = None;
         let mut last_arg_double_hyphen = false;
         let mut allow_hyphen_values = false;
+        let mut allow_negative_numbers = false;
+        let mut group_occurrences = false;
         let mut requires = vec![];
         let mut conflicts_with = vec![];
         let mut required_without = vec![];
@@ -782,6 +833,9 @@ impl SyntaxOptArg {
                     default = value_table
                         .get("default")
                         .and_then(|value| value.as_str_forced());
+                    default_missing_value = value_table
+                        .get("default_missing_value")
+                        .and_then(|value| value.as_str_forced());
                     num_values =
                         SyntaxOptArgNumValues::from_config_value(value_table.get("num_values"));
                     value_delimiter = value_table
@@ -798,6 +852,14 @@ impl SyntaxOptArg {
                         .unwrap_or(false);
                     allow_hyphen_values = value_table
                         .get("allow_hyphen_values")
+                        .and_then(|value| value.as_bool_forced())
+                        .unwrap_or(false);
+                    allow_negative_numbers = value_table
+                        .get("allow_negative_numbers")
+                        .and_then(|value| value.as_bool_forced())
+                        .unwrap_or(false);
+                    group_occurrences = value_table
+                        .get("group_occurrences")
                         .and_then(|value| value.as_bool_forced())
                         .unwrap_or(false);
 
@@ -907,11 +969,14 @@ impl SyntaxOptArg {
             placeholder,
             arg_type,
             default,
+            default_missing_value,
             num_values,
             value_delimiter,
             last_arg_double_hyphen,
             leftovers,
             allow_hyphen_values,
+            allow_negative_numbers,
+            group_occurrences,
             requires,
             conflicts_with,
             required_without,
@@ -1064,6 +1129,9 @@ impl SyntaxOptArg {
                             .join(" ");
                         format!("{}...", repr)
                     }
+                    SyntaxOptArgNumValues::AtMost(1) => {
+                        format!("{}", repr)
+                    }
                     SyntaxOptArgNumValues::AtMost(_) | SyntaxOptArgNumValues::Any => {
                         format!("{}...", repr)
                     }
@@ -1075,7 +1143,7 @@ impl SyntaxOptArg {
                             .collect::<Vec<_>>()
                             .join(" ");
 
-                        if min == *max {
+                        if min == *max || *max == 1 {
                             repr
                         } else {
                             format!("{}...", repr)
@@ -1139,11 +1207,28 @@ impl SyntaxOptArg {
                             .collect::<Vec<_>>()
                             .join(" "),
                         SyntaxOptArgNumValues::AtLeast(min) => {
+                            let min_repr = if *min == 0 { 1 } else { *min };
+
                             let repr = std::iter::repeat(repr)
-                                .take(*min)
+                                .take(min_repr)
                                 .collect::<Vec<_>>()
                                 .join(" ");
-                            format!("{}...", repr)
+
+                            let repr = format!("{}...", repr);
+
+                            if *min == 0 {
+                                format!("[{}]", repr)
+                            } else {
+                                repr
+                            }
+                        }
+                        SyntaxOptArgNumValues::AtMost(1) => {
+                            let repr = format!("[{}]", placeholder);
+                            if use_colors {
+                                repr.light_cyan()
+                            } else {
+                                repr
+                            }
                         }
                         SyntaxOptArgNumValues::AtMost(_) | SyntaxOptArgNumValues::Any => {
                             format!("[{}...]", repr)
@@ -1156,7 +1241,7 @@ impl SyntaxOptArg {
                                 .collect::<Vec<_>>()
                                 .join(" ");
 
-                            let repr = if min == *max {
+                            let repr = if min == *max || *max == 1 {
                                 repr
                             } else {
                                 format!("{}...", repr)
@@ -1200,6 +1285,22 @@ impl SyntaxOptArg {
                     }
                     help_desc
                         .push_str(&format!("[{}: {}]", "default".italic(), default).light_black());
+                }
+            }
+
+            if let Some(default_missing_value) = &self.default_missing_value {
+                if !default_missing_value.is_empty() {
+                    if !help_desc.is_empty() {
+                        help_desc.push(' ');
+                    }
+                    help_desc.push_str(
+                        &format!(
+                            "[{}: {}]",
+                            "default missing value".italic(),
+                            default_missing_value
+                        )
+                        .light_black(),
+                    );
                 }
             }
         }
@@ -1319,6 +1420,11 @@ impl SyntaxOptArg {
             arg = arg.default_value(default);
         }
 
+        // Set the default missing value
+        if let Some(default_missing_value) = &self.default_missing_value {
+            arg = arg.default_missing_value(default_missing_value);
+        }
+
         // Set how to parse the values
         if let Some(num_values) = &self.num_values {
             arg = arg.num_args(*num_values);
@@ -1334,6 +1440,9 @@ impl SyntaxOptArg {
         }
         if self.allow_hyphen_values {
             arg = arg.allow_hyphen_values(true);
+        }
+        if self.allow_negative_numbers {
+            arg = arg.allow_negative_numbers(true);
         }
 
         // Set conflicts and requirements
@@ -1427,60 +1536,68 @@ impl SyntaxOptArg {
 
     pub fn add_to_args(
         &self,
-        args: &mut BTreeMap<String, String>,
+        args: &mut BTreeMap<String, ParseArgsValue>,
         matches: &clap::ArgMatches,
         override_dest: Option<String>,
     ) {
         let dest = self.dest();
-        let has_multi = self.arg_type().is_array()
-            || self
-                .num_values
-                .as_ref()
-                .map_or(false, |num_values| num_values.is_many());
+
+        // has_occurrences is when an argument can take multiple values
+        let has_occurrences = self
+            .num_values
+            .as_ref()
+            .map_or(false, |num_values| num_values.is_many());
+
+        // has_multi is when an argument can be called multiple times
+        let has_multi = self.arg_type().is_array();
 
         match &self.arg_type().terminal_type() {
             SyntaxOptArgType::String | SyntaxOptArgType::Enum(_) => {
-                extract_value_to_env::<String>(
+                extract_value_to_typed::<String>(
                     matches,
                     &dest,
                     &self.default,
-                    "str",
                     args,
                     override_dest,
+                    has_occurrences,
                     has_multi,
+                    self.group_occurrences,
                 );
             }
             SyntaxOptArgType::Integer => {
-                extract_value_to_env::<i64>(
+                extract_value_to_typed::<i64>(
                     matches,
                     &dest,
                     &self.default,
-                    "int",
                     args,
                     override_dest,
+                    has_occurrences,
                     has_multi,
+                    self.group_occurrences,
                 );
             }
             SyntaxOptArgType::Counter => {
-                extract_value_to_env::<u8>(
+                extract_value_to_typed::<u8>(
                     matches,
                     &dest,
                     &self.default,
-                    "int",
                     args,
                     override_dest,
+                    has_occurrences,
                     has_multi,
+                    self.group_occurrences,
                 );
             }
             SyntaxOptArgType::Float => {
-                extract_value_to_env::<f64>(
+                extract_value_to_typed::<f64>(
                     matches,
                     &dest,
                     &self.default,
-                    "float",
                     args,
                     override_dest,
+                    has_occurrences,
                     has_multi,
+                    self.group_occurrences,
                 );
             }
             SyntaxOptArgType::Boolean | SyntaxOptArgType::Flag => {
@@ -1489,14 +1606,15 @@ impl SyntaxOptArg {
                         .unwrap_or(false)
                         .to_string(),
                 );
-                extract_value_to_env::<bool>(
+                extract_value_to_typed::<bool>(
                     matches,
                     &dest,
                     &default,
-                    "bool",
                     args,
                     override_dest,
+                    has_occurrences,
                     has_multi,
+                    self.group_occurrences,
                 );
             }
             SyntaxOptArgType::Array(_) => unreachable!("array type should be handled differently"),
@@ -1504,37 +1622,111 @@ impl SyntaxOptArg {
     }
 }
 
-fn extract_value_from_parser<T: Any + Clone + Send + Sync + 'static + ToString + FromStr>(
-    matches: &clap::ArgMatches,
-    dest: &str,
-    default: &Option<String>,
-    multi: bool,
-) -> Vec<String> {
-    if multi {
+trait ParserExtractType<T> {
+    type BaseType;
+    type Output;
+
+    fn extract(matches: &clap::ArgMatches, dest: &str, default: &Option<String>) -> Self::Output;
+}
+
+impl<T: Into<ParseArgsValue> + Clone + FromStr + Send + Sync + 'static> ParserExtractType<T>
+    for Option<T>
+{
+    type BaseType = T;
+    type Output = Option<T>;
+
+    fn extract(matches: &clap::ArgMatches, dest: &str, default: &Option<String>) -> Self::Output {
+        match (matches.get_one::<T>(dest), default) {
+            (Some(value), _) => Some(value.clone()),
+            (None, Some(default)) => match default.parse::<T>() {
+                Ok(value) => Some(value),
+                Err(_) => None,
+            },
+            _ => None,
+        }
+    }
+}
+
+impl<T: Into<ParseArgsValue> + Clone + FromStr + Send + Sync + 'static> ParserExtractType<T>
+    for Vec<Option<T>>
+{
+    type BaseType = T;
+    type Output = Vec<Option<T>>;
+
+    fn extract(matches: &clap::ArgMatches, dest: &str, default: &Option<String>) -> Self::Output {
         match (matches.get_many::<T>(dest), default) {
             (Some(values), _) => values
                 .collect::<Vec<_>>()
                 .into_iter()
-                .map(|value| value.to_string())
+                .map(|value| Some(value.clone()))
                 .collect(),
             (None, Some(default)) => default
                 .split(',')
                 .flat_map(|part| part.trim().parse::<T>())
-                .map(|value| value.to_string())
+                .map(|value| Some(value.clone()))
                 .collect(),
             _ => vec![],
         }
-    } else {
-        let value = match (matches.get_one::<T>(dest), default) {
-            (Some(value), _) => value.to_string(),
-            (None, Some(default)) => match default.parse::<T>() {
-                Ok(value) => value.to_string(),
-                Err(_) => "".to_string(),
-            },
-            _ => "".to_string(),
-        };
-        vec![value]
     }
+}
+
+impl<T: Into<ParseArgsValue> + Clone + FromStr + Send + Sync + 'static> ParserExtractType<T>
+    for Vec<Vec<Option<T>>>
+{
+    type BaseType = T;
+    type Output = Vec<Vec<Option<T>>>;
+
+    fn extract(matches: &clap::ArgMatches, dest: &str, default: &Option<String>) -> Self::Output {
+        match (matches.get_occurrences(dest), default) {
+            (Some(occurrences), _) => occurrences
+                .into_iter()
+                .map(|values| {
+                    values
+                        .into_iter()
+                        .map(|value: &T| Some(value.clone()))
+                        .collect()
+                })
+                .collect(),
+            (None, Some(default)) => vec![default
+                .split(',')
+                .flat_map(|part| part.trim().parse::<T>().map(|value| Some(value.clone())))
+                .collect()],
+            _ => vec![],
+        }
+    }
+}
+
+#[inline]
+fn extract_value_to_typed<T>(
+    matches: &clap::ArgMatches,
+    dest: &str,
+    default: &Option<String>,
+    args: &mut BTreeMap<String, ParseArgsValue>,
+    override_dest: Option<String>,
+    has_occurrences: bool,
+    has_multi: bool,
+    group_occurrences: bool,
+) where
+    // W: ParserExtractType<T>,
+    T: Into<ParseArgsValue> + Clone + Send + Sync + FromStr + 'static,
+    ParseArgsValue: From<Option<T>>,
+    ParseArgsValue: From<Vec<Option<T>>>,
+    ParseArgsValue: From<Vec<Vec<Option<T>>>>,
+{
+    let arg_dest = override_dest.unwrap_or(dest.to_string());
+
+    let value = if has_occurrences && has_multi && group_occurrences {
+        let value = <Vec<Vec<Option<T>>> as ParserExtractType<T>>::extract(matches, dest, default);
+        ParseArgsValue::from(value)
+    } else if has_multi || has_occurrences {
+        let value = <Vec<Option<T>> as ParserExtractType<T>>::extract(matches, dest, default);
+        ParseArgsValue::from(value)
+    } else {
+        let value = <Option<T> as ParserExtractType<T>>::extract(matches, dest, default);
+        ParseArgsValue::from(value)
+    };
+
+    args.insert(arg_dest, value);
 }
 
 pub fn parse_arg_name(arg_name: &str) -> (Vec<String>, SyntaxOptArgType, Option<String>, bool) {
@@ -1595,41 +1787,6 @@ pub fn parse_arg_name(arg_name: &str) -> (Vec<String>, SyntaxOptArgType, Option<
     }
 
     (names, arg_type, placeholder, leftovers)
-}
-
-fn extract_value_to_env<T: Any + Clone + Send + Sync + 'static + ToString + FromStr>(
-    matches: &clap::ArgMatches,
-    dest: &str,
-    default: &Option<String>,
-    arg_type: &str,
-    args: &mut BTreeMap<String, String>,
-    override_dest: Option<String>,
-    multi: bool,
-) {
-    let values = extract_value_from_parser::<T>(matches, dest, default, multi);
-    let env_dest = override_dest.unwrap_or(dest.to_string()).to_uppercase();
-
-    if multi {
-        for (i, value) in values.iter().enumerate() {
-            args.insert(
-                format!("OMNI_ARG_{}_VALUE_{}", env_dest, i),
-                value.to_string(),
-            );
-        }
-        args.insert(
-            format!("OMNI_ARG_{}_TYPE", env_dest),
-            format!("{}/{}", arg_type, values.len()),
-        );
-    } else if !values.is_empty() {
-        let value = values
-            .first()
-            .expect("values should not be empty")
-            .to_string();
-        if !value.is_empty() {
-            args.insert(format!("OMNI_ARG_{}_VALUE", env_dest), value);
-        }
-        args.insert(format!("OMNI_ARG_{}_TYPE", env_dest), arg_type.to_string());
-    }
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Copy)]
@@ -2176,7 +2333,7 @@ impl SyntaxGroup {
 
     fn add_to_args(
         &self,
-        args: &mut BTreeMap<String, String>,
+        args: &mut BTreeMap<String, ParseArgsValue>,
         matches: &clap::ArgMatches,
         parameters: &[SyntaxOptArg],
     ) {
@@ -2967,13 +3124,14 @@ mod tests {
                         expectations.push((&value_var, value));
                     }
 
-                    assert_eq!((&argv, args.len()), (&argv, expectations.len()));
+                    let expectations_len = expectations.len();
                     for (key, value) in expectations {
                         assert_eq!(
                             (&argv, key, args.get(key)),
                             (&argv, key, Some(&value.to_string()))
                         );
                     }
+                    assert_eq!((&argv, args.len()), (&argv, expectations_len));
                 }
             }
 
@@ -3399,6 +3557,87 @@ mod tests {
             }
 
             #[test]
+            fn test_param_default_missing_value() {
+                let syntax = CommandSyntax {
+                    parameters: vec![
+                        SyntaxOptArg {
+                            names: vec!["--str".to_string()],
+                            arg_type: SyntaxOptArgType::String,
+                            num_values: Some(SyntaxOptArgNumValues::AtMost(1)),
+                            default_missing_value: Some("default1".to_string()),
+                            ..SyntaxOptArg::default()
+                        },
+                        SyntaxOptArg {
+                            names: vec!["--int".to_string()],
+                            arg_type: SyntaxOptArgType::Integer,
+                            desc: Some("takes an int".to_string()),
+                            num_values: Some(SyntaxOptArgNumValues::AtMost(1)),
+                            default_missing_value: Some("42".to_string()),
+                            ..SyntaxOptArg::default()
+                        },
+                        SyntaxOptArg {
+                            names: vec!["--float".to_string()],
+                            arg_type: SyntaxOptArgType::Float,
+                            desc: Some("takes a float".to_string()),
+                            num_values: Some(SyntaxOptArgNumValues::AtMost(1)),
+                            default_missing_value: Some("3.14".to_string()),
+                            ..SyntaxOptArg::default()
+                        },
+                        SyntaxOptArg {
+                            names: vec!["--bool".to_string()],
+                            arg_type: SyntaxOptArgType::Boolean,
+                            desc: Some("takes a boolean".to_string()),
+                            num_values: Some(SyntaxOptArgNumValues::AtMost(1)),
+                            default_missing_value: Some("true".to_string()),
+                            ..SyntaxOptArg::default()
+                        },
+                        SyntaxOptArg {
+                            names: vec!["--enum".to_string()],
+                            arg_type: SyntaxOptArgType::Enum(vec![
+                                "a".to_string(),
+                                "b".to_string(),
+                            ]),
+                            desc: Some("takes an enum".to_string()),
+                            num_values: Some(SyntaxOptArgNumValues::AtMost(1)),
+                            default_missing_value: Some("a".to_string()),
+                            ..SyntaxOptArg::default()
+                        },
+                    ],
+                    ..CommandSyntax::default()
+                };
+
+                let argv = vec!["--str", "--int", "--float", "--bool", "--enum"];
+
+                let args = match syntax.parse_args(
+                    argv.iter().map(|s| s.to_string()).collect(),
+                    vec!["test".to_string()],
+                ) {
+                    Ok(args) => args,
+                    Err(e) => panic!("{}", e),
+                };
+
+                let expectations = vec![
+                    ("OMNI_ARG_LIST", "str int float bool enum"),
+                    ("OMNI_ARG_STR_TYPE", "str"),
+                    ("OMNI_ARG_STR_VALUE", "default1"),
+                    ("OMNI_ARG_INT_TYPE", "int"),
+                    ("OMNI_ARG_INT_VALUE", "42"),
+                    ("OMNI_ARG_FLOAT_TYPE", "float"),
+                    ("OMNI_ARG_FLOAT_VALUE", "3.14"),
+                    ("OMNI_ARG_BOOL_TYPE", "bool"),
+                    ("OMNI_ARG_BOOL_VALUE", "true"),
+                    ("OMNI_ARG_ENUM_TYPE", "str"),
+                    ("OMNI_ARG_ENUM_VALUE", "a"),
+                ];
+
+                let expectations_len = expectations.len();
+                for (key, value) in expectations {
+                    assert_eq!((key, args.get(key)), (key, Some(&value.to_string())));
+                }
+                assert_eq!(args.len(), expectations_len);
+            }
+
+            #[test]
             fn test_param_value_delimiter_on_non_array() {
                 let syntax = CommandSyntax {
                     parameters: vec![SyntaxOptArg {
@@ -3623,6 +3862,86 @@ mod tests {
             }
 
             #[test]
+            fn test_param_group_occurrences() {
+                let syntax = CommandSyntax {
+                    parameters: vec![
+                        SyntaxOptArg {
+                            names: vec!["--group".to_string()],
+                            num_values: Some(SyntaxOptArgNumValues::AtLeast(1)),
+                            arg_type: SyntaxOptArgType::Array(Box::new(SyntaxOptArgType::String)),
+                            group_occurrences: true,
+                            ..SyntaxOptArg::default()
+                        },
+                        SyntaxOptArg {
+                            names: vec!["--no-group".to_string()],
+                            num_values: Some(SyntaxOptArgNumValues::AtLeast(1)),
+                            arg_type: SyntaxOptArgType::Array(Box::new(SyntaxOptArgType::String)),
+                            ..SyntaxOptArg::default()
+                        },
+                    ],
+                    ..CommandSyntax::default()
+                };
+
+                let argv = vec![
+                    "--group",
+                    "group1.1",
+                    "group1.2",
+                    "--no-group",
+                    "no-group1.1",
+                    "no-group1.2",
+                    "--group",
+                    "group2.1",
+                    "--no-group",
+                    "no-group2.1",
+                    "--group",
+                    "group3.1",
+                    "group3.2",
+                    "group3.3",
+                    "--no-group",
+                    "no-group3.1",
+                    "no-group3.2",
+                    "no-group3.3",
+                ];
+
+                let args = match syntax.parse_args(
+                    argv.iter().map(|s| s.to_string()).collect(),
+                    vec!["test".to_string()],
+                ) {
+                    Ok(args) => args,
+                    Err(e) => panic!("{}", e),
+                };
+
+                let expectations = vec![
+                    ("OMNI_ARG_LIST", "group no_group"),
+                    ("OMNI_ARG_GROUP_TYPE", "str/3/3"),
+                    ("OMNI_ARG_GROUP_TYPE_0", "str/2"),
+                    ("OMNI_ARG_GROUP_VALUE_0_0", "group1.1"),
+                    ("OMNI_ARG_GROUP_VALUE_0_1", "group1.2"),
+                    ("OMNI_ARG_GROUP_TYPE_1", "str/1"),
+                    ("OMNI_ARG_GROUP_VALUE_1_0", "group2.1"),
+                    ("OMNI_ARG_GROUP_TYPE_2", "str/3"),
+                    ("OMNI_ARG_GROUP_VALUE_2_0", "group3.1"),
+                    ("OMNI_ARG_GROUP_VALUE_2_1", "group3.2"),
+                    ("OMNI_ARG_GROUP_VALUE_2_2", "group3.3"),
+                    ("OMNI_ARG_NO_GROUP_TYPE", "str/6"),
+                    ("OMNI_ARG_NO_GROUP_VALUE_0", "no-group1.1"),
+                    ("OMNI_ARG_NO_GROUP_VALUE_1", "no-group1.2"),
+                    ("OMNI_ARG_NO_GROUP_VALUE_2", "no-group2.1"),
+                    ("OMNI_ARG_NO_GROUP_VALUE_3", "no-group3.1"),
+                    ("OMNI_ARG_NO_GROUP_VALUE_4", "no-group3.2"),
+                    ("OMNI_ARG_NO_GROUP_VALUE_5", "no-group3.3"),
+                ];
+
+                eprintln!("{:?}", args);
+
+                let expectations_len = expectations.len();
+                for (key, value) in expectations {
+                    assert_eq!((key, args.get(key)), (key, Some(&value.to_string())));
+                }
+                assert_eq!(args.len(), expectations_len);
+            }
+
+            #[test]
             fn test_param_last() {
                 let syntax = CommandSyntax {
                     parameters: vec![
@@ -3825,6 +4144,135 @@ mod tests {
                 for (key, value) in expectations {
                     assert_eq!((key, args.get(key)), (key, Some(&value.to_string())));
                 }
+            }
+
+            #[test]
+            fn test_param_allow_negative_numbers() {
+                let syntax = CommandSyntax {
+                    parameters: vec![
+                        SyntaxOptArg {
+                            names: vec!["--param1".to_string()],
+                            arg_type: SyntaxOptArgType::Integer,
+                            allow_negative_numbers: true,
+                            ..SyntaxOptArg::default()
+                        },
+                        SyntaxOptArg {
+                            names: vec!["--param2".to_string()],
+                            arg_type: SyntaxOptArgType::Float,
+                            allow_negative_numbers: true,
+                            ..SyntaxOptArg::default()
+                        },
+                    ],
+                    ..CommandSyntax::default()
+                };
+
+                let args = match syntax.parse_args(
+                    ["--param1", "-42", "--param2", "-3.14"]
+                        .iter()
+                        .map(|s| s.to_string())
+                        .collect(),
+                    vec!["test".to_string()],
+                ) {
+                    Ok(args) => args,
+                    Err(e) => panic!("{}", e),
+                };
+
+                let expectations = vec![
+                    ("OMNI_ARG_LIST", "param1 param2"),
+                    ("OMNI_ARG_PARAM1_TYPE", "int"),
+                    ("OMNI_ARG_PARAM1_VALUE", "-42"),
+                    ("OMNI_ARG_PARAM2_TYPE", "float"),
+                    ("OMNI_ARG_PARAM2_VALUE", "-3.14"),
+                ];
+
+                let expectations_len = expectations.len();
+                for (key, value) in expectations {
+                    assert_eq!((key, args.get(key)), (key, Some(&value.to_string())));
+                }
+                assert_eq!(args.len(), expectations_len);
+            }
+
+            #[test]
+            fn test_param_allow_negative_numbers_scenarios() {
+                let syntax = CommandSyntax {
+                    parameters: vec![
+                        SyntaxOptArg {
+                            names: vec!["--param1".to_string()],
+                            arg_type: SyntaxOptArgType::Integer,
+                            allow_negative_numbers: true,
+                            ..SyntaxOptArg::default()
+                        },
+                        SyntaxOptArg {
+                            names: vec!["--param2".to_string()],
+                            arg_type: SyntaxOptArgType::Float,
+                            allow_negative_numbers: true,
+                            ..SyntaxOptArg::default()
+                        },
+                        SyntaxOptArg {
+                            names: vec!["--param3".to_string()],
+                            arg_type: SyntaxOptArgType::Integer,
+                            allow_hyphen_values: true,
+                            ..SyntaxOptArg::default()
+                        },
+                        SyntaxOptArg {
+                            names: vec!["--param4".to_string()],
+                            arg_type: SyntaxOptArgType::Float,
+                            allow_hyphen_values: true,
+                            ..SyntaxOptArg::default()
+                        },
+                        SyntaxOptArg {
+                            names: vec!["--param5".to_string()],
+                            arg_type: SyntaxOptArgType::String,
+                            allow_negative_numbers: true,
+                            ..SyntaxOptArg::default()
+                        },
+                        SyntaxOptArg {
+                            names: vec!["--param6".to_string()],
+                            arg_type: SyntaxOptArgType::String,
+                            allow_hyphen_values: true,
+                            ..SyntaxOptArg::default()
+                        },
+                    ],
+                    ..CommandSyntax::default()
+                };
+
+                let expectations: Vec<(&[&str], Option<&str>)> = vec![
+                    (&["--param1", "42"], None),
+                    (&["--param2", "3.14"], None),
+                    (&["--param3", "42"], None),
+                    (&["--param4", "3.14"], None),
+                    (&["--param5", "42"], None),
+                    (&["--param6", "3.14"], None),
+                    (&["--param1", "-42"], None),
+                    (&["--param2", "-3.14"], None),
+                    (&["--param3", "-42"], None),
+                    (&["--param4", "-3.14"], None),
+                    (&["--param5", "-42"], None),
+                    (&["--param6", "-3.14"], None),
+                    (
+                        &["--param1", "-blah"],
+                        Some("unexpected argument '-b' found"),
+                    ),
+                    (
+                        &["--param2", "-blah"],
+                        Some("unexpected argument '-b' found"),
+                    ),
+                    (
+                        &["--param3", "-blah"],
+                        Some("invalid value '-blah' for '--param3 <param3>': invalid digit found in string"),
+                    ),
+                    (
+                        &["--param4", "-blah"],
+                        Some("invalid value '-blah' for '--param4 <param4>': invalid float literal"),
+                    ),
+                    (
+                        &["--param5", "-blah"],
+                        Some("unexpected argument '-b' found"),
+                    ),
+                    (&["--param6", "-blah"], None),
+                ];
+
+                check_expectations(&syntax, &expectations);
             }
 
             #[test]

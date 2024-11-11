@@ -1,3 +1,4 @@
+use std::collections::BTreeMap;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::io::BufRead;
@@ -9,17 +10,17 @@ use std::path::PathBuf;
 use std::process::exit;
 
 use itertools::Itertools;
-use once_cell::sync::OnceCell;
 use regex::Regex;
 use serde::Deserialize;
 use serde::Serialize;
 
 use crate::internal::commands::base::BuiltinCommand;
-use crate::internal::commands::builtin::HelpCommand;
 use crate::internal::commands::builtin::TidyGitRepo;
 use crate::internal::commands::utils::abs_path;
 use crate::internal::commands::utils::file_auto_complete;
+use crate::internal::commands::Command;
 use crate::internal::config::global_config;
+use crate::internal::config::parser::ParseArgsValue;
 use crate::internal::config::CommandSyntax;
 use crate::internal::config::ConfigExtendOptions;
 use crate::internal::config::ConfigExtendStrategy;
@@ -40,115 +41,11 @@ use crate::omni_info;
 use crate::omni_warning;
 
 #[derive(Debug, Clone)]
-struct ConfigBootstrapCommandArgs {
-    options: ConfigBootstrapOptions,
-}
-
-impl ConfigBootstrapCommandArgs {
-    fn parse(argv: Vec<String>) -> Self {
-        let mut parse_argv = vec!["".to_string()];
-        parse_argv.extend(argv);
-
-        let matches = clap::Command::new("")
-            .disable_help_subcommand(true)
-            .disable_version_flag(true)
-            .arg(
-                clap::Arg::new("worktree")
-                    .long("worktree")
-                    .action(clap::ArgAction::SetTrue),
-            )
-            .arg(
-                clap::Arg::new("repo-path-format")
-                    .long("repo-path-format")
-                    .action(clap::ArgAction::SetTrue),
-            )
-            .arg(
-                clap::Arg::new("organizations")
-                    .long("organizations")
-                    .action(clap::ArgAction::SetTrue),
-            )
-            .arg(
-                clap::Arg::new("shell")
-                    .long("shell")
-                    .action(clap::ArgAction::SetTrue),
-            )
-            .try_get_matches_from(&parse_argv);
-
-        if let Err(err) = matches {
-            match err.kind() {
-                clap::error::ErrorKind::DisplayHelp
-                | clap::error::ErrorKind::DisplayHelpOnMissingArgumentOrSubcommand => {
-                    HelpCommand::new().exec(vec!["config".to_string(), "bootstrap".to_string()]);
-                }
-                clap::error::ErrorKind::DisplayVersion => {
-                    unreachable!("version flag is disabled");
-                }
-                _ => {
-                    let err_str = format!("{}", err);
-                    let err_str = err_str
-                        .split('\n')
-                        .take_while(|line| !line.is_empty())
-                        .collect::<Vec<_>>()
-                        .join(" ");
-                    let err_str = err_str.trim_start_matches("error: ");
-                    omni_error!(err_str);
-                }
-            }
-            exit(1);
-        }
-
-        let matches = matches.unwrap();
-
-        if *matches.get_one::<bool>("help").unwrap_or(&false) {
-            HelpCommand::new().exec(vec!["config".to_string(), "bootstrap".to_string()]);
-            exit(1);
-        }
-
-        let mut worktree = *matches.get_one::<bool>("worktree").unwrap_or(&false);
-        let mut repo_path_format = *matches
-            .get_one::<bool>("repo-path-format")
-            .unwrap_or(&false);
-        let mut organizations = *matches.get_one::<bool>("organizations").unwrap_or(&false);
-        let mut shell = *matches.get_one::<bool>("shell").unwrap_or(&false);
-
-        // Default to all options if none is specified
-        if !worktree && !repo_path_format && !organizations && !shell {
-            worktree = true;
-            repo_path_format = true;
-            organizations = true;
-            shell = true;
-        }
-
-        let mut binding = ConfigBootstrapOptions::new();
-        let options = binding
-            .worktree(worktree)
-            .repo_path_format(repo_path_format)
-            .organizations(organizations)
-            .shell(shell);
-
-        Self {
-            options: options.clone(),
-        }
-    }
-}
-
-#[derive(Debug, Clone)]
-pub struct ConfigBootstrapCommand {
-    cli_args: OnceCell<ConfigBootstrapCommandArgs>,
-}
+pub struct ConfigBootstrapCommand {}
 
 impl ConfigBootstrapCommand {
     pub fn new() -> Self {
-        Self {
-            cli_args: OnceCell::new(),
-        }
-    }
-
-    fn cli_args(&self) -> &ConfigBootstrapCommandArgs {
-        self.cli_args.get_or_init(|| {
-            omni_error!("command arguments not initialized");
-            exit(1);
-        })
+        Self {}
     }
 }
 
@@ -219,15 +116,14 @@ impl BuiltinCommand for ConfigBootstrapCommand {
     }
 
     fn exec(&self, argv: Vec<String>) {
-        if self
-            .cli_args
-            .set(ConfigBootstrapCommandArgs::parse(argv))
-            .is_err()
-        {
-            unreachable!();
-        }
+        let command = Command::Builtin(self.clone_boxed());
+        let options = ConfigBootstrapOptions::from_parsed_args(
+            command
+                .exec_parse_args_typed(argv, self.name())
+                .expect("should have args to parse"),
+        );
 
-        match config_bootstrap(Some(self.cli_args().options.clone())) {
+        match config_bootstrap(Some(options)) {
             Ok(true) => {
                 omni_info!("configuration updated");
             }
@@ -264,8 +160,8 @@ pub struct ConfigBootstrapOptions {
     shell: bool,
 }
 
-impl ConfigBootstrapOptions {
-    fn new() -> Self {
+impl Default for ConfigBootstrapOptions {
+    fn default() -> Self {
         Self {
             default: true,
             worktree: true,
@@ -274,29 +170,43 @@ impl ConfigBootstrapOptions {
             shell: true,
         }
     }
+}
 
-    fn worktree(&mut self, worktree: bool) -> &mut Self {
-        self.default = false;
-        self.worktree = worktree;
-        self
+impl ConfigBootstrapOptions {
+    fn new() -> Self {
+        Self::default()
     }
 
-    fn repo_path_format(&mut self, repo_path_format: bool) -> &mut Self {
-        self.default = false;
-        self.repo_path_format = repo_path_format;
-        self
-    }
+    fn from_parsed_args(args: BTreeMap<String, ParseArgsValue>) -> Self {
+        let worktree = match args.get("worktree") {
+            Some(ParseArgsValue::SingleBoolean(Some(true))) => true,
+            _ => false,
+        };
+        let repo_path_format = match args.get("repo_path_format") {
+            Some(ParseArgsValue::SingleBoolean(Some(true))) => true,
+            _ => false,
+        };
+        let organizations = match args.get("organizations") {
+            Some(ParseArgsValue::SingleBoolean(Some(true))) => true,
+            _ => false,
+        };
+        let shell = match args.get("shell") {
+            Some(ParseArgsValue::SingleBoolean(Some(true))) => true,
+            _ => false,
+        };
 
-    fn organizations(&mut self, organizations: bool) -> &mut Self {
-        self.default = false;
-        self.organizations = organizations;
-        self
-    }
+        // If none of the options are specified, default to all
+        if !worktree && !repo_path_format && !organizations && !shell {
+            return Self::default();
+        }
 
-    fn shell(&mut self, shell: bool) -> &mut Self {
-        self.default = false;
-        self.shell = shell;
-        self
+        Self {
+            default: false,
+            worktree,
+            repo_path_format,
+            organizations,
+            shell,
+        }
     }
 }
 

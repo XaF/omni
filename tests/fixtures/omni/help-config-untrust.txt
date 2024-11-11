@@ -4,10 +4,10 @@ Trust or untrust a work directory.
 If the work directory is trusted, up and work directory-provided commands will be available
 to run without asking confirmation.
 
-Usage: omni config untrust [OPTIONS] [repo]
+Usage: omni config untrust [OPTIONS] [workdir]
 
 Arguments:
-  [repo]         The repository to trust or untrust [default: current]
+  [workdir]      The work directory to trust or untrust [default: current]
 
 Options:
   --check        Check the trust status of the repository instead of changing it

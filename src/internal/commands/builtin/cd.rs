@@ -1,13 +1,14 @@
+use std::collections::BTreeMap;
 use std::path::PathBuf;
 use std::process::exit;
 
-use once_cell::sync::OnceCell;
 use shell_escape::escape;
 
 use crate::internal::commands::base::BuiltinCommand;
-use crate::internal::commands::builtin::HelpCommand;
 use crate::internal::commands::utils::omni_cmd;
+use crate::internal::commands::Command;
 use crate::internal::config::config;
+use crate::internal::config::parser::ParseArgsValue;
 use crate::internal::config::CommandSyntax;
 use crate::internal::config::SyntaxOptArg;
 use crate::internal::config::SyntaxOptArgType;
@@ -23,105 +24,54 @@ use crate::omni_error;
 struct CdCommandArgs {
     locate: bool,
     include_packages: bool,
-    repository: Option<String>,
+    workdir: Option<String>,
 }
 
-impl CdCommandArgs {
-    fn parse(argv: Vec<String>) -> Self {
-        let mut parse_argv = vec!["".to_string()];
-        parse_argv.extend(argv);
+impl From<BTreeMap<String, ParseArgsValue>> for CdCommandArgs {
+    fn from(args: BTreeMap<String, ParseArgsValue>) -> Self {
+        let locate = match args.get("locate") {
+            Some(ParseArgsValue::SingleBoolean(Some(true))) => true,
+            _ => false,
+        };
 
-        let matches = clap::Command::new("")
-            .disable_help_subcommand(true)
-            .disable_version_flag(true)
-            .arg(
-                clap::Arg::new("locate")
-                    .short('l')
-                    .long("locate")
-                    .action(clap::ArgAction::SetTrue),
-            )
-            .arg(
-                clap::Arg::new("include-packages")
-                    .short('p')
-                    .long("include-packages")
-                    .action(clap::ArgAction::SetTrue),
-            )
-            .arg(
-                clap::Arg::new("no-include-packages")
-                    .long("no-include-packages")
-                    .action(clap::ArgAction::SetTrue),
-            )
-            .arg(clap::Arg::new("repo").action(clap::ArgAction::Set))
-            .try_get_matches_from(&parse_argv);
-
-        if let Err(err) = matches {
-            match err.kind() {
-                clap::error::ErrorKind::DisplayHelp
-                | clap::error::ErrorKind::DisplayHelpOnMissingArgumentOrSubcommand => {
-                    HelpCommand::new().exec(vec!["cd".to_string()]);
-                }
-                clap::error::ErrorKind::DisplayVersion => {
-                    unreachable!("version flag is disabled");
-                }
-                _ => {
-                    let err_str = format!("{}", err);
-                    let err_str = err_str
-                        .split('\n')
-                        .take_while(|line| !line.is_empty())
-                        .collect::<Vec<_>>()
-                        .join(" ");
-                    let err_str = err_str.trim_start_matches("error: ");
-                    omni_error!(err_str);
-                }
-            }
-            exit(1);
-        }
-
-        let matches = matches.unwrap();
-
-        let locate = *matches.get_one::<bool>("locate").unwrap_or(&false);
-        let include_packages = if *matches
-            .get_one::<bool>("no-include-packages")
-            .unwrap_or(&false)
-        {
+        let yes_include_packages = match args.get("include_packages") {
+            Some(ParseArgsValue::SingleBoolean(Some(true))) => true,
+            _ => false,
+        };
+        let no_include_packages = match args.get("no_include_packages") {
+            Some(ParseArgsValue::SingleBoolean(Some(true))) => true,
+            _ => false,
+        };
+        let include_packages = if no_include_packages {
             false
-        } else if *matches
-            .get_one::<bool>("include-packages")
-            .unwrap_or(&false)
-        {
+        } else if yes_include_packages {
             true
         } else {
             locate
         };
 
+        let workdir = match args.get("workdir") {
+            Some(ParseArgsValue::SingleString(Some(workdir))) => Some(workdir.clone()),
+            _ => None,
+        };
+
         Self {
             locate,
             include_packages,
-            repository: matches.get_one::<String>("repo").map(|arg| arg.to_string()),
+            workdir,
         }
     }
 }
 
 #[derive(Debug, Clone)]
-pub struct CdCommand {
-    cli_args: OnceCell<CdCommandArgs>,
-}
+pub struct CdCommand {}
 
 impl CdCommand {
     pub fn new() -> Self {
-        Self {
-            cli_args: OnceCell::new(),
-        }
+        Self {}
     }
 
-    fn cli_args(&self) -> &CdCommandArgs {
-        self.cli_args.get_or_init(|| {
-            omni_error!("command arguments not initialized");
-            exit(1);
-        })
-    }
-
-    fn cd_main_org(&self) {
+    fn cd_main_org(&self, args: &CdCommandArgs) {
         let path = if let Some(main_org) = ORG_LOADER.first() {
             main_org.worktree()
         } else {
@@ -131,7 +81,7 @@ impl CdCommand {
 
         let path_str = path.to_string();
 
-        if self.cli_args().locate {
+        if args.locate {
             println!("{}", path_str);
             exit(0);
         }
@@ -147,9 +97,9 @@ impl CdCommand {
         exit(0);
     }
 
-    fn cd_repo(&self, repo: &str) {
-        if let Some(path_str) = self.cd_repo_find(repo) {
-            if self.cli_args().locate {
+    fn cd_workdir(&self, wd: &str, args: &CdCommandArgs) {
+        if let Some(path_str) = self.cd_workdir_find(wd, args) {
+            if args.locate {
                 println!("{}", path_str);
                 exit(0);
             }
@@ -165,41 +115,40 @@ impl CdCommand {
             return;
         }
 
-        if self.cli_args().locate {
+        if args.locate {
             exit(1);
         }
 
-        omni_error!(format!("{}: No such repository", repo.yellow()));
+        omni_error!(format!("{}: No such work directory", wd.yellow()));
         exit(1);
     }
 
-    fn cd_repo_find(&self, repo: &str) -> Option<String> {
+    fn cd_workdir_find(&self, wd: &str, args: &CdCommandArgs) -> Option<String> {
         // Handle the special case of `...` to go to the work directory root
-        if repo == "..." {
+        if wd == "..." {
             let wd = workdir(".");
             return wd.root().map(|wd_root| wd_root.to_string());
         }
 
         // Delegate to the shell if this is a path
-        if repo.starts_with('/')
-            || repo.starts_with('.')
-            || repo.starts_with("~/")
-            || repo == "~"
-            || repo == "-"
+        if wd.starts_with('/')
+            || wd.starts_with('.')
+            || wd.starts_with("~/")
+            || wd == "~"
+            || wd == "-"
         {
-            return Some(repo.to_string());
+            return Some(wd.to_string());
         }
 
-        // Check if the requested repo is actually a path that exists from the current directory
-        if let Ok(repo_path) = std::fs::canonicalize(repo) {
-            return Some(format!("{}", repo_path.display()));
+        // Check if the requested wd is actually a path that exists from the current directory
+        if let Ok(wd_path) = std::fs::canonicalize(wd) {
+            return Some(format!("{}", wd_path.display()));
         }
 
-        let only_worktree = !self.cli_args().include_packages;
-        let allow_interactive = !self.cli_args().locate;
-        if let Some(repo_path) = ORG_LOADER.find_repo(repo, only_worktree, false, allow_interactive)
-        {
-            return Some(format!("{}", repo_path.display()));
+        let only_worktree = !args.include_packages;
+        let allow_interactive = !args.locate;
+        if let Some(wd_path) = ORG_LOADER.find_repo(wd, only_worktree, false, allow_interactive) {
+            return Some(format!("{}", wd_path.display()));
         }
 
         None
@@ -226,9 +175,9 @@ impl BuiltinCommand for CdCommand {
     fn help(&self) -> Option<String> {
         Some(
             concat!(
-                "Change directory to the git directory of the specified repository\n",
+                "Change directory to the root of the specified work directory\n",
                 "\n",
-                "If no repository is specified, change to the git directory of the main org as ",
+                "If no work directory is specified, change to the git directory of the main org as ",
                 "specified by \x1B[3mOMNI_ORG\x1B[0m, if specified, or errors out if not ",
                 "specified.",
             )
@@ -240,13 +189,13 @@ impl BuiltinCommand for CdCommand {
         Some(CommandSyntax {
             parameters: vec![
                 SyntaxOptArg {
-                    names: vec!["--locate".to_string()],
+                    names: vec!["-l".to_string(), "--locate".to_string()],
                     desc: Some(
                         concat!(
-                            "If provided, will only return the path to the repository instead of switching ",
+                            "If provided, will only return the path to the work directory instead of switching ",
                             "directory to it. When this flag is passed, interactions are also disabled, ",
                             "as it is assumed to be used for command line purposes. ",
-                            "This will exit with 0 if the repository is found, 1 otherwise.",
+                            "This will exit with 0 if the work directory is found, 1 otherwise.",
                         )
                         .to_string()
                     ),
@@ -254,10 +203,10 @@ impl BuiltinCommand for CdCommand {
                     ..Default::default()
                 },
                 SyntaxOptArg {
-                    names: vec!["--[no-]include-packages".to_string()],
+                    names: vec!["-p".to_string(), "--include-packages".to_string()],
                     desc: Some(
                         concat!(
-                            "If provided, will include (or not include) packages when running the command; ",
+                            "If provided, will include packages when running the command; ",
                             "this defaults to including packages when using \x1B[3m--locate\x1B[0m, ",
                             "and not including packages otherwise.",
                         )
@@ -267,13 +216,26 @@ impl BuiltinCommand for CdCommand {
                     ..Default::default()
                 },
                 SyntaxOptArg {
-                    names: vec!["repo".to_string()],
+                    names: vec!["--no-include-packages".to_string()],
                     desc: Some(
                         concat!(
-                            "The name of the repo to change directory to; this can be in the format <org>/<repo>, ",
-                            "or just <repo>, in which case the repo will be searched for in all the organizations, ",
-                            "trying to use \x1B[3mOMNI_ORG\x1B[0m if it is set, and then trying all the other ",
-                            "organizations alphabetically.",
+                            "If provided, will NOT include packages when running the command; ",
+                            "this defaults to including packages when using \x1B[3m--locate\x1B[0m, ",
+                            "and not including packages otherwise.",
+                        )
+                        .to_string()
+                    ),
+                    arg_type: SyntaxOptArgType::Flag,
+                    ..Default::default()
+                },
+                SyntaxOptArg {
+                    names: vec!["workdir".to_string()],
+                    desc: Some(
+                        concat!(
+                            "The name of the work directory to change directory to; this can be in the format ",
+                            "<org>/<repo>, or just <repo>, in which case the work directory will be searched for ",
+                            "in all the organizations, trying to use \x1B[3mOMNI_ORG\x1B[0m if it is set, and then ",
+                            "trying all the other organizations alphabetically.",
                         )
                         .to_string()
                     ),
@@ -289,19 +251,22 @@ impl BuiltinCommand for CdCommand {
     }
 
     fn exec(&self, argv: Vec<String>) {
-        if self.cli_args.set(CdCommandArgs::parse(argv)).is_err() {
-            unreachable!();
-        }
+        let command = Command::Builtin(self.clone_boxed());
+        let args = CdCommandArgs::from(
+            command
+                .exec_parse_args_typed(argv, self.name())
+                .expect("should have args to parse"),
+        );
 
-        if omni_cmd_file().is_none() && !self.cli_args().locate {
+        if omni_cmd_file().is_none() && !args.locate {
             omni_error!("not available without the shell integration");
             exit(1);
         }
 
-        if let Some(repository) = &self.cli_args().repository {
-            self.cd_repo(repository);
+        if let Some(workdir) = &args.workdir {
+            self.cd_workdir(workdir, &args);
         } else {
-            self.cd_main_org();
+            self.cd_main_org(&args);
         }
         exit(0);
     }

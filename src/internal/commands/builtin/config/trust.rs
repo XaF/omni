@@ -1,12 +1,12 @@
+use std::collections::BTreeMap;
 use std::path::PathBuf;
 use std::process::exit;
-
-use once_cell::sync::OnceCell;
 
 use crate::internal::cache::utils::CacheObject;
 use crate::internal::cache::RepositoriesCache;
 use crate::internal::commands::base::BuiltinCommand;
-use crate::internal::commands::HelpCommand;
+use crate::internal::commands::Command;
+use crate::internal::config::parser::ParseArgsValue;
 use crate::internal::config::CommandSyntax;
 use crate::internal::config::SyntaxOptArg;
 use crate::internal::config::SyntaxOptArgType;
@@ -22,75 +22,40 @@ use crate::omni_info;
 #[derive(Debug, Clone)]
 struct ConfigTrustCommandArgs {
     check_status: bool,
-    repository: Option<String>,
+    workdir: Option<String>,
 }
 
-impl ConfigTrustCommandArgs {
-    fn parse(argv: Vec<String>) -> Self {
-        let mut parse_argv = vec!["".to_string()];
-        parse_argv.extend(argv);
-
-        let matches = clap::Command::new("")
-            .disable_help_subcommand(true)
-            .disable_version_flag(true)
-            .arg(
-                clap::Arg::new("check")
-                    .long("check")
-                    .action(clap::ArgAction::SetTrue),
-            )
-            .arg(clap::Arg::new("repo").action(clap::ArgAction::Set))
-            .try_get_matches_from(&parse_argv);
-
-        let matches = match matches {
-            Ok(matches) => matches,
-            Err(err) => {
-                match err.kind() {
-                    clap::error::ErrorKind::DisplayHelp
-                    | clap::error::ErrorKind::DisplayHelpOnMissingArgumentOrSubcommand => {
-                        HelpCommand::new().exec(vec!["config".to_string(), "trust".to_string()]);
-                    }
-                    clap::error::ErrorKind::DisplayVersion => {
-                        unreachable!("version flag is disabled");
-                    }
-                    _ => {
-                        let err_str = format!("{}", err);
-                        let err_str = err_str
-                            .split('\n')
-                            .take_while(|line| !line.is_empty())
-                            .collect::<Vec<_>>()
-                            .join(" ");
-                        let err_str = err_str.trim_start_matches("error: ");
-                        omni_error!(err_str);
-                    }
+impl From<BTreeMap<String, ParseArgsValue>> for ConfigTrustCommandArgs {
+    fn from(args: BTreeMap<String, ParseArgsValue>) -> Self {
+        let check_status = match args.get("check") {
+            Some(ParseArgsValue::SingleBoolean(Some(true))) => true,
+            _ => false,
+        };
+        let workdir = match args.get("workdir") {
+            Some(ParseArgsValue::SingleString(Some(workdir))) => {
+                let workdir = workdir.trim();
+                if workdir.is_empty() {
+                    None
+                } else {
+                    Some(workdir.to_string())
                 }
-                exit(1);
             }
+            _ => None,
         };
 
         Self {
-            check_status: *matches.get_one::<bool>("check").unwrap_or(&false),
-            repository: matches.get_one::<String>("repo").map(|arg| arg.to_string()),
+            check_status,
+            workdir,
         }
     }
 }
 
 #[derive(Debug, Clone)]
-pub struct ConfigTrustCommand {
-    cli_args: OnceCell<ConfigTrustCommandArgs>,
-}
+pub struct ConfigTrustCommand {}
 
 impl ConfigTrustCommand {
     pub fn new() -> Self {
-        Self {
-            cli_args: OnceCell::new(),
-        }
-    }
-
-    fn cli_args(&self) -> &ConfigTrustCommandArgs {
-        self.cli_args.get_or_init(|| {
-            omni_error!("command arguments not initialized");
-            exit(1);
-        })
+        Self {}
     }
 
     fn subcommand(&self) -> String {
@@ -144,10 +109,13 @@ impl BuiltinCommand for ConfigTrustCommand {
                     ..Default::default()
                 },
                 SyntaxOptArg {
-                    names: vec!["repo".to_string()],
+                    names: vec!["workdir".to_string()],
                     desc: Some(
-                        concat!("The repository to trust or untrust ", "[default: current]",)
-                            .to_string(),
+                        concat!(
+                            "The work directory to trust or untrust ",
+                            "[\x1B[1mdefault: current\x1B[0m]"
+                        )
+                        .to_string(),
                     ),
                     ..Default::default()
                 },
@@ -161,15 +129,14 @@ impl BuiltinCommand for ConfigTrustCommand {
     }
 
     fn exec(&self, argv: Vec<String>) {
-        if self
-            .cli_args
-            .set(ConfigTrustCommandArgs::parse(argv))
-            .is_err()
-        {
-            unreachable!();
-        }
+        let command = Command::Builtin(self.clone_boxed());
+        let args = ConfigTrustCommandArgs::from(
+            command
+                .exec_parse_args_typed(argv, self.name())
+                .expect("should have args to parse"),
+        );
 
-        let path = if let Some(repo) = &self.cli_args().repository {
+        let path = if let Some(repo) = &args.workdir {
             if let Some(repo_path) = ORG_LOADER.find_repo(repo, true, false, false) {
                 repo_path
             } else {
@@ -196,7 +163,7 @@ impl BuiltinCommand for ConfigTrustCommand {
 
         let is_trusted = is_trusted(path_str.as_str());
 
-        if self.cli_args().check_status {
+        if args.check_status {
             if is_trusted {
                 omni_info!(
                     format!("work directory is {}", "trusted".light_green()),

@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::BTreeMap;
 use std::collections::HashSet;
 use std::hash::Hash;
 use std::hash::Hasher;
@@ -8,15 +8,15 @@ use std::process::exit;
 
 use indicatif::ProgressBar;
 use indicatif::ProgressStyle;
-use once_cell::sync::OnceCell;
 use walkdir::WalkDir;
 
 use crate::internal::commands::base::BuiltinCommand;
-use crate::internal::commands::builtin::HelpCommand;
 use crate::internal::commands::path::global_omnipath_entries;
 use crate::internal::commands::utils::abs_path;
+use crate::internal::commands::Command;
 use crate::internal::config::config;
 use crate::internal::config::global_config_loader;
+use crate::internal::config::parser::ParseArgsValue;
 use crate::internal::config::parser::PathEntryConfig;
 use crate::internal::config::CommandSyntax;
 use crate::internal::config::ConfigSource;
@@ -43,111 +43,47 @@ struct TidyCommandArgs {
     up_args: Vec<String>,
 }
 
-impl TidyCommandArgs {
-    fn parse(argv: Vec<String>) -> Self {
-        let mut parse_argv = vec!["".to_string()];
-        parse_argv.extend(argv);
-
-        let matches = clap::Command::new("")
-            .disable_help_subcommand(true)
-            .disable_version_flag(true)
-            .arg(
-                clap::Arg::new("yes")
-                    .short('y')
-                    .long("yes")
-                    .action(clap::ArgAction::SetTrue),
-            )
-            .arg(
-                clap::Arg::new("search-path")
-                    .short('p')
-                    .long("search-path")
-                    .action(clap::ArgAction::Append),
-            )
-            .arg(
-                clap::Arg::new("up-all")
-                    .long("up-all")
-                    .action(clap::ArgAction::SetTrue),
-            )
-            .arg(
-                clap::Arg::new("up-args")
-                    .action(clap::ArgAction::Append)
-                    .last(true),
-            )
-            .try_get_matches_from(&parse_argv);
-
-        if let Err(err) = matches {
-            match err.kind() {
-                clap::error::ErrorKind::DisplayHelp
-                | clap::error::ErrorKind::DisplayHelpOnMissingArgumentOrSubcommand => {
-                    HelpCommand::new().exec(vec!["tidy".to_string()]);
-                }
-                clap::error::ErrorKind::DisplayVersion => {
-                    unreachable!("version flag is disabled");
-                }
-                _ => {
-                    let err_str = format!("{}", err);
-                    let err_str = err_str
-                        .split('\n')
-                        .take_while(|line| !line.is_empty())
-                        .collect::<Vec<_>>()
-                        .join(" ");
-                    let err_str = err_str.trim_start_matches("error: ");
-                    omni_error!(err_str);
-                }
+impl From<BTreeMap<String, ParseArgsValue>> for TidyCommandArgs {
+    fn from(args: BTreeMap<String, ParseArgsValue>) -> Self {
+        let yes = match args.get("yes") {
+            Some(ParseArgsValue::SingleBoolean(Some(true))) => true,
+            _ => false,
+        };
+        let search_paths = match args.get("search_path") {
+            Some(ParseArgsValue::ManyString(search_paths)) => {
+                search_paths.iter().flat_map(|v| v.clone()).collect()
             }
-            exit(1);
-        }
-
-        let matches = matches.unwrap();
-
-        let search_paths =
-            if let Some(search_paths) = matches.get_many::<String>("search-path").clone() {
-                search_paths
-                    .into_iter()
-                    .map(|arg| arg.to_string())
-                    .collect::<HashSet<_>>()
-            } else {
-                HashSet::new()
-            };
-
-        let up_args = if let Some(up_args) = matches.get_many::<String>("up-args").clone() {
-            up_args
-                .into_iter()
-                .map(|arg| arg.to_string())
-                .collect::<Vec<_>>()
-        } else {
-            vec![]
+            _ => HashSet::new(),
+        };
+        let up_all = match args.get("up_all") {
+            Some(ParseArgsValue::SingleBoolean(Some(true))) => true,
+            _ => false,
+        };
+        let up_args = match args.get("up_args") {
+            Some(ParseArgsValue::ManyString(up_args)) => {
+                up_args.iter().flat_map(|v| v.clone()).collect()
+            }
+            _ => vec![],
         };
 
         Self {
-            yes: *matches.get_one::<bool>("yes").unwrap_or(&false),
+            yes,
             search_paths,
-            up_all: *matches.get_one::<bool>("up-all").unwrap_or(&false),
+            up_all,
             up_args,
         }
     }
 }
 
 #[derive(Debug, Clone)]
-pub struct TidyCommand {
-    cli_args: OnceCell<TidyCommandArgs>,
-}
+pub struct TidyCommand {}
 
 impl TidyCommand {
     pub fn new() -> Self {
-        Self {
-            cli_args: OnceCell::new(),
-        }
+        Self {}
     }
 
-    fn cli_args(&self) -> &TidyCommandArgs {
-        self.cli_args.get_or_init(|| {
-            omni_error!("command arguments not initialized");
-            exit(1);
-        })
-    }
-
-    fn list_repositories(&self) -> Vec<TidyGitRepo> {
+    fn list_repositories(&self, args: &TidyCommandArgs) -> Vec<TidyGitRepo> {
         let mut worktrees = HashSet::new();
 
         // We want to search for repositories in all our worktrees
@@ -161,7 +97,7 @@ impl TidyCommand {
         }
 
         // But also in any search path that was provided on the command line
-        for search_path in self.cli_args().search_paths.iter() {
+        for search_path in args.search_paths.iter() {
             let path = PathBuf::from(search_path);
             if path.is_dir() {
                 worktrees.insert(path);
@@ -175,7 +111,7 @@ impl TidyCommand {
         TidyGitRepo::list_repositories(worktrees)
     }
 
-    fn up_repositories(&self, repositories: &[TidyGitRepo]) {
+    fn up_repositories(&self, repositories: &[TidyGitRepo], args: &TidyCommandArgs) {
         let current_exe = std::env::current_exe();
         if current_exe.is_err() {
             omni_error!("failed to get current executable path");
@@ -225,7 +161,7 @@ impl TidyCommand {
 
             let mut omni_up_command = std::process::Command::new(current_exe.clone());
             omni_up_command.arg("up");
-            omni_up_command.args(self.cli_args().up_args.clone());
+            omni_up_command.args(args.up_args.clone());
             omni_up_command.current_dir(repo_path.clone());
             omni_up_command.env_remove("OMNI_FORCE_UPDATE");
             omni_up_command.env("OMNI_SKIP_UPDATE", "1");
@@ -303,7 +239,7 @@ impl BuiltinCommand for TidyCommand {
                     ..Default::default()
                 },
                 SyntaxOptArg {
-                    names: vec!["--search-path".to_string()],
+                    names: vec!["-P".to_string(), "--search-path".to_string()],
                     desc: Some(
                         concat!(
                             "Extra path to search git repositories to tidy up ",
@@ -340,10 +276,6 @@ impl BuiltinCommand for TidyCommand {
                     ),
                     last_arg_double_hyphen: true,
                     arg_type: SyntaxOptArgType::Array(Box::new(SyntaxOptArgType::String)),
-                    required_if_eq: HashMap::from_iter(vec![(
-                        "up-all".to_string(),
-                        "true".to_string(),
-                    )]),
                     ..Default::default()
                 },
             ],
@@ -356,9 +288,12 @@ impl BuiltinCommand for TidyCommand {
     }
 
     fn exec(&self, argv: Vec<String>) {
-        if self.cli_args.set(TidyCommandArgs::parse(argv)).is_err() {
-            unreachable!();
-        }
+        let command = Command::Builtin(self.clone_boxed());
+        let args = TidyCommandArgs::from(
+            command
+                .exec_parse_args_typed(argv, self.name())
+                .expect("should have args to parse"),
+        );
 
         // Find the packages in the path that might not exist
         let omnipath_entries = global_omnipath_entries();
@@ -368,7 +303,7 @@ impl BuiltinCommand for TidyCommand {
             .collect::<Vec<_>>();
 
         // Find all the repositories
-        let all_repositories = self.list_repositories();
+        let all_repositories = self.list_repositories(&args);
 
         // Filter the repositories that are already organized
         let repositories = all_repositories
@@ -377,8 +312,8 @@ impl BuiltinCommand for TidyCommand {
             .collect::<Vec<_>>();
 
         if repositories.is_empty() && missing_packages.is_empty() {
-            if self.cli_args().up_all {
-                self.up_repositories(&all_repositories);
+            if args.up_all {
+                self.up_repositories(&all_repositories, &args);
             } else {
                 omni_info!("Everything is already tidied up! \u{1F389}"); // party popper emoji code
             }
@@ -442,7 +377,7 @@ impl BuiltinCommand for TidyCommand {
             }
         }
 
-        let selected_repositories = if self.cli_args().yes {
+        let selected_repositories = if args.yes {
             repositories
         } else if !shell_is_interactive() {
             omni_info!(format!(
@@ -498,8 +433,8 @@ impl BuiltinCommand for TidyCommand {
         };
 
         if selected_repositories.is_empty() {
-            if self.cli_args().up_all {
-                self.up_repositories(&all_repositories);
+            if args.up_all {
+                self.up_repositories(&all_repositories, &args);
             } else {
                 omni_info!("Nothing to do! \u{1F971}"); // yawning face emoji
             }
@@ -559,8 +494,8 @@ impl BuiltinCommand for TidyCommand {
 
         // TODO: should we offer to up the moved repositories ?
 
-        if self.cli_args().up_all {
-            self.up_repositories(&all_repositories);
+        if args.up_all {
+            self.up_repositories(&all_repositories, &args);
         }
 
         exit(0);

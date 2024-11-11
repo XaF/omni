@@ -1,7 +1,7 @@
 use std::process::exit;
 
 use crate::internal::commands::base::BuiltinCommand;
-use crate::internal::commands::HelpCommand;
+use crate::internal::commands::Command;
 use crate::internal::config::up::utils::reshim;
 use crate::internal::config::up::utils::PrintProgressHandler;
 use crate::internal::config::up::utils::ProgressHandler;
@@ -56,10 +56,11 @@ impl BuiltinCommand for ConfigReshimCommand {
     }
 
     fn exec(&self, argv: Vec<String>) {
-        if !argv.is_empty() {
-            HelpCommand::new().exec(self.name());
-            exit(1);
-        }
+        // We do not have any arguments here, but parse them so we can error out if any are passed
+        let command = Command::Builtin(self.clone_boxed());
+        let _ = command
+            .exec_parse_args_typed(argv, self.name())
+            .expect("should have args to parse");
 
         let progress_handler = PrintProgressHandler::new("reshim:".light_blue(), None);
         match reshim(&progress_handler) {

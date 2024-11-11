@@ -1,12 +1,13 @@
+use std::collections::BTreeMap;
 use std::process::exit;
 
-use once_cell::sync::OnceCell;
-
 use crate::internal::commands::base::BuiltinCommand;
-use crate::internal::commands::builtin::HelpCommand;
 use crate::internal::commands::command_loader;
+use crate::internal::commands::Command;
+use crate::internal::config::parser::ParseArgsValue;
 use crate::internal::config::CommandSyntax;
 use crate::internal::config::SyntaxOptArg;
+use crate::internal::config::SyntaxOptArgType;
 use crate::internal::env::current_dir;
 use crate::internal::env::Shell;
 use crate::internal::git::ORG_LOADER;
@@ -20,83 +21,29 @@ struct ScopeCommandArgs {
     command: Vec<String>,
 }
 
-impl ScopeCommandArgs {
-    fn parse(argv: Vec<String>) -> Self {
-        let mut parse_argv = vec!["".to_string()];
-        parse_argv.extend(argv);
+impl From<BTreeMap<String, ParseArgsValue>> for ScopeCommandArgs {
+    fn from(args: BTreeMap<String, ParseArgsValue>) -> Self {
+        // We don't need to check if `include-packages` is passed since it's the default
+        // let yes_include_packages = match args.get("include_packages") {
+        // Some(ParseArgsValue::Boolean(Some(true))) => true,
+        // _ => false,
+        // };
+        let no_include_packages = match args.get("no_include_packages") {
+            Some(ParseArgsValue::SingleBoolean(Some(true))) => true,
+            _ => false,
+        };
+        let include_packages = !no_include_packages;
 
-        let matches = clap::Command::new("")
-            .disable_help_subcommand(true)
-            .disable_version_flag(true)
-            .arg(
-                clap::Arg::new("include-packages")
-                    .short('p')
-                    .long("include-packages")
-                    .action(clap::ArgAction::SetTrue),
-            )
-            .arg(
-                clap::Arg::new("no-include-packages")
-                    .long("no-include-packages")
-                    .action(clap::ArgAction::SetTrue),
-            )
-            .arg(clap::Arg::new("scope").action(clap::ArgAction::Set))
-            .arg(
-                clap::Arg::new("command")
-                    .action(clap::ArgAction::Append)
-                    .allow_hyphen_values(true),
-            )
-            .try_get_matches_from(&parse_argv);
+        let scope = match args.get("scope") {
+            Some(ParseArgsValue::SingleString(Some(scope))) => scope.clone(),
+            _ => unreachable!("no scope specified"),
+        };
 
-        if let Err(err) = matches {
-            match err.kind() {
-                clap::error::ErrorKind::DisplayHelp
-                | clap::error::ErrorKind::DisplayHelpOnMissingArgumentOrSubcommand => {
-                    HelpCommand::new().exec(vec!["scope".to_string()]);
-                }
-                clap::error::ErrorKind::DisplayVersion => {
-                    unreachable!("version flag is disabled");
-                }
-                _ => {
-                    let err_str = format!("{}", err);
-                    let err_str = err_str
-                        .split('\n')
-                        .take_while(|line| !line.is_empty())
-                        .collect::<Vec<_>>()
-                        .join(" ");
-                    let err_str = err_str.trim_start_matches("error: ");
-                    omni_error!(err_str);
-                }
+        let command = match args.get("command") {
+            Some(ParseArgsValue::ManyString(command)) => {
+                command.iter().flat_map(|v| v.clone()).collect()
             }
-            exit(1);
-        }
-
-        let matches = matches.unwrap();
-
-        let include_packages = if *matches
-            .get_one::<bool>("no-include-packages")
-            .unwrap_or(&false)
-        {
-            false
-        } else {
-            // We don't need to check if `include-packages` is passed
-            // because it's the default
-            true
-        };
-
-        let scope = if let Some(scope) = matches.get_one::<String>("scope") {
-            scope.to_string()
-        } else {
-            omni_error!("no scope specified");
-            exit(1);
-        };
-
-        let command: Vec<_> = matches
-            .get_many::<String>("command")
-            .map(|args| args.map(|arg| arg.to_string()).collect())
-            .unwrap_or_default();
-        if command.is_empty() {
-            omni_error!("no command specified");
-            exit(1);
+            _ => vec![],
         };
 
         Self {
@@ -108,22 +55,11 @@ impl ScopeCommandArgs {
 }
 
 #[derive(Debug, Clone)]
-pub struct ScopeCommand {
-    cli_args: OnceCell<ScopeCommandArgs>,
-}
+pub struct ScopeCommand {}
 
 impl ScopeCommand {
     pub fn new() -> Self {
-        Self {
-            cli_args: OnceCell::new(),
-        }
-    }
-
-    fn cli_args(&self) -> &ScopeCommandArgs {
-        self.cli_args.get_or_init(|| {
-            omni_error!("command arguments not initialized");
-            exit(1);
-        })
+        Self {}
     }
 
     fn autocomplete_repo(&self, repo: String) -> Result<(), ()> {
@@ -248,12 +184,37 @@ impl BuiltinCommand for ScopeCommand {
         Some(CommandSyntax {
             parameters: vec![
                 SyntaxOptArg {
-                    names: vec!["repo".to_string()],
+                    names: vec!["-p".to_string(), "--include-packages".to_string()],
                     desc: Some(
                         concat!(
-                            "The name of the repo to run commands in the context of; this ",
+                            "If provided, will include packages when running the command; ",
+                            "this defaults to including packages.",
+                        )
+                        .to_string()
+                    ),
+                    arg_type: SyntaxOptArgType::Flag,
+                    ..Default::default()
+                },
+                SyntaxOptArg {
+                    names: vec!["--no-include-packages".to_string()],
+                    desc: Some(
+                        concat!(
+                            "If provided, will NOT include packages when running the command; ",
+                            "this defaults to including packages.",
+                        )
+                        .to_string()
+                    ),
+                    arg_type: SyntaxOptArgType::Flag,
+                    ..Default::default()
+                },
+
+                SyntaxOptArg {
+                    names: vec!["scope".to_string()],
+                    desc: Some(
+                        concat!(
+                            "The name of the work directory to run commands in the context of; this ",
                             "can be in the format <org>/<repo>, or just <repo>, in which case ",
-                            "the repo will be searched for in all the organizations, trying ",
+                            "the work directory will be searched for in all the organizations, trying ",
                             "to use \x1B[3mOMNI_ORG\x1B[0m if it is set, and then trying all ",
                             "the other organizations alphabetically."
                         )
@@ -269,12 +230,8 @@ impl BuiltinCommand for ScopeCommand {
                             .to_string(),
                     ),
                     required: true,
-                    ..Default::default()
-                },
-                SyntaxOptArg {
-                    names: vec!["options".to_string()],
-                    desc: Some("Any options to pass to the omni command.".to_string()),
                     leftovers: true,
+                    allow_hyphen_values: true,
                     ..Default::default()
                 },
             ],
@@ -287,22 +244,21 @@ impl BuiltinCommand for ScopeCommand {
     }
 
     fn exec(&self, argv: Vec<String>) {
-        if self.cli_args.set(ScopeCommandArgs::parse(argv)).is_err() {
-            unreachable!();
-        }
+        let command = Command::Builtin(self.clone_boxed());
+        let args = ScopeCommandArgs::from(
+            command
+                .exec_parse_args_typed(argv, self.name())
+                .expect("should have args to parse"),
+        );
 
         if self
-            .switch_scope(
-                &self.cli_args().scope,
-                self.cli_args().include_packages,
-                false,
-            )
+            .switch_scope(&args.scope, args.include_packages, false)
             .is_err()
         {
             exit(1);
         }
 
-        let argv = self.cli_args().command.clone();
+        let argv = args.command.clone();
         let command_loader = command_loader(".");
         if let Some((omni_cmd, called_as, argv)) = command_loader.to_serve(&argv) {
             omni_cmd.exec(argv, Some(called_as));

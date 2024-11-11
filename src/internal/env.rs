@@ -1090,6 +1090,10 @@ impl Shell {
         CURRENT_SHELL.clone()
     }
 
+    pub fn all() -> Vec<Self> {
+        vec![Shell::Bash, Shell::Zsh, Shell::Fish, Shell::Posix]
+    }
+
     pub fn from_env() -> Self {
         let shell = determine_shell();
         Self::from_str(&shell)

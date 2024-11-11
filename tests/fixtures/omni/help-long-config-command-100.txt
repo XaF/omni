@@ -8,8 +8,8 @@ General
   status                                Show the status of omni
 
 Git commands
-  cd                                    Change directory to the git directory of the specified
-                                        repository
+  cd                                    Change directory to the root of the specified work
+                                        directory
   clone                                 Clone the specified repository
   up, down                              Sets up or tear down a repository depending on its up
                                         configuration

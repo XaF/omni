@@ -44,8 +44,8 @@ impl BuiltinCommand for HookCommand {
                 SyntaxOptArg {
                     names: vec!["options".to_string()],
                     desc: Some("Any options to pass to the hook.".to_string()),
-                    required: false,
                     leftovers: true,
+                    allow_hyphen_values: true,
                     ..Default::default()
                 },
             ],
