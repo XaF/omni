@@ -1,11 +1,11 @@
 
 Call one of omni's hooks for the shell
 
-Usage: omni hook <hook> [options]...
+Usage: omni hook <HOOK> [OPTIONS]...
 
 Arguments:
-  <hook>         Which hook to call
-  [options]...   Any options to pass to the hook.
+  <HOOK>         Which hook to call
+  [OPTIONS]...   Any options to pass to the hook.
 
 General
   env            Hook used to update the dynamic environment

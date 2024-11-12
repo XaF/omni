@@ -3,10 +3,10 @@ Show help for omni commands
 
 If no command is given, show a list of all available commands.
 
-Usage: omni help [OPTIONS] [command]...
+Usage: omni help [OPTIONS] [COMMAND]...
 
 Arguments:
-  [command]...   The command to get help for
+  [COMMAND]...   The command to get help for
 
 Options:
   --unfold       Show all subcommands

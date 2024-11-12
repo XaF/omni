@@ -7,10 +7,10 @@ worktree.
 When switching into a mode, if the source of the requested type does not exist, the
 repository will be cloned.
 
-Usage: omni config path switch [OPTIONS] [repository]
+Usage: omni config path switch [OPTIONS] [REPOSITORY]
 
 Arguments:
-  [repository]   The name of the repository to switch the source from; this can be in the
+  [REPOSITORY]   The name of the repository to switch the source from; this can be in the
                  format <org>/<repo>, or just <repo>. If the repository is not provided, the
                  current repository will be used, or the command will fail if not in a
                  repository. If the repo is not found in the omnipath, the command will fail.
