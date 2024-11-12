@@ -106,6 +106,8 @@ The accepted configuration parameters for options and arguments are the followin
 | `last` | to indicate the last, or final, positional argument, which is only able to be accessed via the `--` syntax (i.e. `$ prog args -- last_arg`) | `arg: last: true` |
 | `leftovers` | everything that follows that parameter should be captured by it, as if the user had used a `--` | `arg: rest: leftovers=true` |
 | `allow_hyphen_values` | allow values that start with a hyphen to be considered as values, and not as options | `arg: val: allow_hyphen_values=true` |
+| `allow_negative_numbers`* | bool | allow negative numbers to be considered as values; similar to `allow_hyphen_values` but only allow for digits after the hyphen | `arg: val: allow_negative_numbers=true` |
+| `group_occurrences` | Group occurrences of parameters together when they take multiple values and can be repeated | `arg: val: group_occurrences=true` |
 | `requires` | list of parameters that are required when this parameter is present | `arg: val3: requires=val1 val2` |
 | `conflicts_with` | list of parameters that cannot be used with this parameter | `arg: val3: conflicts_with=val1 val2` |
 | `required_without` | this parameter is required when any of the parameters in the list is not present | `arg: val3: required_without=val1 val2` |
