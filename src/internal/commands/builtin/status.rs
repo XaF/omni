@@ -1,14 +1,16 @@
+use std::collections::BTreeMap;
+use std::collections::HashMap;
 use std::process::exit;
 
-use once_cell::sync::OnceCell;
 use regex::Regex;
 
 use crate::internal::cache::utils::Empty;
 use crate::internal::commands::base::BuiltinCommand;
-use crate::internal::commands::builtin::HelpCommand;
 use crate::internal::commands::path::omnipath_entries;
+use crate::internal::commands::Command;
 use crate::internal::config::config;
 use crate::internal::config::config_loader;
+use crate::internal::config::parser::ParseArgsValue;
 use crate::internal::config::utils::sort_serde_yaml;
 use crate::internal::config::CommandSyntax;
 use crate::internal::config::SyntaxOptArg;
@@ -30,121 +32,66 @@ struct StatusCommandArgs {
     path: bool,
 }
 
-impl StatusCommandArgs {
-    fn parse(argv: Vec<String>) -> Self {
-        let mut parse_argv = vec!["".to_string()];
-        parse_argv.extend(argv);
-
-        let args = [
-            "shell-integration",
+impl From<BTreeMap<String, ParseArgsValue>> for StatusCommandArgs {
+    fn from(args: BTreeMap<String, ParseArgsValue>) -> Self {
+        let flags = [
+            "shell_integration",
             "config",
-            "config-files",
+            "config_files",
             "worktree",
             "orgs",
             "path",
         ];
 
-        let command = args.iter().fold(
-            clap::Command::new("")
-                .disable_help_subcommand(true)
-                .disable_version_flag(true),
-            |command, &arg| {
-                command.arg(
-                    clap::Arg::new(arg)
-                        .long(arg)
-                        .action(clap::ArgAction::SetTrue),
-                )
-            },
-        );
-        let matches = command.try_get_matches_from(&parse_argv);
-
-        let matches = match matches {
-            Ok(matches) => matches,
-            Err(err) => {
-                match err.kind() {
-                    clap::error::ErrorKind::DisplayHelp
-                    | clap::error::ErrorKind::DisplayHelpOnMissingArgumentOrSubcommand => {
-                        HelpCommand::new().exec(vec!["status".to_string()]);
-                    }
-                    clap::error::ErrorKind::DisplayVersion => {
-                        unreachable!("version flag is disabled");
-                    }
-                    _ => {
-                        let err_str = format!("{}", err);
-                        let err_str = err_str
-                            .split('\n')
-                            .take_while(|line| !line.is_empty())
-                            .collect::<Vec<_>>()
-                            .join(" ");
-                        let err_str = err_str.trim_start_matches("error: ");
-                        omni_error!(err_str);
-                    }
-                }
-                exit(1);
-            }
-        };
-
-        let options = args
+        let flag_values: HashMap<String, bool> = flags
             .iter()
-            .map(|&key| {
-                (
-                    key.to_string(),
-                    *matches.get_one::<bool>(key).unwrap_or(&false),
-                )
+            .map(|flag| {
+                let flag_name = flag.to_string();
+                let value = match args.get(&flag_name) {
+                    Some(ParseArgsValue::SingleBoolean(Some(value))) => *value,
+                    _ => unreachable!("no value for flag {}", flag),
+                };
+                (flag.to_string(), value)
             })
-            .collect::<std::collections::HashMap<_, _>>();
+            .collect();
 
-        let selected = options.values().filter(|&&selected| selected).count();
+        let selected = flag_values.values().filter(|&&selected| selected).count();
+        let none_selected = selected == 0;
 
-        if selected == 0 {
-            return Self {
-                single: false,
-                shell_integration: true,
-                config: false,
-                config_files: true,
-                worktree: true,
-                orgs: true,
-                path: true,
-            };
-        }
+        let single = selected == 1;
+        let shell_integration = *flag_values.get("shell_integration").unwrap() || none_selected;
+        let config = *flag_values.get("config").unwrap();
+        let config_files = *flag_values.get("config_files").unwrap() || none_selected;
+        let worktree = *flag_values.get("worktree").unwrap() || none_selected;
+        let orgs = *flag_values.get("orgs").unwrap() || none_selected;
+        let path = *flag_values.get("path").unwrap() || none_selected;
 
         Self {
-            single: selected == 1,
-            shell_integration: *options.get("shell-integration").unwrap(),
-            config: *options.get("config").unwrap(),
-            config_files: *options.get("config-files").unwrap(),
-            worktree: *options.get("worktree").unwrap(),
-            orgs: *options.get("orgs").unwrap(),
-            path: *options.get("path").unwrap(),
+            single,
+            shell_integration,
+            config,
+            config_files,
+            worktree,
+            orgs,
+            path,
         }
     }
 }
 
 #[derive(Debug, Clone)]
-pub struct StatusCommand {
-    cli_args: OnceCell<StatusCommandArgs>,
-}
+pub struct StatusCommand {}
 
 impl StatusCommand {
     pub fn new() -> Self {
-        Self {
-            cli_args: OnceCell::new(),
-        }
+        Self {}
     }
 
-    fn cli_args(&self) -> &StatusCommandArgs {
-        self.cli_args.get_or_init(|| {
-            omni_error!("command arguments not initialized");
-            exit(1);
-        })
-    }
-
-    fn print_shell_integration(&self) {
-        if !self.cli_args().shell_integration {
+    fn print_shell_integration(&self, args: &StatusCommandArgs) {
+        if !args.shell_integration {
             return;
         }
 
-        let prefix = if self.cli_args().single {
+        let prefix = if args.single {
             "".to_string()
         } else {
             println!("\n{}", "Shell integration".bold());
@@ -159,12 +106,12 @@ impl StatusCommand {
         println!("{}{}", prefix, status);
     }
 
-    fn print_configuration(&self) {
-        if !self.cli_args().config {
+    fn print_configuration(&self, args: &StatusCommandArgs) {
+        if !args.config {
             return;
         }
 
-        if !self.cli_args().single {
+        if !args.single {
             println!("\n{}", "Configuration".bold());
         }
 
@@ -173,7 +120,7 @@ impl StatusCommand {
             Ok(value) => {
                 let sorted_value = sort_serde_yaml(&value);
                 let yaml_code = serde_yaml::to_string(&sorted_value).unwrap();
-                println!("{}", self.color_yaml(&yaml_code));
+                println!("{}", self.color_yaml(&yaml_code, args.single));
             }
             Err(err) => {
                 omni_error!(format!("failed to serialize configuration: {}", err));
@@ -182,12 +129,12 @@ impl StatusCommand {
         }
     }
 
-    fn print_configuration_files(&self) {
-        if !self.cli_args().config_files {
+    fn print_configuration_files(&self, args: &StatusCommandArgs) {
+        if !args.config_files {
             return;
         }
 
-        let prefix = if self.cli_args().single {
+        let prefix = if args.single {
             "".to_string()
         } else {
             println!("\n{}", "Loaded configuration files".bold());
@@ -205,12 +152,12 @@ impl StatusCommand {
         }
     }
 
-    fn print_worktree(&self) {
-        if !self.cli_args().worktree {
+    fn print_worktree(&self, args: &StatusCommandArgs) {
+        if !args.worktree {
             return;
         }
 
-        let prefix = if self.cli_args().single {
+        let prefix = if args.single {
             "".to_string()
         } else {
             println!("\n{}", "Worktree".bold());
@@ -221,12 +168,12 @@ impl StatusCommand {
         println!("{}{}", prefix, config.worktree());
     }
 
-    fn print_orgs(&self) {
-        if !self.cli_args().orgs {
+    fn print_orgs(&self, args: &StatusCommandArgs) {
+        if !args.orgs {
             return;
         }
 
-        let prefix = if self.cli_args().single {
+        let prefix = if args.single {
             "".to_string()
         } else {
             println!("\n{}", "Git Orgs".bold());
@@ -253,12 +200,12 @@ impl StatusCommand {
         }
     }
 
-    fn print_path(&self) {
-        if !self.cli_args().path {
+    fn print_path(&self, args: &StatusCommandArgs) {
+        if !args.path {
             return;
         }
 
-        let prefix = if self.cli_args().single {
+        let prefix = if args.single {
             "".to_string()
         } else {
             println!("\n{}", "Current omnipath".bold());
@@ -289,7 +236,7 @@ impl StatusCommand {
         }
     }
 
-    fn color_yaml(&self, yaml_code: &str) -> String {
+    fn color_yaml(&self, yaml_code: &str, single: bool) -> String {
         let yaml_lines = &mut yaml_code.lines().collect::<Vec<&str>>();
         if yaml_lines[0] == "---" {
             // Remove the first line if it's "---"; as it's not very useful
@@ -312,7 +259,7 @@ impl StatusCommand {
             })
             .collect::<Vec<String>>();
 
-        if self.cli_args().single {
+        if single {
             return yaml_lines.join("\n");
         }
 
@@ -414,20 +361,23 @@ impl BuiltinCommand for StatusCommand {
     }
 
     fn exec(&self, argv: Vec<String>) {
-        if self.cli_args.set(StatusCommandArgs::parse(argv)).is_err() {
-            unreachable!();
-        }
+        let command = Command::Builtin(self.clone_boxed());
+        let args = StatusCommandArgs::from(
+            command
+                .exec_parse_args_typed(argv, self.name())
+                .expect("should have args to parse"),
+        );
 
-        if !self.cli_args().single {
+        if !args.single {
             println!("{}", omni_header!());
         }
 
-        self.print_shell_integration();
-        self.print_configuration();
-        self.print_configuration_files();
-        self.print_worktree();
-        self.print_orgs();
-        self.print_path();
+        self.print_shell_integration(&args);
+        self.print_configuration(&args);
+        self.print_configuration_files(&args);
+        self.print_worktree(&args);
+        self.print_orgs(&args);
+        self.print_path(&args);
 
         exit(0);
     }

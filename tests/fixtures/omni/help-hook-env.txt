@@ -8,10 +8,11 @@ Usage: omni hook env [OPTIONS] [shell]
 
 Arguments:
   [shell]        The shell for which to export the dynamic environment. If not provided, the
-                 shell will be detected from the environment.
+                 shell will be detected from the environment. [possible values: bash, zsh,
+                 fish, posix]
 
 Options:
-  --quiet        Suppress the output of the hook showing information about the dynamic
+  -q, --quiet    Suppress the output of the hook showing information about the dynamic
                  environment update.
   --keep-shims   Keep the shims directory in the PATH. This is useful for instance if you are
                  used to launch your IDE from the terminal.

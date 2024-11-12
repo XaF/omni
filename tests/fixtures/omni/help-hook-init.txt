@@ -14,7 +14,7 @@ option, which adds an alias to the specified omni subcommand with autocompletion
 Usage: omni hook init [OPTIONS] [shell]
 
 Arguments:
-  [shell]        Which shell to initialize omni for. Can be one of bash, zsh or fish.
+  [shell]        Which shell to initialize omni for. [possible values: bash, zsh, fish]
 
 Options:
   --alias <ALIAS>                  Create an alias for the omni command with autocompletion

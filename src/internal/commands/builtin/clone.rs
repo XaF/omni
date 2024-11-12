@@ -1,3 +1,4 @@
+use std::collections::BTreeMap;
 use std::path::PathBuf;
 use std::process::exit;
 use std::time::Duration;
@@ -5,16 +6,16 @@ use std::time::Duration;
 use git_url_parse::GitUrl;
 use indicatif::ProgressBar;
 use indicatif::ProgressStyle;
-use once_cell::sync::OnceCell;
 use shell_escape::escape;
 use shell_words::join as shell_join;
 use tokio::process::Command as TokioCommand;
 
 use crate::internal::commands::base::BuiltinCommand;
-use crate::internal::commands::builtin::HelpCommand;
 use crate::internal::commands::builtin::UpCommand;
 use crate::internal::commands::utils::omni_cmd;
+use crate::internal::commands::Command;
 use crate::internal::config;
+use crate::internal::config::parser::ParseArgsValue;
 use crate::internal::config::up::utils::run_command_with_handler;
 use crate::internal::config::up::utils::RunConfig;
 use crate::internal::config::CommandSyntax;
@@ -36,88 +37,37 @@ struct CloneCommandArgs {
     options: Vec<String>,
 }
 
-impl CloneCommandArgs {
-    fn parse(argv: Vec<String>) -> Self {
-        let mut parse_argv = vec!["".to_string()];
-        parse_argv.extend(argv);
-
-        let matches = clap::Command::new("")
-            .disable_help_subcommand(true)
-            .disable_version_flag(true)
-            .arg(
-                clap::Arg::new("package")
-                    .long("package")
-                    .action(clap::ArgAction::SetTrue),
-            )
-            .arg(clap::Arg::new("repo").action(clap::ArgAction::Set))
-            .arg(
-                clap::Arg::new("options")
-                    .action(clap::ArgAction::Append)
-                    .allow_hyphen_values(true),
-            )
-            .try_get_matches_from(&parse_argv);
-
-        if let Err(err) = matches {
-            match err.kind() {
-                clap::error::ErrorKind::DisplayHelp
-                | clap::error::ErrorKind::DisplayHelpOnMissingArgumentOrSubcommand => {
-                    HelpCommand::new().exec(vec!["clone".to_string()]);
-                }
-                clap::error::ErrorKind::DisplayVersion => {
-                    unreachable!("version flag is disabled");
-                }
-                _ => {
-                    let err_str = format!("{}", err);
-                    let err_str = err_str
-                        .split('\n')
-                        .take_while(|line| !line.is_empty())
-                        .collect::<Vec<_>>()
-                        .join(" ");
-                    let err_str = err_str.trim_start_matches("error: ");
-                    omni_error!(err_str);
-                }
+impl From<BTreeMap<String, ParseArgsValue>> for CloneCommandArgs {
+    fn from(args: BTreeMap<String, ParseArgsValue>) -> Self {
+        let package = matches!(
+            args.get("package"),
+            Some(ParseArgsValue::SingleBoolean(Some(true)))
+        );
+        let repository = match args.get("repository") {
+            Some(ParseArgsValue::SingleString(Some(repository))) => repository.clone(),
+            _ => "".to_string(),
+        };
+        let options = match args.get("clone_options") {
+            Some(ParseArgsValue::ManyString(options)) => {
+                options.iter().flat_map(|v| v.clone()).collect()
             }
-            exit(1);
-        }
-
-        let matches = matches.unwrap();
-
-        let repository;
-        if let Some(repo) = matches.get_one::<String>("repo") {
-            repository = repo.to_string();
-        } else {
-            omni_error!("no repository specified");
-            exit(1);
-        }
+            _ => vec![],
+        };
 
         Self {
             repository,
-            package: *matches.get_one::<bool>("package").unwrap_or(&false),
-            options: matches
-                .get_many::<String>("options")
-                .map(|args| args.map(|arg| arg.to_string()).collect())
-                .unwrap_or_default(),
+            package,
+            options,
         }
     }
 }
 
 #[derive(Debug, Clone)]
-pub struct CloneCommand {
-    cli_args: OnceCell<CloneCommandArgs>,
-}
+pub struct CloneCommand {}
 
 impl CloneCommand {
     pub fn new() -> Self {
-        Self {
-            cli_args: OnceCell::new(),
-        }
-    }
-
-    fn cli_args(&self) -> &CloneCommandArgs {
-        self.cli_args.get_or_init(|| {
-            omni_error!("command arguments not initialized");
-            exit(1);
-        })
+        Self {}
     }
 
     pub fn lookup_repo_handle(
@@ -449,7 +399,7 @@ impl BuiltinCommand for CloneCommand {
         Some(CommandSyntax {
             parameters: vec![
                 SyntaxOptArg {
-                    names: vec!["--package".to_string()],
+                    names: vec!["-p".to_string(), "--package".to_string()],
                     desc: Some(
                         "Clone the repository as a package \x1B[90m(default: no)\x1B[0m"
                             .to_string(),
@@ -458,7 +408,7 @@ impl BuiltinCommand for CloneCommand {
                     ..Default::default()
                 },
                 SyntaxOptArg {
-                    names: vec!["repo".to_string()],
+                    names: vec!["repository".to_string()],
                     desc: Some(
                         concat!(
                             "The repository to clone; this can be in format <org>/<repo>, ",
@@ -472,9 +422,10 @@ impl BuiltinCommand for CloneCommand {
                     ..Default::default()
                 },
                 SyntaxOptArg {
-                    names: vec!["options".to_string()],
+                    names: vec!["clone options".to_string()],
                     desc: Some("Any additional options to pass to git clone.".to_string()),
                     leftovers: true,
+                    allow_hyphen_values: true,
                     ..Default::default()
                 },
             ],
@@ -487,13 +438,16 @@ impl BuiltinCommand for CloneCommand {
     }
 
     fn exec(&self, argv: Vec<String>) {
-        if self.cli_args.set(CloneCommandArgs::parse(argv)).is_err() {
-            unreachable!();
-        }
+        let command = Command::Builtin(self.clone_boxed());
+        let args = CloneCommandArgs::from(
+            command
+                .exec_parse_args_typed(argv, self.name())
+                .expect("should have args to parse"),
+        );
 
-        let repo = self.cli_args().repository.clone();
-        let clone_args = self.cli_args().options.clone();
-        let clone_as_package = self.cli_args().package;
+        let repo = args.repository.clone();
+        let clone_args = args.options.clone();
+        let clone_as_package = args.package;
 
         // Create a spinner
         let spinner = if shell_is_interactive() {

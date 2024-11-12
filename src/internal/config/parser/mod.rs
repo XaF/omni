@@ -51,6 +51,9 @@ pub(crate) use omniconfig::OmniConfig;
 mod org;
 pub(crate) use org::OrgConfig;
 
+mod parse_args_value;
+pub(crate) use parse_args_value::ParseArgsValue;
+
 mod path;
 pub(crate) use path::PathConfig;
 pub(crate) use path::PathEntryConfig;

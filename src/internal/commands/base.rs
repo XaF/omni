@@ -7,6 +7,7 @@ use crate::internal::commands::frompath::PathCommand;
 use crate::internal::commands::utils::abs_or_rel_path;
 use crate::internal::commands::void::VoidCommand;
 use crate::internal::config::parser::ParseArgsErrorKind;
+use crate::internal::config::parser::ParseArgsValue;
 use crate::internal::config::CommandSyntax;
 use crate::internal::dynenv::update_dynamic_env_for_command;
 use crate::internal::user_interface::colors::strip_colors;
@@ -335,9 +336,36 @@ impl Command {
         }
 
         let syntax = self.syntax().unwrap_or_default();
+        let parsed_args = self
+            .exec_parse_args_error_handling(syntax.parse_args(argv, called_as.clone()), called_as);
+        Some(parsed_args)
+    }
 
-        match syntax.parse_args(argv, called_as.clone()) {
-            Ok(parsed_args) => Some(parsed_args),
+    pub fn exec_parse_args_typed(
+        &self,
+        argv: Vec<String>,
+        called_as: Vec<String>,
+    ) -> Option<BTreeMap<String, ParseArgsValue>> {
+        if !matches!(self, Command::Builtin(_)) {
+            return None;
+        }
+
+        let syntax = self.syntax().unwrap_or_default();
+        let parsed_args = self.exec_parse_args_error_handling(
+            syntax.parse_args_typed(argv, called_as.clone()),
+            called_as,
+        );
+
+        Some(parsed_args)
+    }
+
+    fn exec_parse_args_error_handling<V>(
+        &self,
+        result: Result<BTreeMap<String, V>, ParseArgsErrorKind>,
+        called_as: Vec<String>,
+    ) -> BTreeMap<String, V> {
+        match result {
+            Ok(parsed_args) => parsed_args,
             Err(ParseArgsErrorKind::ParserBuildError(err)) => {
                 omni_print!(format!("{} {}", "error building parser:".red(), err));
                 exit(1);

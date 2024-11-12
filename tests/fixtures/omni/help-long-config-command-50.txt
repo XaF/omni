@@ -11,8 +11,8 @@ General
 
 Git commands
   cd                Change directory to the
-                    git directory of the
-                    specified repository
+                    root of the specified
+                    work directory
   clone             Clone the specified
                     repository
   up, down          Sets up or tear down a

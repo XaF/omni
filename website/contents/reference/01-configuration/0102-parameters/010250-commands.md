@@ -47,6 +47,8 @@ Each `parameter` object can take the following parameters:
 | `last`* | bool | to indicate the last, or final, positional argument, which is only able to be accessed via the `--` syntax (i.e. `$ prog args -- last_arg`) |
 | `leftovers`* | bool | everything that follows that parameter should be captured by it, as if the user had used a `--` |
 | `allow_hyphen_values`* | bool | allow values that start with a hyphen to be considered as values, and not as options |
+| `allow_negative_numbers`* | bool | allow negative numbers to be considered as values; similar to `allow_hyphen_values` but only allow for digits after the hyphen |
+| `group_occurrences` | bool | Group occurrences of parameters together when they take multiple values and can be repeated |
 | `requires`* | string (list) | list of parameters that are required when this parameter is present |
 | `conflicts_with`* | string (list) | list of parameters that cannot be used with this parameter |
 | `required_without`* | string (list) | this parameter is required when any of the parameters in the list is not present |

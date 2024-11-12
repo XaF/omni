@@ -1,18 +1,20 @@
+use std::collections::BTreeMap;
 use std::path::PathBuf;
 use std::process::exit;
 use std::time::Duration;
 
 use indicatif::ProgressBar;
 use indicatif::ProgressStyle;
-use once_cell::sync::OnceCell;
 
 use crate::internal::commands::base::BuiltinCommand;
 use crate::internal::commands::builtin::CloneCommand;
-use crate::internal::commands::builtin::HelpCommand;
 use crate::internal::commands::builtin::TidyGitRepo;
 use crate::internal::commands::builtin::UpCommand;
 use crate::internal::commands::path::global_omnipath_entries;
+use crate::internal::commands::Command;
+use crate::internal::config::parser::ParseArgsValue;
 use crate::internal::config::CommandSyntax;
+use crate::internal::config::SyntaxGroup;
 use crate::internal::config::SyntaxOptArg;
 use crate::internal::config::SyntaxOptArgType;
 use crate::internal::env::shell_is_interactive;
@@ -28,109 +30,54 @@ use crate::omni_error;
 use crate::omni_info;
 
 #[derive(Debug, Clone)]
-struct ConfigPathSwitchCommandArgs {
-    repository: Option<String>,
-    source: ConfigPathSwitchCommandArgsSource,
-}
-
-#[derive(Debug, Clone)]
 enum ConfigPathSwitchCommandArgsSource {
     Package,
     Worktree,
     Toggle,
 }
 
-impl ConfigPathSwitchCommandArgs {
-    fn parse(argv: Vec<String>) -> Self {
-        let mut parse_argv = vec!["".to_string()];
-        parse_argv.extend(argv);
+#[derive(Debug, Clone)]
+struct ConfigPathSwitchCommandArgs {
+    repository: Option<String>,
+    source: ConfigPathSwitchCommandArgsSource,
+}
 
-        let matches = clap::Command::new("")
-            .disable_help_subcommand(true)
-            .disable_version_flag(true)
-            .arg(
-                clap::Arg::new("package")
-                    .long("package")
-                    .short('p')
-                    .conflicts_with("worktree")
-                    .action(clap::ArgAction::SetTrue),
-            )
-            .arg(
-                clap::Arg::new("worktree")
-                    .long("worktree")
-                    .short('w')
-                    .conflicts_with("package")
-                    .action(clap::ArgAction::SetTrue),
-            )
-            .arg(clap::Arg::new("repo").action(clap::ArgAction::Set))
-            .try_get_matches_from(&parse_argv);
-
-        if let Err(err) = matches {
-            match err.kind() {
-                clap::error::ErrorKind::DisplayHelp
-                | clap::error::ErrorKind::DisplayHelpOnMissingArgumentOrSubcommand => {
-                    HelpCommand::new().exec(vec!["status".to_string()]);
-                }
-                clap::error::ErrorKind::DisplayVersion => {
-                    unreachable!("version flag is disabled");
-                }
-                _ => {
-                    let err_str = format!("{}", err);
-                    let err_str = err_str
-                        .split('\n')
-                        .take_while(|line| !line.is_empty())
-                        .collect::<Vec<_>>()
-                        .join(" ");
-                    let err_str = err_str.trim_start_matches("error: ");
-                    omni_error!(err_str);
-                }
+impl From<BTreeMap<String, ParseArgsValue>> for ConfigPathSwitchCommandArgs {
+    fn from(args: BTreeMap<String, ParseArgsValue>) -> Self {
+        let repository = match args.get("repository") {
+            Some(ParseArgsValue::SingleString(Some(repo))) => {
+                let repo = repo.trim();
+                Some(repo.to_string())
             }
-            exit(1);
-        }
+            _ => None,
+        };
 
-        let matches = matches.unwrap();
-
-        if *matches.get_one::<bool>("help").unwrap_or(&false) {
-            HelpCommand::new().exec(vec![
-                "config".to_string(),
-                "path".to_string(),
-                "switch".to_string(),
-            ]);
-            exit(1);
-        }
-
-        let source = if *matches.get_one::<bool>("package").unwrap_or(&false) {
+        let package = matches!(
+            args.get("package"),
+            Some(ParseArgsValue::SingleBoolean(Some(true)))
+        );
+        let worktree = matches!(
+            args.get("worktree"),
+            Some(ParseArgsValue::SingleBoolean(Some(true)))
+        );
+        let source = if package {
             ConfigPathSwitchCommandArgsSource::Package
-        } else if *matches.get_one::<bool>("worktree").unwrap_or(&false) {
+        } else if worktree {
             ConfigPathSwitchCommandArgsSource::Worktree
         } else {
             ConfigPathSwitchCommandArgsSource::Toggle
         };
 
-        Self {
-            repository: matches.get_one::<String>("repo").map(|arg| arg.to_string()),
-            source,
-        }
+        Self { repository, source }
     }
 }
 
 #[derive(Debug, Clone)]
-pub struct ConfigPathSwitchCommand {
-    cli_args: OnceCell<ConfigPathSwitchCommandArgs>,
-}
+pub struct ConfigPathSwitchCommand {}
 
 impl ConfigPathSwitchCommand {
     pub fn new() -> Self {
-        Self {
-            cli_args: OnceCell::new(),
-        }
-    }
-
-    fn cli_args(&self) -> &ConfigPathSwitchCommandArgs {
-        self.cli_args.get_or_init(|| {
-            omni_error!("command arguments not initialized");
-            exit(1);
-        })
+        Self {}
     }
 }
 
@@ -174,12 +121,12 @@ impl BuiltinCommand for ConfigPathSwitchCommand {
         Some(CommandSyntax {
             parameters: vec![
                 SyntaxOptArg {
-                    names: vec!["--<source>".to_string()],
+                    names: vec!["-p".to_string(), "--package".to_string()],
                     desc: Some(
                         concat!(
-                            "The source to use for the repository; this can be either ",
-                            "\x1B[1m--package\x1B[0m or \x1B[1m--worktree\x1B[0m, or will ",
-                            "toggle between the two if not specified.\n",
+                            "Switch the source to use the package in the omnipath; this will ",
+                            "clone the repository if it does not exist. This defaults to toggling \n",
+                            "between the two sources if not specified.\n",
                         )
                         .to_string()
                     ),
@@ -187,7 +134,20 @@ impl BuiltinCommand for ConfigPathSwitchCommand {
                     ..Default::default()
                 },
                 SyntaxOptArg {
-                    names: vec!["repo".to_string()],
+                    names: vec!["-w".to_string(), "--worktree".to_string()],
+                    desc: Some(
+                        concat!(
+                            "Switch the source to use the worktree in the omnipath; this will ",
+                            "clone the repository if it does not exist. This defaults to toggling \n",
+                            "between the two sources if not specified.\n",
+                        )
+                        .to_string()
+                    ),
+                    arg_type: SyntaxOptArgType::Flag,
+                    ..Default::default()
+                },
+                SyntaxOptArg {
+                    names: vec!["repository".to_string()],
                     desc: Some(
                         concat!(
                             "The name of the repository to switch the source from; this can be in the format ",
@@ -200,6 +160,13 @@ impl BuiltinCommand for ConfigPathSwitchCommand {
                     ..Default::default()
                 },
             ],
+            groups: vec![
+                SyntaxGroup {
+                    name: "source".to_string(),
+                    parameters: vec!["package".to_string(), "worktree".to_string()],
+                    ..Default::default()
+                }
+            ],
             ..Default::default()
         })
     }
@@ -209,20 +176,19 @@ impl BuiltinCommand for ConfigPathSwitchCommand {
     }
 
     fn exec(&self, argv: Vec<String>) {
-        if self
-            .cli_args
-            .set(ConfigPathSwitchCommandArgs::parse(argv))
-            .is_err()
-        {
-            unreachable!();
-        }
+        let command = Command::Builtin(self.clone_boxed());
+        let args = ConfigPathSwitchCommandArgs::from(
+            command
+                .exec_parse_args_typed(argv, self.name())
+                .expect("should have args to parse"),
+        );
 
         let mut repo_id = None;
         let mut repo_handle = None;
         let mut worktree_path = None;
         let mut package_path = None;
 
-        if let Some(repo) = self.cli_args().repository.clone() {
+        if let Some(repo) = args.repository.clone() {
             let repo_path = ORG_LOADER.find_repo(&repo, true, false, false);
             if let Some(repo_path) = repo_path {
                 let git = git_env(repo_path.to_string_lossy());
@@ -383,7 +349,7 @@ impl BuiltinCommand for ConfigPathSwitchCommand {
             exit(1);
         }
 
-        let to_source = match &self.cli_args().source {
+        let to_source = match &args.source {
             ConfigPathSwitchCommandArgsSource::Toggle => {
                 if worktree_in_omnipath {
                     ConfigPathSwitchCommandArgsSource::Package
@@ -391,7 +357,7 @@ impl BuiltinCommand for ConfigPathSwitchCommand {
                     ConfigPathSwitchCommandArgsSource::Worktree
                 }
             }
-            _ => self.cli_args().source.clone(),
+            _ => args.source.clone(),
         };
 
         let (switch_from_path, switch_to_path, targets_package) = match to_source {

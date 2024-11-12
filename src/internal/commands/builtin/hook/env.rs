@@ -1,9 +1,9 @@
+use std::collections::BTreeMap;
 use std::process::exit;
 
-use once_cell::sync::OnceCell;
-
 use crate::internal::commands::base::BuiltinCommand;
-use crate::internal::commands::HelpCommand;
+use crate::internal::commands::Command;
+use crate::internal::config::parser::ParseArgsValue;
 use crate::internal::config::CommandSyntax;
 use crate::internal::config::SyntaxOptArg;
 use crate::internal::config::SyntaxOptArgType;
@@ -11,7 +11,6 @@ use crate::internal::dynenv::DynamicEnvExportOptions;
 use crate::internal::env::Shell;
 use crate::internal::git::report_update_error;
 use crate::internal::StringColor;
-use crate::omni_error;
 
 #[derive(Debug, Clone)]
 struct HookEnvCommandArgs {
@@ -20,87 +19,38 @@ struct HookEnvCommandArgs {
     shell: Shell,
 }
 
-impl HookEnvCommandArgs {
-    fn parse(argv: Vec<String>) -> Self {
-        let mut parse_argv = vec!["".to_string()];
-        parse_argv.extend(argv);
-
-        let matches = clap::Command::new("")
-            .disable_help_subcommand(true)
-            .disable_version_flag(true)
-            .arg(clap::Arg::new("shell").action(clap::ArgAction::Set))
-            .arg(
-                clap::Arg::new("quiet")
-                    .short('q')
-                    .long("quiet")
-                    .action(clap::ArgAction::SetTrue),
-            )
-            .arg(
-                clap::Arg::new("keep-shims")
-                    .long("keep-shims")
-                    .action(clap::ArgAction::SetTrue),
-            )
-            .try_get_matches_from(&parse_argv);
-
-        let matches = match matches {
-            Ok(matches) => matches,
-            Err(err) => {
-                match err.kind() {
-                    clap::error::ErrorKind::DisplayHelp
-                    | clap::error::ErrorKind::DisplayHelpOnMissingArgumentOrSubcommand => {
-                        HelpCommand::new().exec(vec!["hook".to_string(), "env".to_string()]);
-                    }
-                    clap::error::ErrorKind::DisplayVersion => {
-                        unreachable!("version flag is disabled");
-                    }
-                    _ => {
-                        let err_str = format!("{}", err);
-                        let err_str = err_str
-                            .split('\n')
-                            .take_while(|line| !line.is_empty())
-                            .collect::<Vec<_>>()
-                            .join(" ");
-                        let err_str = err_str.trim_start_matches("error: ");
-                        omni_error!(err_str);
-                    }
-                }
-                exit(1);
+impl From<BTreeMap<String, ParseArgsValue>> for HookEnvCommandArgs {
+    fn from(args: BTreeMap<String, ParseArgsValue>) -> Self {
+        let quiet = matches!(
+            args.get("quiet"),
+            Some(ParseArgsValue::SingleBoolean(Some(true)))
+        );
+        let keep_shims = matches!(
+            args.get("keep-shims"),
+            Some(ParseArgsValue::SingleBoolean(Some(true)))
+        );
+        let shell = match args.get("shell") {
+            Some(ParseArgsValue::SingleString(Some(shell))) => {
+                let shell = shell.trim();
+                Shell::from_str(shell)
             }
+            _ => Shell::from_env(),
         };
 
-        let shell = matches
-            .get_one::<String>("shell")
-            .map(|shell| shell.as_str())
-            .map(Shell::from_str)
-            .unwrap_or_else(Shell::from_env);
-        let quiet = *matches.get_one::<bool>("quiet").unwrap_or(&false);
-        let keep_shims = *matches.get_one::<bool>("keep-shims").unwrap_or(&false);
-
         Self {
-            shell,
             quiet,
             keep_shims,
+            shell,
         }
     }
 }
 
 #[derive(Debug, Clone)]
-pub struct HookEnvCommand {
-    cli_args: OnceCell<HookEnvCommandArgs>,
-}
+pub struct HookEnvCommand {}
 
 impl HookEnvCommand {
     pub fn new() -> Self {
-        Self {
-            cli_args: OnceCell::new(),
-        }
-    }
-
-    fn cli_args(&self) -> &HookEnvCommandArgs {
-        self.cli_args.get_or_init(|| {
-            omni_error!("command arguments not initialized");
-            exit(1);
-        })
+        Self {}
     }
 }
 
@@ -137,7 +87,7 @@ impl BuiltinCommand for HookEnvCommand {
         Some(CommandSyntax {
             parameters: vec![
                 SyntaxOptArg {
-                    names: vec!["--quiet".to_string()],
+                    names: vec!["-q".to_string(), "--quiet".to_string()],
                     desc: Some(
                         concat!(
                             "Suppress the output of the hook showing information about the ",
@@ -169,6 +119,9 @@ impl BuiltinCommand for HookEnvCommand {
                         )
                         .to_string(),
                     ),
+                    arg_type: SyntaxOptArgType::Enum(
+                        Shell::all().iter().map(|s| s.to_string()).collect(),
+                    ),
                     ..Default::default()
                 },
             ],
@@ -181,22 +134,25 @@ impl BuiltinCommand for HookEnvCommand {
     }
 
     fn exec(&self, argv: Vec<String>) {
-        if self.cli_args.set(HookEnvCommandArgs::parse(argv)).is_err() {
-            unreachable!();
-        }
+        let command = Command::Builtin(self.clone_boxed());
+        let args = HookEnvCommandArgs::from(
+            command
+                .exec_parse_args_typed(argv, self.name())
+                .expect("should have args to parse"),
+        );
 
-        let shell_type = &self.cli_args().shell;
+        let shell_type = &args.shell;
         match shell_type.dynenv_export_mode() {
             Some(export_mode) => {
                 DynamicEnvExportOptions::new(export_mode)
-                    .quiet(self.cli_args().quiet)
-                    .keep_shims(self.cli_args().keep_shims)
+                    .quiet(args.quiet)
+                    .keep_shims(args.keep_shims)
                     .apply();
                 report_update_error();
                 exit(0);
             }
             None => {
-                if !self.cli_args().quiet {
+                if !args.quiet {
                     eprintln!(
                         "{} {} {}",
                         "omni:".light_cyan(),

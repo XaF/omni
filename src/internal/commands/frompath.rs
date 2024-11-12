@@ -486,10 +486,13 @@ impl PathCommandFileDetails {
         // Prepare all arguments
         let mut dest = None;
         let mut default = None;
+        let mut default_missing_value = None;
         let mut num_values = None;
         let mut value_delimiter = None;
         let mut last_arg_double_hyphen = false;
         let mut allow_hyphen_values = false;
+        let mut allow_negative_numbers = false;
+        let mut group_occurrences = false;
         let mut requires = vec![];
         let mut conflicts_with = vec![];
         let mut required_without = vec![];
@@ -527,6 +530,7 @@ impl PathCommandFileDetails {
 
                     match key.as_str() {
                         "default" => default = Some(value.to_string()),
+                        "default_missing_value" => default_missing_value = Some(value.to_string()),
                         "dest" => dest = Some(value.to_string()),
                         "type" => arg_type = value.to_string(),
                         "num_values" => {
@@ -543,6 +547,12 @@ impl PathCommandFileDetails {
                         "leftovers" => leftovers = str_to_bool(value).unwrap_or(false),
                         "allow_hyphen_values" | "allow_hyphen" => {
                             allow_hyphen_values = str_to_bool(value).unwrap_or(false)
+                        }
+                        "allow_negative_numbers" | "negative_numbers" => {
+                            allow_negative_numbers = str_to_bool(value).unwrap_or(false)
+                        }
+                        "group_occurrences" => {
+                            group_occurrences = str_to_bool(value).unwrap_or(false)
                         }
                         "requires"
                         | "conflicts_with"
@@ -623,12 +633,15 @@ impl PathCommandFileDetails {
             required,
             placeholder,
             default,
+            default_missing_value,
             arg_type: SyntaxOptArgType::from_str(&arg_type).unwrap_or(SyntaxOptArgType::String),
             num_values,
             value_delimiter,
             last_arg_double_hyphen,
             leftovers,
             allow_hyphen_values,
+            allow_negative_numbers,
+            group_occurrences,
             requires,
             conflicts_with,
             required_without,
@@ -1374,6 +1387,44 @@ mod tests {
                     desc: Some("test desc2".to_string()),
                     required: true,
                     allow_hyphen_values: true,
+                    ..Default::default()
+                }
+            );
+        }
+
+        #[test]
+        fn arg_with_allow_negative_numbers() {
+            let mut reader = BufReader::new("# arg: -a: allow_negative_numbers=true: test desc\n# arg: -b: negative_numbers=true: test desc2".as_bytes());
+            let details = PathCommandFileDetails::from_source_file_header(&mut reader);
+
+            assert!(details.is_some(), "Details are not present");
+            let details = details.unwrap();
+
+            assert!(details.syntax.is_some(), "Syntax is not present");
+
+            let syntax = details.syntax.unwrap();
+            assert_eq!(syntax.parameters.len(), 2);
+
+            let arg = &syntax.parameters[0];
+            assert_eq!(
+                arg,
+                &SyntaxOptArg {
+                    names: vec!["-a".to_string()],
+                    desc: Some("test desc".to_string()),
+                    required: true,
+                    allow_negative_numbers: true,
+                    ..Default::default()
+                }
+            );
+
+            let arg = &syntax.parameters[1];
+            assert_eq!(
+                arg,
+                &SyntaxOptArg {
+                    names: vec!["-b".to_string()],
+                    desc: Some("test desc2".to_string()),
+                    required: true,
+                    allow_negative_numbers: true,
                     ..Default::default()
                 }
             );

@@ -80,6 +80,7 @@ commands:
   test:
     desc: Runs the tests
     run: |
+      set -e
       cargo test
       GENERATE_FIXTURES=false bats tests/
     subcommands:
@@ -91,6 +92,7 @@ commands:
   fix:
     desc: Fixes the code
     run: |
+      set -e
       cargo fix --all-features --color always --allow-dirty
       cargo clippy --fix --all-features --color always --allow-dirty
       cargo fmt

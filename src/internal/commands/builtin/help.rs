@@ -2,12 +2,11 @@ use std::collections::BTreeMap;
 use std::collections::HashSet;
 use std::process::exit;
 
-use once_cell::sync::OnceCell;
-
 use crate::internal::commands::base::BuiltinCommand;
 use crate::internal::commands::command_loader;
 use crate::internal::commands::void::VoidCommand;
 use crate::internal::commands::Command;
+use crate::internal::config::parser::ParseArgsValue;
 use crate::internal::config::CommandSyntax;
 use crate::internal::config::SyntaxOptArg;
 use crate::internal::config::SyntaxOptArgType;
@@ -24,91 +23,36 @@ use crate::omni_print;
 #[derive(Debug, Clone)]
 struct HelpCommandArgs {
     unfold: bool,
-    unparsed: Vec<String>,
+    command: Vec<String>,
 }
 
-impl HelpCommandArgs {
-    fn parse(argv: Vec<String>) -> Self {
-        let mut parse_argv = vec!["".to_string()];
-        parse_argv.extend(argv);
-
-        let matches = clap::Command::new("")
-            .disable_help_subcommand(true)
-            .disable_version_flag(true)
-            .arg(
-                clap::Arg::new("unfold")
-                    .long("unfold")
-                    .short('u')
-                    .action(clap::ArgAction::SetTrue),
-            )
-            .arg(
-                clap::Arg::new("unparsed")
-                    .action(clap::ArgAction::Append)
-                    .allow_hyphen_values(true),
-            )
-            .try_get_matches_from(&parse_argv);
-
-        if let Err(err) = matches {
-            match err.kind() {
-                clap::error::ErrorKind::DisplayHelp
-                | clap::error::ErrorKind::DisplayHelpOnMissingArgumentOrSubcommand => {
-                    HelpCommand::new().exec(vec!["help".to_string()]);
-                }
-                clap::error::ErrorKind::DisplayVersion => {
-                    unreachable!("version flag is disabled");
-                }
-                _ => {
-                    let err_str = format!("{}", err);
-                    let err_str = err_str
-                        .split('\n')
-                        .take_while(|line| !line.is_empty())
-                        .collect::<Vec<_>>()
-                        .join(" ");
-                    let err_str = err_str.trim_start_matches("error: ");
-                    omni_error!(err_str);
-                }
-            }
-            exit(1);
-        }
-
-        let matches = matches.unwrap();
-
-        let unparsed = if let Some(unparsed) = matches.get_many::<String>("unparsed").clone() {
-            unparsed
-                .into_iter()
-                .map(|arg| arg.to_string())
-                .collect::<Vec<_>>()
-        } else {
-            vec![]
+impl From<BTreeMap<String, ParseArgsValue>> for HelpCommandArgs {
+    fn from(args: BTreeMap<String, ParseArgsValue>) -> Self {
+        let unfold = matches!(
+            args.get("unfold"),
+            Some(ParseArgsValue::SingleBoolean(Some(true)))
+        );
+        let command = match args.get("command") {
+            Some(ParseArgsValue::ManyString(values)) => values
+                .iter()
+                .filter_map(|v| v.clone())
+                .collect::<Vec<String>>(),
+            _ => vec![],
         };
 
-        Self {
-            unfold: *matches.get_one::<bool>("unfold").unwrap_or(&false),
-            unparsed,
-        }
+        Self { unfold, command }
     }
 }
 
 #[derive(Debug, Clone)]
-pub struct HelpCommand {
-    cli_args: OnceCell<HelpCommandArgs>,
-}
+pub struct HelpCommand {}
 
 impl HelpCommand {
     pub fn new() -> Self {
-        Self {
-            cli_args: OnceCell::new(),
-        }
+        Self {}
     }
 
-    fn cli_args(&self) -> &HelpCommandArgs {
-        self.cli_args.get_or_init(|| {
-            omni_error!("command arguments not initialized");
-            exit(1);
-        })
-    }
-
-    fn help_global(&self) {
+    fn help_global(&self, unfold: bool) {
         eprintln!(
             "{}\n\n{} {} {} {} {}",
             omni_header!(),
@@ -119,11 +63,11 @@ impl HelpCommand {
             "ARG...".cyan().bold(),
         );
 
-        self.print_categorized_command_help(vec![]);
+        self.print_categorized_command_help(vec![], unfold);
         eprintln!();
     }
 
-    fn help_command(&self, command: &Command, called_as: Vec<String>) {
+    fn help_command(&self, command: &Command, called_as: Vec<String>, unfold: bool) {
         eprintln!("{}", omni_header!());
 
         let max_width = term_width() - 4;
@@ -182,7 +126,7 @@ impl HelpCommand {
             }
         }
 
-        self.print_categorized_command_help(called_as);
+        self.print_categorized_command_help(called_as, unfold);
 
         eprintln!(
             "\n{} {}",
@@ -191,10 +135,11 @@ impl HelpCommand {
         );
     }
 
-    fn help_void(&self, called_as: Vec<String>) {
+    fn help_void(&self, called_as: Vec<String>, unfold: bool) {
         self.help_command(
             &Command::Void(VoidCommand::new_for_help(called_as.clone())),
             called_as,
+            unfold,
         );
     }
 
@@ -285,73 +230,15 @@ impl HelpCommand {
             eprint!("{}", buf);
         }
 
-        // let all_names_str = format!("{}{}", all_names_str, "-".repeat(num_folded_len));
-        // let all_names_vec = wrap_text(&all_names_str, wrap_threshold);
-        // let all_names_and_len = all_names_vec
-        // .iter()
-        // .enumerate()
-        // .map(|(idx, name)| {
-        // let namelen = strip_ansi_codes(name).len();
-        // let name = if idx == all_names_vec.len() - 1 {
-        // match name.strip_suffix("--") {
-        // Some(name) => format!("{}{}", name, num_folded),
-        // None => name.to_string(),
-        // }
-        // } else {
-        // name.to_string()
-        // };
-        // (name, namelen)
-        // })
-        // .collect::<Vec<(String, usize)>>();
-
-        // // Prepare the help contents
-        // let help_vec = wrap_text(&strip_colors_if_needed(command.help_short()), help_just);
-
-        // // Prepare the help message to print for this command
-        // let empty_str = "".to_string();
-        // let mut buf = String::new();
-        // if print_name_on_same_line {
-        // all_names_and_len
-        // .iter()
-        // .take(all_names_and_len.len() - 1)
-        // .for_each(|(name, _)| {
-        // buf.push_str(&format!("  {}\n", name));
-        // });
-
-        // let first_desc_line = help_vec.first().unwrap_or(&empty_str);
-        // let last_name_line = all_names_and_len.last().expect("Name should not be empty");
-        // buf.push_str(&format!(
-        // "  {}{}{}\n",
-        // last_name_line.0,
-        // " ".repeat(ljust - last_name_line.1),
-        // first_desc_line,
-        // ));
-
-        // help_vec.iter().skip(1).for_each(|line| {
-        // buf.push_str(&format!("{}{}\n", " ".repeat(ljust + 2), line));
-        // });
-        // } else {
-        // all_names_and_len.iter().for_each(|(name, _)| {
-        // buf.push_str(&format!("  {}\n", name));
-        // });
-
-        // help_vec.iter().for_each(|line| {
-        // buf.push_str(&format!("{}{}\n", " ".repeat(ljust + 2), line));
-        // });
-        // }
-
-        // eprint!("{}", buf);
-        // }
-
         Ok(())
     }
 
-    fn print_categorized_command_help(&self, prefix: Vec<String>) -> bool {
+    fn print_categorized_command_help(&self, prefix: Vec<String>, unfold: bool) -> bool {
         let command_loader = command_loader(".");
         let organizer = HelpCommandOrganizer::new_from_commands(command_loader.commands.clone());
         let commands = organizer.get_commands_with_fold(
             prefix.clone(),
-            match self.cli_args().unfold {
+            match unfold {
                 true => 0,
                 false => 1,
             },
@@ -493,6 +380,37 @@ impl HelpCommand {
 
         true
     }
+
+    pub fn exec_with_exit_code(&self, argv: Vec<String>, exit_code: i32) {
+        let command = Command::Builtin(self.clone_boxed());
+        let args = HelpCommandArgs::from(
+            command
+                .exec_parse_args_typed(argv, self.name())
+                .expect("should have args to parse"),
+        );
+
+        let argv = args.command.clone();
+        if argv.is_empty() {
+            self.help_global(args.unfold);
+            exit(exit_code);
+        }
+
+        let command_loader = command_loader(".");
+        if let Some((omni_cmd, called_as, argv)) = command_loader.to_serve(&argv) {
+            if argv.is_empty() {
+                self.help_command(omni_cmd, called_as, args.unfold);
+                exit(exit_code);
+            }
+        }
+
+        if command_loader.has_subcommand_of(&argv) {
+            self.help_void(argv.to_vec(), args.unfold);
+            exit(exit_code);
+        }
+
+        omni_print!(format!("{} {}", "command not found:".red(), argv.join(" ")));
+        exit(1);
+    }
 }
 
 impl BuiltinCommand for HelpCommand {
@@ -537,6 +455,7 @@ impl BuiltinCommand for HelpCommand {
                     names: vec!["command".to_string()],
                     desc: Some("The command to get help for".to_string()),
                     leftovers: true,
+                    allow_hyphen_values: true,
                     required: false,
                     ..Default::default()
                 },
@@ -550,32 +469,7 @@ impl BuiltinCommand for HelpCommand {
     }
 
     fn exec(&self, argv: Vec<String>) {
-        if self.cli_args.set(HelpCommandArgs::parse(argv)).is_err() {
-            unreachable!();
-        }
-
-        let argv = self.cli_args().unparsed.clone();
-
-        if argv.is_empty() {
-            self.help_global();
-            exit(0);
-        }
-
-        let command_loader = command_loader(".");
-        if let Some((omni_cmd, called_as, argv)) = command_loader.to_serve(&argv) {
-            if argv.is_empty() {
-                self.help_command(omni_cmd, called_as);
-                exit(0);
-            }
-        }
-
-        if command_loader.has_subcommand_of(&argv) {
-            self.help_void(argv.to_vec());
-            exit(0);
-        }
-
-        omni_print!(format!("{} {}", "command not found:".red(), argv.join(" ")));
-        exit(1);
+        self.exec_with_exit_code(argv, 0);
     }
 
     fn autocompletion(&self) -> bool {

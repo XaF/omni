@@ -1,3 +1,4 @@
+use std::collections::BTreeMap;
 use std::collections::HashSet;
 use std::hash::Hash;
 use std::hash::Hasher;
@@ -21,10 +22,11 @@ use crate::internal::cache::CacheObject;
 use crate::internal::cache::PromptsCache;
 use crate::internal::cache::RepositoriesCache;
 use crate::internal::commands::base::BuiltinCommand;
-use crate::internal::commands::builtin::HelpCommand;
+use crate::internal::commands::Command;
 use crate::internal::config::config;
 use crate::internal::config::flush_config;
 use crate::internal::config::global_config;
+use crate::internal::config::parser::ParseArgsValue;
 use crate::internal::config::up::utils::run_progress;
 use crate::internal::config::up::utils::PrintProgressHandler;
 use crate::internal::config::up::utils::ProgressHandler;
@@ -41,6 +43,7 @@ use crate::internal::config::ConfigExtendOptions;
 use crate::internal::config::ConfigLoader;
 use crate::internal::config::ConfigValue;
 use crate::internal::config::SyntaxOptArg;
+use crate::internal::config::SyntaxOptArgNumValues;
 use crate::internal::config::SyntaxOptArgType;
 use crate::internal::env::shell_is_interactive;
 use crate::internal::errors::SyncUpdateError;
@@ -74,145 +77,50 @@ struct UpCommandArgs {
     upgrade: bool,
 }
 
-impl UpCommandArgs {
-    fn parse(argv: Vec<String>) -> Self {
-        let mut parse_argv = vec!["".to_string()];
-        parse_argv.extend(argv);
+impl From<BTreeMap<String, ParseArgsValue>> for UpCommandArgs {
+    fn from(args: BTreeMap<String, ParseArgsValue>) -> Self {
+        let no_cache = matches!(
+            args.get("no_cache"),
+            Some(ParseArgsValue::SingleBoolean(Some(true)))
+        );
 
-        let matches = clap::Command::new("")
-            .disable_help_subcommand(true)
-            .disable_version_flag(true)
-            .arg(
-                clap::Arg::new("no-cache")
-                    .long("no-cache")
-                    .action(clap::ArgAction::SetTrue),
-            )
-            .arg(
-                clap::Arg::new("fail-on-upgrade")
-                    .long("fail-on-upgrade")
-                    .action(clap::ArgAction::SetTrue),
-            )
-            .arg(
-                clap::Arg::new("bootstrap")
-                    .long("bootstrap")
-                    .action(clap::ArgAction::SetTrue),
-            )
-            .arg(
-                clap::Arg::new("clone-suggested")
-                    .long("clone-suggested")
-                    .num_args(0..=1)
-                    .action(clap::ArgAction::Set)
-                    .default_missing_value("ask")
-                    .value_parser(clap::builder::PossibleValuesParser::new([
-                        "yes", "ask", "no",
-                    ])),
-            )
-            .arg(
-                clap::Arg::new("prompt")
-                    .long("prompt")
-                    .action(clap::ArgAction::Set)
-                    .default_missing_value(""),
-            )
-            .arg(
-                clap::Arg::new("prompt-all")
-                    .long("prompt-all")
-                    .action(clap::ArgAction::SetTrue),
-            )
-            .arg(
-                clap::Arg::new("trust")
-                    .long("trust")
-                    .num_args(0..=1)
-                    .action(clap::ArgAction::Set)
-                    .default_missing_value("yes")
-                    .value_parser(clap::builder::PossibleValuesParser::new([
-                        "always", "yes", "no",
-                    ])),
-            )
-            .arg(
-                clap::Arg::new("update-repository")
-                    .long("update-repository")
-                    .action(clap::ArgAction::SetTrue),
-            )
-            .arg(
-                clap::Arg::new("update-user-config")
-                    .long("update-user-config")
-                    .num_args(0..=1)
-                    .action(clap::ArgAction::Set)
-                    .default_missing_value("ask")
-                    .value_parser(clap::builder::PossibleValuesParser::new([
-                        "yes", "ask", "no",
-                    ])),
-            )
-            .arg(
-                clap::Arg::new("upgrade")
-                    .long("upgrade")
-                    .action(clap::ArgAction::SetTrue),
-            )
-            .try_get_matches_from(&parse_argv);
+        let fail_on_upgrade = matches!(
+            args.get("fail_on_upgrade"),
+            Some(ParseArgsValue::SingleBoolean(Some(true)))
+        );
 
-        let matches = match matches {
-            Ok(matches) => matches,
-            Err(err) => {
-                match err.kind() {
-                    clap::error::ErrorKind::DisplayHelp
-                    | clap::error::ErrorKind::DisplayHelpOnMissingArgumentOrSubcommand => {
-                        HelpCommand::new().exec(vec!["up".to_string()]);
-                    }
-                    clap::error::ErrorKind::DisplayVersion => {
-                        unreachable!("version flag is disabled");
-                    }
-                    _ => {
-                        let err_str = format!("{}", err);
-                        let err_str = err_str
-                            .split('\n')
-                            .take_while(|line| !line.is_empty())
-                            .collect::<Vec<_>>()
-                            .join(" ");
-                        let err_str = err_str.trim_start_matches("error: ");
-                        omni_error!(err_str);
-                    }
-                }
-                exit(1);
-            }
-        };
+        let bootstrap = matches!(
+            args.get("bootstrap"),
+            Some(ParseArgsValue::SingleBoolean(Some(true)))
+        );
 
-        let bootstrap = *matches.get_one::<bool>("bootstrap").unwrap_or(&false);
-
-        let clone_suggested =
-            if let Some(clone_suggested) = matches.get_one::<String>("clone-suggested") {
-                clone_suggested
-                    .to_lowercase()
-                    .parse::<UpCommandArgsCloneSuggestedOptions>()
-                    .unwrap()
-            } else if bootstrap {
-                UpCommandArgsCloneSuggestedOptions::Ask
-            } else {
-                UpCommandArgsCloneSuggestedOptions::Unset
-            };
-
-        let trust = if let Some(trust) = matches.get_one::<String>("trust") {
-            trust
+        let clone_suggested = match args.get("clone_suggested") {
+            Some(ParseArgsValue::SingleString(Some(clone_suggested))) => clone_suggested
                 .to_lowercase()
-                .parse::<UpCommandArgsTrustOptions>()
-                .unwrap()
-        } else {
-            UpCommandArgsTrustOptions::Check
+                .parse::<UpCommandArgsCloneSuggestedOptions>()
+                .unwrap(),
+            _ if bootstrap => UpCommandArgsCloneSuggestedOptions::Ask,
+            _ => UpCommandArgsCloneSuggestedOptions::Unset,
         };
 
         let mut prompt = bootstrap;
         let mut prompt_ids = HashSet::new();
-        let prompt_all = *matches.get_one::<bool>("prompt-all").unwrap_or(&false);
+        let prompt_all = matches!(
+            args.get("prompt_all"),
+            Some(ParseArgsValue::SingleBoolean(Some(true)))
+        );
         if prompt_all {
             prompt = true;
-        } else if let Some(prompts) = matches.get_occurrences("prompt") {
-            prompt_ids = prompts
-                .flat_map(|prompt| prompt.map(|prompt: &String| prompt.to_string()))
-                .filter_map(|prompt| {
-                    let p = prompt.trim();
-                    if p.is_empty() {
+        } else if let Some(ParseArgsValue::ManyString(values)) = args.get("prompt") {
+            prompt_ids = values
+                .iter()
+                .flat_map(|v| v.clone())
+                .filter_map(|v| {
+                    let v = v.trim();
+                    if v.is_empty() {
                         None
                     } else {
-                        Some(p.to_string())
+                        Some(v.to_string())
                     }
                 })
                 .collect();
@@ -220,31 +128,44 @@ impl UpCommandArgs {
             prompt = !prompt_ids.is_empty();
         }
 
-        let update_user_config =
-            if let Some(update_user_config) = matches.get_one::<String>("update-user-config") {
-                update_user_config
-                    .to_lowercase()
-                    .parse::<UpCommandArgsUpdateUserConfigOptions>()
-                    .unwrap()
-            } else if bootstrap {
-                UpCommandArgsUpdateUserConfigOptions::Ask
-            } else {
-                UpCommandArgsUpdateUserConfigOptions::Unset
-            };
+        let trust = match args.get("trust") {
+            Some(ParseArgsValue::SingleString(Some(trust))) => trust
+                .to_lowercase()
+                .parse::<UpCommandArgsTrustOptions>()
+                .unwrap(),
+            _ => UpCommandArgsTrustOptions::Check,
+        };
+
+        let update_repository = matches!(
+            args.get("update_repository"),
+            Some(ParseArgsValue::SingleBoolean(Some(true)))
+        );
+
+        let update_user_config = match args.get("update_user_config") {
+            Some(ParseArgsValue::SingleString(Some(update_user_config))) => update_user_config
+                .to_lowercase()
+                .parse::<UpCommandArgsUpdateUserConfigOptions>()
+                .unwrap(),
+            _ if bootstrap => UpCommandArgsUpdateUserConfigOptions::Ask,
+            _ => UpCommandArgsUpdateUserConfigOptions::Unset,
+        };
+
+        let upgrade = matches!(
+            args.get("upgrade"),
+            Some(ParseArgsValue::SingleBoolean(Some(true)))
+        );
 
         Self {
-            cache_enabled: !*matches.get_one::<bool>("no-cache").unwrap_or(&false),
+            cache_enabled: !no_cache,
             clone_suggested,
-            fail_on_upgrade: *matches.get_one::<bool>("fail-on-upgrade").unwrap_or(&false),
+            fail_on_upgrade,
             prompt,
             prompt_all,
             prompt_ids,
             trust,
-            update_repository: *matches
-                .get_one::<bool>("update-repository")
-                .unwrap_or(&false),
+            update_repository,
             update_user_config,
-            upgrade: *matches.get_one::<bool>("upgrade").unwrap_or(&false),
+            upgrade,
         }
     }
 }
@@ -1326,16 +1247,19 @@ impl BuiltinCommand for UpCommand {
                         )
                         .to_string(),
                     ),
+                    num_values: Some(SyntaxOptArgNumValues::AtMost(1)),
                     arg_type: SyntaxOptArgType::Enum(vec![
                         "yes".to_string(),
                         "ask".to_string(),
                         "no".to_string(),
                     ]),
                     default: Some("no".to_string()),
+                    default_missing_value: Some("ask".to_string()),
                     ..Default::default()
                 },
                 SyntaxOptArg {
                     names: vec!["--prompt".to_string()],
+                    placeholder: Some("PROMPT_ID".to_string()),
                     desc: Some(
                         concat!(
                             "Trigger prompts for the given prompt ids, specified as arguments, as ",
@@ -1364,12 +1288,13 @@ impl BuiltinCommand for UpCommand {
                         "Define how to trust the repository (always/yes/no) to run the command"
                             .to_string(),
                     ),
+                    num_values: Some(SyntaxOptArgNumValues::AtMost(1)),
                     arg_type: SyntaxOptArgType::Enum(vec![
                         "always".to_string(),
                         "yes".to_string(),
                         "no".to_string(),
                     ]),
-                    default: Some("no".to_string()),
+                    default_missing_value: Some("yes".to_string()),
                     ..Default::default()
                 },
                 SyntaxOptArg {
@@ -1396,12 +1321,14 @@ impl BuiltinCommand for UpCommand {
                         )
                         .to_string(),
                     ),
+                    num_values: Some(SyntaxOptArgNumValues::AtMost(1)),
                     arg_type: SyntaxOptArgType::Enum(vec![
                         "yes".to_string(),
                         "ask".to_string(),
                         "no".to_string(),
                     ]),
                     default: Some("no".to_string()),
+                    default_missing_value: Some("ask".to_string()),
                     ..Default::default()
                 },
                 SyntaxOptArg {
@@ -1429,7 +1356,18 @@ impl BuiltinCommand for UpCommand {
     }
 
     fn exec(&self, argv: Vec<String>) {
-        if self.cli_args.set(UpCommandArgs::parse(argv)).is_err() {
+        if self
+            .cli_args
+            .set({
+                let command = Command::Builtin(self.clone_boxed());
+                UpCommandArgs::from(
+                    command
+                        .exec_parse_args_typed(argv, self.name())
+                        .expect("should have args to parse"),
+                )
+            })
+            .is_err()
+        {
             unreachable!();
         }
 

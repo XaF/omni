@@ -1,3 +1,4 @@
+use std::collections::BTreeMap;
 use std::process::exit;
 
 use serde::Serialize;
@@ -6,8 +7,9 @@ use tera::Context;
 use tera::Tera;
 
 use crate::internal::commands::base::BuiltinCommand;
-use crate::internal::commands::HelpCommand;
+use crate::internal::commands::Command;
 use crate::internal::config::global_config;
+use crate::internal::config::parser::ParseArgsValue;
 use crate::internal::config::CommandSyntax;
 use crate::internal::config::SyntaxOptArg;
 use crate::internal::config::SyntaxOptArgNumValues;
@@ -29,86 +31,12 @@ struct HookInitCommandArgs {
     print_shims_path: bool,
 }
 
-impl HookInitCommandArgs {
-    fn parse(argv: Vec<String>) -> Self {
-        let mut parse_argv = vec!["".to_string()];
-        parse_argv.extend(argv);
-
-        let matches = clap::Command::new("")
-            .disable_help_subcommand(true)
-            .disable_version_flag(true)
-            .arg(clap::Arg::new("shell").action(clap::ArgAction::Set))
-            .arg(
-                clap::Arg::new("aliases")
-                    .short('a')
-                    .long("alias")
-                    .action(clap::ArgAction::Append),
-            )
-            .arg(
-                clap::Arg::new("command_aliases")
-                    .short('c')
-                    .long("command-alias")
-                    .number_of_values(2)
-                    .action(clap::ArgAction::Append),
-            )
-            .arg(
-                clap::Arg::new("shims")
-                    .long("shims")
-                    .action(clap::ArgAction::SetTrue)
-                    .conflicts_with("aliases")
-                    .conflicts_with("command_aliases"),
-            )
-            .arg(
-                clap::Arg::new("keep-shims")
-                    .long("keep-shims")
-                    .action(clap::ArgAction::SetTrue)
-                    .conflicts_with("aliases")
-                    .conflicts_with("command_aliases")
-                    .conflicts_with("shims"),
-            )
-            .arg(
-                clap::Arg::new("print-shims-path")
-                    .long("print-shims-path")
-                    .action(clap::ArgAction::SetTrue)
-                    .conflicts_with("aliases")
-                    .conflicts_with("command_aliases")
-                    .conflicts_with("shims")
-                    .conflicts_with("keep-shims"),
-            )
-            .try_get_matches_from(&parse_argv);
-
-        let matches = match matches {
-            Ok(matches) => matches,
-            Err(err) => {
-                match err.kind() {
-                    clap::error::ErrorKind::DisplayHelp
-                    | clap::error::ErrorKind::DisplayHelpOnMissingArgumentOrSubcommand => {
-                        HelpCommand::new().exec(vec!["hook".to_string()]);
-                    }
-                    clap::error::ErrorKind::DisplayVersion => {
-                        unreachable!("version flag is disabled");
-                    }
-                    _ => {
-                        let err_str = format!("{}", err);
-                        let err_str = err_str
-                            .split('\n')
-                            .take_while(|line| !line.is_empty())
-                            .collect::<Vec<_>>()
-                            .join(" ");
-                        let err_str = err_str.trim_start_matches("error: ");
-                        omni_error!(err_str);
-                    }
-                }
-                exit(1);
-            }
+impl From<BTreeMap<String, ParseArgsValue>> for HookInitCommandArgs {
+    fn from(args: BTreeMap<String, ParseArgsValue>) -> Self {
+        let shell = match args.get("shell") {
+            Some(ParseArgsValue::SingleString(Some(shell))) => shell.to_string(),
+            _ => Shell::from_env().to_string(),
         };
-
-        let shell = matches
-            .get_one::<String>("shell")
-            .map(|shell| shell.as_str())
-            .map(Shell::from_str)
-            .unwrap_or_else(Shell::from_env)
-            .to_string();
 
         // Load aliases from the configuration first
         let config = global_config();
@@ -123,37 +51,47 @@ impl HookInitCommandArgs {
             }
         }
 
-        // Then add the ones from the command line
-        aliases.extend(
-            if let Some(aliases) = matches.get_many::<String>("aliases").clone() {
-                aliases
-                    .into_iter()
-                    .map(|arg| arg.to_string())
-                    .collect::<Vec<_>>()
-            } else {
-                Vec::new()
-            },
-        );
+        // Add the aliases from the command line
+        if let Some(ParseArgsValue::ManyString(cli_aliases)) = args.get("alias") {
+            let cli_aliases: Vec<_> = cli_aliases
+                .iter()
+                .flat_map(|alias| alias.clone())
+                .filter(|alias| !alias.is_empty())
+                .collect();
+            aliases.extend(cli_aliases);
+        }
 
-        command_aliases.extend(
-            if let Some(command_aliases) = matches.get_many::<String>("command_aliases").clone() {
-                command_aliases
-                    .into_iter()
-                    .map(|arg| arg.to_string())
-                    .collect::<Vec<_>>()
-                    .chunks(2)
-                    .map(|chunk| InitHookAlias::new(chunk[0].clone(), chunk[1].clone()))
-                    .collect::<Vec<_>>()
-            } else {
-                Vec::new()
-            },
-        );
+        // Add the command aliases from the command line
+        if let Some(ParseArgsValue::GroupedString(cli_command_aliases)) = args.get("command_alias")
+        {
+            let cli_command_aliases = cli_command_aliases.iter().filter_map(|grouped| {
+                if grouped.len() == 2 {
+                    let source = grouped.first()?.clone()?.trim().to_string();
+                    let target = grouped.get(1)?.clone()?.trim().to_string();
+                    if source.is_empty() || target.is_empty() {
+                        None
+                    } else {
+                        Some(InitHookAlias::new(source, target))
+                    }
+                } else {
+                    None
+                }
+            });
+            command_aliases.extend(cli_command_aliases);
+        }
 
-        let shims = *matches.get_one::<bool>("shims").unwrap_or(&false);
-        let keep_shims = *matches.get_one::<bool>("keep-shims").unwrap_or(&false);
-        let print_shims_path = *matches
-            .get_one::<bool>("print-shims-path")
-            .unwrap_or(&false);
+        let shims = matches!(
+            args.get("shims"),
+            Some(ParseArgsValue::SingleBoolean(Some(true)))
+        );
+        let keep_shims = matches!(
+            args.get("keep_shims_in_path"),
+            Some(ParseArgsValue::SingleBoolean(Some(true)))
+        );
+        let print_shims_path = matches!(
+            args.get("print_shims_path"),
+            Some(ParseArgsValue::SingleBoolean(Some(true)))
+        );
 
         Self {
             shell,
@@ -272,6 +210,7 @@ impl BuiltinCommand for HookInitCommand {
                     ),
                     num_values: Some(SyntaxOptArgNumValues::Exactly(2)),
                     arg_type: SyntaxOptArgType::Array(Box::new(SyntaxOptArgType::String)),
+                    group_occurrences: true,
                     ..Default::default()
                 },
                 SyntaxOptArg {
@@ -305,9 +244,14 @@ impl BuiltinCommand for HookInitCommand {
                 SyntaxOptArg {
                     names: vec!["shell".to_string()],
                     desc: Some(
-                        "Which shell to initialize omni for. Can be one of bash, zsh or fish."
+                        "Which shell to initialize omni for."
                             .to_string(),
                     ),
+                    arg_type: SyntaxOptArgType::Enum(vec![
+                        "bash".to_string(),
+                        "zsh".to_string(),
+                        "fish".to_string(),
+                    ]),
                     ..Default::default()
                 },
             ],
@@ -320,7 +264,12 @@ impl BuiltinCommand for HookInitCommand {
     }
 
     fn exec(&self, argv: Vec<String>) {
-        let args = HookInitCommandArgs::parse(argv);
+        let command = Command::Builtin(self.clone_boxed());
+        let args = HookInitCommandArgs::from(
+            command
+                .exec_parse_args_typed(argv, self.name())
+                .expect("should have args to parse"),
+        );
 
         if args.print_shims_path {
             println!("{}", shims_dir().display());

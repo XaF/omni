@@ -12,11 +12,12 @@ Arguments:
   [up args]...   Arguments to pass to omni up when running with --up-all
 
 Options:
-  --yes                        Do not ask for confirmation before organizing repositories
-  --search-path <SEARCH_PATH>  Extra path to search git repositories to tidy up (repeat as
-                               many times as you need)
-  --up-all                     Run omni up in all the repositories with an omni configuration;
-                               any argument passed to the tidy command after -- will be passed
-                               to omni up (e.g. omni tidy --up-all -- --update-repository)
+  --yes                            Do not ask for confirmation before organizing repositories
+  -P, --search-path <SEARCH_PATH>  Extra path to search git repositories to tidy up (repeat as
+                                   many times as you need)
+  --up-all                         Run omni up in all the repositories with an omni
+                                   configuration; any argument passed to the tidy command
+                                   after -- will be passed to omni up (e.g. omni tidy --up-all
+                                   -- --update-repository)
 
 Source: builtin
