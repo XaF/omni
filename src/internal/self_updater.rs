@@ -79,7 +79,7 @@ lazy_static! {
 }
 
 const RELEASE_ARCH_X86_64: &[&str] = &["x86_64", "amd64", "x64"];
-const RELEASE_ARCH_ARM64: &[&str] = &["arm64", "aarch64"];
+const RELEASE_ARCH_ARM64: &[&str] = &["arm64", "aarch64", "aarch_64"];
 
 pub fn compatible_release_arch() -> Vec<String> {
     if *RELEASE_ARCH == "x86_64" {
