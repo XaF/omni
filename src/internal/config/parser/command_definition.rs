@@ -1283,7 +1283,7 @@ impl SyntaxOptArg {
                     }
                 };
 
-                if repr.len() > 0 {
+                if !repr.is_empty() {
                     help_name.push(' ');
                     help_name.push_str(&repr);
                 }
@@ -1446,7 +1446,7 @@ impl SyntaxOptArg {
                         .placeholders
                         .iter()
                         .cycle()
-                        .take(max as usize)
+                        .take(max)
                         .map(|ph| ph.to_string())
                         .collect::<Vec<_>>(),
                     None => self.placeholders.clone(),
