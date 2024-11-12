@@ -79,20 +79,20 @@ struct UpCommandArgs {
 
 impl From<BTreeMap<String, ParseArgsValue>> for UpCommandArgs {
     fn from(args: BTreeMap<String, ParseArgsValue>) -> Self {
-        let no_cache = match args.get("no_cache") {
-            Some(ParseArgsValue::SingleBoolean(Some(true))) => true,
-            _ => false,
-        };
+        let no_cache = matches!(
+            args.get("no_cache"),
+            Some(ParseArgsValue::SingleBoolean(Some(true)))
+        );
 
-        let fail_on_upgrade = match args.get("fail_on_upgrade") {
-            Some(ParseArgsValue::SingleBoolean(Some(true))) => true,
-            _ => false,
-        };
+        let fail_on_upgrade = matches!(
+            args.get("fail_on_upgrade"),
+            Some(ParseArgsValue::SingleBoolean(Some(true)))
+        );
 
-        let bootstrap = match args.get("bootstrap") {
-            Some(ParseArgsValue::SingleBoolean(Some(true))) => true,
-            _ => false,
-        };
+        let bootstrap = matches!(
+            args.get("bootstrap"),
+            Some(ParseArgsValue::SingleBoolean(Some(true)))
+        );
 
         let clone_suggested = match args.get("clone_suggested") {
             Some(ParseArgsValue::SingleString(Some(clone_suggested))) => clone_suggested
@@ -105,10 +105,10 @@ impl From<BTreeMap<String, ParseArgsValue>> for UpCommandArgs {
 
         let mut prompt = bootstrap;
         let mut prompt_ids = HashSet::new();
-        let prompt_all = match args.get("prompt_all") {
-            Some(ParseArgsValue::SingleBoolean(Some(true))) => true,
-            _ => false,
-        };
+        let prompt_all = matches!(
+            args.get("prompt_all"),
+            Some(ParseArgsValue::SingleBoolean(Some(true)))
+        );
         if prompt_all {
             prompt = true;
         } else if let Some(ParseArgsValue::ManyString(values)) = args.get("prompt") {
@@ -136,10 +136,10 @@ impl From<BTreeMap<String, ParseArgsValue>> for UpCommandArgs {
             _ => UpCommandArgsTrustOptions::Check,
         };
 
-        let update_repository = match args.get("update_repository") {
-            Some(ParseArgsValue::SingleBoolean(Some(true))) => true,
-            _ => false,
-        };
+        let update_repository = matches!(
+            args.get("update_repository"),
+            Some(ParseArgsValue::SingleBoolean(Some(true)))
+        );
 
         let update_user_config = match args.get("update_user_config") {
             Some(ParseArgsValue::SingleString(Some(update_user_config))) => update_user_config
@@ -150,10 +150,10 @@ impl From<BTreeMap<String, ParseArgsValue>> for UpCommandArgs {
             _ => UpCommandArgsUpdateUserConfigOptions::Unset,
         };
 
-        let upgrade = match args.get("upgrade") {
-            Some(ParseArgsValue::SingleBoolean(Some(true))) => true,
-            _ => false,
-        };
+        let upgrade = matches!(
+            args.get("upgrade"),
+            Some(ParseArgsValue::SingleBoolean(Some(true)))
+        );
 
         Self {
             cache_enabled: !no_cache,

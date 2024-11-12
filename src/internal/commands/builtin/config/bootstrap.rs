@@ -173,27 +173,23 @@ impl Default for ConfigBootstrapOptions {
 }
 
 impl ConfigBootstrapOptions {
-    fn new() -> Self {
-        Self::default()
-    }
-
     fn from_parsed_args(args: BTreeMap<String, ParseArgsValue>) -> Self {
-        let worktree = match args.get("worktree") {
-            Some(ParseArgsValue::SingleBoolean(Some(true))) => true,
-            _ => false,
-        };
-        let repo_path_format = match args.get("repo_path_format") {
-            Some(ParseArgsValue::SingleBoolean(Some(true))) => true,
-            _ => false,
-        };
-        let organizations = match args.get("organizations") {
-            Some(ParseArgsValue::SingleBoolean(Some(true))) => true,
-            _ => false,
-        };
-        let shell = match args.get("shell") {
-            Some(ParseArgsValue::SingleBoolean(Some(true))) => true,
-            _ => false,
-        };
+        let worktree = matches!(
+            args.get("worktree"),
+            Some(ParseArgsValue::SingleBoolean(Some(true)))
+        );
+        let repo_path_format = matches!(
+            args.get("repo_path_format"),
+            Some(ParseArgsValue::SingleBoolean(Some(true)))
+        );
+        let organizations = matches!(
+            args.get("organizations"),
+            Some(ParseArgsValue::SingleBoolean(Some(true)))
+        );
+        let shell = matches!(
+            args.get("shell"),
+            Some(ParseArgsValue::SingleBoolean(Some(true)))
+        );
 
         // If none of the options are specified, default to all
         if !worktree && !repo_path_format && !organizations && !shell {
@@ -221,7 +217,7 @@ struct ConfigBootstrap {
 }
 
 pub fn config_bootstrap(options: Option<ConfigBootstrapOptions>) -> Result<bool, String> {
-    let options = options.unwrap_or(ConfigBootstrapOptions::new());
+    let options = options.unwrap_or_default();
 
     if options.worktree || options.repo_path_format || options.organizations {
         let worktree = if options.worktree {

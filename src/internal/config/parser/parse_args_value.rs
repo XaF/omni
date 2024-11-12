@@ -286,7 +286,7 @@ impl From<Vec<Option<&str>>> for ParseArgsValue {
 
 impl From<Vec<String>> for ParseArgsValue {
     fn from(value: Vec<String>) -> Self {
-        Self::ManyString(value.into_iter().map(|value| Some(value)).collect())
+        Self::ManyString(value.into_iter().map(Some).collect())
     }
 }
 
@@ -298,7 +298,7 @@ impl From<Vec<Option<String>>> for ParseArgsValue {
 
 impl From<Vec<i64>> for ParseArgsValue {
     fn from(value: Vec<i64>) -> Self {
-        Self::ManyInteger(value.into_iter().map(|value| Some(value)).collect())
+        Self::ManyInteger(value.into_iter().map(Some).collect())
     }
 }
 
@@ -327,7 +327,7 @@ impl From<Vec<Option<u8>>> for ParseArgsValue {
 
 impl From<Vec<f64>> for ParseArgsValue {
     fn from(value: Vec<f64>) -> Self {
-        Self::ManyFloat(value.into_iter().map(|value| Some(value)).collect())
+        Self::ManyFloat(value.into_iter().map(Some).collect())
     }
 }
 
@@ -339,7 +339,7 @@ impl From<Vec<Option<f64>>> for ParseArgsValue {
 
 impl From<Vec<bool>> for ParseArgsValue {
     fn from(value: Vec<bool>) -> Self {
-        Self::ManyBoolean(value.into_iter().map(|value| Some(value)).collect())
+        Self::ManyBoolean(value.into_iter().map(Some).collect())
     }
 }
 
@@ -386,7 +386,7 @@ impl From<Vec<Vec<String>>> for ParseArgsValue {
         Self::GroupedString(
             value
                 .into_iter()
-                .map(|values| values.into_iter().map(|value| Some(value)).collect())
+                .map(|values| values.into_iter().map(Some).collect())
                 .collect(),
         )
     }
@@ -403,7 +403,7 @@ impl From<Vec<Vec<i64>>> for ParseArgsValue {
         Self::GroupedInteger(
             value
                 .into_iter()
-                .map(|values| values.into_iter().map(|value| Some(value)).collect())
+                .map(|values| values.into_iter().map(Some).collect())
                 .collect(),
         )
     }
@@ -447,7 +447,7 @@ impl From<Vec<Vec<f64>>> for ParseArgsValue {
         Self::GroupedFloat(
             value
                 .into_iter()
-                .map(|values| values.into_iter().map(|value| Some(value)).collect())
+                .map(|values| values.into_iter().map(Some).collect())
                 .collect(),
         )
     }
@@ -464,7 +464,7 @@ impl From<Vec<Vec<bool>>> for ParseArgsValue {
         Self::GroupedBoolean(
             value
                 .into_iter()
-                .map(|values| values.into_iter().map(|value| Some(value)).collect())
+                .map(|values| values.into_iter().map(Some).collect())
                 .collect(),
         )
     }

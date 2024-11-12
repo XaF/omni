@@ -24,14 +24,14 @@ struct ScopeCommandArgs {
 impl From<BTreeMap<String, ParseArgsValue>> for ScopeCommandArgs {
     fn from(args: BTreeMap<String, ParseArgsValue>) -> Self {
         // We don't need to check if `include-packages` is passed since it's the default
-        // let yes_include_packages = match args.get("include_packages") {
-        // Some(ParseArgsValue::Boolean(Some(true))) => true,
-        // _ => false,
-        // };
-        let no_include_packages = match args.get("no_include_packages") {
-            Some(ParseArgsValue::SingleBoolean(Some(true))) => true,
-            _ => false,
-        };
+        // let yes_include_packages = matches!(
+        // args.get("include_packages"),
+        // Some(ParseArgsValue::SingleBoolean(Some(true)))
+        // );
+        let no_include_packages = matches!(
+            args.get("no_include_packages"),
+            Some(ParseArgsValue::SingleBoolean(Some(true)))
+        );
         let include_packages = !no_include_packages;
 
         let scope = match args.get("scope") {

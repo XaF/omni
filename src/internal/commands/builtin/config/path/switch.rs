@@ -52,14 +52,14 @@ impl From<BTreeMap<String, ParseArgsValue>> for ConfigPathSwitchCommandArgs {
             _ => None,
         };
 
-        let package = match args.get("package") {
-            Some(ParseArgsValue::SingleBoolean(Some(true))) => true,
-            _ => false,
-        };
-        let worktree = match args.get("worktree") {
-            Some(ParseArgsValue::SingleBoolean(Some(true))) => true,
-            _ => false,
-        };
+        let package = matches!(
+            args.get("package"),
+            Some(ParseArgsValue::SingleBoolean(Some(true)))
+        );
+        let worktree = matches!(
+            args.get("worktree"),
+            Some(ParseArgsValue::SingleBoolean(Some(true)))
+        );
         let source = if package {
             ConfigPathSwitchCommandArgsSource::Package
         } else if worktree {

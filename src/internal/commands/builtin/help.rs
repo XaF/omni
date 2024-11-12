@@ -28,10 +28,10 @@ struct HelpCommandArgs {
 
 impl From<BTreeMap<String, ParseArgsValue>> for HelpCommandArgs {
     fn from(args: BTreeMap<String, ParseArgsValue>) -> Self {
-        let unfold = match args.get("unfold") {
-            Some(ParseArgsValue::SingleBoolean(Some(true))) => true,
-            _ => false,
-        };
+        let unfold = matches!(
+            args.get("unfold"),
+            Some(ParseArgsValue::SingleBoolean(Some(true)))
+        );
         let command = match args.get("command") {
             Some(ParseArgsValue::ManyString(values)) => values
                 .iter()

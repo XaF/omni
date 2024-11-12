@@ -39,10 +39,10 @@ struct CloneCommandArgs {
 
 impl From<BTreeMap<String, ParseArgsValue>> for CloneCommandArgs {
     fn from(args: BTreeMap<String, ParseArgsValue>) -> Self {
-        let package = match args.get("package") {
-            Some(ParseArgsValue::SingleBoolean(Some(true))) => true,
-            _ => false,
-        };
+        let package = matches!(
+            args.get("package"),
+            Some(ParseArgsValue::SingleBoolean(Some(true)))
+        );
         let repository = match args.get("repository") {
             Some(ParseArgsValue::SingleString(Some(repository))) => repository.clone(),
             _ => "".to_string(),

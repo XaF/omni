@@ -27,10 +27,10 @@ struct ConfigTrustCommandArgs {
 
 impl From<BTreeMap<String, ParseArgsValue>> for ConfigTrustCommandArgs {
     fn from(args: BTreeMap<String, ParseArgsValue>) -> Self {
-        let check_status = match args.get("check") {
-            Some(ParseArgsValue::SingleBoolean(Some(true))) => true,
-            _ => false,
-        };
+        let check_status = matches!(
+            args.get("check"),
+            Some(ParseArgsValue::SingleBoolean(Some(true)))
+        );
         let workdir = match args.get("workdir") {
             Some(ParseArgsValue::SingleString(Some(workdir))) => {
                 let workdir = workdir.trim();

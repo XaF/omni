@@ -45,20 +45,20 @@ struct TidyCommandArgs {
 
 impl From<BTreeMap<String, ParseArgsValue>> for TidyCommandArgs {
     fn from(args: BTreeMap<String, ParseArgsValue>) -> Self {
-        let yes = match args.get("yes") {
-            Some(ParseArgsValue::SingleBoolean(Some(true))) => true,
-            _ => false,
-        };
+        let yes = matches!(
+            args.get("yes"),
+            Some(ParseArgsValue::SingleBoolean(Some(true)))
+        );
         let search_paths = match args.get("search_path") {
             Some(ParseArgsValue::ManyString(search_paths)) => {
                 search_paths.iter().flat_map(|v| v.clone()).collect()
             }
             _ => HashSet::new(),
         };
-        let up_all = match args.get("up_all") {
-            Some(ParseArgsValue::SingleBoolean(Some(true))) => true,
-            _ => false,
-        };
+        let up_all = matches!(
+            args.get("up_all"),
+            Some(ParseArgsValue::SingleBoolean(Some(true)))
+        );
         let up_args = match args.get("up_args") {
             Some(ParseArgsValue::ManyString(up_args)) => {
                 up_args.iter().flat_map(|v| v.clone()).collect()

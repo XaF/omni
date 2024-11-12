@@ -21,14 +21,14 @@ struct HookEnvCommandArgs {
 
 impl From<BTreeMap<String, ParseArgsValue>> for HookEnvCommandArgs {
     fn from(args: BTreeMap<String, ParseArgsValue>) -> Self {
-        let quiet = match args.get("quiet") {
-            Some(ParseArgsValue::SingleBoolean(Some(true))) => true,
-            _ => false,
-        };
-        let keep_shims = match args.get("keep-shims") {
-            Some(ParseArgsValue::SingleBoolean(Some(true))) => true,
-            _ => false,
-        };
+        let quiet = matches!(
+            args.get("quiet"),
+            Some(ParseArgsValue::SingleBoolean(Some(true)))
+        );
+        let keep_shims = matches!(
+            args.get("keep-shims"),
+            Some(ParseArgsValue::SingleBoolean(Some(true)))
+        );
         let shell = match args.get("shell") {
             Some(ParseArgsValue::SingleString(Some(shell))) => {
                 let shell = shell.trim();

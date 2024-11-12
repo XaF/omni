@@ -29,19 +29,19 @@ struct CdCommandArgs {
 
 impl From<BTreeMap<String, ParseArgsValue>> for CdCommandArgs {
     fn from(args: BTreeMap<String, ParseArgsValue>) -> Self {
-        let locate = match args.get("locate") {
-            Some(ParseArgsValue::SingleBoolean(Some(true))) => true,
-            _ => false,
-        };
+        let locate = matches!(
+            args.get("locate"),
+            Some(ParseArgsValue::SingleBoolean(Some(true)))
+        );
 
-        let yes_include_packages = match args.get("include_packages") {
-            Some(ParseArgsValue::SingleBoolean(Some(true))) => true,
-            _ => false,
-        };
-        let no_include_packages = match args.get("no_include_packages") {
-            Some(ParseArgsValue::SingleBoolean(Some(true))) => true,
-            _ => false,
-        };
+        let yes_include_packages = matches!(
+            args.get("include_packages"),
+            Some(ParseArgsValue::SingleBoolean(Some(true)))
+        );
+        let no_include_packages = matches!(
+            args.get("no_include_packages"),
+            Some(ParseArgsValue::SingleBoolean(Some(true)))
+        );
         let include_packages = if no_include_packages {
             false
         } else if yes_include_packages {

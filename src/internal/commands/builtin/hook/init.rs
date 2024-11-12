@@ -64,9 +64,9 @@ impl From<BTreeMap<String, ParseArgsValue>> for HookInitCommandArgs {
         // Add the command aliases from the command line
         if let Some(ParseArgsValue::GroupedString(cli_command_aliases)) = args.get("command_alias")
         {
-            let cli_command_aliases = cli_command_aliases.into_iter().filter_map(|grouped| {
+            let cli_command_aliases = cli_command_aliases.iter().filter_map(|grouped| {
                 if grouped.len() == 2 {
-                    let source = grouped.get(0)?.clone()?.trim().to_string();
+                    let source = grouped.first()?.clone()?.trim().to_string();
                     let target = grouped.get(1)?.clone()?.trim().to_string();
                     if source.is_empty() || target.is_empty() {
                         None
@@ -80,18 +80,18 @@ impl From<BTreeMap<String, ParseArgsValue>> for HookInitCommandArgs {
             command_aliases.extend(cli_command_aliases);
         }
 
-        let shims = match args.get("shims") {
-            Some(ParseArgsValue::SingleBoolean(Some(true))) => true,
-            _ => false,
-        };
-        let keep_shims = match args.get("keep_shims") {
-            Some(ParseArgsValue::SingleBoolean(Some(true))) => true,
-            _ => false,
-        };
-        let print_shims_path = match args.get("print_shims_path") {
-            Some(ParseArgsValue::SingleBoolean(Some(true))) => true,
-            _ => false,
-        };
+        let shims = matches!(
+            args.get("shims"),
+            Some(ParseArgsValue::SingleBoolean(Some(true)))
+        );
+        let keep_shims = matches!(
+            args.get("keep_shims_in_path"),
+            Some(ParseArgsValue::SingleBoolean(Some(true)))
+        );
+        let print_shims_path = matches!(
+            args.get("print_shims_path"),
+            Some(ParseArgsValue::SingleBoolean(Some(true)))
+        );
 
         Self {
             shell,

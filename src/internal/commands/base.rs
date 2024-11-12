@@ -346,12 +346,7 @@ impl Command {
         argv: Vec<String>,
         called_as: Vec<String>,
     ) -> Option<BTreeMap<String, ParseArgsValue>> {
-        let should_parse_args = match self {
-            Command::Builtin(_) => true,
-            _ => false,
-        };
-
-        if !should_parse_args {
+        if !matches!(self, Command::Builtin(_)) {
             return None;
         }
 

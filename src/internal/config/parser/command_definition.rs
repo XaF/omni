@@ -1129,9 +1129,7 @@ impl SyntaxOptArg {
                             .join(" ");
                         format!("{}...", repr)
                     }
-                    SyntaxOptArgNumValues::AtMost(1) => {
-                        format!("{}", repr)
-                    }
+                    SyntaxOptArgNumValues::AtMost(1) => repr.to_string(),
                     SyntaxOptArgNumValues::AtMost(_) | SyntaxOptArgNumValues::Any => {
                         format!("{}...", repr)
                     }
@@ -1696,6 +1694,7 @@ impl<T: Into<ParseArgsValue> + Clone + FromStr + Send + Sync + 'static> ParserEx
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 #[inline]
 fn extract_value_to_typed<T>(
     matches: &clap::ArgMatches,
@@ -3606,7 +3605,7 @@ mod tests {
                     ..CommandSyntax::default()
                 };
 
-                let argv = vec!["--str", "--int", "--float", "--bool", "--enum"];
+                let argv = ["--str", "--int", "--float", "--bool", "--enum"];
 
                 let args = match syntax.parse_args(
                     argv.iter().map(|s| s.to_string()).collect(),
