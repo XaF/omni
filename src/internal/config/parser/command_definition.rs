@@ -697,8 +697,8 @@ pub struct SyntaxOptArg {
     pub desc: Option<String>,
     #[serde(skip_serializing_if = "cache_utils::is_false")]
     pub required: bool,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub placeholder: Option<String>,
+    #[serde(alias = "placeholder", skip_serializing_if = "Vec::is_empty")]
+    pub placeholders: Vec<String>,
     #[serde(rename = "type", skip_serializing_if = "SyntaxOptArgType::is_default")]
     pub arg_type: SyntaxOptArgType,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -740,7 +740,7 @@ impl Default for SyntaxOptArg {
             dest: None,
             desc: None,
             required: false,
-            placeholder: None,
+            placeholders: vec![],
             arg_type: SyntaxOptArgType::String,
             default: None,
             default_missing_value: None,
@@ -768,7 +768,7 @@ impl SyntaxOptArg {
     ) -> Option<Self> {
         let mut names;
         let mut arg_type;
-        let mut placeholder;
+        let mut placeholders;
         let mut leftovers;
 
         let mut desc = None;
@@ -794,14 +794,14 @@ impl SyntaxOptArg {
 
             if let Some(name_value) = table.get("name") {
                 if let Some(name_value) = name_value.as_str() {
-                    (names, arg_type, placeholder, leftovers) = parse_arg_name(&name_value);
+                    (names, arg_type, placeholders, leftovers) = parse_arg_name(&name_value);
                     value_for_details = Some(config_value.clone());
                 } else {
                     return None;
                 }
             } else if table.len() == 1 {
                 if let Some((key, value)) = table.into_iter().next() {
-                    (names, arg_type, placeholder, leftovers) = parse_arg_name(&key);
+                    (names, arg_type, placeholders, leftovers) = parse_arg_name(&key);
                     value_for_details = Some(value);
                 } else {
                     return None;
@@ -827,9 +827,30 @@ impl SyntaxOptArg {
                             .and_then(|value| value.as_bool_forced());
                     }
 
-                    placeholder = value_table
-                        .get("placeholder")
-                        .and_then(|value| value.as_str_forced());
+                    // Try to load the placeholders from the placeholders key,
+                    // if not found, try to load it from the placeholder key
+                    if let Some(ph) = value_table.get("placeholders") {
+                        if let Some(array) = ph.as_array() {
+                            placeholders = array
+                                .iter()
+                                .filter_map(|value| value.as_str())
+                                .map(|value| value.to_string())
+                                .collect();
+                        } else if let Some(value) = ph.as_str_forced() {
+                            placeholders = vec![value.to_string()];
+                        }
+                    } else if let Some(ph) = value_table.get("placeholder") {
+                        if let Some(array) = ph.as_array() {
+                            placeholders = array
+                                .iter()
+                                .filter_map(|value| value.as_str())
+                                .map(|value| value.to_string())
+                                .collect();
+                        } else if let Some(value) = ph.as_str_forced() {
+                            placeholders = vec![value.to_string()];
+                        }
+                    }
+
                     default = value_table
                         .get("default")
                         .and_then(|value| value.as_str_forced());
@@ -956,7 +977,7 @@ impl SyntaxOptArg {
                 }
             }
         } else if let Some(value) = config_value.as_str() {
-            (names, arg_type, placeholder, leftovers) = parse_arg_name(&value);
+            (names, arg_type, placeholders, leftovers) = parse_arg_name(&value);
         } else {
             return None;
         }
@@ -966,7 +987,7 @@ impl SyntaxOptArg {
             dest,
             desc,
             required: required.unwrap_or(false),
-            placeholder,
+            placeholders,
             arg_type,
             default,
             default_missing_value,
@@ -1104,58 +1125,53 @@ impl SyntaxOptArg {
         let mut help_name = String::new();
 
         if self.is_positional() {
-            let placeholder = self
-                .placeholder
-                .clone()
-                .unwrap_or_else(|| self.name().clone());
-
-            let repr = if self.required {
-                format!("<{}>", placeholder)
+            let placeholders = if self.placeholders.is_empty() {
+                vec![sanitize_str(&self.name()).to_uppercase()]
             } else {
-                format!("[{}]", placeholder)
+                self.placeholders.clone()
             };
-            let repr = if use_colors { repr.light_cyan() } else { repr };
 
-            if let Some(num_values) = &self.num_values {
-                let repr = match num_values {
-                    SyntaxOptArgNumValues::Exactly(n) => std::iter::repeat(repr)
-                        .take(*n)
-                        .collect::<Vec<_>>()
-                        .join(" "),
-                    SyntaxOptArgNumValues::AtLeast(min) => {
-                        let repr = std::iter::repeat(repr)
-                            .take(*min)
-                            .collect::<Vec<_>>()
-                            .join(" ");
-                        format!("{}...", repr)
+            let placeholders = placeholders
+                .iter()
+                .map(|ph| {
+                    if self.required {
+                        format!("<{}>", ph)
+                    } else {
+                        format!("[{}]", ph)
                     }
-                    SyntaxOptArgNumValues::AtMost(1) => repr.to_string(),
-                    SyntaxOptArgNumValues::AtMost(_) | SyntaxOptArgNumValues::Any => {
-                        format!("{}...", repr)
-                    }
-                    SyntaxOptArgNumValues::Between(min, max) => {
-                        let min = if *min == 0 { 1 } else { *min };
+                })
+                .map(|ph| if use_colors { ph.light_cyan() } else { ph })
+                .collect::<Vec<_>>();
 
-                        let repr = std::iter::repeat(repr)
-                            .take(min)
-                            .collect::<Vec<_>>()
-                            .join(" ");
+            let (min_num, max_num) = match &self.num_values {
+                Some(SyntaxOptArgNumValues::Exactly(n)) => (*n, Some(*n)),
+                Some(SyntaxOptArgNumValues::AtLeast(min)) => (*min, None),
+                Some(SyntaxOptArgNumValues::AtMost(max)) => (0, Some(*max)),
+                Some(SyntaxOptArgNumValues::Any) => (0, None),
+                Some(SyntaxOptArgNumValues::Between(min, max)) => (*min, Some(*max)),
+                None => (1, Some(1)),
+            };
 
-                        if min == *max || *max == 1 {
-                            repr
-                        } else {
-                            format!("{}...", repr)
-                        }
-                    }
+            // Get the max between min and 1
+            let min_placeholders = std::cmp::max(min_num, 1);
+            let repr = placeholders
+                .iter()
+                .cycle()
+                .take(min_placeholders)
+                .cloned()
+                .collect::<Vec<_>>()
+                .join(" ");
+
+            // If the max is None or greater than min, or if the arg type is an array
+            // we need to add "..." to the end
+            let repr =
+                if self.arg_type().is_array() || max_num.is_none() || max_num.unwrap() > min_num {
+                    format!("{}...", repr)
+                } else {
+                    repr
                 };
-                help_name.push_str(&repr);
-            } else {
-                help_name.push_str(&repr);
-            }
 
-            if self.arg_type().is_array() && !help_name.ends_with("...") {
-                help_name.push_str("...");
-            }
+            help_name.push_str(&repr);
         } else {
             // Split the short and long names, and only keep the first of each (return Option<_>)
             let all_names = self.all_names();
@@ -1188,73 +1204,87 @@ impl SyntaxOptArg {
             }
 
             if self.takes_value() {
-                help_name.push(' ');
-
-                let placeholder = self
-                    .placeholder
-                    .clone()
-                    .unwrap_or_else(|| sanitize_str(&self.name()).to_uppercase());
-
-                let repr = format!("<{}>", placeholder);
-                let repr = if use_colors { repr.light_cyan() } else { repr };
-
-                if let Some(num_values) = &self.num_values {
-                    let repr = match num_values {
-                        SyntaxOptArgNumValues::Exactly(n) => std::iter::repeat(repr)
-                            .take(*n)
-                            .collect::<Vec<_>>()
-                            .join(" "),
-                        SyntaxOptArgNumValues::AtLeast(min) => {
-                            let min_repr = if *min == 0 { 1 } else { *min };
-
-                            let repr = std::iter::repeat(repr)
-                                .take(min_repr)
-                                .collect::<Vec<_>>()
-                                .join(" ");
-
-                            let repr = format!("{}...", repr);
-
-                            if *min == 0 {
-                                format!("[{}]", repr)
-                            } else {
-                                repr
-                            }
-                        }
-                        SyntaxOptArgNumValues::AtMost(1) => {
-                            let repr = format!("[{}]", placeholder);
-                            if use_colors {
-                                repr.light_cyan()
-                            } else {
-                                repr
-                            }
-                        }
-                        SyntaxOptArgNumValues::AtMost(_) | SyntaxOptArgNumValues::Any => {
-                            format!("[{}...]", repr)
-                        }
-                        SyntaxOptArgNumValues::Between(min, max) => {
-                            let (min, optional) = if *min == 0 { (1, true) } else { (*min, false) };
-
-                            let repr = std::iter::repeat(repr)
-                                .take(min)
-                                .collect::<Vec<_>>()
-                                .join(" ");
-
-                            let repr = if min == *max || *max == 1 {
-                                repr
-                            } else {
-                                format!("{}...", repr)
-                            };
-
-                            if optional {
-                                format!("[{}]", repr)
-                            } else {
-                                repr
-                            }
-                        }
-                    };
-
-                    help_name.push_str(&repr);
+                let placeholders = if self.placeholders.is_empty() {
+                    vec![sanitize_str(&self.name()).to_uppercase()]
                 } else {
+                    self.placeholders.clone()
+                };
+
+                let (min_num, max_num) = match &self.num_values {
+                    Some(SyntaxOptArgNumValues::Exactly(n)) => (*n, Some(*n)),
+                    Some(SyntaxOptArgNumValues::AtLeast(min)) => (*min, None),
+                    Some(SyntaxOptArgNumValues::AtMost(max)) => (0, Some(*max)),
+                    Some(SyntaxOptArgNumValues::Any) => (0, None),
+                    Some(SyntaxOptArgNumValues::Between(min, max)) => (*min, Some(*max)),
+                    None => (1, Some(1)),
+                };
+
+                let repr = match (min_num, max_num) {
+                    (0, Some(0)) => "".to_string(),
+                    (1, Some(1)) => {
+                        let repr = format!(
+                            "<{}>",
+                            placeholders
+                                .first()
+                                .expect("there should be at least one placeholder")
+                        );
+                        if use_colors {
+                            repr.light_cyan()
+                        } else {
+                            repr
+                        }
+                    }
+                    (min, Some(max)) if min == max => {
+                        // Placeholders can be N elements, e.g. A, B, C
+                        // We want to go over placeholders for M values, e.g. A B C A B C if M > N,
+                        // or A B C if M == N, or A B if M < N
+                        placeholders
+                            .iter()
+                            .cycle()
+                            .take(min)
+                            .map(|repr| format!("<{}>", repr))
+                            .map(|repr| if use_colors { repr.light_cyan() } else { repr })
+                            .collect::<Vec<_>>()
+                            .join(" ")
+                    }
+                    (0, Some(1)) => {
+                        let repr = format!(
+                            "[{}]",
+                            placeholders
+                                .first()
+                                .expect("there should be at least one placeholder")
+                        );
+                        if use_colors {
+                            repr.light_cyan()
+                        } else {
+                            repr
+                        }
+                    }
+                    (0, _) => {
+                        let repr = format!(
+                            "[{}]",
+                            placeholders
+                                .first()
+                                .expect("there should be at least one placeholder")
+                        );
+                        let repr = if use_colors { repr.light_cyan() } else { repr };
+                        format!("{}...", repr)
+                    }
+                    (min, _) => {
+                        let repr = placeholders
+                            .iter()
+                            .cycle()
+                            .take(min)
+                            .map(|repr| format!("<{}>", repr))
+                            .map(|repr| if use_colors { repr.light_cyan() } else { repr })
+                            .collect::<Vec<_>>()
+                            .join(" ");
+                        format!("{}...", repr)
+                    }
+                };
+
+                if repr.len() > 0 {
+                    help_name.push(' ');
                     help_name.push_str(&repr);
                 }
             } else if matches!(self.arg_type, SyntaxOptArgType::Counter) {
@@ -1409,8 +1439,21 @@ impl SyntaxOptArg {
         }
 
         // Set the placeholder if any
-        if let Some(placeholder) = &self.placeholder {
-            arg = arg.value_name(placeholder);
+        if !self.placeholders.is_empty() {
+            let placeholders = match &self.num_values {
+                Some(n) => match n.max() {
+                    Some(max) => self
+                        .placeholders
+                        .iter()
+                        .cycle()
+                        .take(max as usize)
+                        .map(|ph| ph.to_string())
+                        .collect::<Vec<_>>(),
+                    None => self.placeholders.clone(),
+                },
+                None => self.placeholders.clone(),
+            };
+            arg = arg.value_names(placeholders);
         }
 
         // Set the default value
@@ -1728,16 +1771,16 @@ fn extract_value_to_typed<T>(
     args.insert(arg_dest, value);
 }
 
-pub fn parse_arg_name(arg_name: &str) -> (Vec<String>, SyntaxOptArgType, Option<String>, bool) {
+pub fn parse_arg_name(arg_name: &str) -> (Vec<String>, SyntaxOptArgType, Vec<String>, bool) {
     let mut names = Vec::new();
     let mut arg_type = SyntaxOptArgType::String;
-    let mut placeholder = None;
+    let mut placeholders = vec![];
     let mut leftovers = false;
 
     // Parse the argument name; it can be a single name or multiple names separated by commas.
     // There can be short names (starting with `-`) and long names (starting with `--`).
-    // Each name can have a placeholder, or the placeholder can be put at the end.
-    // The placeholder is separated by a space from the name.
+    // Each name can have one or more placeholders, or the placeholders can be put at the end.
+    // The placeholders are separated by a space from the name, and by a space from each other.
     // If the argument name does not start with `-`, only this value will be kept as part of
     // the names and the others will be ignored.
     let def_parts: Vec<&str> = arg_name.split(',').map(str::trim).collect();
@@ -1756,8 +1799,14 @@ pub fn parse_arg_name(arg_name: &str) -> (Vec<String>, SyntaxOptArgType, Option<
         };
 
         if name.starts_with('-') {
-            if placeholder.is_none() && name_parts.len() > 1 {
-                placeholder = Some(name_parts[1].to_string());
+            if name_parts.len() > 1 {
+                placeholders.push(
+                    name_parts[1]
+                        .split_whitespace()
+                        .map(|s| s.trim().to_string())
+                        .filter(|s| !s.is_empty())
+                        .collect(),
+                );
             }
 
             if ends_with_dots {
@@ -1776,7 +1825,13 @@ pub fn parse_arg_name(arg_name: &str) -> (Vec<String>, SyntaxOptArgType, Option<
             }
 
             if name_parts.len() > 1 {
-                placeholder = Some(name_parts[1].to_string());
+                placeholders.push(
+                    name_parts[1]
+                        .split_whitespace()
+                        .map(|s| s.trim().to_string())
+                        .filter(|s| !s.is_empty())
+                        .collect(),
+                );
             }
 
             // If we have a parameter without a leading `-`, we stop parsing
@@ -1785,7 +1840,7 @@ pub fn parse_arg_name(arg_name: &str) -> (Vec<String>, SyntaxOptArgType, Option<
         }
     }
 
-    (names, arg_type, placeholder, leftovers)
+    (names, arg_type, placeholders, leftovers)
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Copy)]
@@ -1940,6 +1995,16 @@ impl SyntaxOptArgNumValues {
             Self::AtLeast(_min) => true, // AtLeast is always many since it is not bounded by a maximum
             Self::AtMost(max) => *max > 1,
             Self::Between(_min, max) => *max > 1,
+        }
+    }
+
+    fn max(&self) -> Option<usize> {
+        match self {
+            Self::Any => None,
+            Self::Exactly(value) => Some(*value),
+            Self::AtLeast(_min) => None,
+            Self::AtMost(max) => Some(*max),
+            Self::Between(_min, max) => Some(*max),
         }
     }
 }

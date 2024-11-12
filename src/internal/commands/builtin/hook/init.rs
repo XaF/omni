@@ -208,6 +208,7 @@ impl BuiltinCommand for HookInitCommand {
                         )
                         .to_string(),
                     ),
+                    placeholders: vec!["ALIAS".to_string(), "SUBCOMMAND".to_string()],
                     num_values: Some(SyntaxOptArgNumValues::Exactly(2)),
                     arg_type: SyntaxOptArgType::Array(Box::new(SyntaxOptArgType::String)),
                     group_occurrences: true,
