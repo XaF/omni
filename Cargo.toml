@@ -22,7 +22,7 @@ path = "src/main.rs"
 time = { version = "0.3.36", features = ["serde-well-known"] }
 
 [dev-dependencies]
-mockito = "1.5.0"
+mockito = "1.6.0"
 temp-env = "0.3.6"
 
 [dependencies]
