@@ -502,7 +502,7 @@ impl PathCommandFileDetails {
         let mut description = String::new();
 
         // Parse the argument name
-        let (names, arg_type, placeholder, mut leftovers) = parse_arg_name(arg_name);
+        let (names, arg_type, placeholders, mut leftovers) = parse_arg_name(arg_name);
         let mut arg_type = arg_type.to_string();
 
         // Now parse the rest of the string
@@ -631,7 +631,7 @@ impl PathCommandFileDetails {
             dest,
             desc,
             required,
-            placeholder,
+            placeholders,
             default,
             default_missing_value,
             arg_type: SyntaxOptArgType::from_str(&arg_type).unwrap_or(SyntaxOptArgType::String),

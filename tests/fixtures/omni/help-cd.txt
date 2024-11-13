@@ -4,10 +4,10 @@ Change directory to the root of the specified work directory
 If no work directory is specified, change to the git directory of the main org as specified
 by OMNI_ORG, if specified, or errors out if not specified.
 
-Usage: omni cd [OPTIONS] [workdir]
+Usage: omni cd [OPTIONS] [WORKDIR]
 
 Arguments:
-  [workdir]      The name of the work directory to change directory to; this can be in the
+  [WORKDIR]      The name of the work directory to change directory to; this can be in the
                  format <org>/<repo>, or just <repo>, in which case the work directory will be
                  searched for in all the organizations, trying to use OMNI_ORG if it is set,
                  and then trying all the other organizations alphabetically.

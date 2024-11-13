@@ -247,7 +247,7 @@ commands:
           required: true
         - name: -c
           aliases: --charlie
-          placeholder: MYPLACEHOLDER
+          placeholders: MYPLACEHOLDER
           desc: parameter c
           required: true
     desc: |

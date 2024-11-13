@@ -1259,7 +1259,7 @@ impl BuiltinCommand for UpCommand {
                 },
                 SyntaxOptArg {
                     names: vec!["--prompt".to_string()],
-                    placeholder: Some("PROMPT_ID".to_string()),
+                    placeholders: vec!["PROMPT_ID".to_string()],
                     desc: Some(
                         concat!(
                             "Trigger prompts for the given prompt ids, specified as arguments, as ",
