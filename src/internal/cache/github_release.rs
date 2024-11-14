@@ -295,7 +295,7 @@ impl GithubReleasesSelector {
             return -1;
         }
 
-        return 0;
+        0
     }
 
     fn matches_glob_patterns(patterns: &str, value: &str) -> bool {
