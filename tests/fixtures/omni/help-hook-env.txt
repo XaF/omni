@@ -4,10 +4,10 @@ Hook used to update the dynamic environment
 The env hook is called during your shell prompt to set the dynamic environment required for
 omni up-ed repositories.
 
-Usage: omni hook env [OPTIONS] [shell]
+Usage: omni hook env [OPTIONS] [SHELL]
 
 Arguments:
-  [shell]        The shell for which to export the dynamic environment. If not provided, the
+  [SHELL]        The shell for which to export the dynamic environment. If not provided, the
                  shell will be detected from the environment. [possible values: bash, zsh,
                  fish, posix]
 

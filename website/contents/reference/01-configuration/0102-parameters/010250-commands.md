@@ -39,7 +39,7 @@ Each `parameter` object can take the following parameters:
 | `aliases` | string (list) | list of aliases for that parameter |
 | `desc` | string | the description/help for the parameter |
 | `required` | bool | whether or not this parameter is required |
-| `placeholder` | string | the placeholder to show in the help |
+| `placeholders` | string (list) | the placeholders to show in the help for that parameter; if multiple placeholders are provided, they will be used one after the other depending on the `num_values` configuration |
 | `type` | string | the type of the parameter, can be one of `str`, `int`, `float`, `bool`, `flag`, `counter`, `enum(vals, ...)` or `array/<type>` for any of those except `flag` and `counter`. See below for more details on the types. |
 | `default` | string | the default value for the parameter |
 | `num_values` | string | the number of values that the parameter can take. This can take ranges in the format `..max` (open), `..=max` (closed), `min..`, `min..max` (half-open), `min..=max` (closed) |

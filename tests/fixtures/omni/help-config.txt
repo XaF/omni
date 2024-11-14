@@ -1,11 +1,11 @@
 
 Provides config commands
 
-Usage: omni config <subcommand> [options]...
+Usage: omni config <SUBCOMMAND> [OPTIONS]...
 
 Arguments:
-  <subcommand>   Subcommand to be called
-  [options]...   Options to pass to the subcommand
+  <SUBCOMMAND>   Subcommand to be called
+  [OPTIONS]...   Options to pass to the subcommand
 
 General
   bootstrap       Bootstraps the configuration of omni
