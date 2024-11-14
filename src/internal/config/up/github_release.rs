@@ -2233,6 +2233,9 @@ mod tests {
                 let current_arch = compatible_release_arch()
                     .into_iter()
                     .next()
+                    .expect("no compatible arch")
+                    .into_iter()
+                    .next()
                     .expect("no compatible arch");
                 let current_os = compatible_release_os()
                     .into_iter()
