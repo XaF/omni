@@ -80,15 +80,41 @@ lazy_static! {
 
 const RELEASE_ARCH_X86_64: &[&str] = &["x86_64", "amd64", "x64"];
 const RELEASE_ARCH_ARM64: &[&str] = &["arm64", "aarch64", "aarch_64"];
+const RELEASE_ARCH_DARWIN_UNIVERSAL: &[&str] = &["universal", "all", "any"];
 
-pub fn compatible_release_arch() -> Vec<String> {
-    if *RELEASE_ARCH == "x86_64" {
+/// This function returns the compatible release architectures for the current
+/// system, based on the current architecture. It returns a vector of vectors
+/// as there are different layers of compatibility that should be followed for
+/// preference, e.g. for Darwin, we will find direct-compatibility, universal
+/// compatibility, and finally Rosetta compatibility.
+pub fn compatible_release_arch() -> Vec<Vec<String>> {
+    let mut archs = vec![];
+
+    // First add the direct compatibility
+    archs.push(if *RELEASE_ARCH == "x86_64" {
         RELEASE_ARCH_X86_64.iter().map(|s| s.to_string()).collect()
     } else if *RELEASE_ARCH == "arm64" {
         RELEASE_ARCH_ARM64.iter().map(|s| s.to_string()).collect()
     } else {
         vec![(*RELEASE_ARCH).to_string()]
+    });
+
+    // Then, if we're on Darwin, add the universal compatibility
+    if *RELEASE_OS == "darwin" {
+        archs.push(
+            RELEASE_ARCH_DARWIN_UNIVERSAL
+                .iter()
+                .map(|s| s.to_string())
+                .collect(),
+        );
+
+        // Finally, if Rosetta is available, add the Rosetta compatibility
+        if check_rosetta_available() {
+            archs.push(RELEASE_ARCH_X86_64.iter().map(|s| s.to_string()).collect());
+        }
     }
+
+    archs
 }
 
 fn compute_check_rosetta_available() -> bool {
@@ -145,14 +171,6 @@ fn compute_check_rosetta_available() -> bool {
 
 fn check_rosetta_available() -> bool {
     *ROSETTA_AVAILABLE
-}
-
-pub fn compatible_release_arch_extended() -> Vec<String> {
-    if check_rosetta_available() {
-        RELEASE_ARCH_X86_64.iter().map(|s| s.to_string()).collect()
-    } else {
-        vec![]
-    }
 }
 
 pub fn compatible_release_os() -> Vec<String> {
