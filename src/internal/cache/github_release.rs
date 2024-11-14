@@ -263,8 +263,8 @@ impl GithubReleasesSelector {
         self
     }
 
-    // Use a tiny int for the matching, -1 means no matching, then 0+ means matching
-    // and the lowest value is the best match
+    // Use a tiny int for the matching: -1 means no matching,
+    // 0+ means matching and the lowest value is the best match
     fn asset_matches(&self, asset: &GithubReleaseAsset) -> i32 {
         if let Some((asset_type, _)) = asset.file_type() {
             if asset_type.is_binary() && !self.binary {
