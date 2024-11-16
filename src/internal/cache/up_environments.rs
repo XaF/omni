@@ -274,6 +274,11 @@ impl UpEnvironment {
         true
     }
 
+    pub fn add_raw_env_vars(&mut self, env_vars: Vec<UpEnvVar>) -> bool {
+        self.env_vars.extend(env_vars);
+        true
+    }
+
     pub fn add_path(&mut self, path: PathBuf) -> bool {
         self.paths.retain(|p| p != &path);
 

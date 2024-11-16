@@ -8,6 +8,14 @@ pub(crate) use directory::data_path_dir_hash;
 pub(crate) use directory::force_remove_dir_all;
 pub(crate) use directory::get_config_mod_times;
 
+mod listener_manager;
+pub(crate) use listener_manager::EventHandlerFn;
+pub(crate) use listener_manager::Listener;
+pub(crate) use listener_manager::ListenerManager;
+
+mod fifo_handler;
+pub(crate) use fifo_handler::FifoHandler;
+
 pub(crate) mod print_progress_handler;
 pub(crate) use print_progress_handler::PrintProgressHandler;
 

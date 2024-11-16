@@ -225,7 +225,7 @@ impl UpConfigTool {
             UpConfigTool::Asdf(config) => config.up(options, environment, progress_handler),
             UpConfigTool::Bash(config) => config.up(options, environment, progress_handler),
             UpConfigTool::Bundler(config) => config.up(options, environment, progress_handler),
-            UpConfigTool::Custom(config) => config.up(progress_handler),
+            UpConfigTool::Custom(config) => config.up(options, environment, progress_handler),
             UpConfigTool::GithubRelease(config) => {
                 config.up(options, environment, progress_handler)
             }

@@ -10,7 +10,6 @@ use tokio::process::Command as TokioCommand;
 use tokio::runtime::Runtime;
 use tokio::time::Duration;
 
-use crate::internal::config::up::utils::AskPassListener;
 use crate::internal::config::up::utils::RunConfig;
 use crate::internal::config::up::UpError;
 use crate::internal::user_interface::StringColor;
@@ -80,32 +79,40 @@ async fn async_get_output(
     process_command: &mut TokioCommand,
     run_config: RunConfig,
 ) -> std::io::Result<std::process::Output> {
-    let mut listener = match AskPassListener::new(&command_str(process_command), &run_config).await
+    let mut listener_manager = match run_config
+        .listener_manager_for_command(process_command)
+        .await
     {
-        Ok(listener) => listener,
+        Ok(listener_manager) => listener_manager,
         Err(err) => {
-            return Err(std::io::Error::new(
-                std::io::ErrorKind::Other,
-                err.to_string(),
-            ))
+            return Err(std::io::Error::new(std::io::ErrorKind::Other, err));
         }
     };
-    listener.set_process_env(process_command).await;
+    listener_manager.start();
 
-    // let timeout_sleep = async || -> Option<()> {
-    // if let Some(timeout) = run_config.timeout() {
-    // tokio::time::sleep(timeout).await;
-    // Some(())
-    // } else {
-    // None
+    // let mut listener_manager = ListenerManager::new();
+
+    // match AskPassListener::new(&command_str(process_command), &run_config).await {
+    // Ok(Some(listener)) => {
+    // listener.set_process_env(process_command);
+    // listener_manager.add_listener(Box::new(listener));
+    // }
+    // Ok(None) => {}
+    // Err(err) => {
+    // return Err(std::io::Error::new(
+    // std::io::ErrorKind::Other,
+    // err.to_string(),
+    // ));
     // }
     // };
+
+    // listener_manager.start();
 
     process_command.kill_on_drop(true);
     let mut command = match process_command.spawn() {
         Ok(command) => command,
         Err(err) => {
-            let _ = listener.close().await;
+            let _ = listener_manager.stop().await;
             return Err(err);
         }
     };
@@ -121,7 +128,7 @@ async fn async_get_output(
                 BufReader::new(stderr).lines(),
             ),
             _ => {
-                let _ = listener.close().await;
+                let _ = listener_manager.stop().await;
                 return Err(std::io::Error::new(
                     std::io::ErrorKind::Other,
                     "stdout or stderr missing",
@@ -155,19 +162,9 @@ async fn async_get_output(
                     }
                 }
             }
-            Some(connection) = listener.accept() => {
-                // We received a connection on the askpass socket,
-                // which means that the user will need to provide
-                // a password to the process.
-                match connection {
-                    Ok((mut stream, _addr)) => {
-                        if let Err(err) = AskPassListener::handle_request(&mut stream).await {
-                            omni_warning!("{}", err);
-                        }
-                    }
-                    Err(err) => {
-                        omni_warning!("{}", err);
-                    }
+            Some((handler, _interactive)) = listener_manager.next() => {
+                if let Err(err) = handler().await {
+                    omni_warning!(format!("{}", err));
                 }
             }
             Some(_) = async_timeout(&run_config) => {
@@ -178,7 +175,7 @@ async fn async_get_output(
     }
 
     // Close the listener
-    if let Err(err) = listener.close().await {
+    if let Err(err) = listener_manager.stop().await {
         omni_warning!("{}", err);
     }
 
@@ -206,20 +203,6 @@ async fn async_timeout(run_config: &RunConfig) -> Option<()> {
     }
 }
 
-fn command_str(command: &TokioCommand) -> String {
-    let command = command.as_std();
-    let mut command_arr = vec![];
-    command_arr.push(command.get_program().to_string_lossy().to_string());
-    for arg in command.get_args() {
-        let mut arg = arg.to_string_lossy().to_string();
-        if arg.contains(' ') {
-            arg = format!("\"{}\"", arg.replace('"', "\\\""));
-        }
-        command_arr.push(arg);
-    }
-    command_arr.join(" ")
-}
-
 async fn async_run_progress_readblocks<F>(
     process_command: &mut TokioCommand,
     handler_fn: F,
@@ -228,8 +211,31 @@ async fn async_run_progress_readblocks<F>(
 where
     F: Fn(Option<String>, Option<String>, Option<bool>),
 {
-    let mut listener = AskPassListener::new(&command_str(process_command), &run_config).await?;
-    listener.set_process_env(process_command).await;
+    let mut listener_manager = match run_config
+        .listener_manager_for_command(process_command)
+        .await
+    {
+        Ok(listener_manager) => listener_manager,
+        Err(err) => {
+            return Err(UpError::Exec(err));
+        }
+    };
+    listener_manager.start();
+
+    // let mut listener_manager = ListenerManager::new();
+
+    // match AskPassListener::new(&command_str(process_command), &run_config).await {
+    // Ok(Some(mut listener)) => {
+    // listener.set_process_env(process_command);
+    // listener_manager.add_listener(Box::new(listener));
+    // }
+    // Ok(None) => {}
+    // Err(err) => {
+    // return Err(UpError::Exec(err.to_string()));
+    // }
+    // };
+
+    // listener_manager.start();
 
     if let Ok(mut command) = process_command.spawn() {
         // Create a temporary file to store the output
@@ -299,21 +305,15 @@ where
                             Err(_err) => break,
                         }
                     }
-                    Some(connection) = listener.accept() => {
-                        // We received a connection on the askpass socket,
-                        // which means that the user will need to provide
-                        // a password to the process.
-                        match connection {
-                            Ok((mut stream, _addr)) => {
-                                handler_fn(None, None, Some(true));
-                                if let Err(err) = AskPassListener::handle_request(&mut stream).await {
-                                    handler_fn(None, Some(err.to_string()), None);
-                                }
-                                handler_fn(None, None, Some(false));
-                            }
-                            Err(err) => {
-                                handler_fn(None, Some(err.to_string()), None);
-                            }
+                    Some((handler, interactive)) = listener_manager.next() => {
+                        if interactive {
+                            handler_fn(None, None, Some(true));
+                        }
+                        if let Err(err) = handler().await {
+                            handler_fn(None, Some(err.to_string()), None);
+                        }
+                        if interactive {
+                            handler_fn(None, None, Some(false));
                         }
                     }
                     _ = tokio::time::sleep(Duration::from_secs(1)) => {
@@ -331,7 +331,7 @@ where
         }
 
         // Close the listener
-        if let Err(err) = listener.close().await {
+        if let Err(err) = listener_manager.stop().await {
             handler_fn(None, Some(err.to_string()), None);
         }
 
