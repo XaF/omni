@@ -296,7 +296,7 @@ where
 
                 env_operations.push(UpEnvVar {
                     name: var.to_string(),
-                    operation: operation.clone(),
+                    operation: *operation,
                     value: Some(value.to_string()),
                 });
 
@@ -325,9 +325,9 @@ where
                 };
 
             // Remove quotes around the delimiter if any, but just one set of quotes
-            let delimiter = if delimiter.starts_with('\'') && delimiter.ends_with('\'') {
-                &delimiter[1..delimiter.len() - 1]
-            } else if delimiter.starts_with('"') && delimiter.ends_with('"') {
+            let delimiter = if (delimiter.starts_with('\'') && delimiter.ends_with('\''))
+                || (delimiter.starts_with('"') && delimiter.ends_with('"'))
+            {
                 &delimiter[1..delimiter.len() - 1]
             } else {
                 delimiter
@@ -344,10 +344,10 @@ where
             // Now read the value until the delimiter is encountered
             let mut value = String::new();
             let mut ended = false;
-            while let Some(line) = lines.next() {
+            for line in lines.by_ref() {
                 let line = line.as_ref();
                 let line = if remove_all_indent {
-                    line.trim_start_matches(|c| c == ' ' || c == '\t')
+                    line.trim_start_matches([' ', '\t'])
                 } else {
                     line
                 };
@@ -357,7 +357,7 @@ where
                     break;
                 }
 
-                value.push_str(&line);
+                value.push_str(line);
                 value.push('\n');
             }
 

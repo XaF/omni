@@ -170,20 +170,13 @@ impl Listener for AskPassListener {
                         // Create the handler function with the correct type
                         let handler: EventHandlerFn = Box::new(move || {
                             Box::pin(async move {
-                                if let Err(err) = AskPassListener::handle_request(&mut stream).await
-                                {
-                                    return Err(err);
-                                }
+                                AskPassListener::handle_request(&mut stream).await?;
                                 Ok(())
                             })
                         });
                         return (handler, true);
                     }
-                    Err(err) => {
-                        let handler: EventHandlerFn =
-                            Box::new(move || Box::pin(async move { Err(err.to_string()) }));
-                        return (handler, false);
-                    }
+                    Err(_err) => {}
                 }
             }
         })
@@ -305,10 +298,7 @@ impl AskPassListener {
 
         // Create the listener
         match UnixListener::bind(&socket_path) {
-            Ok(listener) => Ok(Some(Self {
-                listener: listener,
-                tmp_dir: tmp_dir,
-            })),
+            Ok(listener) => Ok(Some(Self { listener, tmp_dir })),
             Err(err) => Err(UpError::Exec(
                 format!("failed to bind to socket: {:?}", err).to_string(),
             )),
