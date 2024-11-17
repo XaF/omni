@@ -75,7 +75,7 @@ pub fn convert_cache_pre_0_0_29() -> io::Result<()> {
 
     // If the up_enviroments.json file does not exist, there is nothing to do
     let up_environments_path = cache_path.join("up_environments.json");
-    if !up_environments_path.exists() {
+    if !up_environments_path.exists() || up_environments_path.metadata()?.len() == 0 {
         return Ok(());
     }
 
