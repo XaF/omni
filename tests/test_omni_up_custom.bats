@@ -19,6 +19,16 @@ teardown() {
   check_commands
 }
 
+reload_dynenv() {
+  expected_env="$(omni hook env --quiet)"
+
+  echo "DYNAMIC ENVIRONMENT -- BEGIN"
+  echo "$expected_env"
+  echo "DYNAMIC ENVIRONMENT -- END"
+
+  eval "$(echo "$expected_env")"
+}
+
 # bats test_tags=omni:up,omni:up:custom
 @test "omni up custom operation" {
   cat > .omni.yaml <<EOF
@@ -136,9 +146,7 @@ EOF
   [ "$status" -eq 0 ]
 
   # Load the dynamic environment
-  echo "DYNAMIC ENVIRONMENT -- BEGIN"
-  eval "$(omni hook env --quiet | tee /dev/stderr)"
-  echo "DYNAMIC ENVIRONMENT -- END"
+  reload_dynenv
 
   # Check the variable
   echo "ENV_VAR: $ENV_VAR"
@@ -206,9 +214,7 @@ EOF
   }
 
   # Load the dynamic environment
-  echo "DYNAMIC ENVIRONMENT -- BEGIN"
-  eval "$(omni hook env --quiet | tee /dev/stderr)"
-  echo "DYNAMIC ENVIRONMENT -- END"
+  reload_dynenv
 
   # Check the variable
   echo "SIMPLE: BEGIN"
@@ -327,9 +333,7 @@ EOF
   }
 
   # Load the dynamic environment
-  echo "DYNAMIC ENVIRONMENT -- BEGIN"
-  eval "$(omni hook env --quiet | tee /dev/stderr)"
-  echo "DYNAMIC ENVIRONMENT -- END"
+  reload_dynenv
 
   # Check the variable
   echo "SIMPLE: BEGIN"
@@ -465,9 +469,7 @@ EOF
   [ "$status" -eq 0 ]
 
   # Load the dynamic environment
-  echo "DYNAMIC ENVIRONMENT -- BEGIN"
-  eval "$(omni hook env --quiet | tee /dev/stderr)"
-  echo "DYNAMIC ENVIRONMENT -- END"
+  reload_dynenv
 
   # Check the variable
   echo "ENV_VAR: $ENV_VAR"
@@ -498,9 +500,7 @@ EOF
   [ "$status" -eq 0 ]
 
   # Load the dynamic environment
-  echo "DYNAMIC ENVIRONMENT -- BEGIN"
-  eval "$(omni hook env --quiet | tee /dev/stderr)"
-  echo "DYNAMIC ENVIRONMENT -- END"
+  reload_dynenv
 
   # Check the variable
   echo "ENV_VAR: $ENV_VAR"
@@ -531,9 +531,7 @@ EOF
   [ "$status" -eq 0 ]
 
   # Load the dynamic environment
-  echo "DYNAMIC ENVIRONMENT -- BEGIN"
-  eval "$(omni hook env --quiet | tee /dev/stderr)"
-  echo "DYNAMIC ENVIRONMENT -- END"
+  reload_dynenv
 
   # Check the variable
   echo "ENV_VAR: $ENV_VAR"
@@ -562,9 +560,7 @@ EOF
   [ "$status" -eq 0 ]
 
   # Load the dynamic environment
-  echo "DYNAMIC ENVIRONMENT -- BEGIN"
-  eval "$(omni hook env --quiet | tee /dev/stderr)"
-  echo "DYNAMIC ENVIRONMENT -- END"
+  reload_dynenv
 
   # Check the variable
   echo "ENV_VAR: $ENV_VAR"
@@ -595,9 +591,7 @@ EOF
   [ "$status" -eq 0 ]
 
   # Load the dynamic environment
-  echo "DYNAMIC ENVIRONMENT -- BEGIN"
-  eval "$(omni hook env --quiet | tee /dev/stderr)"
-  echo "DYNAMIC ENVIRONMENT -- END"
+  reload_dynenv
 
   # Check the variable
   echo "ENV_VAR: $ENV_VAR"
@@ -643,9 +637,7 @@ EOF
   [ "$status" -eq 0 ]
 
   # Load the dynamic environment
-  echo "DYNAMIC ENVIRONMENT -- BEGIN"
-  eval "$(omni hook env --quiet | tee /dev/stderr)"
-  echo "DYNAMIC ENVIRONMENT -- END"
+  reload_dynenv
 
   # Check the variable
   echo "BEGIN_ENV_VAR: $BEGIN_ENV_VAR"
