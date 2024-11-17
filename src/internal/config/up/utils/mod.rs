@@ -14,7 +14,7 @@ pub(crate) use listener_manager::Listener;
 pub(crate) use listener_manager::ListenerManager;
 
 mod fifo_handler;
-pub(crate) use fifo_handler::FifoHandler;
+pub(crate) use fifo_handler::FifoReader;
 
 pub(crate) mod print_progress_handler;
 pub(crate) use print_progress_handler::PrintProgressHandler;

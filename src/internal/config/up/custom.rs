@@ -6,7 +6,7 @@ use crate::internal::cache::up_environments::UpEnvVar;
 use crate::internal::cache::up_environments::UpEnvironment;
 use crate::internal::config::parser::EnvOperationEnum;
 use crate::internal::config::up::utils::run_progress;
-use crate::internal::config::up::utils::FifoHandler;
+use crate::internal::config::up::utils::FifoReader;
 use crate::internal::config::up::utils::ProgressHandler;
 use crate::internal::config::up::utils::RunConfig;
 use crate::internal::config::up::utils::UpProgressHandler;
@@ -161,13 +161,13 @@ impl UpConfigCustom {
         if !self.meet.is_empty() {
             progress_handler.progress("running (meet) command".to_string());
 
-            let mut fifo_handler =
-                FifoHandler::new().map_err(|err| UpError::Exec(format!("{}", err)))?;
+            let mut fifo_reader =
+                FifoReader::new().map_err(|err| UpError::Exec(format!("{}", err)))?;
 
             let mut command = TokioCommand::new("bash");
             command.arg("-c");
             command.arg(&self.meet);
-            command.env("OMNI_ENV", fifo_handler.path());
+            command.env("OMNI_ENV", fifo_reader.path());
             command.stdout(std::process::Stdio::piped());
             command.stderr(std::process::Stdio::piped());
 
@@ -178,10 +178,13 @@ impl UpConfigCustom {
             )?;
 
             // Close the fifo handler
-            fifo_handler.close();
+            let lines = match fifo_reader.stop() {
+                Ok(lines) => lines,
+                Err(err) => return Err(UpError::Exec(format!("{}", err))),
+            };
 
             // Parse the contents of the environment file
-            let env_vars = parse_env_file_lines(fifo_handler.lines().into_iter())?;
+            let env_vars = parse_env_file_lines(lines.into_iter())?;
 
             // Add the environment operations to the environment
             environment.add_raw_env_vars(env_vars);
@@ -282,8 +285,8 @@ where
             (">>=", EnvOperationEnum::Append),
             ("<<=", EnvOperationEnum::Prepend),
             ("-=", EnvOperationEnum::Remove),
-            (">=", EnvOperationEnum::Prefix),
-            ("<=", EnvOperationEnum::Suffix),
+            (">=", EnvOperationEnum::Suffix),
+            ("<=", EnvOperationEnum::Prefix),
             ("=", EnvOperationEnum::Set),
         ] {
             if let Some((var, value)) = line.split_once(operation_str) {
@@ -539,8 +542,8 @@ mod tests {
                 "PATH>>=/new/bin",        // Append
                 "LD_LIBRARY_PATH<<=/lib", // Prepend
                 "PATH-=/old/bin",         // Remove
-                "PREFIX>=value",          // Prefix
-                "SUFFIX<=value",          // Suffix
+                "PREFIX<=value",          // Prefix
+                "SUFFIX>=value",          // Suffix
             ];
 
             let result = parse_env_file_lines(input.into_iter()).unwrap();

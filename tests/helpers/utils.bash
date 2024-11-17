@@ -43,7 +43,7 @@ omni_setup() {
     # Build the omni binary
     if [[ "$NEEDS_BUILD" == true ]]; then
       echo "Building omni binary in ${git_dir}" >&2
-      (cd "${git_dir}" && cargo build) >&2 || echo "ERROR building omni" >&2
+      (cd "${git_dir}" && cargo build) >&2 || { echo "ERROR building omni" >&2; return 1; }
     fi
 
     # # If the binary still does not exist, error out
