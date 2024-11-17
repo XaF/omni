@@ -19,6 +19,9 @@ setup() {
 
   # Disable colors
   export NO_COLOR=1
+
+  # Avoid wrapping
+  export COLUMNS=1000
 }
 
 # bats test_tags=config:commands
