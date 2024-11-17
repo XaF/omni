@@ -136,7 +136,9 @@ EOF
   [ "$status" -eq 0 ]
 
   # Load the dynamic environment
-  eval "$(omni hook env --quiet)"
+  echo "DYNAMIC ENVIRONMENT -- BEGIN"
+  eval "$(omni hook env --quiet | tee /dev/stderr)"
+  echo "DYNAMIC ENVIRONMENT -- END"
 
   # Check the variable
   echo "ENV_VAR: $ENV_VAR"
@@ -198,46 +200,72 @@ EOF
   run omni up --trust 3>&-
   echo "STATUS: $status"
   echo "OUTPUT: $output"
-  [ "$status" -eq 0 ]
+  [ "$status" -eq 0 ] || {
+    echo "command failed, expected success"
+    return 1
+  }
 
   # Load the dynamic environment
-  eval "$(omni hook env --quiet)"
+  echo "DYNAMIC ENVIRONMENT -- BEGIN"
+  eval "$(omni hook env --quiet | tee /dev/stderr)"
+  echo "DYNAMIC ENVIRONMENT -- END"
 
   # Check the variable
   echo "SIMPLE: BEGIN"
   echo "$SIMPLE"
   echo "SIMPLE: END"
-  [ "$SIMPLE" = "$(echo -e "  line1\n    line2\n  line3")" ]
+  [ "$SIMPLE" = "$(echo -e "  line1\n    line2\n  line3")" ] || {
+    echo "SIMPLE does not match"
+    return 1
+  }
 
   echo "NOINDENT: BEGIN"
   echo "$NOINDENT"
   echo "NOINDENT: END"
-  [ "$NOINDENT" = "$(echo -e "line1\nline2\nline3")" ]
+  [ "$NOINDENT" = "$(echo -e "line1\nline2\nline3")" ] || {
+    echo "NOINDENT does not match"
+    return 1
+  }
 
   echo "NOINDENT_INDENTEDDELIM: BEGIN"
   echo "$NOINDENT_INDENTEDDELIM"
   echo "NOINDENT_INDENTEDDELIM: END"
-  [ "$NOINDENT_INDENTEDDELIM" = "$(echo -e "line1\nline2\nline3")" ]
+  [ "$NOINDENT_INDENTEDDELIM" = "$(echo -e "line1\nline2\nline3")" ] || {
+    echo "NOINDENT_INDENTEDDELIM does not match"
+    return 1
+  }
 
   echo "MININDENT: BEGIN"
   echo "$MININDENT"
   echo "MININDENT: END"
-  [ "$MININDENT" = "$(echo -e "line1\n  line2\nline3")" ]
+  [ "$MININDENT" = "$(echo -e "line1\n  line2\nline3")" ] || {
+    echo "MININDENT does not match"
+    return 1
+  }
 
   echo "WITHSPACES: BEGIN"
   echo "$WITHSPACES"
   echo "WITHSPACES: END"
-  [ "$WITHSPACES" = "$(echo -e "  line1\n    line2\n  line3")" ]
+  [ "$WITHSPACES" = "$(echo -e "  line1\n    line2\n  line3")" ] || {
+    echo "WITHSPACES does not match"
+    return 1
+  }
 
   echo "WITHSQUOTES: BEGIN"
   echo "$WITHSQUOTES"
   echo "WITHSQUOTES: END"
-  [ "$WITHSQUOTES" = "$(echo -e "  line1\n    line2\n  line3")" ]
+  [ "$WITHSQUOTES" = "$(echo -e "  line1\n    line2\n  line3")" ] || {
+    echo "WITHSQUOTES does not match"
+    return 1
+  }
 
   echo "WITHDQUOTES: BEGIN"
   echo "$WITHDQUOTES"
   echo "WITHDQUOTES: END"
-  [ "$WITHDQUOTES" = "$(echo -e "  line1\n    line2\n  line3")" ]
+  [ "$WITHDQUOTES" = "$(echo -e "  line1\n    line2\n  line3")" ] || {
+    echo "WITHDQUOTES does not match"
+    return 1
+  }
 }
 
 custom_operation_multiline_double_arrow() {
@@ -293,46 +321,72 @@ EOF
   run omni up --trust 3>&-
   echo "STATUS: $status"
   echo "OUTPUT: $output"
-  [ "$status" -eq 0 ]
+  [ "$status" -eq 0 ] || {
+    echo "command failed, expected success"
+    return 1
+  }
 
   # Load the dynamic environment
-  eval "$(omni hook env --quiet)"
+  echo "DYNAMIC ENVIRONMENT -- BEGIN"
+  eval "$(omni hook env --quiet | tee /dev/stderr)"
+  echo "DYNAMIC ENVIRONMENT -- END"
 
   # Check the variable
   echo "SIMPLE: BEGIN"
   echo "$SIMPLE"
   echo "SIMPLE: END"
-  [ "$SIMPLE" = "$(echo -e "  line1\n    line2\n  line3")" ]
+  [ "$SIMPLE" = "$(echo -e "  line1\n    line2\n  line3")" ] || {
+    echo "SIMPLE does not match"
+    return 1
+  }
 
   echo "NOINDENT: BEGIN"
   echo "$NOINDENT"
   echo "NOINDENT: END"
-  [ "$NOINDENT" = "$(echo -e "line1\nline2\nline3")" ]
+  [ "$NOINDENT" = "$(echo -e "line1\nline2\nline3")" ] || {
+    echo "NOINDENT does not match"
+    return 1
+  }
 
   echo "NOINDENT_INDENTEDDELIM: BEGIN"
   echo "$NOINDENT_INDENTEDDELIM"
   echo "NOINDENT_INDENTEDDELIM: END"
-  [ "$NOINDENT_INDENTEDDELIM" = "$(echo -e "line1\nline2\nline3")" ]
+  [ "$NOINDENT_INDENTEDDELIM" = "$(echo -e "line1\nline2\nline3")" ] || {
+    echo "NOINDENT_INDENTEDDELIM does not match"
+    return 1
+  }
 
   echo "MININDENT: BEGIN"
   echo "$MININDENT"
   echo "MININDENT: END"
-  [ "$MININDENT" = "$(echo -e "line1\n  line2\nline3")" ]
+  [ "$MININDENT" = "$(echo -e "line1\n  line2\nline3")" ] || {
+    echo "MININDENT does not match"
+    return 1
+  }
 
   echo "WITHSPACES: BEGIN"
   echo "$WITHSPACES"
   echo "WITHSPACES: END"
-  [ "$WITHSPACES" = "$(echo -e "  line1\n    line2\n  line3")" ]
+  [ "$WITHSPACES" = "$(echo -e "  line1\n    line2\n  line3")" ] || {
+    echo "WITHSPACES does not match"
+    return 1
+  }
 
   echo "WITHSQUOTES: BEGIN"
   echo "$WITHSQUOTES"
   echo "WITHSQUOTES: END"
-  [ "$WITHSQUOTES" = "$(echo -e "  line1\n    line2\n  line3")" ]
+  [ "$WITHSQUOTES" = "$(echo -e "  line1\n    line2\n  line3")" ] || {
+    echo "WITHSQUOTES does not match"
+    return 1
+  }
 
   echo "WITHDQUOTES: BEGIN"
   echo "$WITHDQUOTES"
   echo "WITHDQUOTES: END"
-  [ "$WITHDQUOTES" = "$(echo -e "  line1\n    line2\n  line3")" ]
+  [ "$WITHDQUOTES" = "$(echo -e "  line1\n    line2\n  line3")" ] || {
+    echo "WITHDQUOTES does not match"
+    return 1
+  }
 }
 
 # bats test_tags=omni:up,omni:up:custom,omni:up:custom:multiline
@@ -411,7 +465,9 @@ EOF
   [ "$status" -eq 0 ]
 
   # Load the dynamic environment
-  eval "$(omni hook env --quiet)"
+  echo "DYNAMIC ENVIRONMENT -- BEGIN"
+  eval "$(omni hook env --quiet | tee /dev/stderr)"
+  echo "DYNAMIC ENVIRONMENT -- END"
 
   # Check the variable
   echo "ENV_VAR: $ENV_VAR"
@@ -442,7 +498,9 @@ EOF
   [ "$status" -eq 0 ]
 
   # Load the dynamic environment
-  eval "$(omni hook env --quiet)"
+  echo "DYNAMIC ENVIRONMENT -- BEGIN"
+  eval "$(omni hook env --quiet | tee /dev/stderr)"
+  echo "DYNAMIC ENVIRONMENT -- END"
 
   # Check the variable
   echo "ENV_VAR: $ENV_VAR"
@@ -473,7 +531,9 @@ EOF
   [ "$status" -eq 0 ]
 
   # Load the dynamic environment
-  eval "$(omni hook env --quiet)"
+  echo "DYNAMIC ENVIRONMENT -- BEGIN"
+  eval "$(omni hook env --quiet | tee /dev/stderr)"
+  echo "DYNAMIC ENVIRONMENT -- END"
 
   # Check the variable
   echo "ENV_VAR: $ENV_VAR"
@@ -502,7 +562,9 @@ EOF
   [ "$status" -eq 0 ]
 
   # Load the dynamic environment
-  eval "$(omni hook env --quiet)"
+  echo "DYNAMIC ENVIRONMENT -- BEGIN"
+  eval "$(omni hook env --quiet | tee /dev/stderr)"
+  echo "DYNAMIC ENVIRONMENT -- END"
 
   # Check the variable
   echo "ENV_VAR: $ENV_VAR"
@@ -533,7 +595,9 @@ EOF
   [ "$status" -eq 0 ]
 
   # Load the dynamic environment
-  eval "$(omni hook env --quiet)"
+  echo "DYNAMIC ENVIRONMENT -- BEGIN"
+  eval "$(omni hook env --quiet | tee /dev/stderr)"
+  echo "DYNAMIC ENVIRONMENT -- END"
 
   # Check the variable
   echo "ENV_VAR: $ENV_VAR"
@@ -579,7 +643,9 @@ EOF
   [ "$status" -eq 0 ]
 
   # Load the dynamic environment
-  eval "$(omni hook env --quiet)"
+  echo "DYNAMIC ENVIRONMENT -- BEGIN"
+  eval "$(omni hook env --quiet | tee /dev/stderr)"
+  echo "DYNAMIC ENVIRONMENT -- END"
 
   # Check the variable
   echo "BEGIN_ENV_VAR: $BEGIN_ENV_VAR"
