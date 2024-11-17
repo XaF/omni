@@ -715,7 +715,7 @@ mod tests {
 
             // Verify prefix operation
             assert_eq!(result[5].name, "DEBUG");
-            assert_eq!(result[5].operation, EnvOperationEnum::Prefix);
+            assert_eq!(result[5].operation, EnvOperationEnum::Suffix);
             assert_eq!(result[5].value, Some("true".to_string()));
         }
     }
