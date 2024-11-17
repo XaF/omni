@@ -145,7 +145,102 @@ EOF
   [ "$ENV_VAR2" = "VALUE2" ]
 }
 
-custom_operation_multiline() {
+custom_operation_multiline_single_arrow() {
+  cat > .omni.yaml <<'EOF'
+up:
+  - custom:
+      name: "Custom Operation"
+      meet: |
+        echo "SIMPLE<<DELIM" > "$OMNI_ENV"
+        echo "  line1" > "$OMNI_ENV"
+        echo "    line2" > "$OMNI_ENV"
+        echo "  line3" > "$OMNI_ENV"
+        echo "DELIM" > "$OMNI_ENV"
+
+        echo "NOINDENT<<-DELIM" > "$OMNI_ENV"
+        echo "  line1" > "$OMNI_ENV"
+        echo "    line2" > "$OMNI_ENV"
+        echo "  line3" > "$OMNI_ENV"
+        echo "DELIM" > "$OMNI_ENV"
+
+        echo "NOINDENT_INDENTEDDELIM<<-DELIM" > "$OMNI_ENV"
+        echo "  line1" > "$OMNI_ENV"
+        echo "    line2" > "$OMNI_ENV"
+        echo "  line3" > "$OMNI_ENV"
+        echo " DELIM" > "$OMNI_ENV"
+
+        echo "MININDENT<<~DELIM" > "$OMNI_ENV"
+        echo "  line1" > "$OMNI_ENV"
+        echo "    line2" > "$OMNI_ENV"
+        echo "  line3" > "$OMNI_ENV"
+        echo "DELIM" > "$OMNI_ENV"
+
+        echo "WITHSPACES<< DELIM " > "$OMNI_ENV"
+        echo "  line1" > "$OMNI_ENV"
+        echo "    line2" > "$OMNI_ENV"
+        echo "  line3" > "$OMNI_ENV"
+        echo "DELIM" > "$OMNI_ENV"
+
+        echo "WITHSQUOTES<<'DELIM'" > "$OMNI_ENV"
+        echo "  line1" > "$OMNI_ENV"
+        echo "    line2" > "$OMNI_ENV"
+        echo "  line3" > "$OMNI_ENV"
+        echo "DELIM" > "$OMNI_ENV"
+
+        echo "WITHDQUOTES<<\"DELIM\"" > "$OMNI_ENV"
+        echo "  line1" > "$OMNI_ENV"
+        echo "    line2" > "$OMNI_ENV"
+        echo "  line3" > "$OMNI_ENV"
+        echo "DELIM" > "$OMNI_ENV"
+
+EOF
+
+  run omni up --trust 3>&-
+  echo "STATUS: $status"
+  echo "OUTPUT: $output"
+  [ "$status" -eq 0 ]
+
+  # Load the dynamic environment
+  eval "$(omni hook env --quiet)"
+
+  # Check the variable
+  echo "SIMPLE: BEGIN"
+  echo "$SIMPLE"
+  echo "SIMPLE: END"
+  [ "$SIMPLE" = "$(echo -e "  line1\n    line2\n  line3")" ]
+
+  echo "NOINDENT: BEGIN"
+  echo "$NOINDENT"
+  echo "NOINDENT: END"
+  [ "$NOINDENT" = "$(echo -e "line1\nline2\nline3")" ]
+
+  echo "NOINDENT_INDENTEDDELIM: BEGIN"
+  echo "$NOINDENT_INDENTEDDELIM"
+  echo "NOINDENT_INDENTEDDELIM: END"
+  [ "$NOINDENT_INDENTEDDELIM" = "$(echo -e "line1\nline2\nline3")" ]
+
+  echo "MININDENT: BEGIN"
+  echo "$MININDENT"
+  echo "MININDENT: END"
+  [ "$MININDENT" = "$(echo -e "line1\n  line2\nline3")" ]
+
+  echo "WITHSPACES: BEGIN"
+  echo "$WITHSPACES"
+  echo "WITHSPACES: END"
+  [ "$WITHSPACES" = "$(echo -e "  line1\n    line2\n  line3")" ]
+
+  echo "WITHSQUOTES: BEGIN"
+  echo "$WITHSQUOTES"
+  echo "WITHSQUOTES: END"
+  [ "$WITHSQUOTES" = "$(echo -e "  line1\n    line2\n  line3")" ]
+
+  echo "WITHDQUOTES: BEGIN"
+  echo "$WITHDQUOTES"
+  echo "WITHDQUOTES: END"
+  [ "$WITHDQUOTES" = "$(echo -e "  line1\n    line2\n  line3")" ]
+}
+
+custom_operation_multiline_double_arrow() {
   cat > .omni.yaml <<'EOF'
 up:
   - custom:
@@ -241,28 +336,53 @@ EOF
 }
 
 # bats test_tags=omni:up,omni:up:custom,omni:up:custom:multiline
-@test "omni up custom operation should allow to set a multiline environment variables (1/5)" {
-  custom_operation_multiline
+@test "omni up custom operation should allow to set a multiline environment variables using > (1/5)" {
+  custom_operation_multiline_single_arrow
 }
 
 # bats test_tags=omni:up,omni:up:custom,omni:up:custom:multiline
-@test "omni up custom operation should allow to set a multiline environment variables (2/5)" {
-  custom_operation_multiline
+@test "omni up custom operation should allow to set a multiline environment variables using > (2/5)" {
+  custom_operation_multiline_single_arrow
 }
 
 # bats test_tags=omni:up,omni:up:custom,omni:up:custom:multiline
-@test "omni up custom operation should allow to set a multiline environment variables (3/5)" {
-  custom_operation_multiline
+@test "omni up custom operation should allow to set a multiline environment variables using > (3/5)" {
+  custom_operation_multiline_single_arrow
 }
 
 # bats test_tags=omni:up,omni:up:custom,omni:up:custom:multiline
-@test "omni up custom operation should allow to set a multiline environment variables (4/5)" {
-  custom_operation_multiline
+@test "omni up custom operation should allow to set a multiline environment variables using > (4/5)" {
+  custom_operation_multiline_single_arrow
 }
 
 # bats test_tags=omni:up,omni:up:custom,omni:up:custom:multiline
-@test "omni up custom operation should allow to set a multiline environment variables (5/5)" {
-  custom_operation_multiline
+@test "omni up custom operation should allow to set a multiline environment variables using > (5/5)" {
+  custom_operation_multiline_single_arrow
+}
+
+# bats test_tags=omni:up,omni:up:custom,omni:up:custom:multiline
+@test "omni up custom operation should allow to set a multiline environment variables using >> (1/5)" {
+  custom_operation_multiline_double_arrow
+}
+
+# bats test_tags=omni:up,omni:up:custom,omni:up:custom:multiline
+@test "omni up custom operation should allow to set a multiline environment variables using >> (2/5)" {
+  custom_operation_multiline_double_arrow
+}
+
+# bats test_tags=omni:up,omni:up:custom,omni:up:custom:multiline
+@test "omni up custom operation should allow to set a multiline environment variables using >> (3/5)" {
+  custom_operation_multiline_double_arrow
+}
+
+# bats test_tags=omni:up,omni:up:custom,omni:up:custom:multiline
+@test "omni up custom operation should allow to set a multiline environment variables using >> (4/5)" {
+  custom_operation_multiline_double_arrow
+}
+
+# bats test_tags=omni:up,omni:up:custom,omni:up:custom:multiline
+@test "omni up custom operation should allow to set a multiline environment variables using >> (5/5)" {
+  custom_operation_multiline_double_arrow
 }
 
 # bats test_tags=omni:up,omni:up:custom
