@@ -6,6 +6,10 @@ omni_setup() {
   # echo "$BATS_FILE_TMPDIR" # Shared with the whole file
   # echo "$BATS_TEST_TMPDIR" # Only available to the current test
   # echo "$BATS_TEST_FILENAME" # The current test file
+  if [ -z "$BATS_TEST_TMPDIR" ]; then
+    echo "BATS_TEST_TMPDIR is not set" >&2
+    return 1
+  fi
 
   # Get the git directory
   local git_dir="$(git rev-parse --show-toplevel 2>/dev/null)"

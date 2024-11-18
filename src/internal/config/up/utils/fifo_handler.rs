@@ -187,14 +187,13 @@ impl FifoReader {
         let mut buffer = String::new();
 
         loop {
-            if stop_signal.load(Ordering::Relaxed) {
-                break;
-            }
-
             buffer.clear();
             match reader.read_line(&mut buffer) {
                 Ok(0) => {
-                    // EOF reached, try again
+                    // EOF reached, try again unless we received the stop signal
+                    if stop_signal.load(Ordering::Relaxed) {
+                        break;
+                    }
                 }
                 Ok(_) => {
                     if let Err(e) = sender.send(buffer.to_string()) {
