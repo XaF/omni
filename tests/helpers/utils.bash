@@ -6,6 +6,10 @@ omni_setup() {
   # echo "$BATS_FILE_TMPDIR" # Shared with the whole file
   # echo "$BATS_TEST_TMPDIR" # Only available to the current test
   # echo "$BATS_TEST_FILENAME" # The current test file
+  if [ -z "$BATS_TEST_TMPDIR" ]; then
+    echo "BATS_TEST_TMPDIR is not set" >&2
+    return 1
+  fi
 
   # Get the git directory
   local git_dir="$(git rev-parse --show-toplevel 2>/dev/null)"
@@ -43,7 +47,7 @@ omni_setup() {
     # Build the omni binary
     if [[ "$NEEDS_BUILD" == true ]]; then
       echo "Building omni binary in ${git_dir}" >&2
-      (cd "${git_dir}" && cargo build) >&2 || echo "ERROR building omni" >&2
+      (cd "${git_dir}" && cargo build) >&2 || { echo "ERROR building omni" >&2; return 1; }
     fi
 
     # # If the binary still does not exist, error out

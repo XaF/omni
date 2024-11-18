@@ -1,9 +1,12 @@
 use std::fs::set_permissions;
 use std::fs::Permissions;
+use std::mem;
 use std::os::unix::fs::FileTypeExt;
 use std::os::unix::fs::PermissionsExt;
 use std::path::PathBuf;
+use std::pin::Pin;
 
+use futures::Future;
 use serde::Deserialize;
 use serde::Serialize;
 use shell_escape::escape;
@@ -13,7 +16,6 @@ use tokio::io::AsyncBufReadExt;
 use tokio::io::AsyncReadExt;
 use tokio::io::AsyncWriteExt;
 use tokio::io::BufReader;
-use tokio::net::unix::SocketAddr;
 use tokio::net::UnixListener;
 use tokio::net::UnixStream;
 use tokio::process::Command as TokioCommand;
@@ -21,7 +23,8 @@ use tokio::process::Command as TokioCommand;
 use crate::internal::config::global_config;
 use crate::internal::config::template::render_askpass_template;
 use crate::internal::config::up::utils::force_remove_dir_all;
-use crate::internal::config::up::utils::RunConfig;
+use crate::internal::config::up::utils::EventHandlerFn;
+use crate::internal::config::up::utils::Listener;
 use crate::internal::config::up::UpError;
 use crate::internal::env::current_exe;
 use crate::internal::env::shell_is_interactive;
@@ -124,10 +127,10 @@ impl AskPassRequest {
     }
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub struct AskPassListener {
-    listener: Option<UnixListener>,
-    tmp_dir: Option<TempDir>,
+    listener: UnixListener,
+    tmp_dir: TempDir,
 }
 
 impl Drop for AskPassListener {
@@ -135,10 +138,63 @@ impl Drop for AskPassListener {
         if let Err(_err) = tokio::runtime::Handle::try_current() {
             if let Ok(rt) = tokio::runtime::Runtime::new() {
                 rt.block_on(async {
-                    let _ = self.close().await;
+                    let _ = self.stop().await;
                 });
             }
         }
+    }
+}
+
+impl Listener for AskPassListener {
+    fn set_process_env(&self, process: &mut TokioCommand) -> Result<(), String> {
+        let needs_askpass = Self::needs_askpass();
+        for tool in &needs_askpass {
+            let askpass_path = Self::askpass_path(&self.tmp_dir, tool);
+            let askpass_path = askpass_path.to_string_lossy().to_string();
+            process.env(format!("{}_ASKPASS", tool.to_uppercase()), &askpass_path);
+        }
+
+        process.env("SSH_ASKPASS_REQUIRE", "force");
+        process.env_remove("DISPLAY");
+
+        Ok(())
+    }
+
+    fn next(&mut self) -> Pin<Box<dyn Future<Output = (EventHandlerFn, bool)> + Send + '_>> {
+        // Create a stream copy that we can move into the future
+        Box::pin(async move {
+            // Accept a connection from the socket
+            loop {
+                match self.listener.accept().await {
+                    Ok((mut stream, _addr)) => {
+                        // Create the handler function with the correct type
+                        let handler: EventHandlerFn = Box::new(move || {
+                            Box::pin(async move {
+                                AskPassListener::handle_request(&mut stream).await?;
+                                Ok(())
+                            })
+                        });
+                        return (handler, true);
+                    }
+                    Err(_err) => {}
+                }
+            }
+        })
+    }
+
+    fn stop(&mut self) -> Pin<Box<dyn Future<Output = Result<(), String>> + Send + '_>> {
+        Box::pin(async move {
+            // Take ownership of the tmp_dir and handle cleanup
+            let tmp_dir = mem::replace(&mut self.tmp_dir, TempDir::new().unwrap());
+            let tmp_dir_path = tmp_dir.path().to_path_buf();
+            if let Err(_err) = tmp_dir.close() {
+                if let Err(err) = force_remove_dir_all(tmp_dir_path) {
+                    return Err(err.to_string());
+                }
+            }
+
+            Ok(())
+        })
     }
 }
 
@@ -166,19 +222,15 @@ impl AskPassListener {
             .join(format!("{}-askpass.sh", tool.to_lowercase()))
     }
 
-    pub async fn new(command: &str, run_config: &RunConfig) -> Result<Self, UpError> {
-        if !run_config.askpass() {
-            return Ok(Self::default());
-        }
-
+    pub async fn new(command: &str) -> Result<Option<Self>, UpError> {
         let config = global_config();
         if !config.askpass.enabled {
-            return Ok(Self::default());
+            return Ok(None);
         }
 
         let needs_askpass = Self::needs_askpass();
         if needs_askpass.is_empty() {
-            return Ok(Self::default());
+            return Ok(None);
         }
 
         // Create a temporary directory
@@ -246,38 +298,10 @@ impl AskPassListener {
 
         // Create the listener
         match UnixListener::bind(&socket_path) {
-            Ok(listener) => Ok(Self {
-                listener: Some(listener),
-                tmp_dir: Some(tmp_dir),
-            }),
+            Ok(listener) => Ok(Some(Self { listener, tmp_dir })),
             Err(err) => Err(UpError::Exec(
                 format!("failed to bind to socket: {:?}", err).to_string(),
             )),
-        }
-    }
-
-    pub async fn accept(&mut self) -> Option<Result<(UnixStream, SocketAddr), String>> {
-        if let Some(listener) = &mut self.listener {
-            match listener.accept().await {
-                Ok((stream, addr)) => Some(Ok((stream, addr))),
-                Err(err) => Some(Err(err.to_string())),
-            }
-        } else {
-            None
-        }
-    }
-
-    pub async fn set_process_env(&self, process: &mut TokioCommand) {
-        if let Some(tmp_dir) = &self.tmp_dir {
-            let needs_askpass = Self::needs_askpass();
-            for tool in &needs_askpass {
-                let askpass_path = Self::askpass_path(tmp_dir, tool);
-                let askpass_path = askpass_path.to_string_lossy().to_string();
-                process.env(format!("{}_ASKPASS", tool.to_uppercase()), &askpass_path);
-            }
-
-            process.env("SSH_ASKPASS_REQUIRE", "force");
-            process.env_remove("DISPLAY");
         }
     }
 
@@ -343,23 +367,6 @@ impl AskPassListener {
             Ok(_) => {}
             Err(err) => {
                 return Err(format!("failed to write to socket: {:?}", err));
-            }
-        }
-
-        Ok(())
-    }
-
-    pub async fn close(&mut self) -> Result<(), String> {
-        if let Some(listener) = self.listener.take() {
-            drop(listener);
-        }
-
-        if let Some(tmp_dir) = self.tmp_dir.take() {
-            let tmp_dir_path = tmp_dir.path().to_path_buf();
-            if let Err(_err) = tmp_dir.close() {
-                if let Err(err) = force_remove_dir_all(tmp_dir_path) {
-                    return Err(err.to_string());
-                }
             }
         }
 
