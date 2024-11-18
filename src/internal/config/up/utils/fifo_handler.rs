@@ -87,17 +87,6 @@ impl FifoReader {
         Self::build(fifo.path().to_string_lossy().to_string(), Some(fifo))
     }
 
-    // pub fn with_path(path: impl AsRef<Path>) -> std::io::Result<Self> {
-    // let path = path.as_ref();
-
-    // // Create the FIFO if it doesn't exist
-    // if !path.exists() {
-    // mkfifo(path, Mode::S_IRWXU)?;
-    // }
-
-    // Self::build(path.to_string_lossy().to_string(), None)
-    // }
-
     /// Create a new FifoReader with the given FIFO path.
     fn build<P: AsRef<Path>>(fifo_path: P, temp_fifo: Option<TempFifo>) -> std::io::Result<Self> {
         let fifo_path = fifo_path.as_ref().to_path_buf();
@@ -186,7 +175,6 @@ impl FifoReader {
         let mut reader = BufReader::new(file);
         let mut buffer = String::new();
 
-        // let mut retry_until = None;
         let mut retry_before_exiting = true;
         loop {
             buffer.clear();
@@ -264,20 +252,6 @@ impl FifoReader {
         // Return the collected messages
         Ok(self.lines.clone())
     }
-
-    // /// Try to read any available messages from the FIFO and return all the lines
-    // /// collected so far.
-    // pub fn try_read(&mut self) -> Vec<String> {
-    // if self.stop_signal.load(Ordering::Relaxed) {
-    // self.flush();
-    // }
-    // self.lines.clone()
-    // }
-
-    // /// Returns the accumulated contents from the FIFO.
-    // pub fn lines(&self) -> Vec<String> {
-    // self.lines.clone()
-    // }
 }
 
 impl Drop for FifoReader {
