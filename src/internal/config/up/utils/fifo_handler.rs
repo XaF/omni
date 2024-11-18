@@ -186,13 +186,18 @@ impl FifoReader {
         let mut reader = BufReader::new(file);
         let mut buffer = String::new();
 
+        // let mut retry_until = None;
+        let mut retry_before_exiting = true;
         loop {
             buffer.clear();
             match reader.read_line(&mut buffer) {
                 Ok(0) => {
-                    // EOF reached, try again unless we received the stop signal
-                    if stop_signal.load(Ordering::Relaxed) {
-                        break;
+                    // EOF reached, try again unless we received the stop signal and verified
+                    // one last time that there was no more data waiting
+                    match (stop_signal.load(Ordering::Relaxed), retry_before_exiting) {
+                        (true, false) => break,
+                        (true, true) => retry_before_exiting = false,
+                        (_, _) => {}
                     }
                 }
                 Ok(_) => {
@@ -202,9 +207,13 @@ impl FifoReader {
                             format!("Failed to send data: {}", e),
                         ));
                     }
+
+                    // Reset the retry flag if we successfully sent data
+                    retry_before_exiting = true;
                 }
                 Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {
                     // No data available right now, try again
+                    thread::sleep(std::time::Duration::from_millis(10));
                 }
                 Err(e) if Self::is_recoverable_error(&e) => return Ok(()), // Allow retry
                 Err(e) => return Err(e),
