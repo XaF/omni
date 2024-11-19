@@ -227,7 +227,20 @@ impl UpConfigCustom {
                 .map_err(|_| UpError::Exec("failed to set data paths".to_string()))?;
 
             // Add the /bin directory of the install prefix to the PATH
-            environment.add_path(install_prefix.join("bin"));
+            let binpath = install_prefix.join("bin");
+            if binpath.exists() {
+                environment.add_path(binpath);
+            }
+
+            // Add the /lib directory of the install prefix to the LD_LIBRARY_PATH
+            let libpath = install_prefix.join("lib");
+            if libpath.exists() {
+                environment.add_env_var_operation(
+                    "LD_LIBRARY_PATH",
+                    &libpath.to_string_lossy().to_string(),
+                    EnvOperationEnum::Prepend,
+                );
+            }
         }
 
         Ok(())

@@ -253,19 +253,25 @@ impl UpEnvironment {
         self.last_assigned_at = OffsetDateTime::now_utc();
     }
 
-    pub fn add_env_var(&mut self, key: &str, value: &str) -> bool {
+    pub fn add_env_var<T>(&mut self, key: T, value: T) -> bool
+    where
+        T: AsRef<str>,
+    {
         self.add_env_var_operation(key, value, EnvOperationEnum::Set)
     }
 
-    pub fn add_env_var_operation(
+    pub fn add_env_var_operation<T>(
         &mut self,
-        key: &str,
-        value: &str,
+        key: T,
+        value: T,
         operation: EnvOperationEnum,
-    ) -> bool {
+    ) -> bool
+    where
+        T: AsRef<str>,
+    {
         let up_env_var = UpEnvVar {
-            name: key.to_string(),
-            value: Some(value.to_string()),
+            name: key.as_ref().to_string(),
+            value: Some(value.as_ref().to_string()),
             operation,
         };
 
