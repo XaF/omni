@@ -237,7 +237,7 @@ impl UpConfigCustom {
             if libpath.exists() {
                 environment.add_env_var_operation(
                     "LD_LIBRARY_PATH",
-                    &libpath.to_string_lossy().to_string(),
+                    libpath.to_string_lossy().as_ref(),
                     EnvOperationEnum::Prepend,
                 );
             }
