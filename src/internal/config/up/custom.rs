@@ -1,3 +1,6 @@
+use std::path::PathBuf;
+
+use once_cell::sync::OnceCell;
 use serde::Deserialize;
 use serde::Serialize;
 use tokio::process::Command as TokioCommand;
@@ -5,6 +8,7 @@ use tokio::process::Command as TokioCommand;
 use crate::internal::cache::up_environments::UpEnvVar;
 use crate::internal::cache::up_environments::UpEnvironment;
 use crate::internal::config::parser::EnvOperationEnum;
+use crate::internal::config::up::utils::data_path_dir_hash;
 use crate::internal::config::up::utils::run_progress;
 use crate::internal::config::up::utils::FifoReader;
 use crate::internal::config::up::utils::ProgressHandler;
@@ -14,6 +18,7 @@ use crate::internal::config::up::UpError;
 use crate::internal::config::up::UpOptions;
 use crate::internal::config::ConfigValue;
 use crate::internal::user_interface::StringColor;
+use crate::internal::workdir;
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct UpConfigCustom {
@@ -26,6 +31,9 @@ pub struct UpConfigCustom {
     pub name: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub dir: Option<String>,
+
+    #[serde(skip)]
+    data_paths: OnceCell<Vec<PathBuf>>,
 }
 
 impl UpConfigCustom {
@@ -64,6 +72,7 @@ impl UpConfigCustom {
             unmeet,
             name,
             dir,
+            data_paths: OnceCell::new(),
         }
     }
 
@@ -140,14 +149,29 @@ impl UpConfigCustom {
 
     fn met(&self) -> Option<bool> {
         if let Some(met) = &self.met {
+            // Get the install prefix, or error out if it's not available
+            let install_prefix = self.install_prefix()?;
+
             let mut command = std::process::Command::new("bash");
             command.arg("-c");
             command.arg(met);
+            command.env("PREFIX", &install_prefix);
             command.stdout(std::process::Stdio::null());
             command.stderr(std::process::Stdio::null());
 
             let output = command.output().unwrap();
-            Some(output.status.success())
+            let success = output.status.success();
+
+            if success {
+                // Keep all that's in the data path if the operation was
+                // already met, otherwise we will lose files that could
+                // have been built at a previous run
+                // TODO: how do we only keep files built at the previous
+                //       run of that specific step?
+                self.data_paths.set(vec![install_prefix]).ok()?;
+            }
+
+            Some(success)
         } else {
             None
         }
@@ -161,13 +185,21 @@ impl UpConfigCustom {
         if !self.meet.is_empty() {
             progress_handler.progress("running (meet) command".to_string());
 
+            // Get the install prefix, or error out if it's not available
+            let install_prefix = self
+                .install_prefix()
+                .ok_or_else(|| UpError::Exec("data path not available".to_string()))?;
+
+            // Prepare the FIFO reader to handle the OMNI_ENV file
             let mut fifo_reader =
                 FifoReader::new().map_err(|err| UpError::Exec(format!("{}", err)))?;
 
+            // Prepare and run the command
             let mut command = TokioCommand::new("bash");
             command.arg("-c");
             command.arg(&self.meet);
             command.env("OMNI_ENV", fifo_reader.path());
+            command.env("PREFIX", &install_prefix);
             command.stdout(std::process::Stdio::piped());
             command.stderr(std::process::Stdio::piped());
 
@@ -188,6 +220,27 @@ impl UpConfigCustom {
 
             // Add the environment operations to the environment
             environment.add_raw_env_vars(env_vars);
+
+            // Set the data paths
+            self.data_paths
+                .set(vec![install_prefix.clone()])
+                .map_err(|_| UpError::Exec("failed to set data paths".to_string()))?;
+
+            // Add the /bin directory of the install prefix to the PATH
+            let binpath = install_prefix.join("bin");
+            if binpath.exists() {
+                environment.add_path(binpath);
+            }
+
+            // Add the /lib directory of the install prefix to the LD_LIBRARY_PATH
+            let libpath = install_prefix.join("lib");
+            if libpath.exists() {
+                environment.add_env_var_operation(
+                    "LD_LIBRARY_PATH",
+                    libpath.to_string_lossy().as_ref(),
+                    EnvOperationEnum::Prepend,
+                );
+            }
         }
 
         Ok(())
@@ -207,6 +260,24 @@ impl UpConfigCustom {
         }
 
         Ok(())
+    }
+
+    fn install_prefix(&self) -> Option<PathBuf> {
+        let workdir = workdir(".");
+        let custom = workdir.data_path()?.join("custom");
+        let hashed_dir = data_path_dir_hash(match &self.dir {
+            Some(dir) => dir,
+            None => "",
+        });
+        Some(custom.join(hashed_dir))
+    }
+
+    pub fn was_upped(&self) -> bool {
+        self.data_paths.get().is_some()
+    }
+
+    pub fn data_paths(&self) -> Vec<PathBuf> {
+        self.data_paths.get().cloned().unwrap_or_default()
     }
 }
 
