@@ -1,17 +1,23 @@
-use core::fmt::Display;
-use core::fmt::Error;
-use core::fmt::Formatter;
-
 use serde::Deserialize;
 use serde::Serialize;
+use thiserror::Error;
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Error, Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub enum UpError {
+    #[error("configuration error: {0}")]
     Config(String),
+    #[error("execution error: {0}")]
     Exec(String),
+    #[error("timeout: {0}")]
     Timeout(String),
+    #[error("cache error: {0}")]
     Cache(String),
+    #[error("tap in use")]
     HomebrewTapInUse,
+    #[error("{}", match .1 {
+        Some((step, total)) => format!("step {}/{} '{}' failed", step, total, .0),
+        None => format!("step '{}' failed", .0)
+    })]
     StepFailed(String, Option<(usize, usize)>),
 }
 
@@ -35,23 +41,4 @@ impl UpError {
     // UpError::HomebrewTapInUse => "tap in use".to_string(),
     // }
     // }
-}
-
-impl Display for UpError {
-    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), Error> {
-        match self {
-            UpError::Config(message) => write!(f, "configuration error: {}", message),
-            UpError::Exec(message) => write!(f, "execution error: {}", message),
-            UpError::Timeout(message) => write!(f, "timeout: {}", message),
-            UpError::Cache(message) => write!(f, "cache error: {}", message),
-            UpError::HomebrewTapInUse => write!(f, "tap in use"),
-            UpError::StepFailed(name, progress) => {
-                if let Some((step, total)) = progress {
-                    write!(f, "step {}/{} '{}' failed", step, total, name)
-                } else {
-                    write!(f, "step '{}' failed", name)
-                }
-            }
-        }
-    }
 }
