@@ -1,12 +1,9 @@
-use std::fs;
-use std::path::Path;
 use std::path::PathBuf;
 
 use once_cell::sync::OnceCell;
 use serde::Deserialize;
 use serde::Serialize;
 use tokio::process::Command as TokioCommand;
-use walkdir::WalkDir;
 
 use crate::internal::cache::up_environments::UpEnvVar;
 use crate::internal::cache::up_environments::UpEnvironment;
@@ -20,7 +17,6 @@ use crate::internal::config::up::utils::UpProgressHandler;
 use crate::internal::config::up::UpError;
 use crate::internal::config::up::UpOptions;
 use crate::internal::config::ConfigValue;
-use crate::internal::env::tmpdir_cleanup_prefix;
 use crate::internal::user_interface::StringColor;
 use crate::internal::workdir;
 
@@ -194,15 +190,6 @@ impl UpConfigCustom {
                 .install_prefix()
                 .ok_or_else(|| UpError::Exec("data path not available".to_string()))?;
 
-            // Create a temporary directory for the DESTDIR
-            let temp_dir = tempfile::Builder::new()
-                .prefix(&tmpdir_cleanup_prefix("up-custom"))
-                .rand_bytes(12)
-                .tempdir()
-                .map_err(|err| {
-                    UpError::Exec(format!("failed to create temporary directory: {}", err))
-                })?;
-
             // Prepare the FIFO reader to handle the OMNI_ENV file
             let mut fifo_reader =
                 FifoReader::new().map_err(|err| UpError::Exec(format!("{}", err)))?;
@@ -213,7 +200,6 @@ impl UpConfigCustom {
             command.arg(&self.meet);
             command.env("OMNI_ENV", fifo_reader.path());
             command.env("PREFIX", &install_prefix);
-            command.env("DESTDIR", temp_dir.path());
             command.stdout(std::process::Stdio::piped());
             command.stderr(std::process::Stdio::piped());
 
@@ -235,19 +221,9 @@ impl UpConfigCustom {
             // Add the environment operations to the environment
             environment.add_raw_env_vars(env_vars);
 
-            // Go over all the files from the temporary directory and
-            // move them to the install prefix
-            let copied_files = copy_files_with_prefix(temp_dir.path(), &install_prefix)
-                .map_err(|err| UpError::Exec(format!("failed to copy files: {}", err)))?;
-
             // Set the data paths
             self.data_paths
-                .set(
-                    copied_files
-                        .iter()
-                        .map(|p| install_prefix.join(p))
-                        .collect(),
-                )
+                .set(vec![install_prefix.clone()])
                 .map_err(|_| UpError::Exec("failed to set data paths".to_string()))?;
 
             // Add the /bin directory of the install prefix to the PATH
@@ -290,71 +266,6 @@ impl UpConfigCustom {
     pub fn data_paths(&self) -> Vec<PathBuf> {
         self.data_paths.get().cloned().unwrap_or_default()
     }
-}
-
-/// Copies files from destdir to their final location under prefix
-/// Returns a vector of final destination paths relative to prefix
-pub fn copy_files_with_prefix<T>(destdir: T, prefix: T) -> Result<Vec<PathBuf>, String>
-where
-    T: AsRef<Path>,
-{
-    let destdir = destdir.as_ref();
-    let prefix = prefix.as_ref();
-
-    let destdir = fs::canonicalize(destdir).map_err(|e| {
-        format!(
-            "failed to canonicalize destdir path {}: {}",
-            destdir.display(),
-            e
-        )
-    })?;
-    let prefix_in_destdir = destdir.join(prefix);
-
-    // Prepare the vector to store the copied files
-    let mut copied_files = Vec::new();
-
-    // Walk through all files in destdir
-    for entry in WalkDir::new(&destdir)
-        .follow_links(true)
-        .into_iter()
-        .filter_map(|e| e.ok())
-        .filter(|e| e.file_type().is_file())
-    {
-        let source_path = entry.path();
-
-        // Calculate relative path and final destination
-        let relative_path = if let Ok(relative_path) = source_path.strip_prefix(&prefix_in_destdir)
-        {
-            relative_path
-        } else {
-            source_path
-                .strip_prefix(&destdir)
-                .map_err(|e| format!("failed to calculate relative path: {}", e))?
-        };
-
-        let dest_path = prefix.join(&relative_path);
-
-        // Create parent directories if they don't exist
-        if let Some(parent) = dest_path.parent() {
-            fs::create_dir_all(parent)
-                .map_err(|e| format!("failed to create directory {}: {}", parent.display(), e))?;
-        }
-
-        // Copy the file
-        fs::copy(source_path, &dest_path).map_err(|e| {
-            format!(
-                "failed to copy {} to {}: {}",
-                source_path.to_string_lossy(),
-                dest_path.to_string_lossy(),
-                e
-            )
-        })?;
-
-        // Store the relative path
-        copied_files.push(dest_path.to_path_buf());
-    }
-
-    Ok(copied_files)
 }
 
 /// Parse an environment file lines in the format supported by omni, and return a list of
