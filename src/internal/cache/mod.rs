@@ -3,6 +3,9 @@ pub(crate) mod loaders;
 pub(crate) mod asdf_operation;
 pub(crate) use asdf_operation::AsdfOperationCache;
 
+pub(crate) mod database;
+pub(crate) use database::CacheManager;
+
 pub(crate) mod github_release;
 pub(crate) use github_release::GithubReleaseOperationCache;
 pub(crate) use github_release::GithubReleaseVersion;

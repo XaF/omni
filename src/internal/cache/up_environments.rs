@@ -27,6 +27,8 @@ use crate::internal::config::up::utils::get_config_mod_times;
 use crate::internal::env::data_home;
 use crate::internal::env::now as omni_now;
 
+use crate::internal::cache::CacheManager;
+
 const UP_ENVIRONMENTS_CACHE_NAME: &str = "up_environments";
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -51,6 +53,17 @@ impl UpEnvironmentsCache {
     }
 
     pub fn get_env(&self, workdir_id: &str) -> Option<&UpEnvironment> {
+        let _db = CacheManager::get();
+        // let env_version_id: String = db
+        // .conn
+        // .query_row(
+        // "SELECT env_version_id FROM workdir_env WHERE workdir_id = ?",
+        // &[&workdir_id],
+        // |row| row.get(0),
+        // )
+        // .unwrap_or("".to_string());
+        // eprintln!("DB query: {:?}", env_version_id);
+
         let env_version_id = self.workdir_env.get(workdir_id)?;
         self.get_env_version(env_version_id)
     }
