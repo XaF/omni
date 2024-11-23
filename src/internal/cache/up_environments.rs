@@ -40,7 +40,7 @@ impl UpEnvironmentsCache {
         Some(env)
     }
 
-    pub fn clear(&mut self, workdir_id: &str) -> Result<bool, CacheManagerError> {
+    pub fn clear(&self, workdir_id: &str) -> Result<bool, CacheManagerError> {
         let mut cleared = false;
 
         let mut db = CacheManager::get();
@@ -67,7 +67,7 @@ impl UpEnvironmentsCache {
     }
 
     pub fn assign_environment(
-        &mut self,
+        &self,
         workdir_id: &str,
         head_sha: Option<String>,
         environment: &mut UpEnvironment,
