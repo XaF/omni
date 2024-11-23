@@ -149,6 +149,16 @@ impl CacheManager {
             .map_err(CacheManagerError::from)
     }
 
+    pub fn execute(
+        &self,
+        query: &str,
+        params: &[&dyn rusqlite::ToSql],
+    ) -> Result<usize, CacheManagerError> {
+        self.conn
+            .execute(query, params)
+            .map_err(CacheManagerError::from)
+    }
+
     // /// Executes a SQL file containing multiple statements with numbered parameters
     // ///
     // /// The SQL file can contain multiple statements separated by semicolons.

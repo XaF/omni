@@ -137,7 +137,8 @@ fn install_asdf(progress_handler: &dyn ProgressHandler) -> Result<(), UpError> {
 }
 
 fn update_asdf(progress_handler: &dyn ProgressHandler) -> Result<(), UpError> {
-    if !AsdfOperationCache::get().should_update_asdf() {
+    let cache = AsdfOperationCache::get();
+    if !cache.should_update_asdf() {
         return Ok(());
     }
 
@@ -152,10 +153,7 @@ fn update_asdf(progress_handler: &dyn ProgressHandler) -> Result<(), UpError> {
         RunConfig::default(),
     )?;
 
-    if let Err(err) = AsdfOperationCache::exclusive(|asdf_cache| {
-        asdf_cache.updated_asdf();
-        true
-    }) {
+    if let Err(err) = cache.updated_asdf() {
         return Err(UpError::Cache(err.to_string()));
     }
 
@@ -412,9 +410,9 @@ impl UpConfigAsdfBase {
 
         progress_handler.progress("updating cache".to_string());
 
-        if let Err(err) = AsdfOperationCache::exclusive(|asdf_cache| {
-            asdf_cache.add_installed(&self.tool, &version, self.tool_real_name.as_deref())
-        }) {
+        let cache = AsdfOperationCache::get();
+        if let Err(err) = cache.add_installed(&self.tool, &version, self.tool_real_name.as_deref())
+        {
             progress_handler.progress(format!("failed to update tool cache: {}", err));
             return;
         }
@@ -459,14 +457,13 @@ impl UpConfigAsdfBase {
             Err(_err) => return Err(UpError::Exec("failed to get version".to_string())),
         };
 
-        if let Err(err) = AsdfOperationCache::exclusive(|asdf_cache| {
-            asdf_cache.add_required_by(
-                env_version_id,
-                &self.tool,
-                &version,
-                self.tool_real_name.as_deref(),
-            )
-        }) {
+        let cache = AsdfOperationCache::get();
+        if let Err(err) = cache.add_required_by(
+            env_version_id,
+            &self.tool,
+            &version,
+            self.tool_real_name.as_deref(),
+        ) {
             return Err(UpError::Cache(err.to_string()));
         }
 

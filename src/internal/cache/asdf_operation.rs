@@ -1,20 +1,23 @@
 use std::collections::BTreeSet;
-use std::collections::HashMap;
 use std::io;
-use std::time::Duration;
 
+use rusqlite::params;
 use serde::Deserialize;
 use serde::Serialize;
+use time::format_description::well_known::Rfc3339;
 use time::OffsetDateTime;
 
+use crate::internal::cache::database::RowExt;
 use crate::internal::cache::handler::exclusive;
 use crate::internal::cache::handler::shared;
 use crate::internal::cache::loaders::get_asdf_operation_cache;
 use crate::internal::cache::loaders::set_asdf_operation_cache;
-use crate::internal::cache::offsetdatetime_hashmap;
 use crate::internal::cache::utils;
 use crate::internal::cache::utils::Empty;
+use crate::internal::cache::CacheManager;
+use crate::internal::cache::CacheManagerError;
 use crate::internal::cache::CacheObject;
+use crate::internal::cache::FromRow;
 use crate::internal::config::global_config;
 use crate::internal::config::up::utils::VersionMatcher;
 use crate::internal::env::now as omni_now;
@@ -25,32 +28,22 @@ const ASDF_OPERATION_CACHE_NAME: &str = "asdf_operation";
 pub struct AsdfOperationCache {
     #[serde(default = "Vec::new", skip_serializing_if = "Vec::is_empty")]
     pub installed: Vec<AsdfInstalled>,
-    #[serde(
-        default = "AsdfOperationUpdateCache::new",
-        skip_serializing_if = "AsdfOperationUpdateCache::is_empty"
-    )]
-    pub update_cache: AsdfOperationUpdateCache,
-    #[serde(
-        default = "utils::origin_of_time",
-        with = "time::serde::rfc3339",
-        skip_serializing_if = "utils::is_origin_of_time"
-    )]
-    pub updated_at: OffsetDateTime,
 }
 
 impl AsdfOperationCache {
-    pub fn updated(&mut self) {
-        self.updated_at = OffsetDateTime::now_utc();
+    pub fn updated_asdf(&self) -> Result<bool, CacheManagerError> {
+        let db = CacheManager::get();
+        let updated = db.execute(include_str!("sql/asdf_operation_updated_asdf.sql"), &[])?;
+        Ok(updated > 0)
     }
 
-    pub fn updated_asdf(&mut self) {
-        self.update_cache.updated_asdf();
-        self.updated();
-    }
-
-    pub fn updated_asdf_plugin(&mut self, plugin: &str) {
-        self.update_cache.updated_asdf_plugin(plugin);
-        self.updated();
+    pub fn updated_asdf_plugin(&self, plugin: &str) {
+        let db = CacheManager::get();
+        db.execute(
+            include_str!("sql/asdf_operation_updated_plugin.sql"),
+            params![plugin],
+        )
+        .expect("Failed to update asdf cache");
     }
 
     pub fn set_asdf_plugin_versions(
@@ -58,84 +51,112 @@ impl AsdfOperationCache {
         plugin: &str,
         versions: AsdfOperationUpdateCachePluginVersions,
     ) {
-        self.update_cache.set_asdf_plugin_versions(plugin, versions);
-        self.updated();
+        let db = CacheManager::get();
+        db.execute(
+            include_str!("sql/asdf_operation_updated_plugin_versions.sql"),
+            params![
+                plugin,
+                serde_json::to_string(&versions.versions).expect("Failed to serialize")
+            ],
+        )
+        .expect("Failed to update asdf cache");
     }
 
     pub fn should_update_asdf(&self) -> bool {
-        self.update_cache.should_update_asdf(Duration::from_secs(
-            global_config().cache.asdf.update_expire,
-        ))
+        let db = CacheManager::get();
+        let should_update: bool = db
+            .query_row(
+                include_str!("sql/asdf_operation_should_update_asdf.sql"),
+                params![global_config().cache.asdf.update_expire],
+                |row| row.get(0),
+            )
+            .unwrap_or(true);
+        should_update
     }
 
     pub fn should_update_asdf_plugin(&self, plugin: &str) -> bool {
-        self.update_cache.should_update_asdf_plugin(
-            plugin,
-            Duration::from_secs(global_config().cache.asdf.plugin_update_expire),
-        )
+        let db = CacheManager::get();
+        let should_update: bool = db
+            .query_row(
+                include_str!("sql/asdf_operation_should_update_plugin.sql"),
+                params![plugin, global_config().cache.asdf.plugin_update_expire,],
+                |row| row.get(0),
+            )
+            .unwrap_or(true);
+        should_update
     }
 
     pub fn get_asdf_plugin_versions(
         &self,
         plugin: &str,
     ) -> Option<AsdfOperationUpdateCachePluginVersions> {
-        self.update_cache.get_asdf_plugin_versions(plugin)
+        let db = CacheManager::get();
+        let versions: Option<AsdfOperationUpdateCachePluginVersions> = db
+            .query_one(
+                include_str!("sql/asdf_operation_get_plugin_versions.sql"),
+                params![plugin],
+            )
+            .unwrap_or_default();
+        versions
     }
 
     pub fn add_installed(
-        &mut self,
+        &self,
         tool: &str,
         version: &str,
         tool_real_name: Option<&str>,
-    ) -> bool {
-        self.add_required_by("", tool, version, tool_real_name)
+    ) -> Result<bool, CacheManagerError> {
+        let db = CacheManager::get();
+        let inserted = db.execute(
+            include_str!("sql/asdf_operation_add_installed.sql"),
+            params![tool, tool_real_name, version],
+        )?;
+        Ok(inserted > 0)
     }
 
     pub fn add_required_by(
-        &mut self,
+        &self,
         env_version_id: &str,
         tool: &str,
         version: &str,
         tool_real_name: Option<&str>,
-    ) -> bool {
-        let inserted = if let Some(install) = self
-            .installed
-            .iter_mut()
-            .find(|i| i.tool == tool && i.version == version)
-        {
-            let inserted = match env_version_id.is_empty() {
-                true => false,
-                false => install.required_by.insert(env_version_id.to_string()),
+    ) -> Result<bool, CacheManagerError> {
+        let mut db = CacheManager::get();
+        let mut inserted = false;
+
+        db.transaction(|tx| {
+            // Get the current list of required_by
+            let required_by_json: Option<String> = tx.query_one::<Option<String>>(
+                include_str!("sql/asdf_operation_get_required_by.sql"),
+                params![tool, version],
+            )?;
+            let mut required_by: BTreeSet<String> = match required_by_json {
+                Some(required_by_json) => serde_json::from_str(&required_by_json)?,
+                None => BTreeSet::new(),
             };
-            if inserted || install.last_required_at < omni_now() {
-                install.last_required_at = omni_now();
-                true
-            } else {
-                false
+
+            if !required_by.insert(env_version_id.to_string()) {
+                // Nothing to do, let's exit early
+                return Ok(());
             }
-        } else {
-            let install = AsdfInstalled {
-                tool: tool.to_string(),
-                tool_real_name: tool_real_name.map(|s| s.to_string()),
-                version: version.to_string(),
-                required_by: [env_version_id.to_string()].iter().cloned().collect(),
-                last_required_at: omni_now(),
-            };
-            self.installed.push(install);
-            true
-        };
 
-        if inserted {
-            self.updated();
-        }
+            // Insert the new required_by
+            tx.execute(
+                include_str!("sql/asdf_operation_add_required_by.sql"),
+                params![
+                    tool,
+                    tool_real_name,
+                    version,
+                    serde_json::to_string(&required_by)?,
+                ],
+            )?;
 
-        inserted
-    }
-}
+            inserted = true;
 
-impl Empty for AsdfOperationCache {
-    fn is_empty(&self) -> bool {
-        self.installed.is_empty() && self.update_cache.is_empty()
+            Ok(())
+        })?;
+
+        Ok(inserted)
     }
 }
 
@@ -143,8 +164,6 @@ impl CacheObject for AsdfOperationCache {
     fn new_empty() -> Self {
         Self {
             installed: Vec::new(),
-            update_cache: AsdfOperationUpdateCache::new(),
-            updated_at: utils::origin_of_time(),
         }
     }
 
@@ -195,78 +214,6 @@ impl AsdfInstalled {
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct AsdfOperationUpdateCache {
-    #[serde(
-        default = "utils::origin_of_time",
-        with = "time::serde::rfc3339",
-        skip_serializing_if = "utils::is_origin_of_time"
-    )]
-    pub asdf_updated_at: OffsetDateTime,
-    #[serde(
-        default = "HashMap::new",
-        skip_serializing_if = "HashMap::is_empty",
-        with = "offsetdatetime_hashmap"
-    )]
-    pub plugins_updated_at: HashMap<String, OffsetDateTime>,
-    #[serde(default = "HashMap::new", skip_serializing_if = "HashMap::is_empty")]
-    pub plugins_versions: HashMap<String, AsdfOperationUpdateCachePluginVersions>,
-}
-
-impl AsdfOperationUpdateCache {
-    pub fn new() -> Self {
-        Self {
-            asdf_updated_at: utils::origin_of_time(),
-            plugins_updated_at: HashMap::new(),
-            plugins_versions: HashMap::new(),
-        }
-    }
-
-    pub fn updated_asdf(&mut self) {
-        self.asdf_updated_at = OffsetDateTime::now_utc();
-    }
-
-    pub fn updated_asdf_plugin(&mut self, plugin: &str) {
-        self.plugins_updated_at
-            .insert(plugin.to_string(), OffsetDateTime::now_utc());
-    }
-
-    pub fn set_asdf_plugin_versions(
-        &mut self,
-        plugin: &str,
-        versions: AsdfOperationUpdateCachePluginVersions,
-    ) {
-        self.plugins_versions.insert(plugin.to_string(), versions);
-    }
-
-    pub fn should_update_asdf(&self, expire_after: Duration) -> bool {
-        (self.asdf_updated_at + expire_after) < OffsetDateTime::now_utc()
-    }
-
-    pub fn should_update_asdf_plugin(&self, plugin: &str, expire_after: Duration) -> bool {
-        if let Some(plugin_updated_at) = self.plugins_updated_at.get(plugin) {
-            (*plugin_updated_at + expire_after) < OffsetDateTime::now_utc()
-        } else {
-            true
-        }
-    }
-
-    pub fn get_asdf_plugin_versions(
-        &self,
-        plugin: &str,
-    ) -> Option<AsdfOperationUpdateCachePluginVersions> {
-        self.plugins_versions.get(plugin).cloned()
-    }
-}
-
-impl Empty for AsdfOperationUpdateCache {
-    fn is_empty(&self) -> bool {
-        self.plugins_versions.is_empty()
-            && self.plugins_updated_at.is_empty()
-            && self.asdf_updated_at == utils::origin_of_time()
-    }
-}
-
-#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct AsdfOperationUpdateCachePluginVersions {
     #[serde(default = "Vec::new", skip_serializing_if = "Vec::is_empty")]
     pub versions: Vec<String>,
@@ -275,24 +222,39 @@ pub struct AsdfOperationUpdateCachePluginVersions {
         with = "time::serde::rfc3339",
         skip_serializing_if = "utils::is_origin_of_time"
     )]
-    pub updated_at: OffsetDateTime,
+    pub fetched_at: OffsetDateTime,
+}
+
+impl FromRow for AsdfOperationUpdateCachePluginVersions {
+    fn from_row(row: &rusqlite::Row) -> Result<Self, CacheManagerError> {
+        let versions_json: String = row.get(0)?;
+        let versions: Vec<String> = serde_json::from_str(&versions_json)?;
+
+        let fetched_at_str: String = row.get(1)?;
+        let fetched_at = OffsetDateTime::parse(&fetched_at_str, &Rfc3339)?;
+
+        Ok(Self {
+            versions,
+            fetched_at,
+        })
+    }
 }
 
 impl AsdfOperationUpdateCachePluginVersions {
     pub fn new(versions: Vec<String>) -> Self {
         Self {
             versions,
-            updated_at: OffsetDateTime::now_utc(),
+            fetched_at: OffsetDateTime::now_utc(),
         }
     }
 
     pub fn is_fresh(&self) -> bool {
-        self.updated_at >= omni_now()
+        self.fetched_at >= omni_now()
     }
 
     pub fn is_stale(&self, ttl: u64) -> bool {
         let duration = time::Duration::seconds(ttl as i64);
-        self.updated_at + duration < OffsetDateTime::now_utc()
+        self.fetched_at + duration < OffsetDateTime::now_utc()
     }
 
     pub fn get(&self, matcher: &VersionMatcher) -> Option<String> {
