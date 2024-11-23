@@ -59,10 +59,12 @@ openssl = { version = "0.10", features = ["vendored"] }
 path-clean = "1.0.1"
 pathdiff = "0.2.1"
 petname = "2.0.2"
+r2d2 = "0.8.10"
+r2d2_sqlite = { version = "0.25.0", features = ["bundled"] }
 regex = "1.11.1"
 requestty = "0.5.0"
 reqwest = { version = "0.12.9", features = ["blocking"] }
-rusqlite = "0.32.1"
+rusqlite = { version = "0.32.1", features = ["bundled"] }
 self-replace = "1.5.0"
 semver = "1.0.23"
 serde = { version = "1.0", features = ["derive"] }

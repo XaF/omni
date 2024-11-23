@@ -92,18 +92,6 @@ fn migrate_up_environments(conn: &Connection) -> Result<(), CacheManagerError> {
     let file = std::fs::File::open(up_environments_path)?;
     let cache: PreDatabaseUpEnvironmentsCache = serde_json::from_reader(file)?;
 
-    // Add to the workdir_env table all entries from the workdir_env hash map
-    for (workdir_id, workdir_env) in cache.workdir_env.iter() {
-        // Table format:
-        //  workdir_id TEXT PRIMARY KEY,
-        //  env_version_id TEXT NOT NULL,
-
-        conn.execute(
-            "INSERT INTO workdir_env (workdir_id, env_version_id) VALUES (?1, ?2)",
-            params![workdir_id, workdir_env],
-        )?;
-    }
-
     // Add to the env_versions table all entries from the versioned_env hash map
     for (env_id, env) in cache.versioned_env.iter() {
         // Table format:
@@ -130,6 +118,18 @@ fn migrate_up_environments(conn: &Connection) -> Result<(), CacheManagerError> {
                 env.config_hash,
                 handle_date_string(&env.last_assigned_at),
             ],
+        )?;
+    }
+
+    // Add to the workdir_env table all entries from the workdir_env hash map
+    for (workdir_id, workdir_env) in cache.workdir_env.iter() {
+        // Table format:
+        //  workdir_id TEXT PRIMARY KEY,
+        //  env_version_id TEXT NOT NULL,
+
+        conn.execute(
+            "INSERT INTO workdir_env (workdir_id, env_version_id) VALUES (?1, ?2)",
+            params![workdir_id, workdir_env],
         )?;
     }
 

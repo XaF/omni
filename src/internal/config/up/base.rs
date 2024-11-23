@@ -4,7 +4,6 @@ use serde::Serialize;
 
 use crate::internal::cache::up_environments::UpEnvironment;
 use crate::internal::cache::utils::Empty;
-use crate::internal::cache::CacheObject;
 use crate::internal::cache::UpEnvironmentsCache;
 use crate::internal::config::up::utils::cleanup_path;
 use crate::internal::config::up::utils::reshim;
@@ -130,8 +129,8 @@ impl UpConfig {
 
     pub fn clear_cache() {
         let workdir = workdir(".");
-        if let Some(repo_id) = workdir.id() {
-            if let Err(err) = UpEnvironmentsCache::exclusive(|up_env| up_env.clear(&repo_id)) {
+        if let Some(workdir_id) = workdir.id() {
+            if let Err(err) = UpEnvironmentsCache::get().clear(&workdir_id) {
                 omni_warning!(format!("failed to update cache: {}", err));
             }
         }
@@ -202,17 +201,17 @@ impl UpConfig {
 
         // Assign the version id to the workdir now that we have successfully set it up
         progress_handler.progress("associating workdir to environment".to_string());
-        let mut new_env = true;
-        let mut assigned_environment = "".to_string();
-        if let Err(err) = UpEnvironmentsCache::exclusive(|up_env| {
-            (new_env, assigned_environment) =
-                up_env.assign_environment(&workdir_id, options.commit_sha.clone(), environment);
-            true
-        }) {
-            progress_handler.error_with_message(format!("failed to update cache: {}", err));
-            return Err(UpError::Cache(err.to_string()));
-        }
-
+        let (new_env, assigned_environment) = match UpEnvironmentsCache::get().assign_environment(
+            &workdir_id,
+            options.commit_sha.clone(),
+            environment,
+        ) {
+            Ok((new_env, assigned_environment)) => (new_env, assigned_environment),
+            Err(err) => {
+                progress_handler.error_with_message(format!("failed to update cache: {}", err));
+                return Err(UpError::Cache(err.to_string()));
+            }
+        };
         if assigned_environment.is_empty() {
             progress_handler.error_with_message("failed to assign environment".to_string());
             return Err(UpError::Cache("failed to assign environment".to_string()));

@@ -9,7 +9,6 @@ use serde::Serialize;
 use shell_escape::escape;
 
 use crate::internal::cache::up_environments::UpEnvironment;
-use crate::internal::cache::CacheObject;
 use crate::internal::cache::UpEnvironmentsCache;
 use crate::internal::config;
 use crate::internal::config::parser::EnvOperationEnum;
@@ -381,7 +380,7 @@ impl DynamicEnv {
 
             // Check if repo is 'up' and should have its environment loaded
             let up_env = if let Some(environment) = &self.environment {
-                Some(environment)
+                Some(environment.clone())
             } else {
                 self.cache.get_env(&workdir_id)
             };
@@ -455,7 +454,7 @@ impl DynamicEnv {
         let workdir = workdir(&path);
         if workdir.in_workdir() {
             up_env = if let Some(environment) = &self.environment {
-                Some(environment)
+                Some(environment.clone())
             } else if let Some(workdir_id) = workdir.id() {
                 self.cache.get_env(&workdir_id)
             } else {

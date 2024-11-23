@@ -31,8 +31,8 @@ CREATE TABLE IF NOT EXISTS env_versions (
 CREATE TABLE IF NOT EXISTS env_history (
     env_history_id INTEGER PRIMARY KEY AUTOINCREMENT,
     workdir_id TEXT NOT NULL,
-    head_sha TEXT,
     env_version_id TEXT NOT NULL,
+    head_sha TEXT,
     used_from_date TEXT NOT NULL,
     used_until_date TEXT,
     FOREIGN KEY(env_version_id) REFERENCES env_versions(env_version_id)
