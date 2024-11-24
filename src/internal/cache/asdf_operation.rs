@@ -1,4 +1,4 @@
-use std::collections::BTreeSet;
+use std::collections::HashSet;
 
 use rusqlite::params;
 use serde::Deserialize;
@@ -116,9 +116,9 @@ impl AsdfOperationCache {
                 include_str!("sql/asdf_operation_get_required_by.sql"),
                 params![tool, version],
             )?;
-            let mut required_by: BTreeSet<String> = match required_by_json {
+            let mut required_by: HashSet<String> = match required_by_json {
                 Some(required_by_json) => serde_json::from_str(&required_by_json)?,
-                None => BTreeSet::new(),
+                None => HashSet::new(),
             };
 
             if !required_by.insert(env_version_id.to_string()) {
@@ -156,13 +156,22 @@ impl AsdfOperationCache {
         let grace_period = config.cache.asdf.cleanup_after;
 
         db.transaction(|tx| {
+            // Get the list of tools and versions that can be deleted
             let deletable_tools: Vec<DeletableAsdfTool> = tx.query_as(
                 include_str!("sql/asdf_operation_list_removable.sql"),
                 params![&grace_period],
             )?;
 
             for tool in deletable_tools {
+                // Do the physical deletion of the tool and version
                 delete_func(&tool.tool, &tool.version)?;
+
+                // Add the deletion of that tool and version to the transaction
+                tx.execute(
+                    include_str!("sql/asdf_operation_remove.sql"),
+                    params![tool.tool, tool.version],
+                )?;
+
                 removed += 1;
             }
 
