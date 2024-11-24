@@ -53,9 +53,10 @@ CREATE TABLE IF NOT EXISTS asdf_installed (
 CREATE TABLE IF NOT EXISTS asdf_installed_required_by (
     tool TEXT NOT NULL,
     version TEXT NOT NULL,
-    workdir_id TEXT NOT NULL,
-    PRIMARY KEY (tool, version, workdir_id)
-    FOREIGN KEY(tool, version) REFERENCES asdf_installed(tool, version),
+    env_version_id TEXT NOT NULL,
+    PRIMARY KEY (tool, version, env_version_id),
+    FOREIGN KEY(tool, version) REFERENCES asdf_installed(tool, version) ON DELETE CASCADE,
+    FOREIGN KEY(env_version_id) REFERENCES env_versions(env_version_id) ON DELETE CASCADE
 );
 
 -- Table containing the cache of asdf plugins and when they have been updated
@@ -80,9 +81,10 @@ CREATE TABLE IF NOT EXISTS github_release_installed (
 CREATE TABLE IF NOT EXISTS github_release_installed_required_by (
     repository TEXT NOT NULL,
     version TEXT NOT NULL,
-    workdir_id TEXT NOT NULL,
-    PRIMARY KEY (repository, version, workdir_id)
-    FOREIGN KEY(repository, version) REFERENCES github_release_installed(repository, version),
+    env_version_id TEXT NOT NULL,
+    PRIMARY KEY (repository, version, env_version_id),
+    FOREIGN KEY(repository, version) REFERENCES github_release_installed(repository, version) ON DELETE CASCADE,
+    FOREIGN KEY(env_version_id) REFERENCES env_versions(env_version_id) ON DELETE CASCADE
 );
 
 -- Table containing the cache of Github releases per repository
@@ -108,9 +110,10 @@ CREATE TABLE IF NOT EXISTS homebrew_installed_required_by (
     name TEXT NOT NULL,
     version TEXT,
     cask BOOLEAN NOT NULL DEFAULT 0,
-    workdir_id TEXT NOT NULL,
-    PRIMARY KEY (name, version, cask, workdir_id)
-    FOREIGN KEY(name, version, cask) REFERENCES homebrew_installed(name, version, cask),
+    env_version_id TEXT NOT NULL,
+    PRIMARY KEY (name, version, cask, env_version_id),
+    FOREIGN KEY(name, version, cask) REFERENCES homebrew_installed(name, version, cask) ON DELETE CASCADE,
+    FOREIGN KEY(env_version_id) REFERENCES env_versions(env_version_id) ON DELETE CASCADE
 );
 
 -- Table containing the taps that were tapped using Homebrew
@@ -124,9 +127,10 @@ CREATE TABLE IF NOT EXISTS homebrew_tapped (
 -- requiring a given Homebrew tap
 CREATE TABLE IF NOT EXISTS homebrew_tapped_required_by (
     name TEXT NOT NULL,
-    workdir_id TEXT NOT NULL,
-    PRIMARY KEY (name, workdir_id)
-    FOREIGN KEY(name) REFERENCES homebrew_tapped(name),
+    env_version_id TEXT NOT NULL,
+    PRIMARY KEY (name, env_version_id),
+    FOREIGN KEY(name) REFERENCES homebrew_tapped(name) ON DELETE CASCADE,
+    FOREIGN KEY(env_version_id) REFERENCES env_versions(env_version_id) ON DELETE CASCADE
 );
 
 -- Table containing the cache of Homebrew formulae and casks and when they
@@ -156,7 +160,7 @@ CREATE TABLE IF NOT EXISTS prompts (
 
 -- Table containing the trusted work directories
 CREATE TABLE IF NOT EXISTS workdir_trusted (
-    workdir TEXT PRIMARY KEY
+    workdir_id TEXT PRIMARY KEY
 );
 
 -- Table containing the fingerprints of the work directories

@@ -1,5 +1,4 @@
 use std::collections::BTreeSet;
-use std::io;
 
 use rusqlite::params;
 use serde::Deserialize;
@@ -8,58 +7,48 @@ use time::format_description::well_known::Rfc3339;
 use time::OffsetDateTime;
 
 use crate::internal::cache::database::RowExt;
-use crate::internal::cache::handler::exclusive;
-use crate::internal::cache::handler::shared;
-use crate::internal::cache::loaders::get_asdf_operation_cache;
-use crate::internal::cache::loaders::set_asdf_operation_cache;
 use crate::internal::cache::utils;
-use crate::internal::cache::utils::Empty;
 use crate::internal::cache::CacheManager;
 use crate::internal::cache::CacheManagerError;
-use crate::internal::cache::CacheObject;
 use crate::internal::cache::FromRow;
 use crate::internal::config::global_config;
 use crate::internal::config::up::utils::VersionMatcher;
 use crate::internal::env::now as omni_now;
 
-const ASDF_OPERATION_CACHE_NAME: &str = "asdf_operation";
-
 #[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct AsdfOperationCache {
-    #[serde(default = "Vec::new", skip_serializing_if = "Vec::is_empty")]
-    pub installed: Vec<AsdfInstalled>,
-}
+pub struct AsdfOperationCache {}
 
 impl AsdfOperationCache {
+    pub fn get() -> Self {
+        Self {}
+    }
+
     pub fn updated_asdf(&self) -> Result<bool, CacheManagerError> {
         let db = CacheManager::get();
         let updated = db.execute(include_str!("sql/asdf_operation_updated_asdf.sql"), &[])?;
         Ok(updated > 0)
     }
 
-    pub fn updated_asdf_plugin(&self, plugin: &str) {
+    pub fn updated_asdf_plugin(&self, plugin: &str) -> Result<bool, CacheManagerError> {
         let db = CacheManager::get();
-        db.execute(
+        let updated = db.execute(
             include_str!("sql/asdf_operation_updated_plugin.sql"),
             params![plugin],
-        )
-        .expect("Failed to update asdf cache");
+        )?;
+        Ok(updated > 0)
     }
 
     pub fn set_asdf_plugin_versions(
-        &mut self,
+        &self,
         plugin: &str,
-        versions: AsdfOperationUpdateCachePluginVersions,
-    ) {
+        versions: AsdfPluginVersions,
+    ) -> Result<bool, CacheManagerError> {
         let db = CacheManager::get();
-        db.execute(
+        let updated = db.execute(
             include_str!("sql/asdf_operation_updated_plugin_versions.sql"),
-            params![
-                plugin,
-                serde_json::to_string(&versions.versions).expect("Failed to serialize")
-            ],
-        )
-        .expect("Failed to update asdf cache");
+            params![plugin, serde_json::to_string(&versions.versions)?],
+        )?;
+        Ok(updated > 0)
     }
 
     pub fn should_update_asdf(&self) -> bool {
@@ -86,12 +75,9 @@ impl AsdfOperationCache {
         should_update
     }
 
-    pub fn get_asdf_plugin_versions(
-        &self,
-        plugin: &str,
-    ) -> Option<AsdfOperationUpdateCachePluginVersions> {
+    pub fn get_asdf_plugin_versions(&self, plugin: &str) -> Option<AsdfPluginVersions> {
         let db = CacheManager::get();
-        let versions: Option<AsdfOperationUpdateCachePluginVersions> = db
+        let versions: Option<AsdfPluginVersions> = db
             .query_one(
                 include_str!("sql/asdf_operation_get_plugin_versions.sql"),
                 params![plugin],
@@ -158,63 +144,50 @@ impl AsdfOperationCache {
 
         Ok(inserted)
     }
-}
 
-impl CacheObject for AsdfOperationCache {
-    fn new_empty() -> Self {
-        Self {
-            installed: Vec::new(),
-        }
-    }
-
-    fn get() -> Self {
-        get_asdf_operation_cache()
-    }
-
-    fn shared() -> io::Result<Self> {
-        shared::<Self>(ASDF_OPERATION_CACHE_NAME)
-    }
-
-    fn exclusive<F>(processing_fn: F) -> io::Result<Self>
+    pub fn cleanup<F>(&self, mut delete_func: F) -> Result<(), CacheManagerError>
     where
-        F: FnOnce(&mut Self) -> bool,
+        F: FnMut(&str, &str) -> Result<(), CacheManagerError>,
     {
-        exclusive::<Self, F, fn(Self)>(
-            ASDF_OPERATION_CACHE_NAME,
-            processing_fn,
-            set_asdf_operation_cache,
-        )
-    }
-}
-
-#[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct AsdfInstalled {
-    pub tool: String,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub tool_real_name: Option<String>,
-    pub version: String,
-    #[serde(default = "BTreeSet::new", skip_serializing_if = "BTreeSet::is_empty")]
-    pub required_by: BTreeSet<String>,
-    #[serde(default = "utils::origin_of_time", with = "time::serde::rfc3339")]
-    pub last_required_at: OffsetDateTime,
-}
-
-impl AsdfInstalled {
-    pub fn removable(&self) -> bool {
-        if !self.required_by.is_empty() {
-            return false;
-        }
+        let mut db = CacheManager::get();
+        let mut removed = 0;
 
         let config = global_config();
         let grace_period = config.cache.asdf.cleanup_after;
-        let grace_period = time::Duration::seconds(grace_period as i64);
 
-        (self.last_required_at + grace_period) < omni_now()
+        db.transaction(|tx| {
+            let deletable_tools: Vec<DeletableAsdfTool> = tx.query_as(
+                include_str!("sql/asdf_operation_list_removable.sql"),
+                params![&grace_period],
+            )?;
+
+            for tool in deletable_tools {
+                delete_func(&tool.tool, &tool.version)?;
+                removed += 1;
+            }
+
+            Ok(())
+        })?;
+
+        Ok(())
+    }
+}
+
+struct DeletableAsdfTool {
+    tool: String,
+    version: String,
+}
+
+impl FromRow for DeletableAsdfTool {
+    fn from_row(row: &rusqlite::Row) -> Result<Self, CacheManagerError> {
+        let tool: String = row.get(0)?;
+        let version: String = row.get(1)?;
+        Ok(Self { tool, version })
     }
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct AsdfOperationUpdateCachePluginVersions {
+pub struct AsdfPluginVersions {
     #[serde(default = "Vec::new", skip_serializing_if = "Vec::is_empty")]
     pub versions: Vec<String>,
     #[serde(
@@ -225,7 +198,7 @@ pub struct AsdfOperationUpdateCachePluginVersions {
     pub fetched_at: OffsetDateTime,
 }
 
-impl FromRow for AsdfOperationUpdateCachePluginVersions {
+impl FromRow for AsdfPluginVersions {
     fn from_row(row: &rusqlite::Row) -> Result<Self, CacheManagerError> {
         let versions_json: String = row.get(0)?;
         let versions: Vec<String> = serde_json::from_str(&versions_json)?;
@@ -240,7 +213,7 @@ impl FromRow for AsdfOperationUpdateCachePluginVersions {
     }
 }
 
-impl AsdfOperationUpdateCachePluginVersions {
+impl AsdfPluginVersions {
     pub fn new(versions: Vec<String>) -> Self {
         Self {
             versions,
@@ -263,11 +236,5 @@ impl AsdfOperationUpdateCachePluginVersions {
             .rev()
             .find(|v| matcher.matches(v))
             .cloned()
-    }
-}
-
-impl Empty for AsdfOperationUpdateCachePluginVersions {
-    fn is_empty(&self) -> bool {
-        self.versions.is_empty()
     }
 }

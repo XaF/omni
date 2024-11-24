@@ -253,28 +253,43 @@ fn migrate_asdf_operation(conn: &Connection) -> Result<(), CacheManagerError> {
     let file = std::fs::File::open(json_path)?;
     let cache: PreDatabaseAsdfOperationCache = serde_json::from_reader(file)?;
 
-    // installed versions through asdf to be stored in asdf_installed:
+    // asdf_installed:
     //  tool TEXT NOT NULL,
     //  tool_real_name TEXT,
     //  version TEXT NOT NULL,
-    //  required_by TEXT NOT NULL, -- JSON array
     //  last_required_at TEXT NOT NULL,
 
+    // asdf_installed_required_by:
+    //  tool TEXT NOT NULL,
+    //  version TEXT NOT NULL,
+    //  env_version_id TEXT NOT NULL
+
+    let mut installed_stmt = conn.prepare(concat!(
+        "INSERT INTO asdf_installed ",
+        "(tool, tool_real_name, version, last_required_at) ",
+        "VALUES (?1, ?2, ?3, ?4)",
+    ))?;
+    let mut required_by_stmt = conn.prepare(concat!(
+        "INSERT INTO asdf_installed_required_by ",
+        "(tool, version, env_version_id) ",
+        "VALUES (?1, ?2, ?3)",
+    ))?;
     for installed in cache.installed.iter() {
-        conn.execute(
-            concat!(
-                "INSERT INTO asdf_installed ",
-                "(tool, tool_real_name, version, required_by, last_required_at) ",
-                "VALUES (?1, ?2, ?3, ?4, ?5)",
-            ),
-            params![
-                installed.tool,
-                installed.tool_real_name,
-                installed.version,
-                serde_json::to_string(&installed.required_by)?,
-                handle_date_string(&installed.last_required_at),
-            ],
-        )?;
+        installed_stmt.execute(params![
+            &installed.tool,
+            &installed.tool_real_name,
+            &installed.version,
+            handle_date_string(&installed.last_required_at),
+        ])?;
+
+        // Insert the required_by data into the asdf_installed_required_by table
+        for env_version_id in installed.required_by.iter() {
+            required_by_stmt.execute(params![
+                &installed.tool,
+                &installed.version,
+                &env_version_id
+            ])?;
+        }
     }
 
     // asdf update cache to be stored in metadata:
@@ -326,25 +341,23 @@ fn migrate_asdf_operation(conn: &Connection) -> Result<(), CacheManagerError> {
     }
 
     // Insert the data into the database
+    let mut plugin_stmt = conn.prepare(concat!(
+        "INSERT INTO asdf_plugins ",
+        "(plugin, updated_at, versions, versions_fetched_at) ",
+        "VALUES (?1, ?2, ?3, ?4)",
+    ))?;
     for (plugin, info) in plugins.iter() {
         let versions = info
             .versions_data
             .as_ref()
             .map(|v| serde_json::to_string(&v.versions).unwrap());
 
-        conn.execute(
-            concat!(
-                "INSERT INTO asdf_plugins ",
-                "(plugin, updated_at, versions, versions_fetched_at) ",
-                "VALUES (?1, ?2, ?3, ?4)",
-            ),
-            params![
-                plugin,
-                handle_date_string(&info.updated_at.as_ref().unwrap_or(&"".to_string())),
-                versions,
-                handle_optional_date_string(&info.versions_data.as_ref().map(|v| &v.updated_at)),
-            ],
-        )?;
+        plugin_stmt.execute(params![
+            plugin,
+            handle_date_string(&info.updated_at.as_ref().unwrap_or(&"".to_string())),
+            versions,
+            handle_optional_date_string(&info.versions_data.as_ref().map(|v| &v.updated_at)),
+        ])?;
     }
 
     Ok(())
@@ -420,26 +433,42 @@ fn migrate_github_release_operation(conn: &Connection) -> Result<(), CacheManage
     let file = std::fs::File::open(json_path)?;
     let cache: PreDatabaseGithubReleaseOperationCache = serde_json::from_reader(file)?;
 
-    // For the installed releases, github_release_installed:
+    // github_release_installed:
     //  repository TEXT NOT NULL,
     //  version TEXT NOT NULL,
-    //  required_by TEXT NOT NULL, -- JSON array
     //  last_required_at TEXT NOT NULL,
 
+    // github_release_installed_required_by:
+    //   repository TEXT NOT NULL,
+    //   version TEXT NOT NULL,
+    //   env_version_id TEXT NOT NULL
+
+    let mut installed_stmt = conn.prepare(concat!(
+        "INSERT INTO github_release_installed ",
+        "(repository, version, last_required_at) ",
+        "VALUES (?1, ?2, ?3)",
+    ))?;
+
+    let mut required_by_stmt = conn.prepare(concat!(
+        "INSERT INTO github_release_installed_required_by ",
+        "(repository, version, env_version_id) ",
+        "VALUES (?1, ?2, ?3)",
+    ))?;
+
     for installed in cache.installed.iter() {
-        conn.execute(
-            concat!(
-                "INSERT INTO github_release_installed ",
-                "(repository, version, required_by, last_required_at) ",
-                "VALUES (?1, ?2, ?3, ?4)",
-            ),
-            params![
-                installed.repository,
-                installed.version,
-                serde_json::to_string(&installed.required_by)?,
-                handle_date_string(&installed.last_required_at),
-            ],
-        )?;
+        installed_stmt.execute(params![
+            &installed.repository,
+            &installed.version,
+            handle_date_string(&installed.last_required_at),
+        ])?;
+
+        for env_version_id in installed.required_by.iter() {
+            required_by_stmt.execute(params![
+                &installed.repository,
+                &installed.version,
+                &env_version_id,
+            ])?;
+        }
     }
 
     // For the cache of releases of a repository, github_releases:
@@ -447,19 +476,18 @@ fn migrate_github_release_operation(conn: &Connection) -> Result<(), CacheManage
     //  releases TEXT NOT NULL,  -- JSON array of GithubReleaseVersion
     //  fetched_at TEXT NOT NULL
 
+    let mut releases_stmt = conn.prepare(concat!(
+        "INSERT INTO github_releases ",
+        "(repository, releases, fetched_at) ",
+        "VALUES (?1, ?2, ?3)",
+    ))?;
+
     for (repository, releases) in cache.releases.iter() {
-        conn.execute(
-            concat!(
-                "INSERT INTO github_releases ",
-                "(repository, releases, fetched_at) ",
-                "VALUES (?1, ?2, ?3)",
-            ),
-            params![
-                repository,
-                serde_json::to_string(&releases.releases)?,
-                handle_date_string(&releases.fetched_at),
-            ],
-        )?;
+        releases_stmt.execute(params![
+            repository,
+            serde_json::to_string(&releases.releases)?,
+            handle_date_string(&releases.fetched_at),
+        ])?;
     }
 
     Ok(())
@@ -547,52 +575,81 @@ fn migrate_homebrew_operation(conn: &Connection) -> Result<(), CacheManagerError
     let file = std::fs::File::open(json_path)?;
     let cache: PreDatabaseHomebrewOperationCache = serde_json::from_reader(file)?;
 
-    // For the formulae/cask, homebrew_installed:
+    // homebrew_installed:
     //  name TEXT NOT NULL,
     //  version TEXT,
     //  cask BOOLEAN NOT NULL DEFAULT 0,
     //  installed BOOLEAN NOT NULL DEFAULT 0,
-    //  required_by TEXT NOT NULL, -- JSON array
     //  last_required_at TEXT NOT NULL,
 
+    // homebrew_installed_required_by:
+    //  name TEXT NOT NULL,
+    //  version TEXT NOT NULL,
+    //  cask BOOLEAN NOT NULL DEFAULT 0,
+    //  env_version_id TEXT NOT NULL
+
+    let mut installed_stmt = conn.prepare(concat!(
+        "INSERT INTO homebrew_installed ",
+        "(name, version, cask, installed, last_required_at) ",
+        "VALUES (?1, ?2, ?3, ?4, ?5)",
+    ))?;
+
+    let mut installed_required_by_stmt = conn.prepare(concat!(
+        "INSERT INTO homebrew_installed_required_by ",
+        "(name, version, cask, env_version_id) ",
+        "VALUES (?1, ?2, ?3, ?4)",
+    ))?;
+
     for installed in cache.installed.iter() {
-        conn.execute(
-            concat!(
-                "INSERT INTO homebrew_installed ",
-                "(name, version, cask, installed, required_by, last_required_at) ",
-                "VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
-            ),
-            params![
-                installed.name,
-                installed.version,
-                installed.cask,
-                installed.installed,
-                serde_json::to_string(&installed.required_by)?,
-                installed.last_required_at
-            ],
-        )?;
+        installed_stmt.execute(params![
+            &installed.name,
+            &installed.version,
+            &installed.cask,
+            &installed.installed,
+            &installed.last_required_at
+        ])?;
+
+        for env_version_id in installed.required_by.iter() {
+            installed_required_by_stmt.execute(params![
+                &installed.name,
+                &installed.version,
+                &installed.cask,
+                &env_version_id,
+            ])?;
+        }
     }
 
-    // For the taps, homebrew_tapped:
+    // homebrew_tapped:
     //  name TEXT PRIMARY KEY,
     //  tapped BOOLEAN NOT NULL DEFAULT 0,
-    //  required_by TEXT NOT NULL, -- JSON array
     //  last_required_at TEXT NOT NULL
 
+    // homebrew_tapped_required_by:
+    //   name TEXT NOT NULL,
+    //   env_version_id TEXT NOT NULL
+
+    let mut tapped_stmt = conn.prepare(concat!(
+        "INSERT INTO homebrew_tapped ",
+        "(name, tapped, last_required_at) ",
+        "VALUES (?1, ?2, ?3)",
+    ))?;
+
+    let mut tapped_required_by_stmt = conn.prepare(concat!(
+        "INSERT INTO homebrew_tapped_required_by ",
+        "(name, env_version_id) ",
+        "VALUES (?1, ?2)",
+    ))?;
+
     for tapped in cache.tapped.iter() {
-        conn.execute(
-            concat!(
-                "INSERT INTO homebrew_tapped ",
-                "(name, tapped, required_by, last_required_at) ",
-                "VALUES (?1, ?2, ?3, ?4)",
-            ),
-            params![
-                tapped.name,
-                tapped.tapped,
-                serde_json::to_string(&tapped.required_by)?,
-                tapped.last_required_at
-            ],
-        )?;
+        tapped_stmt.execute(params![
+            &tapped.name,
+            &tapped.tapped,
+            handle_date_string(&tapped.last_required_at.clone().unwrap_or("".to_string())),
+        ])?;
+
+        for env_version_id in tapped.required_by.iter() {
+            tapped_required_by_stmt.execute(params![&tapped.name, &env_version_id])?;
+        }
     }
 
     // For the homebrew update cache, two keys (homebrew.bin_path and homebrew.updated_at) metadata:
@@ -615,11 +672,17 @@ fn migrate_homebrew_operation(conn: &Connection) -> Result<(), CacheManagerError
         }
     }
 
-    // For the homebrew install cache, homebrew_install_cache:
+    // homebrew_install_cache:
     //  install_key TEXT PRIMARY KEY,
     //  updated_at TEXT NOT NULL,
     //  checked_at TEXT NOT NULL,
     //  bin_paths TEXT  -- JSON array
+
+    let mut install_cache_stmt = conn.prepare(concat!(
+        "INSERT INTO homebrew_install_cache ",
+        "(install_key, updated_at, checked_at, bin_paths) ",
+        "VALUES (?1, ?2, ?3, ?4)",
+    ))?;
 
     for (install_key, install) in cache
         .update_cache
@@ -627,24 +690,23 @@ fn migrate_homebrew_operation(conn: &Connection) -> Result<(), CacheManagerError
         .map(|c| &c.install)
         .unwrap_or(&HashMap::new())
     {
-        conn.execute(
-            concat!(
-                "INSERT INTO homebrew_install_cache ",
-                "(install_key, updated_at, checked_at, bin_paths) ",
-                "VALUES (?1, ?2, ?3, ?4)",
-            ),
-            params![
-                install_key,
-                handle_date_string(&install.updated_at),
-                handle_date_string(&install.checked_at),
-                serde_json::to_string(&install.bin_paths)?
-            ],
-        )?;
+        install_cache_stmt.execute(params![
+            install_key,
+            handle_date_string(&install.updated_at),
+            handle_date_string(&install.checked_at),
+            serde_json::to_string(&install.bin_paths)?
+        ])?;
     }
 
     // For the homebrew tap cache, homebrew_tap_cache:
     //  tap_name TEXT PRIMARY KEY,
     //  updated_at TEXT NOT NULL
+
+    let mut tap_cache_stmt = conn.prepare(concat!(
+        "INSERT INTO homebrew_tap_cache ",
+        "(tap_name, updated_at) ",
+        "VALUES (?1, ?2)",
+    ))?;
 
     for (tap_name, tap) in cache
         .update_cache
@@ -652,14 +714,7 @@ fn migrate_homebrew_operation(conn: &Connection) -> Result<(), CacheManagerError
         .map(|c| &c.tap)
         .unwrap_or(&HashMap::new())
     {
-        conn.execute(
-            concat!(
-                "INSERT INTO homebrew_tap_cache ",
-                "(tap_name, updated_at) ",
-                "VALUES (?1, ?2)",
-            ),
-            params![tap_name, handle_date_string(&tap.updated_at)],
-        )?;
+        tap_cache_stmt.execute(params![tap_name, handle_date_string(&tap.updated_at)])?;
     }
 
     Ok(())
@@ -698,11 +753,19 @@ fn migrate_prompts(conn: &Connection) -> Result<(), CacheManagerError> {
     //  repository TEXT,
     //  answer TEXT,
 
+    let mut answer_stmt = conn.prepare(concat!(
+        "INSERT INTO prompts ",
+        "(prompt_id, organization, repository, answer) ",
+        "VALUES (?1, ?2, ?3, ?4)",
+    ))?;
+
     for answer in cache.answers.iter() {
-        conn.execute(
-            "INSERT INTO prompts (prompt_id, organization, repository, answer) VALUES (?1, ?2, ?3, ?4)",
-            params![answer.id, answer.org, answer.repo, serde_json::to_string(&answer.answer)?],
-        )?;
+        answer_stmt.execute(params![
+            &answer.id,
+            &answer.org,
+            &answer.repo,
+            serde_json::to_string(&answer.answer)?
+        ])?;
     }
 
     Ok(())
@@ -738,28 +801,37 @@ fn migrate_repositories(conn: &Connection) -> Result<(), CacheManagerError> {
     let file = std::fs::File::open(json_path)?;
     let cache: PreDatabaseRepositoriesCache = serde_json::from_reader(file)?;
 
-    // We have to add things in two tables:
     // workdir_trusted:
-    //  workdir TEXT PRIMARY KEY
-    //
+    //  workdir_id TEXT PRIMARY KEY
+
     // workdir_fingerprints:
     //  workdir_id TEXT NOT NULL,
     //  fingerprint_type TEXT NOT NULL,
     //  fingerprint TEXT NOT NULL
 
+    let mut trusted_stmt = conn.prepare(concat!(
+        "INSERT INTO workdir_trusted ",
+        "(workdir_id) ",
+        "VALUES (?1)",
+    ))?;
+
     for trusted in cache.trusted.iter() {
-        conn.execute(
-            "INSERT INTO workdir_trusted (workdir) VALUES (?1)",
-            params![trusted],
-        )?;
+        trusted_stmt.execute(params![trusted])?;
     }
+
+    let mut fingerprints_stmt = conn.prepare(concat!(
+        "INSERT INTO workdir_fingerprints ",
+        "(workdir_id, fingerprint_type, fingerprint) ",
+        "VALUES (?1, ?2, ?3)",
+    ))?;
 
     for (workdir_id, fingerprints) in cache.fingerprints.iter() {
         for (fingerprint_type, fingerprint) in fingerprints.fingerprints.iter() {
-            conn.execute(
-                "INSERT INTO workdir_fingerprints (workdir_id, fingerprint_type, fingerprint) VALUES (?1, ?2, ?3)",
-                params![workdir_id, fingerprint_type, serde_json::to_string(fingerprint)?],
-            )?;
+            fingerprints_stmt.execute(params![
+                &workdir_id,
+                &fingerprint_type,
+                serde_json::to_string(&fingerprint)?
+            ])?;
         }
     }
 

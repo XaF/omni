@@ -82,6 +82,8 @@ pub enum CacheManagerError {
     SerdeError(#[from] serde_json::Error),
     #[error("Time parse error: {0}")]
     TimeParseError(#[from] time::error::Parse),
+    #[error("{0}")]
+    Other(String),
 }
 
 impl From<CacheManagerError> for rusqlite::Error {
@@ -95,6 +97,9 @@ impl From<CacheManagerError> for rusqlite::Error {
             CacheManagerError::TimeParseError(e) => {
                 rusqlite::Error::ToSqlConversionFailure(Box::new(e))
             }
+            CacheManagerError::Other(e) => rusqlite::Error::ToSqlConversionFailure(Box::new(
+                std::io::Error::new(std::io::ErrorKind::Other, e),
+            )),
         }
     }
 }
