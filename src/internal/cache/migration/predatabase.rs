@@ -284,11 +284,18 @@ fn migrate_asdf_operation(conn: &Connection) -> Result<(), CacheManagerError> {
 
         // Insert the required_by data into the asdf_installed_required_by table
         for env_version_id in installed.required_by.iter() {
-            required_by_stmt.execute(params![
+            if let Err(err) = required_by_stmt.execute(params![
                 &installed.tool,
                 &installed.version,
                 &env_version_id
-            ])?;
+            ]) {
+                if matches!(err, rusqlite::Error::SqliteFailure(error, _) if error.code == rusqlite::ErrorCode::ConstraintViolation)
+                {
+                    // Ignore constraint violation errors, it could simply be old invalid data
+                } else {
+                    return Err(err.into());
+                }
+            }
         }
     }
 
@@ -463,11 +470,18 @@ fn migrate_github_release_operation(conn: &Connection) -> Result<(), CacheManage
         ])?;
 
         for env_version_id in installed.required_by.iter() {
-            required_by_stmt.execute(params![
+            if let Err(err) = required_by_stmt.execute(params![
                 &installed.repository,
                 &installed.version,
                 &env_version_id,
-            ])?;
+            ]) {
+                if matches!(err, rusqlite::Error::SqliteFailure(error, _) if error.code == rusqlite::ErrorCode::ConstraintViolation)
+                {
+                    // Ignore constraint violation errors, it could simply be old invalid data
+                } else {
+                    return Err(err.into());
+                }
+            }
         }
     }
 
@@ -610,12 +624,19 @@ fn migrate_homebrew_operation(conn: &Connection) -> Result<(), CacheManagerError
         ])?;
 
         for env_version_id in installed.required_by.iter() {
-            installed_required_by_stmt.execute(params![
+            if let Err(err) = installed_required_by_stmt.execute(params![
                 &installed.name,
                 &installed.version,
                 &installed.cask,
                 &env_version_id,
-            ])?;
+            ]) {
+                if matches!(err, rusqlite::Error::SqliteFailure(error, _) if error.code == rusqlite::ErrorCode::ConstraintViolation)
+                {
+                    // Ignore constraint violation errors, it could simply be old invalid data
+                } else {
+                    return Err(err.into());
+                }
+            }
         }
     }
 
@@ -648,7 +669,16 @@ fn migrate_homebrew_operation(conn: &Connection) -> Result<(), CacheManagerError
         ])?;
 
         for env_version_id in tapped.required_by.iter() {
-            tapped_required_by_stmt.execute(params![&tapped.name, &env_version_id])?;
+            if let Err(err) =
+                tapped_required_by_stmt.execute(params![&tapped.name, &env_version_id])
+            {
+                if matches!(err, rusqlite::Error::SqliteFailure(error, _) if error.code == rusqlite::ErrorCode::ConstraintViolation)
+                {
+                    // Ignore constraint violation errors, it could simply be old invalid data
+                } else {
+                    return Err(err.into());
+                }
+            }
         }
     }
 
@@ -672,16 +702,13 @@ fn migrate_homebrew_operation(conn: &Connection) -> Result<(), CacheManagerError
         }
     }
 
-    // homebrew_install_cache:
-    //  install_key TEXT PRIMARY KEY,
-    //  updated_at TEXT NOT NULL,
-    //  checked_at TEXT NOT NULL,
-    //  bin_paths TEXT  -- JSON array
-
     let mut install_cache_stmt = conn.prepare(concat!(
-        "INSERT INTO homebrew_install_cache ",
-        "(install_key, updated_at, checked_at, bin_paths) ",
-        "VALUES (?1, ?2, ?3, ?4)",
+        "INSERT INTO homebrew_installed ",
+        "(name, version, cask, updated_at, checked_at, bin_paths) ",
+        "VALUES (?1, ?2, MIN(1, ?3), ?4, ?5, ?6) ",
+        "ON CONFLICT(name, version, cask) DO UPDATE SET ",
+        "updated_at = ?4, checked_at = ?5, bin_paths = ?6 ",
+        "WHERE name = ?1 AND version = ?2 AND cask = MIN(1, ?3)",
     ))?;
 
     for (install_key, install) in cache
@@ -690,22 +717,40 @@ fn migrate_homebrew_operation(conn: &Connection) -> Result<(), CacheManagerError
         .map(|c| &c.install)
         .unwrap_or(&HashMap::new())
     {
+        // Parse an install key:
+        //   <cask|formula>:<name>[@<version>]
+
+        let parts: Vec<&str> = install_key.split(':').collect();
+        if parts.len() != 2 {
+            continue;
+        }
+
+        let install_cask = parts[0] == "cask";
+        let parts: Vec<&str> = parts[1].split('@').collect();
+
+        let (install_name, install_version) = match parts.len() {
+            1 => (parts[0], None),
+            2 => (parts[0], Some(parts[1])),
+            _ => continue,
+        };
+
         install_cache_stmt.execute(params![
-            install_key,
+            install_name,
+            install_version,
+            install_cask,
             handle_date_string(&install.updated_at),
             handle_date_string(&install.checked_at),
             serde_json::to_string(&install.bin_paths)?
         ])?;
     }
 
-    // For the homebrew tap cache, homebrew_tap_cache:
-    //  tap_name TEXT PRIMARY KEY,
-    //  updated_at TEXT NOT NULL
-
     let mut tap_cache_stmt = conn.prepare(concat!(
-        "INSERT INTO homebrew_tap_cache ",
-        "(tap_name, updated_at) ",
-        "VALUES (?1, ?2)",
+        "INSERT INTO homebrew_tapped ",
+        "(name, updated_at) ",
+        "VALUES (?1, ?2) ",
+        "ON CONFLICT(name) DO UPDATE ",
+        "SET updated_at = ?2",
+        "WHERE name = ?1",
     ))?;
 
     for (tap_name, tap) in cache

@@ -44,7 +44,7 @@ CREATE TABLE IF NOT EXISTS asdf_installed (
     tool TEXT NOT NULL,
     tool_real_name TEXT,
     version TEXT NOT NULL,
-    last_required_at TEXT NOT NULL,
+    last_required_at TEXT NOT NULL DEFAULT '1970-01-01T00:00:00.000Z',
     PRIMARY KEY (tool, version)
 );
 
@@ -72,7 +72,7 @@ CREATE TABLE IF NOT EXISTS asdf_plugins (
 CREATE TABLE IF NOT EXISTS github_release_installed (
     repository TEXT NOT NULL,
     version TEXT NOT NULL,
-    last_required_at TEXT NOT NULL,
+    last_required_at TEXT NOT NULL DEFAULT '1970-01-01T00:00:00.000Z',
     PRIMARY KEY (repository, version)
 );
 
@@ -100,7 +100,7 @@ CREATE TABLE IF NOT EXISTS homebrew_installed (
     version TEXT,
     cask BOOLEAN NOT NULL DEFAULT 0,
     installed BOOLEAN NOT NULL DEFAULT 0,
-    last_required_at TEXT NOT NULL,
+    last_required_at TEXT NOT NULL DEFAULT '1970-01-01T00:00:00.000Z',
     updated_at TEXT,
     checked_at TEXT,
     bin_paths TEXT,  -- JSON array
@@ -123,8 +123,8 @@ CREATE TABLE IF NOT EXISTS homebrew_installed_required_by (
 CREATE TABLE IF NOT EXISTS homebrew_tapped (
     name TEXT PRIMARY KEY,
     tapped BOOLEAN NOT NULL DEFAULT 0,
-    last_required_at TEXT NOT NULL,
-    updated_at TEXT,
+    last_required_at TEXT NOT NULL DEFAULT '1970-01-01T00:00:00.000Z',
+    updated_at TEXT
 );
 
 -- Table containing the information of which workdir is
