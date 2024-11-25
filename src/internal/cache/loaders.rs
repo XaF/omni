@@ -4,7 +4,6 @@ use lazy_static::lazy_static;
 
 use crate::internal::cache::CacheObject;
 use crate::internal::cache::GithubReleaseOperationCache;
-use crate::internal::cache::HomebrewOperationCache;
 use crate::internal::cache::OmniPathCache;
 use crate::internal::cache::PromptsCache;
 use crate::internal::cache::RepositoriesCache;
@@ -12,8 +11,6 @@ use crate::internal::cache::RepositoriesCache;
 lazy_static! {
     static ref GITHUB_RELEASES_OPERATION_CACHE: Mutex<GithubReleaseOperationCache> =
         Mutex::new(GithubReleaseOperationCache::new_load());
-    static ref HOMEBREW_OPERATION_CACHE: Mutex<HomebrewOperationCache> =
-        Mutex::new(HomebrewOperationCache::new_load());
     static ref OMNIPATH_CACHE: Mutex<OmniPathCache> = Mutex::new(OmniPathCache::new_load());
     static ref PROMPTS_CACHE: Mutex<PromptsCache> = Mutex::new(PromptsCache::new_load());
     static ref REPOSITORIES_CACHE: Mutex<RepositoriesCache> =
@@ -30,10 +27,6 @@ where
 
 pub fn get_github_release_operation_cache() -> GithubReleaseOperationCache {
     generic_get_cache(&GITHUB_RELEASES_OPERATION_CACHE)
-}
-
-pub fn get_homebrew_operation_cache() -> HomebrewOperationCache {
-    generic_get_cache(&HOMEBREW_OPERATION_CACHE)
 }
 
 pub fn get_omnipath_cache() -> OmniPathCache {
@@ -58,10 +51,6 @@ where
 
 pub fn set_github_release_operation_cache(cache_set: GithubReleaseOperationCache) {
     generic_set_cache(&GITHUB_RELEASES_OPERATION_CACHE, cache_set);
-}
-
-pub fn set_homebrew_operation_cache(cache_set: HomebrewOperationCache) {
-    generic_set_cache(&HOMEBREW_OPERATION_CACHE, cache_set);
 }
 
 pub fn set_omnipath_cache(cache_set: OmniPathCache) {

@@ -6,14 +6,12 @@ INSERT INTO asdf_installed (
     tool,
     tool_real_name,
     version,
-    required_by,
     last_required_at
 )
 VALUES (
     ?1,
     ?2,
     ?3,
-    '[]',
     strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
 )
 ON CONFLICT (tool, version) DO UPDATE

@@ -12,10 +12,8 @@ use tokio::process::Command as TokioCommand;
 
 use crate::internal::cache::up_environments::UpEnvironment;
 use crate::internal::cache::utils as cache_utils;
-use crate::internal::cache::CacheObject;
-use crate::internal::cache::HomebrewInstalled;
+use crate::internal::cache::CacheManagerError;
 use crate::internal::cache::HomebrewOperationCache;
-use crate::internal::cache::UpEnvironmentsCache;
 use crate::internal::config;
 use crate::internal::config::up::utils::get_command_output;
 use crate::internal::config::up::utils::run_progress;
@@ -28,7 +26,6 @@ use crate::internal::config::utils::is_executable;
 use crate::internal::config::ConfigValue;
 use crate::internal::env::homebrew_prefix;
 use crate::internal::user_interface::StringColor;
-use crate::internal::workdir;
 use crate::omni_warning;
 
 static LOCAL_TAP: &str = "omni/local";
@@ -199,197 +196,84 @@ impl UpConfigHomebrew {
         }
     }
 
-    pub fn down(&self, progress_handler: &UpProgressHandler) -> Result<(), UpError> {
-        let workdir = workdir(".");
-        let wd_id = match workdir.id() {
-            Some(wd_id) => wd_id,
-            None => return Ok(()),
-        };
-
-        if let Err(err) = HomebrewOperationCache::exclusive(|brew_cache| {
-            progress_handler.init("homebrew:".light_blue());
-            progress_handler.progress("updating homebrew dependencies".to_string());
-
-            let mut updated = false;
-
-            for install in brew_cache
-                .installed
-                .iter_mut()
-                .filter(|install| install.required_by.contains(&wd_id))
-            {
-                install.required_by.retain(|id| id != &wd_id);
-                updated = true;
-            }
-
-            for tap in brew_cache
-                .tapped
-                .iter_mut()
-                .filter(|tap| tap.required_by.contains(&wd_id))
-            {
-                tap.required_by.retain(|id| id != &wd_id);
-                updated = true;
-            }
-
-            updated
-        }) {
-            progress_handler.progress(format!("failed to update cache: {}", err).light_yellow());
-        }
-
-        progress_handler.success_with_message("homebrew dependencies cleaned".light_green());
-
+    pub fn down(&self, _progress_handler: &UpProgressHandler) -> Result<(), UpError> {
         Ok(())
     }
 
     pub fn cleanup(progress_handler: &UpProgressHandler) -> Result<Option<String>, UpError> {
-        let mut return_value: Result<Option<String>, UpError> = Ok(None);
-        let mut updated = false;
-        let mut to_untap = vec![];
-        let mut to_uninstall = vec![];
+        let mut untapped = vec![];
+        let mut uninstalled = vec![];
 
-        if let Err(err) = HomebrewOperationCache::exclusive(|brew_cache| {
-            progress_handler.init("homebrew:".light_blue());
-            progress_handler.progress("checking for unused homebrew dependencies".to_string());
+        progress_handler.init("homebrew:".light_blue());
+        progress_handler.progress("checking for unused homebrew dependencies".to_string());
 
-            let environment_ids =
-                if !brew_cache.installed.is_empty() || !brew_cache.tapped.is_empty() {
-                    UpEnvironmentsCache::get().environment_ids()
-                } else {
-                    BTreeSet::new()
-                };
+        let cache = HomebrewOperationCache::get();
+        cache
+            .cleanup(
+                |install_name, install_version, is_cask, (idx, total)| {
+                    let install =
+                        HomebrewInstall::from_cache(install_name, install_version, is_cask);
 
-            // Cleanup the references to this repository for
-            // any installed formulae or casks that is not currently
-            // listed in the up configuration
-            for install in brew_cache.installed.iter_mut() {
-                let required_by_len = install.required_by.len();
-                install
-                    .required_by
-                    .retain(|id| environment_ids.contains(id));
-                if required_by_len != install.required_by.len() {
-                    updated = true;
-                }
-            }
+                    let subhandler = progress_handler.subhandler(
+                        &format!(
+                            "[{current:padding$}/{total:padding$}] ",
+                            current = idx + 1,
+                            total = total,
+                            padding = format!("{}", total).len(),
+                        )
+                        .light_yellow(),
+                    );
 
-            // Cleanup the references to this repository for
-            // any tap that is not currently listed in the up
-            // configuration
-            for tap in brew_cache.tapped.iter_mut() {
-                let required_by_len = tap.required_by.len();
-                tap.required_by.retain(|id| environment_ids.contains(id));
-                if required_by_len != tap.required_by.len() {
-                    updated = true;
-                }
-            }
-
-            // Get the list of formulae and casks that are not
-            // required by any other repository but that have
-            // been installed by omni
-            to_uninstall = brew_cache
-                .installed
-                .iter_mut()
-                .enumerate()
-                .rev() // reverse so we can remove from the end
-                .filter_map(|(idx, install)| {
-                    if install.installed && install.removable() {
-                        Some((idx, HomebrewInstall::from_cache(install)))
-                    } else {
-                        None
+                    match install.down(&subhandler) {
+                        Err(err) => {
+                            subhandler.error();
+                            Err(CacheManagerError::Other(err.to_string()))
+                        }
+                        Ok(_) => {
+                            uninstalled.push(install);
+                            Ok(())
+                        }
                     }
-                })
-                .collect::<Vec<_>>();
+                },
+                |tap_name, (idx, total)| {
+                    let tap = HomebrewTap::from_name(tap_name);
 
-            let num_uninstalls = to_uninstall.len();
-            for (idx, (rmidx, install)) in to_uninstall.iter().enumerate() {
-                let subhandler = progress_handler.subhandler(
-                    &format!(
-                        "[{current:padding$}/{total:padding$}] ",
-                        current = idx + 1,
-                        total = num_uninstalls,
-                        padding = format!("{}", num_uninstalls).len(),
-                    )
-                    .light_yellow(),
-                );
+                    let subhandler = progress_handler.subhandler(
+                        &format!(
+                            "[{current:padding$}/{total:padding$}] ",
+                            current = idx + 1,
+                            total = total,
+                            padding = format!("{}", total).len(),
+                        )
+                        .light_yellow(),
+                    );
 
-                if let Err(err) = install.down(&subhandler) {
-                    progress_handler.error();
-                    return_value = Err(err);
-                    return updated;
-                }
-
-                brew_cache.installed.remove(*rmidx);
-                brew_cache.update_cache.removed_homebrew_install(
-                    &install.name(),
-                    install.version(),
-                    install.is_cask(),
-                );
-                updated = true;
-            }
-
-            let current_installed = brew_cache.installed.len();
-            brew_cache.installed.retain(|install| !install.removable());
-            if current_installed != brew_cache.installed.len() {
-                updated = true;
-            }
-
-            // Get the list of taps that are not required by any
-            // other repository but that have been tapped by omni
-            to_untap = brew_cache
-                .tapped
-                .iter_mut()
-                .enumerate()
-                .rev() // reverse so we can remove from the end
-                .filter_map(|(idx, tap)| {
-                    if tap.tapped && tap.removable() {
-                        Some((idx, HomebrewTap::from_name(&tap.name)))
-                    } else {
-                        None
+                    match tap.down(&subhandler) {
+                        Err(err) => {
+                            // If the error is that the tap is still in use, we'll consider this a success
+                            // and make it so omni does not own the tap installation anymore
+                            if err != UpError::HomebrewTapInUse {
+                                subhandler.error();
+                                Err(CacheManagerError::Other(err.to_string()))
+                            } else {
+                                Ok(())
+                            }
+                        }
+                        Ok(_) => {
+                            untapped.push(tap);
+                            Ok(())
+                        }
                     }
-                })
-                .collect::<Vec<_>>();
-
-            let num_untaps = to_untap.len();
-            for (idx, (rmidx, tap)) in to_untap.iter().enumerate() {
-                let subhandler = progress_handler.subhandler(
-                    &format!(
-                        "[{current:padding$}/{total:padding$}] ",
-                        current = idx + 1,
-                        total = num_untaps,
-                        padding = format!("{}", num_untaps).len(),
-                    )
-                    .light_yellow(),
-                );
-
-                if let Err(err) = tap.down(&subhandler) {
-                    // If the error is that the tap is still in use, we'll consider this a success
-                    // and make it so omni does not own the tap installation anymore
-                    if err != UpError::HomebrewTapInUse {
-                        progress_handler.error();
-                        return_value = Err(err);
-                        return updated;
-                    }
-                }
-
-                brew_cache.tapped.remove(*rmidx);
-                updated = true;
-            }
-
-            let current_tapped = brew_cache.tapped.len();
-            brew_cache.tapped.retain(|tap| !tap.removable());
-            if current_tapped != brew_cache.tapped.len() {
-                updated = true;
-            }
-
-            updated
-        }) {
-            progress_handler.progress(format!("failed to update cache: {}", err).light_yellow());
-        }
+                },
+            )
+            .map_err(|err| UpError::Cache(err.to_string()))?;
 
         let mut messages = Vec::new();
 
-        if updated {
-            let handled_taps = to_untap
+        if untapped.len() > 0 || uninstalled.len() > 0 {
+            let handled_taps = untapped
                 .iter()
-                .filter(|(_idx, tap)| tap.was_handled())
+                .filter(|tap| tap.was_handled())
                 .collect::<Vec<_>>();
             let handled_taps_count = handled_taps.len();
             if handled_taps_count > 0 {
@@ -401,7 +285,7 @@ impl UpConfigHomebrew {
                         "({})",
                         handled_taps
                             .iter()
-                            .map(|(_idx, tap)| tap.name.clone())
+                            .map(|tap| tap.name.clone())
                             .sorted()
                             .join(", ")
                     )
@@ -410,9 +294,9 @@ impl UpConfigHomebrew {
                 ));
             }
 
-            let handled_installs = to_uninstall
+            let handled_installs = uninstalled
                 .iter()
-                .filter(|(_idx, install)| install.was_handled())
+                .filter(|install| install.was_handled())
                 .collect::<Vec<_>>();
             let handled_installs_count = handled_installs.len();
             if handled_installs_count > 0 {
@@ -424,7 +308,7 @@ impl UpConfigHomebrew {
                         "({})",
                         handled_installs
                             .iter()
-                            .map(|(_idx, install)| install.name())
+                            .map(|install| install.name())
                             .sorted()
                             .join(", ")
                     )
@@ -434,17 +318,7 @@ impl UpConfigHomebrew {
             }
         }
 
-        if let Err(err) = return_value {
-            if messages.is_empty() {
-                Err(err)
-            } else {
-                Err(UpError::Exec(format!(
-                    "{}; {}",
-                    messages.join(" and "),
-                    err,
-                )))
-            }
-        } else if messages.is_empty() {
+        if messages.is_empty() {
             Ok(None)
         } else {
             Ok(Some(messages.join(" and ")))
@@ -608,9 +482,7 @@ impl HomebrewTap {
     fn update_cache(&self, progress_handler: &dyn ProgressHandler) {
         progress_handler.progress("updating cache".to_string());
 
-        if let Err(err) = HomebrewOperationCache::exclusive(|brew_cache| {
-            brew_cache.add_tap(&self.name, self.was_handled())
-        }) {
+        if let Err(err) = HomebrewOperationCache::get().add_tap(&self.name, self.was_handled()) {
             progress_handler.progress(format!("failed to update cache: {}", err));
         } else {
             progress_handler.progress("updated cache".to_string());
@@ -619,9 +491,9 @@ impl HomebrewTap {
 
     fn commit(&self, _options: &UpOptions, env_version_id: &str) -> Result<(), UpError> {
         if self.was_handled() {
-            if let Err(err) = HomebrewOperationCache::exclusive(|brew_cache| {
-                brew_cache.add_tap_required_by(env_version_id, &self.name, self.was_handled())
-            }) {
+            if let Err(err) =
+                HomebrewOperationCache::get().add_tap_required_by(env_version_id, &self.name)
+            {
                 return Err(UpError::Cache(err.to_string()));
             }
         }
@@ -820,10 +692,7 @@ impl HomebrewTap {
         match result {
             Ok(true) if options.write_cache => {
                 // Update the cache
-                if let Err(err) = HomebrewOperationCache::exclusive(|cache| {
-                    cache.updated_tap(&self.name);
-                    true
-                }) {
+                if let Err(err) = HomebrewOperationCache::get().updated_tap(&self.name) {
                     return Err(UpError::Cache(err.to_string()));
                 }
 
@@ -885,11 +754,7 @@ impl Serialize for HomebrewInstall {
     where
         S: ::serde::ser::Serializer,
     {
-        match (
-            self.install_type.clone(),
-            self.upgrade,
-            self.version.clone(),
-        ) {
+        match (self.install_type.clone(), self.upgrade, self.version()) {
             (HomebrewInstallType::Formula, false, None) => self.name.serialize(serializer),
             (HomebrewInstallType::Formula, false, Some(version)) => {
                 let mut install = HashMap::new();
@@ -1011,8 +876,8 @@ impl HomebrewInstall {
         installs
     }
 
-    fn from_cache(cached: &HomebrewInstalled) -> Self {
-        let install_type = if cached.cask {
+    fn from_cache(name: &str, version: Option<&str>, is_cask: bool) -> Self {
+        let install_type = if is_cask {
             HomebrewInstallType::Cask
         } else {
             HomebrewInstallType::Formula
@@ -1020,8 +885,8 @@ impl HomebrewInstall {
 
         Self {
             install_type,
-            name: cached.name.clone(),
-            version: cached.version.clone(),
+            name: name.to_string(),
+            version: version.map(|version| version.to_string()),
             upgrade: false,
             was_handled: OnceCell::new(),
         }
@@ -1035,14 +900,12 @@ impl HomebrewInstall {
     ) {
         progress_handler.progress("updating cache".to_string());
 
-        if let Err(err) = HomebrewOperationCache::exclusive(|brew_cache| {
-            brew_cache.add_install(
-                &self.name,
-                self.version.clone(),
-                self.is_cask(),
-                self.was_handled(),
-            )
-        }) {
+        if let Err(err) = HomebrewOperationCache::get().add_install(
+            &self.name,
+            self.version(),
+            self.is_cask(),
+            self.was_handled(),
+        ) {
             progress_handler.progress(format!("failed to update cache: {}", err));
             return;
         }
@@ -1063,15 +926,12 @@ impl HomebrewInstall {
 
     fn commit(&self, _options: &UpOptions, env_version_id: &str) -> Result<(), UpError> {
         if self.was_handled() {
-            if let Err(err) = HomebrewOperationCache::exclusive(|brew_cache| {
-                brew_cache.add_install_required_by(
-                    env_version_id,
-                    &self.name,
-                    self.version.clone(),
-                    self.is_cask(),
-                    self.was_handled(),
-                )
-            }) {
+            if let Err(err) = HomebrewOperationCache::get().add_install_required_by(
+                env_version_id,
+                &self.name,
+                self.version(),
+                self.is_cask(),
+            ) {
                 return Err(UpError::Cache(err.to_string()));
             }
         }
@@ -1215,12 +1075,9 @@ impl HomebrewInstall {
     }
 
     fn is_installed(&self, options: &UpOptions) -> bool {
+        let cache = HomebrewOperationCache::get();
         if options.read_cache
-            && !HomebrewOperationCache::get().should_check_install(
-                &self.name,
-                self.version.clone(),
-                self.is_cask(),
-            )
+            && !cache.should_check_install(&self.name, self.version(), self.is_cask())
         {
             return true;
         }
@@ -1240,10 +1097,9 @@ impl HomebrewInstall {
             if output.status.success() {
                 if options.write_cache {
                     // Update the cache
-                    if let Err(err) = HomebrewOperationCache::exclusive(|cache| {
-                        cache.checked_install(&self.name, self.version.clone(), self.is_cask());
-                        true
-                    }) {
+                    if let Err(err) =
+                        cache.checked_install(&self.name, self.version(), self.is_cask())
+                    {
                         omni_warning!(format!("failed to update cache: {}", err));
                     }
                 }
@@ -1268,10 +1124,11 @@ impl HomebrewInstall {
             if bin_path.exists() {
                 if options.write_cache {
                     // Update the cache
-                    _ = HomebrewOperationCache::exclusive(|cache| {
-                        cache.set_homebrew_bin_path(bin_path.to_string_lossy().to_string());
-                        true
-                    });
+                    if let Err(err) = HomebrewOperationCache::get()
+                        .set_homebrew_bin_path(bin_path.to_string_lossy().to_string())
+                    {
+                        omni_warning!(format!("failed to update cache: {}", err));
+                    }
                 }
 
                 return Some(bin_path);
@@ -1417,12 +1274,11 @@ impl HomebrewInstall {
     }
 
     fn bin_paths(&self, options: &UpOptions) -> Vec<PathBuf> {
+        let cache = HomebrewOperationCache::get();
         if options.read_cache {
-            if let Some(bin_paths) = HomebrewOperationCache::get().homebrew_install_bin_paths(
-                &self.name,
-                self.version.clone(),
-                self.is_cask(),
-            ) {
+            if let Some(bin_paths) =
+                cache.homebrew_install_bin_paths(&self.name, self.version(), self.is_cask())
+            {
                 return bin_paths.iter().map(PathBuf::from).collect();
             }
         }
@@ -1434,18 +1290,17 @@ impl HomebrewInstall {
         };
 
         if options.write_cache {
-            _ = HomebrewOperationCache::exclusive(|cache| {
-                cache.set_homebrew_install_bin_paths(
-                    &self.name,
-                    self.version.clone(),
-                    self.is_cask(),
-                    bin_paths
-                        .iter()
-                        .map(|path| path.to_string_lossy().to_string())
-                        .collect(),
-                );
-                true
-            });
+            if let Err(err) = cache.set_homebrew_install_bin_paths(
+                &self.name,
+                self.version(),
+                self.is_cask(),
+                bin_paths
+                    .iter()
+                    .map(|path| path.to_string_lossy().to_string())
+                    .collect(),
+            ) {
+                omni_warning!(format!("failed to update cache: {}", err));
+            }
         }
 
         bin_paths
@@ -1495,6 +1350,8 @@ impl HomebrewInstall {
         progress_handler: Option<&dyn ProgressHandler>,
         installed: bool,
     ) -> Result<bool, UpError> {
+        let cache = HomebrewOperationCache::get();
+
         if !installed {
             self.extract_package(options, progress_handler)?;
         } else if !self.upgrade_install(options) {
@@ -1504,11 +1361,7 @@ impl HomebrewInstall {
 
             return Ok(false);
         } else if options.read_cache
-            && !HomebrewOperationCache::get().should_update_install(
-                &self.name,
-                self.version.clone(),
-                self.is_cask(),
-            )
+            && !cache.should_update_install(&self.name, self.version(), self.is_cask())
         {
             if let Some(progress_handler) = progress_handler {
                 progress_handler.progress("already up to date".light_black())
@@ -1550,10 +1403,9 @@ impl HomebrewInstall {
             Ok(_) => {
                 if options.write_cache {
                     // Update the cache
-                    if let Err(err) = HomebrewOperationCache::exclusive(|cache| {
-                        cache.updated_install(&self.name, self.version.clone(), self.is_cask());
-                        true
-                    }) {
+                    if let Err(err) =
+                        cache.updated_install(&self.name, self.version(), self.is_cask())
+                    {
                         return Err(UpError::Cache(err.to_string()));
                     }
                 }
@@ -1671,7 +1523,8 @@ impl HomebrewInstall {
         // }
         // }
 
-        if !options.read_cache || HomebrewOperationCache::get().should_update_homebrew() {
+        let cache = HomebrewOperationCache::get();
+        if !options.read_cache || cache.should_update_homebrew() {
             let mut update_brew_cache = false;
             let brew_updated = BREW_UPDATED.get_or_init(|| {
                 if let Some(progress_handler) = progress_handler {
@@ -1699,10 +1552,7 @@ impl HomebrewInstall {
 
             if options.write_cache && update_brew_cache {
                 // Update the cache
-                if let Err(err) = HomebrewOperationCache::exclusive(|cache| {
-                    cache.updated_homebrew();
-                    true
-                }) {
+                if let Err(err) = cache.updated_homebrew() {
                     return Err(UpError::Cache(err.to_string()));
                 }
             }

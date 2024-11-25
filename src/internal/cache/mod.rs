@@ -17,7 +17,6 @@ pub(crate) use github_release::GithubReleases;
 pub(crate) mod handler;
 
 pub(crate) mod homebrew_operation;
-pub(crate) use homebrew_operation::HomebrewInstalled;
 pub(crate) use homebrew_operation::HomebrewOperationCache;
 
 pub(crate) mod offsetdatetime_hashmap;

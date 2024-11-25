@@ -6,4 +6,4 @@ INSERT INTO metadata (
 VALUES ('asdf.updated_at', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
 ON CONFLICT(key) DO UPDATE SET
     value = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
-WHERE key = 'asdf_updated_at';
+WHERE key = 'asdf.updated_at';

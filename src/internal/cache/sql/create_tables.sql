@@ -101,6 +101,9 @@ CREATE TABLE IF NOT EXISTS homebrew_installed (
     cask BOOLEAN NOT NULL DEFAULT 0,
     installed BOOLEAN NOT NULL DEFAULT 0,
     last_required_at TEXT NOT NULL,
+    updated_at TEXT,
+    checked_at TEXT,
+    bin_paths TEXT,  -- JSON array
     PRIMARY KEY (name, version, cask)
 );
 
@@ -120,7 +123,8 @@ CREATE TABLE IF NOT EXISTS homebrew_installed_required_by (
 CREATE TABLE IF NOT EXISTS homebrew_tapped (
     name TEXT PRIMARY KEY,
     tapped BOOLEAN NOT NULL DEFAULT 0,
-    last_required_at TEXT NOT NULL
+    last_required_at TEXT NOT NULL,
+    updated_at TEXT,
 );
 
 -- Table containing the information of which workdir is
@@ -131,21 +135,6 @@ CREATE TABLE IF NOT EXISTS homebrew_tapped_required_by (
     PRIMARY KEY (name, env_version_id),
     FOREIGN KEY(name) REFERENCES homebrew_tapped(name) ON DELETE CASCADE,
     FOREIGN KEY(env_version_id) REFERENCES env_versions(env_version_id) ON DELETE CASCADE
-);
-
--- Table containing the cache of Homebrew formulae and casks and when they
--- have been updated / checked the last time
-CREATE TABLE IF NOT EXISTS homebrew_install_cache (
-    install_key TEXT PRIMARY KEY,
-    updated_at TEXT NOT NULL,
-    checked_at TEXT NOT NULL,
-    bin_paths TEXT  -- JSON array
-);
-
--- Table containing the cache of Homebrew taps and when they have been updated
-CREATE TABLE IF NOT EXISTS homebrew_tap_cache (
-    tap_name TEXT PRIMARY KEY,
-    updated_at TEXT NOT NULL
 );
 
 -- Table containing the cache of the prompts and their answers per organization

@@ -1,5 +1,3 @@
-use std::collections::HashSet;
-
 use rusqlite::params;
 use serde::Deserialize;
 use serde::Serialize;
@@ -105,44 +103,13 @@ impl AsdfOperationCache {
         env_version_id: &str,
         tool: &str,
         version: &str,
-        tool_real_name: Option<&str>,
     ) -> Result<bool, CacheManagerError> {
-        let mut db = CacheManager::get();
-        let mut inserted = false;
-
-        db.transaction(|tx| {
-            // Get the current list of required_by
-            let required_by_json: Option<String> = tx.query_one::<Option<String>>(
-                include_str!("sql/asdf_operation_get_required_by.sql"),
-                params![tool, version],
-            )?;
-            let mut required_by: HashSet<String> = match required_by_json {
-                Some(required_by_json) => serde_json::from_str(&required_by_json)?,
-                None => HashSet::new(),
-            };
-
-            if !required_by.insert(env_version_id.to_string()) {
-                // Nothing to do, let's exit early
-                return Ok(());
-            }
-
-            // Insert the new required_by
-            tx.execute(
-                include_str!("sql/asdf_operation_add_required_by.sql"),
-                params![
-                    tool,
-                    tool_real_name,
-                    version,
-                    serde_json::to_string(&required_by)?,
-                ],
-            )?;
-
-            inserted = true;
-
-            Ok(())
-        })?;
-
-        Ok(inserted)
+        let db = CacheManager::get();
+        let inserted = db.execute(
+            include_str!("sql/asdf_operation_add_required_by.sql"),
+            params![tool, version, env_version_id],
+        )?;
+        Ok(inserted > 0)
     }
 
     pub fn cleanup<F>(&self, mut delete_func: F) -> Result<(), CacheManagerError>

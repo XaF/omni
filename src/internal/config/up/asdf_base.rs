@@ -457,12 +457,7 @@ impl UpConfigAsdfBase {
         };
 
         let cache = AsdfOperationCache::get();
-        if let Err(err) = cache.add_required_by(
-            env_version_id,
-            &self.tool,
-            &version,
-            self.tool_real_name.as_deref(),
-        ) {
+        if let Err(err) = cache.add_required_by(env_version_id, &self.tool, &version) {
             return Err(UpError::Cache(err.to_string()));
         }
 
