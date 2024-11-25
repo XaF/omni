@@ -358,6 +358,28 @@ impl FromRow for bool {
     }
 }
 
+// Implement an approach to handle any tuple by calling the `FromRow` trait on each element
+macro_rules! impl_from_row_tuple {
+    ($($idx:tt : $t:ident),+) => {
+        impl<$($t,)+> FromRow for ($($t,)+)
+        where
+            $($t: rusqlite::types::FromSql,)+
+        {
+            fn from_row(row: &Row) -> Result<Self, CacheManagerError> {
+                Ok(($(
+                    row.get($idx).map_err(|e| CacheManagerError::SqlError(e))?,
+                )+))
+            }
+        }
+    }
+}
+
+impl_from_row_tuple!(0: T1);
+impl_from_row_tuple!(0: T1, 1: T2);
+impl_from_row_tuple!(0: T1, 1: T2, 2: T3);
+impl_from_row_tuple!(0: T1, 1: T2, 2: T3, 3: T4);
+impl_from_row_tuple!(0: T1, 1: T2, 2: T3, 3: T4, 4: T5);
+
 // impl rusqlite::types::FromSql for PathBuf {
 // fn column_result(value: rusqlite::types::ValueRef) -> rusqlite::types::FromSqlResult<Self> {
 // let s: String = rusqlite::types::FromSql::column_result(value)?;
