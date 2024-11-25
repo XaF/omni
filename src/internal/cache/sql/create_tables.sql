@@ -22,7 +22,7 @@ CREATE TABLE IF NOT EXISTS env_versions (
     env_vars TEXT NOT NULL,  -- JSON array of UpEnvVar
     config_modtimes TEXT NOT NULL, -- JSON object
     config_hash TEXT NOT NULL,
-    last_assigned_at TEXT NOT NULL
+    last_assigned_at TEXT NOT NULL DEFAULT '1970-01-01T00:00:00.000Z'
 );
 
 -- Table containing the history of the work directories environments,

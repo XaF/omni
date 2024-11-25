@@ -117,7 +117,6 @@ impl AsdfOperationCache {
         F: FnMut(&str, &str) -> Result<(), CacheManagerError>,
     {
         let mut db = CacheManager::get();
-        let mut removed = 0;
 
         let config = global_config();
         let grace_period = config.cache.asdf.cleanup_after;
@@ -138,8 +137,6 @@ impl AsdfOperationCache {
                     include_str!("sql/asdf_operation_remove.sql"),
                     params![tool.tool, tool.version],
                 )?;
-
-                removed += 1;
             }
 
             Ok(())
@@ -149,6 +146,7 @@ impl AsdfOperationCache {
     }
 }
 
+#[derive(Debug)]
 struct DeletableAsdfTool {
     tool: String,
     version: String,
@@ -212,5 +210,243 @@ impl AsdfPluginVersions {
             .rev()
             .find(|v| matcher.matches(v))
             .cloned()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    use crate::internal::cache::database::get_conn;
+    use crate::internal::testutils::run_with_env_and_cache;
+
+    mod asdf_operation_cache {
+        use super::*;
+
+        #[test]
+        fn test_should_update_asdf() {
+            run_with_env_and_cache(&[], || {
+                let cache = AsdfOperationCache::get();
+
+                // First time should return true as no data exists
+                assert!(cache.should_update_asdf());
+
+                // Update asdf
+                cache.updated_asdf().expect("Failed to update asdf");
+
+                // Should now return false as we just updated
+                assert!(!cache.should_update_asdf());
+            });
+        }
+
+        #[test]
+        fn test_should_update_asdf_plugin() {
+            run_with_env_and_cache(&[], || {
+                let cache = AsdfOperationCache::get();
+                let plugin = "test-plugin";
+
+                // First time should return true as no data exists
+                assert!(cache.should_update_asdf_plugin(plugin));
+
+                // Update plugin
+                cache
+                    .updated_asdf_plugin(plugin)
+                    .expect("Failed to update plugin");
+
+                // Should now return false as we just updated
+                assert!(!cache.should_update_asdf_plugin(plugin));
+            });
+        }
+
+        #[test]
+        fn test_set_and_get_plugin_versions() {
+            run_with_env_and_cache(&[], || {
+                let cache = AsdfOperationCache::get();
+                let plugin = "test-plugin";
+
+                // Initially should return None
+                assert!(cache.get_asdf_plugin_versions(plugin).is_none());
+
+                // Create test versions
+                let versions = AsdfPluginVersions::new(vec![
+                    "1.0.0".to_string(),
+                    "1.1.0".to_string(),
+                    "2.0.0".to_string(),
+                ]);
+
+                // Set versions
+                cache
+                    .set_asdf_plugin_versions(plugin, versions.clone())
+                    .expect("Failed to set plugin versions");
+
+                // Get versions and verify
+                let retrieved = cache
+                    .get_asdf_plugin_versions(plugin)
+                    .expect("Failed to get plugin versions");
+
+                assert_eq!(retrieved.versions, versions.versions);
+                assert!(retrieved.fetched_at <= OffsetDateTime::now_utc());
+            });
+        }
+
+        #[test]
+        fn test_add_installed_and_required_by() {
+            run_with_env_and_cache(&[], || {
+                let cache = AsdfOperationCache::get();
+
+                let tool = "test-tool";
+                let version = "1.0.0";
+                let tool_real_name = Some("real-name");
+                let env_version_id = "test-env";
+
+                // Add installed tool
+                assert!(cache
+                    .add_installed(tool, version, tool_real_name)
+                    .expect("Failed to add installed tool"));
+
+                // Before adding a required_by, we need to add the environment version
+                // otherwise the foreign key constraint will fail
+                let conn = get_conn();
+                conn.execute(
+                    include_str!("sql/up_environments_insert_env_version.sql"),
+                    params![env_version_id, "{}", "[]", "[]", "{}", "hash"],
+                )
+                .expect("Failed to add environment version");
+
+                // Add required_by relationship
+                assert!(cache
+                    .add_required_by(env_version_id, tool, version)
+                    .expect("Failed to add required_by relationship"));
+            });
+        }
+
+        #[test]
+        fn test_cleanup() {
+            run_with_env_and_cache(&[], || {
+                // Directly inject a tool in the database, so we can use a very old date
+                let conn = get_conn();
+
+                let mut installed_stmt = conn
+                    .prepare("INSERT INTO asdf_installed (tool, version, tool_real_name, last_required_at) VALUES (?, ?, ?, ?)")
+                    .expect("Failed to prepare statement");
+
+                installed_stmt
+                    .execute(params![
+                        "test-tool",
+                        "1.0.0",
+                        "real-name",
+                        "1970-01-01T00:00:00Z"
+                    ])
+                    .expect("Failed to insert test tool to remove");
+                installed_stmt
+                    .execute(params![
+                        "test-tool",
+                        "1.1.0",
+                        "real-name",
+                        "1970-01-01T00:00:00Z"
+                    ])
+                    .expect("Failed to insert test tool to keep because of requirement");
+                installed_stmt
+                    .execute(params![
+                        "test-tool",
+                        "1.2.0",
+                        "real-name",
+                        omni_now().format(&Rfc3339).expect("Failed to format date"),
+                    ])
+                    .expect("Failed to insert test tool to keep because of date");
+
+                conn.execute(
+                    include_str!("sql/up_environments_insert_env_version.sql"),
+                    params!["test-env", "{}", "[]", "[]", "{}", "hash"],
+                )
+                .expect("Failed to add environment version");
+
+                let mut required_by_stmt = conn
+                    .prepare("INSERT INTO asdf_installed_required_by (tool, version, env_version_id) VALUES (?, ?, ?)")
+                    .expect("Failed to prepare statement");
+
+                required_by_stmt
+                    .execute(params!["test-tool", "1.1.0", "test-env"])
+                    .expect("Failed to insert required_by relationship");
+
+                let cache = AsdfOperationCache::get();
+
+                // Mock deletion function
+                let mut deleted_tools = Vec::new();
+                let delete_func = |tool: &str, version: &str| {
+                    deleted_tools.push((tool.to_string(), version.to_string()));
+                    Ok(())
+                };
+
+                // Run cleanup
+                cache.cleanup(delete_func).expect("Failed to cleanup");
+
+                // Verify that the tool has been deleted
+                assert_eq!(deleted_tools.len(), 1);
+                assert_eq!(
+                    deleted_tools[0],
+                    ("test-tool".to_string(), "1.0.0".to_string())
+                );
+
+                // Verify that the tool has been removed from the database
+                let tool_in_db = conn
+                    .query_row(
+                        "SELECT COUNT(*) FROM asdf_installed WHERE tool = ? AND version = ?",
+                        params![deleted_tools[0].0, deleted_tools[0].1],
+                        |row| row.get::<_, i64>(0),
+                    )
+                    .expect("Failed to query tool in database");
+                assert_eq!(tool_in_db, 0);
+            });
+        }
+    }
+
+    mod asdf_plugin_versions {
+        use super::*;
+
+        #[test]
+        fn test_new() {
+            let versions = vec![
+                "1.0.0".to_string(),
+                "1.1.0".to_string(),
+                "2.0.0".to_string(),
+            ];
+            let plugin_versions = AsdfPluginVersions::new(versions.clone());
+
+            assert_eq!(plugin_versions.versions, versions);
+            assert!(plugin_versions.fetched_at <= OffsetDateTime::now_utc());
+        }
+
+        #[test]
+        fn test_freshness() {
+            let versions = vec!["1.0.0".to_string()];
+            let plugin_versions = AsdfPluginVersions::new(versions);
+
+            // Test is_fresh
+            assert!(plugin_versions.is_fresh());
+
+            // Test is_stale
+            assert!(!plugin_versions.is_stale(3600)); // Not stale after 1 hour
+        }
+
+        // #[test]
+        // fn test_version_matching() {
+        // let versions = vec![
+        // "1.0.0".to_string(),
+        // "1.1.0".to_string(),
+        // "2.0.0".to_string(),
+        // ];
+        // let plugin_versions = AsdfPluginVersions::new(versions);
+
+        // // Test different version matchers
+        // let matcher = VersionMatcher::new("^1").expect("Failed to create version matcher");
+        // assert_eq!(plugin_versions.get(&matcher), Some("1.1.0".to_string()));
+
+        // let matcher = VersionMatcher::new("2.0.0").expect("Failed to create version matcher");
+        // assert_eq!(plugin_versions.get(&matcher), Some("2.0.0".to_string()));
+
+        // let matcher = VersionMatcher::new("3.0.0").expect("Failed to create version matcher");
+        // assert_eq!(plugin_versions.get(&matcher), None);
+        // }
     }
 }

@@ -5,11 +5,11 @@
 INSERT INTO asdf_installed_required_by (
     tool,
     version,
-    env_version_id,
+    env_version_id
 )
 VALUES (
     ?1,
     ?2,
-    ?3,
+    ?3
 )
 ON CONFLICT (tool, version, env_version_id) DO NOTHING;
