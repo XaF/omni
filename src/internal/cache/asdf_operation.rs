@@ -191,7 +191,7 @@ impl AsdfPluginVersions {
     pub fn new(versions: Vec<String>) -> Self {
         Self {
             versions,
-            fetched_at: OffsetDateTime::now_utc(),
+            fetched_at: omni_now(),
         }
     }
 
@@ -428,25 +428,5 @@ mod tests {
             // Test is_stale
             assert!(!plugin_versions.is_stale(3600)); // Not stale after 1 hour
         }
-
-        // #[test]
-        // fn test_version_matching() {
-        // let versions = vec![
-        // "1.0.0".to_string(),
-        // "1.1.0".to_string(),
-        // "2.0.0".to_string(),
-        // ];
-        // let plugin_versions = AsdfPluginVersions::new(versions);
-
-        // // Test different version matchers
-        // let matcher = VersionMatcher::new("^1").expect("Failed to create version matcher");
-        // assert_eq!(plugin_versions.get(&matcher), Some("1.1.0".to_string()));
-
-        // let matcher = VersionMatcher::new("2.0.0").expect("Failed to create version matcher");
-        // assert_eq!(plugin_versions.get(&matcher), Some("2.0.0".to_string()));
-
-        // let matcher = VersionMatcher::new("3.0.0").expect("Failed to create version matcher");
-        // assert_eq!(plugin_versions.get(&matcher), None);
-        // }
     }
 }

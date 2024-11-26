@@ -3,7 +3,6 @@ use serde::Serialize;
 
 use tera::Tera;
 
-use crate::internal::cache::utils::CacheObject;
 use crate::internal::cache::utils::Empty;
 use crate::internal::cache::PromptsCache;
 use crate::internal::config::template::config_template_context;
@@ -648,10 +647,9 @@ impl PromptType {
             }
         };
 
-        if let Err(err) = PromptsCache::exclusive(|cache| {
-            cache.add_answer(id, scope_org, scope_repo, serde_yaml_answer);
-            true
-        }) {
+        if let Err(err) =
+            PromptsCache::get().add_answer(id, scope_org, scope_repo, serde_yaml_answer)
+        {
             omni_warning!(format!("failed to update cache: {}", err));
             false
         } else {
