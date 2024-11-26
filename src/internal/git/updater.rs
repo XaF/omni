@@ -64,23 +64,7 @@ fn should_update() -> bool {
         return false;
     }
 
-    // Check first without exclusive lock (less costly)
-    let mut require_update = false;
-    if !OmniPathCache::get().updated() {
-        // If the update is due, let's take the lock and check again
-        if let Err(err) = OmniPathCache::exclusive(|omnipath| {
-            if !omnipath.updated() {
-                omnipath.update();
-                require_update = true;
-            }
-            require_update
-        }) {
-            omni_error!(format!("Failed to update cache (update skipped): {}", err));
-            return false;
-        }
-    }
-
-    require_update
+    OmniPathCache::get().try_exclusive_update()
 }
 
 pub fn auto_update_async(called_command: &Command) {
@@ -222,10 +206,9 @@ pub fn exec_update_and_log_on_error() {
             match log_file.keep() {
                 Ok((_file, path)) => {
                     omni_info!(format!("log file kept at {}", path.display()));
-                    if let Err(err) = OmniPathCache::exclusive(|omnipath| {
-                        omnipath.update_error(path.to_string_lossy().to_string());
-                        true
-                    }) {
+                    if let Err(err) =
+                        OmniPathCache::get().update_error(path.to_string_lossy().to_string())
+                    {
                         omni_error!(format!("failed to update cache: {}", err));
                     }
                 }
@@ -251,21 +234,13 @@ pub fn report_update_error() {
         false
     };
 
-    if is_user_shell && OmniPathCache::get().update_errored() {
-        if let Err(err) = OmniPathCache::exclusive(|omnipath| {
-            if omnipath.update_errored() {
-                omni_print!(format!(
-                    "background update failed; log is available at {}",
-                    omnipath.update_error_log()
-                )
-                .light_red());
-                omnipath.clear_update_error();
-                true
-            } else {
-                false
-            }
-        }) {
-            omni_error!(format!("failed to update cache: {}", err));
+    if is_user_shell {
+        if let Some(error_log) = OmniPathCache::get().try_exclusive_update_error_log() {
+            omni_print!(format!(
+                "background update failed; log is available at {}",
+                error_log,
+            )
+            .light_red());
         }
     }
 }
