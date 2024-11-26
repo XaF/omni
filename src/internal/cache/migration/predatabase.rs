@@ -361,7 +361,7 @@ fn migrate_asdf_operation(conn: &Connection) -> Result<(), CacheManagerError> {
 
         plugin_stmt.execute(params![
             plugin,
-            handle_date_string(&info.updated_at.as_ref().unwrap_or(&"".to_string())),
+            handle_date_string(info.updated_at.as_ref().unwrap_or(&"".to_string())),
             versions,
             handle_optional_date_string(&info.versions_data.as_ref().map(|v| &v.updated_at)),
         ])?;
@@ -665,7 +665,7 @@ fn migrate_homebrew_operation(conn: &Connection) -> Result<(), CacheManagerError
         tapped_stmt.execute(params![
             &tapped.name,
             &tapped.tapped,
-            handle_date_string(&tapped.last_required_at.clone().unwrap_or("".to_string())),
+            handle_date_string(tapped.last_required_at.clone().unwrap_or("".to_string())),
         ])?;
 
         for env_version_id in tapped.required_by.iter() {

@@ -1058,16 +1058,18 @@ mod tests {
                     .expect("Failed to add environment version");
 
                     // Add installation
-                    cache.add_installed(test.repository, test.version).expect(
-                        format!("Failed to add installed version for {}", test.repository).as_str(),
-                    );
+                    cache
+                        .add_installed(test.repository, test.version)
+                        .unwrap_or_else(|_| {
+                            panic!("Failed to add installed version for {}", test.repository)
+                        });
 
                     // Add requirement
                     cache
                         .add_required_by(test.env_id, test.repository, test.version)
-                        .expect(
-                            format!("Failed to add requirement for {}", test.repository).as_str(),
-                        );
+                        .unwrap_or_else(|_| {
+                            panic!("Failed to add requirement for {}", test.repository)
+                        });
 
                     // Check that the requirement exists
                     let required: bool = conn

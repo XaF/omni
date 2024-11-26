@@ -125,7 +125,7 @@ fn upgrade_database(conn: &Connection) -> Result<(), CacheManagerError> {
         conn.execute_batch(include_str!("sql/create_tables.sql"))?;
 
         // Migrate the JSON files to the database
-        migrate_json_to_database(&conn)?;
+        migrate_json_to_database(conn)?;
     }
 
     // Run the migration SQL, which should handle any migrations

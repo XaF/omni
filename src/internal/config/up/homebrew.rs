@@ -270,7 +270,7 @@ impl UpConfigHomebrew {
 
         let mut messages = Vec::new();
 
-        if untapped.len() > 0 || uninstalled.len() > 0 {
+        if !untapped.is_empty() || !uninstalled.is_empty() {
             let handled_taps = untapped
                 .iter()
                 .filter(|tap| tap.was_handled())
