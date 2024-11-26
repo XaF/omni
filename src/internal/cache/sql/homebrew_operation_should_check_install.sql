@@ -4,12 +4,12 @@
 -- :param ?3 - 1 if the formula is a cask, 0 otherwise
 -- :param ?4 - validity of the update in seconds
 -- :return - boolean, 1 if should be updated, 0 otherwise
-WITH last_update AS (
-  SELECT updated_at as timestamp
+WITH last_check AS (
+  SELECT checked_at as timestamp
   FROM homebrew_installed
   WHERE
     name = ?1
-    AND version = ?2
+    AND version = COALESCE(?2, '__NULL__')
     AND cask = MIN(1, ?3)
 ),
 is_expired AS (
@@ -20,8 +20,8 @@ is_expired AS (
            (CAST(strftime('%s', timestamp) AS INTEGER) + ?4) THEN 1
       ELSE 0
     END as expired
-  FROM last_update
+  FROM last_check
   UNION ALL
-  SELECT 1 WHERE NOT EXISTS (SELECT 1 FROM last_update)
+  SELECT 1 WHERE NOT EXISTS (SELECT 1 FROM last_check)
 )
 SELECT expired = 1 as is_expired FROM is_expired;

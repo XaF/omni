@@ -10,7 +10,7 @@ INSERT INTO homebrew_installed (
 )
 VALUES (
     ?1,
-    ?2,
+    COALESCE(?2, '__NULL__'),
     MIN(1, ?3),
     strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
 )
@@ -18,5 +18,5 @@ ON CONFLICT(name, version, cask) DO UPDATE SET
     updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
 WHERE
     name = ?1
-    AND version = ?2
+    AND version = COALESCE(?2, '__NULL__')
     AND cask = MIN(1, ?3);

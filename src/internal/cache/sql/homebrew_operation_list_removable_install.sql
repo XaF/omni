@@ -2,7 +2,10 @@
 -- :param1: number of seconds of the grace period before a formula or cask can be removed
 SELECT
     hi.name,
-    hi.version,
+    CASE
+        WHEN hi.version = '__NULL__' THEN NULL
+        ELSE hi.version
+    END AS version,
     hi.cask,
     hi.installed
 FROM homebrew_installed AS hi

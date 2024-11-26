@@ -97,7 +97,7 @@ CREATE TABLE IF NOT EXISTS github_releases (
 -- Table containing the formulae and casks that were installed using Homebrew
 CREATE TABLE IF NOT EXISTS homebrew_installed (
     name TEXT NOT NULL,
-    version TEXT,
+    version TEXT NOT NULL DEFAULT '__NULL__',
     cask BOOLEAN NOT NULL DEFAULT 0,
     installed BOOLEAN NOT NULL DEFAULT 0,
     last_required_at TEXT NOT NULL DEFAULT '1970-01-01T00:00:00.000Z',
@@ -111,7 +111,7 @@ CREATE TABLE IF NOT EXISTS homebrew_installed (
 -- requiring a given Homebrew formula or cask
 CREATE TABLE IF NOT EXISTS homebrew_installed_required_by (
     name TEXT NOT NULL,
-    version TEXT,
+    version TEXT NOT NULL DEFAULT '__NULL__',
     cask BOOLEAN NOT NULL DEFAULT 0,
     env_version_id TEXT NOT NULL,
     PRIMARY KEY (name, version, cask, env_version_id),
@@ -142,7 +142,7 @@ CREATE TABLE IF NOT EXISTS homebrew_tapped_required_by (
 CREATE TABLE IF NOT EXISTS prompts (
     prompt_id TEXT,
     organization TEXT NOT NULL,
-    repository TEXT,
+    repository TEXT NOT NULL DEFAULT '__NULL__',
     answer TEXT,
     PRIMARY KEY (prompt_id, organization, repository)
 );

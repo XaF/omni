@@ -3,15 +3,15 @@
 -- :param2: version - the version of the formula or cask if any specified
 -- :param3: cask - whether the formula is a cask or not
 -- :param4: env_version_id - the id of the environment version that is requiring the tool
-INSERT INTO homebrew_tapped_required_by (
+INSERT INTO homebrew_installed_required_by (
     name,
     version,
     cask,
-    env_version_id,
+    env_version_id
 )
 VALUES (
     ?1,
-    ?2,
+    COALESCE(?2, '__NULL__'), -- SQLite does not support NULL in UNIQUE constraints
     MIN(1, ?3),
     ?4
 )

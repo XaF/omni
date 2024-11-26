@@ -3,10 +3,10 @@
 -- :param2: env_version_id - the id of the environment version that is requiring the tool
 INSERT INTO homebrew_tapped_required_by (
     name,
-    env_version_id,
+    env_version_id
 )
 VALUES (
     ?1,
-    ?2,
+    ?2
 )
 ON CONFLICT (name, env_version_id) DO NOTHING;

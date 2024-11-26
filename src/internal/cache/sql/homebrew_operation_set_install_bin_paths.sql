@@ -12,7 +12,7 @@ INSERT INTO homebrew_installed (
 )
 VALUES (
     ?1,
-    ?2,
+    COALESCE(?2, '__NULL__'),
     MIN(1, ?3),
     ?4,
     strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
@@ -20,4 +20,7 @@ VALUES (
 ON CONFLICT (name, version, cask) DO UPDATE
 SET
     bin_paths = ?4
-WHERE name = ?1 AND version = ?2 AND cask = MIN(1, ?3);
+WHERE
+    name = ?1
+    AND version = COALESCE(?2, '__NULL__')
+    AND cask = MIN(1, ?3);

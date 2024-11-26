@@ -9,7 +9,7 @@ WITH last_update AS (
   FROM homebrew_installed
   WHERE
     name = ?1
-    AND version = ?2
+    AND version = COALESCE(?2, '__NULL__')
     AND cask = MIN(1, ?3)
 ),
 is_expired AS (

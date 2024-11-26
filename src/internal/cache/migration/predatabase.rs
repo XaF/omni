@@ -591,27 +591,27 @@ fn migrate_homebrew_operation(conn: &Connection) -> Result<(), CacheManagerError
 
     // homebrew_installed:
     //  name TEXT NOT NULL,
-    //  version TEXT,
+    //  version TEXT NOT NULL DEFAULT "__NULL__",
     //  cask BOOLEAN NOT NULL DEFAULT 0,
     //  installed BOOLEAN NOT NULL DEFAULT 0,
     //  last_required_at TEXT NOT NULL,
 
     // homebrew_installed_required_by:
     //  name TEXT NOT NULL,
-    //  version TEXT NOT NULL,
+    //  version TEXT NOT NULL DEFAULT "__NULL__",
     //  cask BOOLEAN NOT NULL DEFAULT 0,
     //  env_version_id TEXT NOT NULL
 
     let mut installed_stmt = conn.prepare(concat!(
         "INSERT INTO homebrew_installed ",
         "(name, version, cask, installed, last_required_at) ",
-        "VALUES (?1, ?2, ?3, ?4, ?5)",
+        "VALUES (?1, COALESCE(?2, '__NULL__'), ?3, ?4, ?5)",
     ))?;
 
     let mut installed_required_by_stmt = conn.prepare(concat!(
         "INSERT INTO homebrew_installed_required_by ",
         "(name, version, cask, env_version_id) ",
-        "VALUES (?1, ?2, ?3, ?4)",
+        "VALUES (?1, COALESCE(?2, '__NULL__'), ?3, ?4)",
     ))?;
 
     for installed in cache.installed.iter() {
