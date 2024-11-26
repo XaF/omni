@@ -3,7 +3,7 @@
 -- :param2: The version of the Homebrew formula or cask
 -- :param3: Whether the formula or cask is a cask
 -- :param4: A JSON array with the paths where the binaries of the Homebrew formula or cask are installed
-INSERT INTO homebrew_installed (
+INSERT INTO homebrew_install (
     name,
     version,
     cask,

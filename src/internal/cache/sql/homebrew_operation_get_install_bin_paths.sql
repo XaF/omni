@@ -6,7 +6,7 @@
 SELECT
     bin_paths
 FROM
-    homebrew_installed
+    homebrew_install
 WHERE
     name = ?1
     AND version = COALESCE(?2, '__NULL__')

@@ -1,6 +1,6 @@
 -- Insert or update a homebrew tap last updated timestamp
 -- :param1: The name of the tap
-INSERT INTO homebrew_tapped (
+INSERT INTO homebrew_tap (
     name,
     updated_at
 )

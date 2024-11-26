@@ -3,10 +3,10 @@
 SELECT
     ht.name,
     ht.tapped
-FROM homebrew_tapped AS ht
+FROM homebrew_tap AS ht
 WHERE NOT EXISTS (
     SELECT 1
-    FROM homebrew_tapped_required_by AS htrb
+    FROM homebrew_tap_required_by AS htrb
     WHERE htrb.name = ht.name
 )
 AND (

@@ -1,7 +1,7 @@
 -- Add a new homebrew tap to the database
 -- :param1: name - the name of the tap
 -- :param2: tapped - whether the tap was tapped or not
-INSERT INTO homebrew_tapped (
+INSERT INTO homebrew_tap (
     name,
     tapped,
     last_required_at

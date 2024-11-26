@@ -589,27 +589,27 @@ fn migrate_homebrew_operation(conn: &Connection) -> Result<(), CacheManagerError
     let file = std::fs::File::open(json_path)?;
     let cache: PreDatabaseHomebrewOperationCache = serde_json::from_reader(file)?;
 
-    // homebrew_installed:
+    // homebrew_install:
     //  name TEXT NOT NULL,
     //  version TEXT NOT NULL DEFAULT "__NULL__",
     //  cask BOOLEAN NOT NULL DEFAULT 0,
     //  installed BOOLEAN NOT NULL DEFAULT 0,
     //  last_required_at TEXT NOT NULL,
 
-    // homebrew_installed_required_by:
+    // homebrew_install_required_by:
     //  name TEXT NOT NULL,
     //  version TEXT NOT NULL DEFAULT "__NULL__",
     //  cask BOOLEAN NOT NULL DEFAULT 0,
     //  env_version_id TEXT NOT NULL
 
     let mut installed_stmt = conn.prepare(concat!(
-        "INSERT INTO homebrew_installed ",
+        "INSERT INTO homebrew_install ",
         "(name, version, cask, installed, last_required_at) ",
         "VALUES (?1, COALESCE(?2, '__NULL__'), ?3, ?4, ?5)",
     ))?;
 
     let mut installed_required_by_stmt = conn.prepare(concat!(
-        "INSERT INTO homebrew_installed_required_by ",
+        "INSERT INTO homebrew_install_required_by ",
         "(name, version, cask, env_version_id) ",
         "VALUES (?1, COALESCE(?2, '__NULL__'), ?3, ?4)",
     ))?;
@@ -640,23 +640,23 @@ fn migrate_homebrew_operation(conn: &Connection) -> Result<(), CacheManagerError
         }
     }
 
-    // homebrew_tapped:
+    // homebrew_tap:
     //  name TEXT PRIMARY KEY,
     //  tapped BOOLEAN NOT NULL DEFAULT 0,
     //  last_required_at TEXT NOT NULL
 
-    // homebrew_tapped_required_by:
+    // homebrew_tap_required_by:
     //   name TEXT NOT NULL,
     //   env_version_id TEXT NOT NULL
 
     let mut tapped_stmt = conn.prepare(concat!(
-        "INSERT INTO homebrew_tapped ",
+        "INSERT INTO homebrew_tap ",
         "(name, tapped, last_required_at) ",
         "VALUES (?1, ?2, ?3)",
     ))?;
 
     let mut tapped_required_by_stmt = conn.prepare(concat!(
-        "INSERT INTO homebrew_tapped_required_by ",
+        "INSERT INTO homebrew_tap_required_by ",
         "(name, env_version_id) ",
         "VALUES (?1, ?2)",
     ))?;
@@ -703,7 +703,7 @@ fn migrate_homebrew_operation(conn: &Connection) -> Result<(), CacheManagerError
     }
 
     let mut install_cache_stmt = conn.prepare(concat!(
-        "INSERT INTO homebrew_installed ",
+        "INSERT INTO homebrew_install ",
         "(name, version, cask, updated_at, checked_at, bin_paths) ",
         "VALUES (?1, ?2, MIN(1, ?3), ?4, ?5, ?6) ",
         "ON CONFLICT(name, version, cask) DO UPDATE SET ",
@@ -745,7 +745,7 @@ fn migrate_homebrew_operation(conn: &Connection) -> Result<(), CacheManagerError
     }
 
     let mut tap_cache_stmt = conn.prepare(concat!(
-        "INSERT INTO homebrew_tapped ",
+        "INSERT INTO homebrew_tap ",
         "(name, updated_at) ",
         "VALUES (?1, ?2) ",
         "ON CONFLICT(name) DO UPDATE ",

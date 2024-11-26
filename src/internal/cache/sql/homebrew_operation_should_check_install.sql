@@ -6,7 +6,7 @@
 -- :return - boolean, 1 if should be updated, 0 otherwise
 WITH last_check AS (
   SELECT checked_at as timestamp
-  FROM homebrew_installed
+  FROM homebrew_install
   WHERE
     name = ?1
     AND version = COALESCE(?2, '__NULL__')

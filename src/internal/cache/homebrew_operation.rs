@@ -575,7 +575,7 @@ mod tests {
                         let installed: bool = conn
                             .query_row(
                                 concat!(
-                                    "SELECT installed FROM homebrew_installed ",
+                                    "SELECT installed FROM homebrew_install ",
                                     "WHERE name = ?1 AND version = COALESCE(?2, '__NULL__') AND cask = ?3"
                                 ),
                                 params![install_name, version.clone(), *is_cask],
@@ -606,7 +606,7 @@ mod tests {
                 let conn = get_conn();
                 let tapped: bool = conn
                     .query_row(
-                        "SELECT tapped FROM homebrew_tapped WHERE name = ?1",
+                        "SELECT tapped FROM homebrew_tap WHERE name = ?1",
                         params![tap_name],
                         |row| row.get(0),
                     )
@@ -760,22 +760,22 @@ mod tests {
                 let conn = get_conn();
                 conn.execute(
                     concat!(
-                        "UPDATE homebrew_installed ",
+                        "UPDATE homebrew_install ",
                         "SET last_required_at = '1970-01-01T00:00:00.000Z' ",
                         "WHERE name IN ('formula1', 'formula2')",
                     ),
                     [],
                 )
-                .expect("Failed to update homebrew_installed last_required_at");
+                .expect("Failed to update homebrew_install last_required_at");
                 conn.execute(
                     concat!(
-                        "UPDATE homebrew_tapped ",
+                        "UPDATE homebrew_tap ",
                         "SET last_required_at = '1970-01-01T00:00:00.000Z' ",
                         "WHERE name IN ('tap1', 'tap2')",
                     ),
                     [],
                 )
-                .expect("Failed to update homebrew_tapped last_required_at");
+                .expect("Failed to update homebrew_tap last_required_at");
 
                 // Create tracking variables for our mock delete functions
                 let deleted_installs = std::cell::RefCell::new(Vec::new());
@@ -830,7 +830,7 @@ mod tests {
                 // Override last_required_at
                 let conn = get_conn();
                 conn.execute(
-                    "UPDATE homebrew_installed SET last_required_at = '1970-01-01T00:00:00.000Z'",
+                    "UPDATE homebrew_install SET last_required_at = '1970-01-01T00:00:00.000Z'",
                     [],
                 )
                 .expect("Failed to update last_required_at");
@@ -889,13 +889,13 @@ mod tests {
                 let conn = get_conn();
                 conn.execute(
                     concat!(
-                        "UPDATE homebrew_installed ",
+                        "UPDATE homebrew_install ",
                         "SET last_required_at = '1970-01-01T00:00:00.000Z' ",
                         "WHERE name = 'formula1'",
                     ),
                     [],
                 )
-                .expect("Failed to update homebrew_installed last_required_at");
+                .expect("Failed to update homebrew_install last_required_at");
 
                 // Run cleanup with failing delete functions
                 let result = cache.cleanup(
@@ -913,11 +913,11 @@ mod tests {
                 // Verify data still exists (transaction rolled back)
                 let exists = conn
                     .query_row(
-                        "SELECT COUNT(*) FROM homebrew_installed WHERE name = 'formula1'",
+                        "SELECT COUNT(*) FROM homebrew_install WHERE name = 'formula1'",
                         [],
                         |row| row.get::<_, i64>(0),
                     )
-                    .expect("Failed to query homebrew_installed");
+                    .expect("Failed to query homebrew_install");
                 assert_eq!(exists, 1);
             });
         }
@@ -934,13 +934,13 @@ mod tests {
                 let conn = get_conn();
                 conn.execute(
                     concat!(
-                        "UPDATE homebrew_tapped ",
+                        "UPDATE homebrew_tap ",
                         "SET last_required_at = '1970-01-01T00:00:00.000Z' ",
                         "WHERE name = 'tap1'",
                     ),
                     [],
                 )
-                .expect("Failed to update homebrew_tapped last_required_at");
+                .expect("Failed to update homebrew_tap last_required_at");
 
                 // Run cleanup with failing delete functions
                 let result = cache.cleanup(
@@ -956,11 +956,11 @@ mod tests {
                 // Verify data still exists (transaction rolled back)
                 let exists = conn
                     .query_row(
-                        "SELECT COUNT(*) FROM homebrew_tapped WHERE name = 'tap1'",
+                        "SELECT COUNT(*) FROM homebrew_tap WHERE name = 'tap1'",
                         [],
                         |row| row.get::<_, i64>(0),
                     )
-                    .expect("Failed to query homebrew_tapped");
+                    .expect("Failed to query homebrew_tap");
                 assert_eq!(exists, 1);
             });
         }
@@ -983,11 +983,11 @@ mod tests {
                 let conn = get_conn();
                 let exists = conn
                     .query_row(
-                        "SELECT COUNT(*) FROM homebrew_tapped WHERE name = ?1",
+                        "SELECT COUNT(*) FROM homebrew_tap WHERE name = ?1",
                         params![tap_name],
                         |row| row.get::<_, i64>(0),
                     )
-                    .expect("Failed to query homebrew_tapped");
+                    .expect("Failed to query homebrew_tap");
                 assert_eq!(exists, 1);
             });
         }
@@ -1015,7 +1015,7 @@ mod tests {
                         let exists = conn
                             .query_row(
                                 concat!(
-                                    "SELECT COUNT(*) FROM homebrew_installed ",
+                                    "SELECT COUNT(*) FROM homebrew_install ",
                                     "WHERE name = ?1 AND version = ?2 AND cask = ?3",
                                 ),
                                 params![
@@ -1025,7 +1025,7 @@ mod tests {
                                 ],
                                 |row| row.get::<_, i64>(0),
                             )
-                            .expect("Failed to query homebrew_installed");
+                            .expect("Failed to query homebrew_install");
                         assert_eq!(exists, 1, "Install name={:?}, version={:?}, cask={} should exist exactly once, found {}", install_name, version, is_cask, exists);
                     }
                 }
@@ -1060,7 +1060,7 @@ mod tests {
                     let exists = conn
                         .query_row(
                             concat!(
-                                "SELECT COUNT(*) FROM homebrew_installed ",
+                                "SELECT COUNT(*) FROM homebrew_install ",
                                 "WHERE version = ?2 AND name = ?1",
                             ),
                             params![
@@ -1069,7 +1069,7 @@ mod tests {
                             ],
                             |row| row.get::<_, i64>(0),
                         )
-                        .expect("Failed to query homebrew_installed");
+                        .expect("Failed to query homebrew_install");
                     assert_eq!(exists, 1, "Version {:?} not found", version);
                 }
             });

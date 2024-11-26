@@ -3,7 +3,7 @@
 -- :param2: version - the version of the formula or cask if any specified
 -- :param3: cask - whether the formula is a cask or not
 -- :param4: installed - whether the formula or cask was installed or not
-INSERT INTO homebrew_installed (
+INSERT INTO homebrew_install (
     name,
     version,
     cask,

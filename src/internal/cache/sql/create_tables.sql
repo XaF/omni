@@ -95,7 +95,7 @@ CREATE TABLE IF NOT EXISTS github_releases (
 );
 
 -- Table containing the formulae and casks that were installed using Homebrew
-CREATE TABLE IF NOT EXISTS homebrew_installed (
+CREATE TABLE IF NOT EXISTS homebrew_install (
     name TEXT NOT NULL,
     version TEXT NOT NULL DEFAULT '__NULL__',
     cask BOOLEAN NOT NULL DEFAULT 0,
@@ -109,18 +109,18 @@ CREATE TABLE IF NOT EXISTS homebrew_installed (
 
 -- Table containing the information of which workdir is
 -- requiring a given Homebrew formula or cask
-CREATE TABLE IF NOT EXISTS homebrew_installed_required_by (
+CREATE TABLE IF NOT EXISTS homebrew_install_required_by (
     name TEXT NOT NULL,
     version TEXT NOT NULL DEFAULT '__NULL__',
     cask BOOLEAN NOT NULL DEFAULT 0,
     env_version_id TEXT NOT NULL,
     PRIMARY KEY (name, version, cask, env_version_id),
-    FOREIGN KEY(name, version, cask) REFERENCES homebrew_installed(name, version, cask) ON DELETE CASCADE,
+    FOREIGN KEY(name, version, cask) REFERENCES homebrew_install(name, version, cask) ON DELETE CASCADE,
     FOREIGN KEY(env_version_id) REFERENCES env_versions(env_version_id) ON DELETE CASCADE
 );
 
 -- Table containing the taps that were tapped using Homebrew
-CREATE TABLE IF NOT EXISTS homebrew_tapped (
+CREATE TABLE IF NOT EXISTS homebrew_tap (
     name TEXT PRIMARY KEY,
     tapped BOOLEAN NOT NULL DEFAULT 0,
     last_required_at TEXT NOT NULL DEFAULT '1970-01-01T00:00:00.000Z',
@@ -129,11 +129,11 @@ CREATE TABLE IF NOT EXISTS homebrew_tapped (
 
 -- Table containing the information of which workdir is
 -- requiring a given Homebrew tap
-CREATE TABLE IF NOT EXISTS homebrew_tapped_required_by (
+CREATE TABLE IF NOT EXISTS homebrew_tap_required_by (
     name TEXT NOT NULL,
     env_version_id TEXT NOT NULL,
     PRIMARY KEY (name, env_version_id),
-    FOREIGN KEY(name) REFERENCES homebrew_tapped(name) ON DELETE CASCADE,
+    FOREIGN KEY(name) REFERENCES homebrew_tap(name) ON DELETE CASCADE,
     FOREIGN KEY(env_version_id) REFERENCES env_versions(env_version_id) ON DELETE CASCADE
 );
 
@@ -169,8 +169,8 @@ CREATE INDEX IF NOT EXISTS idx_asdf_installed_required_by ON asdf_installed_requ
 --  CREATE INDEX IF NOT EXISTS idx_asdf_installed_required ON asdf_installed(last_required_at);
 CREATE INDEX IF NOT EXISTS idx_github_installed_required_by ON github_release_installed_required_by(repository, version);
 --  CREATE INDEX IF NOT EXISTS idx_github_installed_required ON github_release_installed(last_required_at);
-CREATE INDEX IF NOT EXISTS idx_homebrew_installed_required_by ON homebrew_installed_required_by(name, version, cask);
-CREATE INDEX IF NOT EXISTS idx_homebrew_tapped_required_by ON homebrew_tapped(name);
---  CREATE INDEX IF NOT EXISTS idx_homebrew_installed_required ON homebrew_installed(last_required_at);
+CREATE INDEX IF NOT EXISTS idx_homebrew_install_required_by ON homebrew_install_required_by(name, version, cask);
+CREATE INDEX IF NOT EXISTS idx_homebrew_tap_required_by ON homebrew_tap(name);
+--  CREATE INDEX IF NOT EXISTS idx_homebrew_install_required ON homebrew_install(last_required_at);
 CREATE INDEX IF NOT EXISTS idx_prompts_organization ON prompts(organization);
 CREATE INDEX IF NOT EXISTS idx_prompts_repository ON prompts(organization, repository);

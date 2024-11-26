@@ -4,7 +4,7 @@
 -- :return - boolean, 1 if should be updated, 0 otherwise
 WITH last_update AS (
   SELECT updated_at as timestamp
-  FROM homebrew_tapped
+  FROM homebrew_tap
   WHERE name = ?1
 ),
 is_expired AS (

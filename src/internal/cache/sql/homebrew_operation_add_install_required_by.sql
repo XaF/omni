@@ -3,7 +3,7 @@
 -- :param2: version - the version of the formula or cask if any specified
 -- :param3: cask - whether the formula is a cask or not
 -- :param4: env_version_id - the id of the environment version that is requiring the tool
-INSERT INTO homebrew_installed_required_by (
+INSERT INTO homebrew_install_required_by (
     name,
     version,
     cask,

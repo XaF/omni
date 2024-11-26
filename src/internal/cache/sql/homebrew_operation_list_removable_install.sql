@@ -8,10 +8,10 @@ SELECT
     END AS version,
     hi.cask,
     hi.installed
-FROM homebrew_installed AS hi
+FROM homebrew_install AS hi
 WHERE NOT EXISTS (
     SELECT 1
-    FROM homebrew_installed_required_by AS hirb
+    FROM homebrew_install_required_by AS hirb
     WHERE hirb.name = hi.name
           AND hirb.version = hi.version
           AND hirb.cask = hi.cask
