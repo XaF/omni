@@ -69,7 +69,7 @@ CREATE TABLE IF NOT EXISTS asdf_plugins (
 
 -- Table containing the tools that were installed using Github releases
 -- and the versions that were installed
-CREATE TABLE IF NOT EXISTS github_release_installed (
+CREATE TABLE IF NOT EXISTS github_release_install (
     repository TEXT NOT NULL,
     version TEXT NOT NULL,
     last_required_at TEXT NOT NULL DEFAULT '1970-01-01T00:00:00.000Z',
@@ -78,12 +78,12 @@ CREATE TABLE IF NOT EXISTS github_release_installed (
 
 -- Table containing the information of which workdir is
 -- requiring a given Github release
-CREATE TABLE IF NOT EXISTS github_release_installed_required_by (
+CREATE TABLE IF NOT EXISTS github_release_install_required_by (
     repository TEXT NOT NULL,
     version TEXT NOT NULL,
     env_version_id TEXT NOT NULL,
     PRIMARY KEY (repository, version, env_version_id),
-    FOREIGN KEY(repository, version) REFERENCES github_release_installed(repository, version) ON DELETE CASCADE,
+    FOREIGN KEY(repository, version) REFERENCES github_release_install(repository, version) ON DELETE CASCADE,
     FOREIGN KEY(env_version_id) REFERENCES env_versions(env_version_id) ON DELETE CASCADE
 );
 
@@ -167,8 +167,8 @@ CREATE INDEX IF NOT EXISTS idx_env_history_workdir ON env_history(workdir_id);
 CREATE INDEX IF NOT EXISTS idx_env_history_env_version_id ON env_history(env_version_id);
 CREATE INDEX IF NOT EXISTS idx_asdf_installed_required_by ON asdf_installed_required_by(tool, version);
 --  CREATE INDEX IF NOT EXISTS idx_asdf_installed_required ON asdf_installed(last_required_at);
-CREATE INDEX IF NOT EXISTS idx_github_installed_required_by ON github_release_installed_required_by(repository, version);
---  CREATE INDEX IF NOT EXISTS idx_github_installed_required ON github_release_installed(last_required_at);
+CREATE INDEX IF NOT EXISTS idx_github_installed_required_by ON github_release_install_required_by(repository, version);
+--  CREATE INDEX IF NOT EXISTS idx_github_installed_required ON github_release_install(last_required_at);
 CREATE INDEX IF NOT EXISTS idx_homebrew_install_required_by ON homebrew_install_required_by(name, version, cask);
 CREATE INDEX IF NOT EXISTS idx_homebrew_tap_required_by ON homebrew_tap(name);
 --  CREATE INDEX IF NOT EXISTS idx_homebrew_install_required ON homebrew_install(last_required_at);

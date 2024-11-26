@@ -440,24 +440,24 @@ fn migrate_github_release_operation(conn: &Connection) -> Result<(), CacheManage
     let file = std::fs::File::open(json_path)?;
     let cache: PreDatabaseGithubReleaseOperationCache = serde_json::from_reader(file)?;
 
-    // github_release_installed:
+    // github_release_install:
     //  repository TEXT NOT NULL,
     //  version TEXT NOT NULL,
     //  last_required_at TEXT NOT NULL,
 
-    // github_release_installed_required_by:
+    // github_release_install_required_by:
     //   repository TEXT NOT NULL,
     //   version TEXT NOT NULL,
     //   env_version_id TEXT NOT NULL
 
     let mut installed_stmt = conn.prepare(concat!(
-        "INSERT INTO github_release_installed ",
+        "INSERT INTO github_release_install ",
         "(repository, version, last_required_at) ",
         "VALUES (?1, ?2, ?3)",
     ))?;
 
     let mut required_by_stmt = conn.prepare(concat!(
-        "INSERT INTO github_release_installed_required_by ",
+        "INSERT INTO github_release_install_required_by ",
         "(repository, version, env_version_id) ",
         "VALUES (?1, ?2, ?3)",
     ))?;

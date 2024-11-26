@@ -1,31 +1,25 @@
-use std::collections::BTreeMap;
-use std::collections::BTreeSet;
-use std::io;
-
 use globset::Glob;
 use itertools::Itertools;
 use lazy_static::lazy_static;
 use regex::escape as regex_escape;
 use regex::Regex;
+use rusqlite::params;
+use rusqlite::Row;
 use serde::Deserialize;
 use serde::Serialize;
+use time::format_description::well_known::Rfc3339;
 use time::OffsetDateTime;
 
-use crate::internal::cache::handler::exclusive;
-use crate::internal::cache::handler::shared;
-use crate::internal::cache::loaders::get_github_release_operation_cache;
-use crate::internal::cache::loaders::set_github_release_operation_cache;
-use crate::internal::cache::utils;
-use crate::internal::cache::utils::Empty;
-use crate::internal::cache::CacheObject;
+use crate::internal::cache::database::RowExt;
+use crate::internal::cache::CacheManager;
+use crate::internal::cache::CacheManagerError;
+use crate::internal::cache::FromRow;
 use crate::internal::config::global_config;
 use crate::internal::config::up::utils::VersionMatcher;
 use crate::internal::config::up::utils::VersionParser;
 use crate::internal::env::now as omni_now;
 use crate::internal::self_updater::compatible_release_arch;
 use crate::internal::self_updater::compatible_release_os;
-
-const GITHUB_RELEASE_CACHE_NAME: &str = "github_release_operation";
 
 lazy_static! {
     static ref OS_REGEX: Regex = match Regex::new(&format!(
@@ -62,137 +56,100 @@ lazy_static! {
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct GithubReleaseOperationCache {
-    #[serde(default = "Vec::new", skip_serializing_if = "Vec::is_empty")]
-    pub installed: Vec<GithubReleaseInstalled>,
-    #[serde(default = "BTreeMap::new", skip_serializing_if = "BTreeMap::is_empty")]
-    pub releases: BTreeMap<String, GithubReleases>,
-    #[serde(
-        default = "utils::origin_of_time",
-        with = "time::serde::rfc3339",
-        skip_serializing_if = "utils::is_origin_of_time"
-    )]
-    pub updated_at: OffsetDateTime,
-}
+pub struct GithubReleaseOperationCache {}
 
 impl GithubReleaseOperationCache {
-    pub fn updated(&mut self) {
-        self.updated_at = OffsetDateTime::now_utc();
+    pub fn get() -> Self {
+        Self {}
     }
 
-    pub fn add_releases(&mut self, repository: &str, releases: &GithubReleases) -> bool {
-        self.releases
-            .insert(repository.to_string(), releases.clone());
-        self.updated();
-        true
+    pub fn add_releases(
+        &self,
+        repository: &str,
+        releases: &GithubReleases,
+    ) -> Result<bool, CacheManagerError> {
+        let db = CacheManager::get();
+        let inserted = db.execute(
+            include_str!("sql/github_release_operation_add_releases.sql"),
+            params![repository, serde_json::to_string(releases)?],
+        )?;
+        Ok(inserted > 0)
     }
 
-    pub fn get_releases(&self, repository: &str) -> Option<&GithubReleases> {
-        self.releases.get(repository)
+    pub fn get_releases(&self, repository: &str) -> Option<GithubReleases> {
+        let db = CacheManager::get();
+        let releases: Option<GithubReleases> = db
+            .query_one(
+                include_str!("sql/github_release_operation_get_releases.sql"),
+                params![repository],
+            )
+            .ok();
+        releases
     }
 
-    pub fn add_installed(&mut self, repository: &str, version: &str) -> bool {
-        self.add_required_by("", repository, version)
+    pub fn add_installed(
+        &self,
+        repository: &str,
+        version: &str,
+    ) -> Result<bool, CacheManagerError> {
+        let db = CacheManager::get();
+        let inserted = db.execute(
+            include_str!("sql/github_release_operation_add_install.sql"),
+            params![repository, version],
+        )?;
+        Ok(inserted > 0)
     }
 
     pub fn add_required_by(
-        &mut self,
+        &self,
         env_version_id: &str,
         repository: &str,
         version: &str,
-    ) -> bool {
-        let inserted = if let Some(install) = self
-            .installed
-            .iter_mut()
-            .find(|i| i.repository == repository && i.version == version)
-        {
-            let inserted = match env_version_id.is_empty() {
-                true => false,
-                false => install.required_by.insert(env_version_id.to_string()),
-            };
-            if inserted || install.last_required_at < omni_now() {
-                install.last_required_at = omni_now();
-                true
-            } else {
-                false
-            }
-        } else {
-            let install = GithubReleaseInstalled {
-                repository: repository.to_string(),
-                version: version.to_string(),
-                required_by: [env_version_id.to_string()].iter().cloned().collect(),
-                last_required_at: omni_now(),
-            };
-            self.installed.push(install);
-            true
-        };
-
-        if inserted {
-            self.updated();
-        }
-
-        inserted
-    }
-}
-
-impl Empty for GithubReleaseOperationCache {
-    fn is_empty(&self) -> bool {
-        self.installed.is_empty() && self.releases.is_empty()
-    }
-}
-
-impl CacheObject for GithubReleaseOperationCache {
-    fn new_empty() -> Self {
-        Self {
-            installed: Vec::new(),
-            releases: BTreeMap::new(),
-            updated_at: utils::origin_of_time(),
-        }
+    ) -> Result<bool, CacheManagerError> {
+        let db = CacheManager::get();
+        let inserted = db.execute(
+            include_str!("sql/github_release_operation_add_install_required_by.sql"),
+            params![repository, version, env_version_id],
+        )?;
+        Ok(inserted > 0)
     }
 
-    fn get() -> Self {
-        get_github_release_operation_cache()
+    pub fn list_installed(&self) -> Result<Vec<GithubReleaseInstalled>, CacheManagerError> {
+        let db = CacheManager::get();
+        let installed: Vec<GithubReleaseInstalled> = db.query_as(
+            include_str!("sql/github_release_operation_list_installed.sql"),
+            params![],
+        )?;
+        Ok(installed)
     }
 
-    fn shared() -> io::Result<Self> {
-        shared::<Self>(GITHUB_RELEASE_CACHE_NAME)
-    }
+    pub fn cleanup(&self) -> Result<(), CacheManagerError> {
+        let db = CacheManager::get();
 
-    fn exclusive<F>(processing_fn: F) -> io::Result<Self>
-    where
-        F: FnOnce(&mut Self) -> bool,
-    {
-        exclusive::<Self, F, fn(Self)>(
-            GITHUB_RELEASE_CACHE_NAME,
-            processing_fn,
-            set_github_release_operation_cache,
-        )
+        let config = global_config();
+        let grace_period = config.cache.github_release.cleanup_after;
+
+        db.execute(
+            include_str!("sql/github_release_operation_cleanup.sql"),
+            params![&grace_period],
+        )?;
+
+        Ok(())
     }
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct GithubReleaseInstalled {
-    #[serde(default, skip_serializing_if = "String::is_empty")]
     pub repository: String,
-    #[serde(default, skip_serializing_if = "String::is_empty")]
     pub version: String,
-    #[serde(default, skip_serializing_if = "BTreeSet::is_empty")]
-    pub required_by: BTreeSet<String>,
-    #[serde(default = "utils::origin_of_time", with = "time::serde::rfc3339")]
-    pub last_required_at: OffsetDateTime,
 }
 
-impl GithubReleaseInstalled {
-    pub fn removable(&self) -> bool {
-        if !self.required_by.is_empty() {
-            return false;
-        }
-
-        let config = global_config();
-        let grace_period = config.cache.github_release.cleanup_after;
-        let grace_period = time::Duration::seconds(grace_period as i64);
-
-        (self.last_required_at + grace_period) < omni_now()
+impl FromRow for GithubReleaseInstalled {
+    fn from_row(row: &Row) -> Result<Self, CacheManagerError> {
+        Ok(Self {
+            repository: row.get("repository")?,
+            version: row.get("version")?,
+        })
     }
 }
 
@@ -578,6 +535,21 @@ impl GithubReleases {
                 Some((release_version, release))
             })
             .max_by(|(version_a, _), (version_b, _)| VersionParser::compare(version_a, version_b))
+    }
+}
+
+impl FromRow for GithubReleases {
+    fn from_row(row: &Row) -> Result<Self, CacheManagerError> {
+        let releases_str: String = row.get("releases")?;
+        let releases: Vec<GithubReleaseVersion> = serde_json::from_str(&releases_str)?;
+
+        let fetched_at_str: String = row.get("fetched_at")?;
+        let fetched_at: OffsetDateTime = OffsetDateTime::parse(&fetched_at_str, &Rfc3339)?;
+
+        Ok(Self {
+            releases,
+            fetched_at,
+        })
     }
 }
 
