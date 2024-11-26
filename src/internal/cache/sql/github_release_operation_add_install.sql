@@ -1,7 +1,7 @@
 -- Add a new github release
 -- :param: ?1 repository - the repository name
 -- :param: ?2 version - the version of the release
-INSERT INTO github_release_install (
+INSERT INTO github_release_installed (
     repository,
     version,
     last_required_at

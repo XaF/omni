@@ -177,6 +177,14 @@ impl UpEnvironmentsCache {
 
         Ok((new_env, env_version_id))
     }
+
+    #[cfg(test)]
+    pub fn environment_ids(&self) -> BTreeSet<String> {
+        let environment_ids: Vec<String> = CacheManager::get()
+            .query_as(include_str!("sql/up_environments_get_env_ids.sql"), &[])
+            .unwrap();
+        environment_ids.into_iter().collect()
+    }
 }
 
 /// The environment configuration for a work directory

@@ -3,4 +3,4 @@ SELECT
     repository,
     version
 FROM
-    github_release_install;
+    github_release_installed;
