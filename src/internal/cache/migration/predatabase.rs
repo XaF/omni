@@ -440,24 +440,24 @@ fn migrate_github_release_operation(conn: &Connection) -> Result<(), CacheManage
     let file = std::fs::File::open(json_path)?;
     let cache: PreDatabaseGithubReleaseOperationCache = serde_json::from_reader(file)?;
 
-    // github_release_install:
+    // github_release_installed:
     //  repository TEXT NOT NULL,
     //  version TEXT NOT NULL,
     //  last_required_at TEXT NOT NULL,
 
-    // github_release_install_required_by:
+    // github_release_required_by:
     //   repository TEXT NOT NULL,
     //   version TEXT NOT NULL,
     //   env_version_id TEXT NOT NULL
 
     let mut installed_stmt = conn.prepare(concat!(
-        "INSERT INTO github_release_install ",
+        "INSERT INTO github_release_installed ",
         "(repository, version, last_required_at) ",
         "VALUES (?1, ?2, ?3)",
     ))?;
 
     let mut required_by_stmt = conn.prepare(concat!(
-        "INSERT INTO github_release_install_required_by ",
+        "INSERT INTO github_release_required_by ",
         "(repository, version, env_version_id) ",
         "VALUES (?1, ?2, ?3)",
     ))?;
@@ -605,13 +605,13 @@ fn migrate_homebrew_operation(conn: &Connection) -> Result<(), CacheManagerError
     let mut installed_stmt = conn.prepare(concat!(
         "INSERT INTO homebrew_install ",
         "(name, version, cask, installed, last_required_at) ",
-        "VALUES (?1, COALESCE(?2, '__NULL__'), ?3, ?4, ?5)",
+        "VALUES (?1, COALESCE(?2, '__NULL__'), MIN(1, ?3), MIN(1, ?4), ?5)",
     ))?;
 
     let mut installed_required_by_stmt = conn.prepare(concat!(
         "INSERT INTO homebrew_install_required_by ",
         "(name, version, cask, env_version_id) ",
-        "VALUES (?1, COALESCE(?2, '__NULL__'), ?3, ?4)",
+        "VALUES (?1, COALESCE(?2, '__NULL__'), MIN(1, ?3), ?4)",
     ))?;
 
     for installed in cache.installed.iter() {
@@ -630,12 +630,15 @@ fn migrate_homebrew_operation(conn: &Connection) -> Result<(), CacheManagerError
                 &installed.cask,
                 &env_version_id,
             ]) {
-                if matches!(err, rusqlite::Error::SqliteFailure(error, _) if error.code == rusqlite::ErrorCode::ConstraintViolation)
+                if matches!(err,
+                    rusqlite::Error::SqliteFailure(error, _)
+                    if error.code == rusqlite::ErrorCode::ConstraintViolation)
                 {
                     // Ignore constraint violation errors, it could simply be old invalid data
-                } else {
-                    return Err(err.into());
+                    continue;
                 }
+
+                return Err(err.into());
             }
         }
     }
@@ -705,10 +708,10 @@ fn migrate_homebrew_operation(conn: &Connection) -> Result<(), CacheManagerError
     let mut install_cache_stmt = conn.prepare(concat!(
         "INSERT INTO homebrew_install ",
         "(name, version, cask, updated_at, checked_at, bin_paths) ",
-        "VALUES (?1, ?2, MIN(1, ?3), ?4, ?5, ?6) ",
+        "VALUES (?1, COALESCE(?2, '__NULL__'), MIN(1, ?3), ?4, ?5, ?6) ",
         "ON CONFLICT(name, version, cask) DO UPDATE SET ",
         "updated_at = ?4, checked_at = ?5, bin_paths = ?6 ",
-        "WHERE name = ?1 AND version = ?2 AND cask = MIN(1, ?3)",
+        "WHERE name = ?1 AND version = COALESCE(?2, '__NULL__') AND cask = MIN(1, ?3)",
     ))?;
 
     for (install_key, install) in cache
@@ -793,15 +796,15 @@ fn migrate_prompts(conn: &Connection) -> Result<(), CacheManagerError> {
     let cache: PreDatabasePromptsCache = serde_json::from_reader(file)?;
 
     // prompts:
-    //  prompt_id TEXT,
+    //  prompt_id TEXT NOT NULL,
     //  organization TEXT NOT NULL,
-    //  repository TEXT,
-    //  answer TEXT,
+    //  repository TEXT NOT NULL DEFAULT "__NULL__",
+    //  answer TEXT NOT NULL
 
     let mut answer_stmt = conn.prepare(concat!(
         "INSERT INTO prompts ",
         "(prompt_id, organization, repository, answer) ",
-        "VALUES (?1, ?2, ?3, ?4)",
+        "VALUES (?1, ?2, COALESCE(?3, '__NULL__'), ?4)",
     ))?;
 
     for answer in cache.answers.iter() {

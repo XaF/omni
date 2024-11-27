@@ -143,7 +143,7 @@ CREATE TABLE IF NOT EXISTS prompts (
     prompt_id TEXT NOT NULL COLLATE NOCASE,
     organization TEXT NOT NULL COLLATE NOCASE,
     repository TEXT NOT NULL DEFAULT '__NULL__' COLLATE NOCASE,
-    answer TEXT,
+    answer TEXT NOT NULL,
     updated_at TEXT NOT NULL DEFAULT '1970-01-01T00:00:00.000Z',
     PRIMARY KEY (prompt_id, organization, repository)
 );

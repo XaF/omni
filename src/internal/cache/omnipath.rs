@@ -1,3 +1,5 @@
+use std::path::PathBuf;
+
 use rusqlite::params;
 use serde::Deserialize;
 use serde::Serialize;
@@ -43,7 +45,7 @@ impl OmniPathCache {
         .unwrap_or_default()
     }
 
-    pub fn update_error(&mut self, update_error_log: String) -> Result<bool, CacheManagerError> {
+    pub fn update_error(&self, update_error_log: String) -> Result<bool, CacheManagerError> {
         let db = CacheManager::get();
         let updated = db.execute(
             include_str!("sql/omnipath_set_update_error_log.sql"),
@@ -82,9 +84,27 @@ impl OmniPathCache {
                 ));
             }
 
-            Ok(update_error_log)
+            // Check if the file is not empty
+            let update_error_log = update_error_log.trim();
+            if update_error_log.is_empty() {
+                // We return 'Ok' because we want the transaction to commit,
+                // since we've already cleared the update_error_log
+                return Ok(None);
+            }
+
+            // Make sure the file exists before returning it
+            let file_path = PathBuf::from(&update_error_log);
+            if !file_path.exists() {
+                // We return 'Ok' because we want the transaction to commit,
+                // since we've already cleared the update_error_log
+                return Ok(None);
+            }
+
+            // If we get here, we can return the update_error_log
+            // since it is an actual file
+            Ok(Some(update_error_log.to_string()))
         })
-        .ok()
+        .unwrap_or_default()
     }
 }
 
@@ -92,10 +112,24 @@ impl OmniPathCache {
 mod tests {
     use super::*;
 
+    use std::env::temp_dir as env_temp_dir;
+    use std::fs::write as fs_write;
+    use std::path::Path;
+
+    use uuid::Uuid;
+
     use crate::internal::testutils::run_with_env_and_cache;
 
     mod omnipath_cache {
         use super::*;
+
+        fn create_fake_log_file() -> String {
+            let tempdir = env_temp_dir();
+            let uuid = Uuid::new_v4();
+            let log_file = tempdir.as_path().join(format!("fake_error_{:x}.log", uuid));
+            fs_write(&log_file, "Test error log").expect("Failed to write to log file");
+            log_file.to_string_lossy().to_string()
+        }
 
         #[test]
         fn test_try_exclusive_update() {
@@ -163,13 +197,13 @@ mod tests {
         #[test]
         fn test_update_error_log() {
             run_with_env_and_cache(&[], || {
-                let mut cache = OmniPathCache::get();
-                let error_msg = "Test error message".to_string();
+                let cache = OmniPathCache::get();
+                let error_file = create_fake_log_file();
 
                 // Set error log
                 assert!(
                     cache
-                        .update_error(error_msg.clone())
+                        .update_error(error_file.clone())
                         .expect("Failed to update error log"),
                     "Setting error log should succeed"
                 );
@@ -185,7 +219,7 @@ mod tests {
 
                 assert_eq!(
                     stored_error.as_deref(),
-                    Some(error_msg.as_str()),
+                    Some(error_file.as_str()),
                     "Stored error should match set error"
                 );
             });
@@ -194,8 +228,8 @@ mod tests {
         #[test]
         fn test_try_exclusive_update_error_log() {
             run_with_env_and_cache(&[], || {
-                let mut cache = OmniPathCache::get();
-                let error_msg = "Test error message".to_string();
+                let cache = OmniPathCache::get();
+                let error_file = create_fake_log_file();
 
                 // Initially should return None as no error is set
                 assert!(
@@ -205,14 +239,14 @@ mod tests {
 
                 // Set error log
                 cache
-                    .update_error(error_msg.clone())
+                    .update_error(error_file.clone())
                     .expect("Failed to update error log");
 
                 // Try to exclusively get and clear error
                 let retrieved_error = cache.try_exclusive_update_error_log();
                 assert_eq!(
                     retrieved_error.as_deref(),
-                    Some(error_msg.as_str()),
+                    Some(error_file.as_str()),
                     "Retrieved error should match set error"
                 );
 
@@ -236,22 +270,114 @@ mod tests {
         }
 
         #[test]
-        fn test_concurrent_error_log_access() {
+        fn test_try_exclusive_update_error_log_empty() {
             run_with_env_and_cache(&[], || {
-                let mut cache1 = OmniPathCache::get();
+                let cache = OmniPathCache::get();
+                let db = CacheManager::get();
+
+                // Add empty error log
+                db.execute(
+                    "INSERT OR REPLACE INTO metadata (key, value) VALUES ('omnipath.update_error_log', '')",
+                    params![],
+                ).expect("Failed to insert empty error log");
+
+                // Check that the value is stored
+                let stored_error: Option<String> = db
+                    .query_one(
+                        include_str!("sql/omnipath_get_update_error_log.sql"),
+                        params![],
+                    )
+                    .expect("Failed to get error log");
+                assert_eq!(
+                    stored_error.as_deref(),
+                    Some(""),
+                    "Stored error should be empty"
+                );
+
+                // Check that None gets returned
+                assert!(
+                    cache.try_exclusive_update_error_log().is_none(),
+                    "Should return None when empty error is set"
+                );
+
+                // Check that the entry is not stored anymore
+                let stored_error: Option<String> = db
+                    .query_one_optional(
+                        include_str!("sql/omnipath_get_update_error_log.sql"),
+                        params![],
+                    )
+                    .expect("Failed to get error log");
+                assert!(stored_error.is_none(), "Error log should be cleared");
+            });
+        }
+
+        #[test]
+        fn test_try_exclusive_update_error_log_not_exists() {
+            run_with_env_and_cache(&[], || {
+                let cache = OmniPathCache::get();
+                let db = CacheManager::get();
+
+                // Make sure we have a file that does not exist, or it will fail
+                // the test for the wrong reasons
+                let error_file_base = "/this/file/does/not/exist.log";
+                let mut error_file = error_file_base.to_string();
+                while Path::new(&error_file).exists() {
+                    error_file = format!("{}.{:x}", error_file_base, Uuid::new_v4());
+                }
+
+                // Store the entry in the cache
+                assert!(
+                    cache.update_error(error_file.clone()).is_ok(),
+                    "Failed to update error log"
+                );
+
+                // Check that the value is stored
+                let stored_error: Option<String> = db
+                    .query_one(
+                        include_str!("sql/omnipath_get_update_error_log.sql"),
+                        params![],
+                    )
+                    .expect("Failed to get error log");
+                assert_eq!(
+                    stored_error.as_deref(),
+                    Some(error_file.as_str()),
+                    "Stored error should match set error"
+                );
+
+                // Check that None gets returned
+                assert!(
+                    cache.try_exclusive_update_error_log().is_none(),
+                    "Should return None when error log does not exist"
+                );
+
+                // Check that the entry is not stored anymore
+                let stored_error: Option<String> = db
+                    .query_one_optional(
+                        include_str!("sql/omnipath_get_update_error_log.sql"),
+                        params![],
+                    )
+                    .expect("Failed to get error log");
+                assert!(stored_error.is_none(), "Error log should be cleared");
+            });
+        }
+
+        #[test]
+        fn test_sequential_error_log_access() {
+            run_with_env_and_cache(&[], || {
+                let cache1 = OmniPathCache::get();
                 let cache2 = OmniPathCache::get();
-                let error_msg = "Test error message".to_string();
+                let error_file = create_fake_log_file();
 
                 // Set error using first cache instance
                 cache1
-                    .update_error(error_msg.clone())
+                    .update_error(error_file.clone())
                     .expect("Failed to update error log");
 
                 // First instance gets and clears the error
                 let error1 = cache1.try_exclusive_update_error_log();
                 assert_eq!(
                     error1.as_deref(),
-                    Some(error_msg.as_str()),
+                    Some(error_file.as_str()),
                     "First instance should get error"
                 );
 
@@ -264,16 +390,16 @@ mod tests {
         #[test]
         fn test_update_error_overwrite() {
             run_with_env_and_cache(&[], || {
-                let mut cache = OmniPathCache::get();
+                let cache = OmniPathCache::get();
 
                 // Set first error
-                let error1 = "First error".to_string();
+                let error1 = create_fake_log_file();
                 cache
                     .update_error(error1.clone())
                     .expect("Failed to update first error");
 
                 // Set second error
-                let error2 = "Second error".to_string();
+                let error2 = create_fake_log_file();
                 cache
                     .update_error(error2.clone())
                     .expect("Failed to update second error");
@@ -284,29 +410,6 @@ mod tests {
                     retrieved_error.as_deref(),
                     Some(error2.as_str()),
                     "Should only retrieve latest error"
-                );
-            });
-        }
-
-        #[test]
-        fn test_error_log_empty_string() {
-            run_with_env_and_cache(&[], || {
-                let mut cache = OmniPathCache::get();
-
-                // Set empty error message
-                assert!(
-                    cache
-                        .update_error("".to_string())
-                        .expect("Failed to update error log"),
-                    "Should be able to set empty error message"
-                );
-
-                // Try to retrieve it
-                let retrieved_error = cache.try_exclusive_update_error_log();
-                assert_eq!(
-                    retrieved_error.as_deref(),
-                    Some(""),
-                    "Should be able to retrieve empty error message"
                 );
             });
         }
