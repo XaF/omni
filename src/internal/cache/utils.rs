@@ -24,10 +24,6 @@ pub trait CacheObject {
         Self: Sized;
 }
 
-pub trait Expires {
-    fn expired(&self) -> bool;
-}
-
 pub trait Empty {
     fn is_empty(&self) -> bool;
 }

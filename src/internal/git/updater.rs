@@ -15,7 +15,6 @@ use tempfile::NamedTempFile;
 use time::format_description::well_known::Rfc3339;
 use tokio::process::Command as TokioCommand;
 
-use crate::internal::cache::CacheObject;
 use crate::internal::cache::OmniPathCache;
 use crate::internal::commands::base::Command;
 use crate::internal::commands::path::global_omnipath_entries;

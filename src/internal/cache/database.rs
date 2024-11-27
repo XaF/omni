@@ -10,6 +10,7 @@ use r2d2::Pool as R2d2Pool;
 use r2d2::PooledConnection;
 use r2d2_sqlite::SqliteConnectionManager;
 use rusqlite::Connection;
+use rusqlite::OptionalExtension;
 use rusqlite::Result as SqliteResult;
 use rusqlite::Row;
 use thiserror::Error;
@@ -316,6 +317,14 @@ impl RowExt for CacheManager {
     ) -> Result<T, CacheManagerError> {
         self.conn.query_one(query, params)
     }
+
+    fn query_one_optional<T: FromRow>(
+        &self,
+        query: &str,
+        params: &[&dyn rusqlite::ToSql],
+    ) -> Result<Option<T>, CacheManagerError> {
+        self.conn.query_one_optional(query, params)
+    }
 }
 
 pub trait FromRow: Sized {
@@ -406,6 +415,11 @@ pub trait RowExt {
         query: &str,
         params: &[&dyn rusqlite::ToSql],
     ) -> Result<T, CacheManagerError>;
+    fn query_one_optional<T: FromRow>(
+        &self,
+        query: &str,
+        params: &[&dyn rusqlite::ToSql],
+    ) -> Result<Option<T>, CacheManagerError>;
 }
 
 impl RowExt for rusqlite::Connection {
@@ -429,5 +443,17 @@ impl RowExt for rusqlite::Connection {
         Ok(self.query_row(query, params, |row| {
             T::from_row(row).map_err(rusqlite::Error::from)
         })?)
+    }
+
+    fn query_one_optional<T: FromRow>(
+        &self,
+        query: &str,
+        params: &[&dyn rusqlite::ToSql],
+    ) -> Result<Option<T>, CacheManagerError> {
+        Ok(self
+            .query_row(query, params, |row| {
+                T::from_row(row).map_err(rusqlite::Error::from)
+            })
+            .optional()?)
     }
 }
