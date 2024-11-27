@@ -7,12 +7,12 @@ SELECT EXISTS (
     FROM workdir_fingerprints
     WHERE workdir_id = ?1
     AND fingerprint_type = ?2
-    AND fingerprint = ?3
+    AND fingerprint = CAST(?3 AS STRING)
 ) OR (
     -- Special case: when ?3 is 0, returns true if either:
     --   - the row exists and fingerprint = 0
     --   - or the row doesn't exist at all
-    ?3 = '0' AND NOT EXISTS (
+    CAST(?3 AS STRING) = '0' AND NOT EXISTS (
         SELECT 1
         FROM workdir_fingerprints
         WHERE workdir_id = ?1
