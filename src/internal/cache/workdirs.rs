@@ -84,7 +84,7 @@ impl WorkdirsCache {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::internal::testutils::run_with_env_and_cache;
+    use crate::internal::testutils::run_with_env;
 
     mod workdirs_cache {
         use super::*;
@@ -96,7 +96,7 @@ mod tests {
 
         #[test]
         fn test_trusted_workdir_operations() {
-            run_with_env_and_cache(&[], || {
+            run_with_env(&[], || {
                 let mut cache = WorkdirsCache::get();
                 let workdir = test_trust_id(1);
 
@@ -151,7 +151,7 @@ mod tests {
 
         #[test]
         fn test_fingerprint_operations() {
-            run_with_env_and_cache(&[], || {
+            run_with_env(&[], || {
                 let mut cache = WorkdirsCache::get();
                 let workdir = test_trust_id(2);
                 let fp_type = "test_type";
@@ -216,7 +216,7 @@ mod tests {
 
         #[test]
         fn test_multiple_fingerprint_types() {
-            run_with_env_and_cache(&[], || {
+            run_with_env(&[], || {
                 let mut cache = WorkdirsCache::get();
                 let workdir = test_trust_id(3);
                 let fp_types = ["type1", "type2", "type3"];
@@ -250,7 +250,7 @@ mod tests {
 
         #[test]
         fn test_multiple_workdirs() {
-            run_with_env_and_cache(&[], || {
+            run_with_env(&[], || {
                 let mut cache = WorkdirsCache::get();
                 let workdirs: Vec<String> = (4..7).map(test_trust_id).collect();
                 let fp_type = "test_type";
@@ -300,7 +300,7 @@ mod tests {
 
         #[test]
         fn test_zero_fingerprint_behavior() {
-            run_with_env_and_cache(&[], || {
+            run_with_env(&[], || {
                 let mut cache = WorkdirsCache::get();
                 let workdir = test_trust_id(8);
                 let fp_type = "test_type";

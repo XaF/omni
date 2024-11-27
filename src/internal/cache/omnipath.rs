@@ -118,7 +118,7 @@ mod tests {
 
     use uuid::Uuid;
 
-    use crate::internal::testutils::run_with_env_and_cache;
+    use crate::internal::testutils::run_with_env;
 
     mod omnipath_cache {
         use super::*;
@@ -133,7 +133,7 @@ mod tests {
 
         #[test]
         fn test_try_exclusive_update() {
-            run_with_env_and_cache(&[], || {
+            run_with_env(&[], || {
                 let cache = OmniPathCache::get();
 
                 // First attempt should succeed
@@ -157,7 +157,7 @@ mod tests {
 
         #[test]
         fn test_try_exclusive_update_invalid_timestamp() {
-            run_with_env_and_cache(&[], || {
+            run_with_env(&[], || {
                 let cache = OmniPathCache::get();
                 let db = CacheManager::get();
 
@@ -178,7 +178,7 @@ mod tests {
 
         #[test]
         fn test_null_timestamp() {
-            run_with_env_and_cache(&[], || {
+            run_with_env(&[], || {
                 let cache = OmniPathCache::get();
                 let db = CacheManager::get();
 
@@ -196,7 +196,7 @@ mod tests {
 
         #[test]
         fn test_update_error_log() {
-            run_with_env_and_cache(&[], || {
+            run_with_env(&[], || {
                 let cache = OmniPathCache::get();
                 let error_file = create_fake_log_file();
 
@@ -227,7 +227,7 @@ mod tests {
 
         #[test]
         fn test_try_exclusive_update_error_log() {
-            run_with_env_and_cache(&[], || {
+            run_with_env(&[], || {
                 let cache = OmniPathCache::get();
                 let error_file = create_fake_log_file();
 
@@ -271,7 +271,7 @@ mod tests {
 
         #[test]
         fn test_try_exclusive_update_error_log_empty() {
-            run_with_env_and_cache(&[], || {
+            run_with_env(&[], || {
                 let cache = OmniPathCache::get();
                 let db = CacheManager::get();
 
@@ -313,7 +313,7 @@ mod tests {
 
         #[test]
         fn test_try_exclusive_update_error_log_not_exists() {
-            run_with_env_and_cache(&[], || {
+            run_with_env(&[], || {
                 let cache = OmniPathCache::get();
                 let db = CacheManager::get();
 
@@ -363,7 +363,7 @@ mod tests {
 
         #[test]
         fn test_sequential_error_log_access() {
-            run_with_env_and_cache(&[], || {
+            run_with_env(&[], || {
                 let cache1 = OmniPathCache::get();
                 let cache2 = OmniPathCache::get();
                 let error_file = create_fake_log_file();
@@ -389,7 +389,7 @@ mod tests {
 
         #[test]
         fn test_update_error_overwrite() {
-            run_with_env_and_cache(&[], || {
+            run_with_env(&[], || {
                 let cache = OmniPathCache::get();
 
                 // Set first error

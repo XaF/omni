@@ -218,14 +218,14 @@ mod tests {
     use super::*;
 
     use crate::internal::cache::database::get_conn;
-    use crate::internal::testutils::run_with_env_and_cache;
+    use crate::internal::testutils::run_with_env;
 
     mod asdf_operation_cache {
         use super::*;
 
         #[test]
         fn test_should_update_asdf() {
-            run_with_env_and_cache(&[], || {
+            run_with_env(&[], || {
                 let cache = AsdfOperationCache::get();
 
                 // First time should return true as no data exists
@@ -241,7 +241,7 @@ mod tests {
 
         #[test]
         fn test_should_update_asdf_plugin() {
-            run_with_env_and_cache(&[], || {
+            run_with_env(&[], || {
                 let cache = AsdfOperationCache::get();
                 let plugin = "test-plugin";
 
@@ -260,7 +260,7 @@ mod tests {
 
         #[test]
         fn test_set_and_get_plugin_versions() {
-            run_with_env_and_cache(&[], || {
+            run_with_env(&[], || {
                 let cache = AsdfOperationCache::get();
                 let plugin = "test-plugin";
 
@@ -291,7 +291,7 @@ mod tests {
 
         #[test]
         fn test_add_installed_and_required_by() {
-            run_with_env_and_cache(&[], || {
+            run_with_env(&[], || {
                 let cache = AsdfOperationCache::get();
 
                 let tool = "test-tool";
@@ -322,7 +322,7 @@ mod tests {
 
         #[test]
         fn test_cleanup() {
-            run_with_env_and_cache(&[], || {
+            run_with_env(&[], || {
                 // Directly inject a tool in the database, so we can use a very old date
                 let conn = get_conn();
 

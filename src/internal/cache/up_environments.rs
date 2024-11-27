@@ -464,7 +464,7 @@ impl From<EnvConfig> for Vec<UpEnvVar> {
 mod tests {
     use super::*;
 
-    use crate::internal::testutils::run_with_env_and_cache;
+    use crate::internal::testutils::run_with_env;
     use crate::internal::ConfigLoader;
     use crate::internal::ConfigValue;
 
@@ -473,7 +473,7 @@ mod tests {
 
         #[test]
         fn test_get_and_assign_environment() {
-            run_with_env_and_cache(&[], || {
+            run_with_env(&[], || {
                 let cache = UpEnvironmentsCache::get();
                 let workdir_id = "test-workdir";
                 let mut env = UpEnvironment::new().init();
@@ -497,7 +497,7 @@ mod tests {
 
         #[test]
         fn test_assign_already_existing_environment() {
-            run_with_env_and_cache(&[], || {
+            run_with_env(&[], || {
                 let cache = UpEnvironmentsCache::get();
                 let workdir_id = "test-workdir";
                 let mut env = UpEnvironment::new().init();
@@ -518,7 +518,7 @@ mod tests {
 
         #[test]
         fn test_clear_environment() {
-            run_with_env_and_cache(&[], || {
+            run_with_env(&[], || {
                 let cache = UpEnvironmentsCache::get();
                 let workdir_id = "test-workdir";
                 let mut env = UpEnvironment::new().init();
@@ -547,7 +547,7 @@ mod tests {
 
         #[test]
         fn test_environment_ids() {
-            run_with_env_and_cache(&[], || {
+            run_with_env(&[], || {
                 let cache = UpEnvironmentsCache::get();
                 let workdir_id = "test-workdir";
                 let mut env = UpEnvironment::new().init();
@@ -568,7 +568,7 @@ mod tests {
 
         #[test]
         fn test_assign_environment_with_different_sha() {
-            run_with_env_and_cache(&[], || {
+            run_with_env(&[], || {
                 let cache = UpEnvironmentsCache::get();
                 let workdir_id = "test-workdir";
                 let mut env = UpEnvironment::new().init();
@@ -590,7 +590,7 @@ mod tests {
 
         #[test]
         fn test_assign_environment_without_sha() {
-            run_with_env_and_cache(&[], || {
+            run_with_env(&[], || {
                 let cache = UpEnvironmentsCache::get();
                 let workdir_id = "test-workdir";
                 let mut env = UpEnvironment::new().init();
@@ -608,7 +608,7 @@ mod tests {
 
         #[test]
         fn test_multiple_workdir_environments() {
-            run_with_env_and_cache(&[], || {
+            run_with_env(&[], || {
                 let cache = UpEnvironmentsCache::get();
                 let mut env = UpEnvironment::new().init();
 
@@ -634,7 +634,7 @@ mod tests {
 
         #[test]
         fn test_clear_nonexistent_environment() {
-            run_with_env_and_cache(&[], || {
+            run_with_env(&[], || {
                 let cache = UpEnvironmentsCache::get();
                 let cleared = cache.clear("nonexistent-workdir").expect("Failed to clear");
                 assert!(!cleared);
@@ -643,7 +643,7 @@ mod tests {
 
         #[test]
         fn test_environment_history_cleanup() {
-            run_with_env_and_cache(&[], || {
+            run_with_env(&[], || {
                 let cache = UpEnvironmentsCache::get();
                 let workdir_id = "test-workdir";
                 let mut env = UpEnvironment::new().init();
@@ -664,7 +664,7 @@ mod tests {
 
         #[test]
         fn test_assign_modified_environment() {
-            run_with_env_and_cache(&[], || {
+            run_with_env(&[], || {
                 let cache = UpEnvironmentsCache::get();
                 let workdir_id = "test-workdir";
                 let mut env = UpEnvironment::new().init();
@@ -694,7 +694,7 @@ mod tests {
 
         #[test]
         fn test_environment_retention_max_total_keep_open() {
-            run_with_env_and_cache(&[], || {
+            run_with_env(&[], || {
                 let cache = UpEnvironmentsCache::get();
 
                 // Write the max_total to the config file
@@ -742,7 +742,7 @@ mod tests {
 
         #[test]
         fn test_environment_retention_max_total() {
-            run_with_env_and_cache(&[], || {
+            run_with_env(&[], || {
                 let cache = UpEnvironmentsCache::get();
 
                 // Write the max_total to the config file
@@ -791,7 +791,7 @@ mod tests {
 
         #[test]
         fn test_environment_retention_max_per_workdir() {
-            run_with_env_and_cache(&[], || {
+            run_with_env(&[], || {
                 let cache = UpEnvironmentsCache::get();
 
                 // Write the max_total to the config file

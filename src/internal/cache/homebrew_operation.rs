@@ -366,14 +366,14 @@ impl FromRow for DeletableHomebrewTap {
 mod tests {
     use super::*;
     use crate::internal::cache::database::get_conn;
-    use crate::internal::testutils::run_with_env_and_cache;
+    use crate::internal::testutils::run_with_env;
 
     mod homebrew_operation_cache {
         use super::*;
 
         #[test]
         fn test_add_tap_and_required_by() {
-            run_with_env_and_cache(&[], || {
+            run_with_env(&[], || {
                 let cache = HomebrewOperationCache::get();
                 let tap_name = "test/tap";
                 let env_version_id = "test-env-id";
@@ -399,7 +399,7 @@ mod tests {
 
         #[test]
         fn test_tap_update() {
-            run_with_env_and_cache(&[], || {
+            run_with_env(&[], || {
                 let cache = HomebrewOperationCache::get();
                 let tap_name = "test/tap";
 
@@ -418,7 +418,7 @@ mod tests {
 
         #[test]
         fn test_add_install_and_required_by() {
-            run_with_env_and_cache(&[], || {
+            run_with_env(&[], || {
                 let cache = HomebrewOperationCache::get();
                 let install_name = "test-formula";
                 let env_version_id = "test-env-id";
@@ -455,7 +455,7 @@ mod tests {
 
         #[test]
         fn test_install_update() {
-            run_with_env_and_cache(&[], || {
+            run_with_env(&[], || {
                 let cache = HomebrewOperationCache::get();
                 let install_name = "test-formula";
 
@@ -486,7 +486,7 @@ mod tests {
 
         #[test]
         fn test_install_check() {
-            run_with_env_and_cache(&[], || {
+            run_with_env(&[], || {
                 let cache = HomebrewOperationCache::get();
                 let install_name = "test-formula";
 
@@ -517,7 +517,7 @@ mod tests {
 
         #[test]
         fn test_homebrew_bin_path() {
-            run_with_env_and_cache(&[], || {
+            run_with_env(&[], || {
                 let cache = HomebrewOperationCache::get();
                 let test_path = "/usr/local/bin/brew".to_string();
 
@@ -536,7 +536,7 @@ mod tests {
 
         #[test]
         fn test_homebrew_update_operations() {
-            run_with_env_and_cache(&[], || {
+            run_with_env(&[], || {
                 let cache = HomebrewOperationCache::get();
 
                 // Initially should update
@@ -554,7 +554,7 @@ mod tests {
 
         #[test]
         fn test_update_install_status() {
-            run_with_env_and_cache(&[], || {
+            run_with_env(&[], || {
                 let cache = HomebrewOperationCache::get();
                 let install_name = "test-formula";
 
@@ -590,7 +590,7 @@ mod tests {
 
         #[test]
         fn test_update_tap_status() {
-            run_with_env_and_cache(&[], || {
+            run_with_env(&[], || {
                 let cache = HomebrewOperationCache::get();
                 let tap_name = "test/tap";
 
@@ -617,7 +617,7 @@ mod tests {
 
         #[test]
         fn test_install_bin_paths() {
-            run_with_env_and_cache(&[], || {
+            run_with_env(&[], || {
                 let cache = HomebrewOperationCache::get();
                 let install_name = "test-formula";
                 let bin_paths = vec!["/usr/local/bin/test".to_string()];
@@ -655,7 +655,7 @@ mod tests {
 
         #[test]
         fn test_empty_bin_paths() {
-            run_with_env_and_cache(&[], || {
+            run_with_env(&[], || {
                 let cache = HomebrewOperationCache::get();
                 let install_name = "test-formula";
                 let empty_paths: Vec<String> = vec![];
@@ -675,7 +675,7 @@ mod tests {
 
         #[test]
         fn test_multiple_env_requirements() {
-            run_with_env_and_cache(&[], || {
+            run_with_env(&[], || {
                 let cache = HomebrewOperationCache::get();
                 let tap_name = "test/tap";
                 let install_name = "test-formula";
@@ -732,7 +732,7 @@ mod tests {
 
         #[test]
         fn test_cleanup() {
-            run_with_env_and_cache(&[], || {
+            run_with_env(&[], || {
                 let cache = HomebrewOperationCache::get();
 
                 // Add some test data
@@ -807,7 +807,7 @@ mod tests {
 
         #[test]
         fn test_cleanup_with_versions() {
-            run_with_env_and_cache(&[], || {
+            run_with_env(&[], || {
                 let cache = HomebrewOperationCache::get();
                 let install_name = "test-formula";
 
@@ -877,7 +877,7 @@ mod tests {
 
         #[test]
         fn test_cleanup_with_failing_delete_install() {
-            run_with_env_and_cache(&[], || {
+            run_with_env(&[], || {
                 let cache = HomebrewOperationCache::get();
 
                 // Add test data
@@ -924,7 +924,7 @@ mod tests {
 
         #[test]
         fn test_cleanup_with_failing_delete_tap() {
-            run_with_env_and_cache(&[], || {
+            run_with_env(&[], || {
                 let cache = HomebrewOperationCache::get();
 
                 // Add test data
@@ -967,7 +967,7 @@ mod tests {
 
         #[test]
         fn test_add_duplicate_tap() {
-            run_with_env_and_cache(&[], || {
+            run_with_env(&[], || {
                 let cache = HomebrewOperationCache::get();
                 let tap_name = "test/tap";
 
@@ -994,7 +994,7 @@ mod tests {
 
         #[test]
         fn test_add_duplicate_install() {
-            run_with_env_and_cache(&[], || {
+            run_with_env(&[], || {
                 let cache = HomebrewOperationCache::get();
                 let install_name = "test-formula";
 
@@ -1034,7 +1034,7 @@ mod tests {
 
         #[test]
         fn test_install_with_different_versions() {
-            run_with_env_and_cache(&[], || {
+            run_with_env(&[], || {
                 let cache = HomebrewOperationCache::get();
                 let install_name = "test-formula";
                 let is_cask = false;

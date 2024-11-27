@@ -653,7 +653,7 @@ impl GithubReleaseAssetType {
 mod tests {
     use super::*;
     use crate::internal::cache::database::get_conn;
-    use crate::internal::testutils::run_with_env_and_cache;
+    use crate::internal::testutils::run_with_env;
 
     mod github_release_operation_cache {
         use super::*;
@@ -661,7 +661,7 @@ mod tests {
 
         #[test]
         fn test_add_and_get_releases() {
-            run_with_env_and_cache(&[], || {
+            run_with_env(&[], || {
                 let cache = GithubReleaseOperationCache::get();
                 let repository = "test/repo";
 
@@ -697,7 +697,7 @@ mod tests {
 
         #[test]
         fn test_add_and_list_installed() {
-            run_with_env_and_cache(&[], || {
+            run_with_env(&[], || {
                 let cache = GithubReleaseOperationCache::get();
                 let repository = "test/repo";
                 let version = "v1.0.0";
@@ -726,7 +726,7 @@ mod tests {
 
         #[test]
         fn test_add_required_by() {
-            run_with_env_and_cache(&[], || {
+            run_with_env(&[], || {
                 let cache = GithubReleaseOperationCache::get();
                 let repository = "test/repo";
                 let version = "v1.0.0";
@@ -768,7 +768,7 @@ mod tests {
 
         #[test]
         fn test_multiple_required_by() {
-            run_with_env_and_cache(&[], || {
+            run_with_env(&[], || {
                 let cache = GithubReleaseOperationCache::get();
                 let repository = "test/repo";
                 let version = "v1.0.0";
@@ -818,7 +818,7 @@ mod tests {
 
         #[test]
         fn test_cleanup() {
-            run_with_env_and_cache(&[], || {
+            run_with_env(&[], || {
                 let cache = GithubReleaseOperationCache::get();
 
                 // Add two repositories
@@ -888,7 +888,7 @@ mod tests {
 
         #[test]
         fn test_update_releases() {
-            run_with_env_and_cache(&[], || {
+            run_with_env(&[], || {
                 let cache = GithubReleaseOperationCache::get();
                 let repository = "test/repo";
 
@@ -946,7 +946,7 @@ mod tests {
 
         #[test]
         fn test_multiple_versions_same_repository() {
-            run_with_env_and_cache(&[], || {
+            run_with_env(&[], || {
                 let cache = GithubReleaseOperationCache::get();
                 let repository = "test/repo";
                 let versions = vec!["v1.0.0", "v1.1.0", "v2.0.0"];
@@ -976,7 +976,7 @@ mod tests {
 
         #[test]
         fn test_required_by_multiple_versions() {
-            run_with_env_and_cache(&[], || {
+            run_with_env(&[], || {
                 let cache = GithubReleaseOperationCache::get();
                 let repository = "test/repo";
                 let versions = vec!["v1.0.0", "v1.1.0"];
@@ -1019,7 +1019,7 @@ mod tests {
 
         #[test]
         fn test_cleanup_cascade() {
-            run_with_env_and_cache(&[], || {
+            run_with_env(&[], || {
                 let cache = GithubReleaseOperationCache::get();
 
                 struct TestCase {

@@ -77,14 +77,14 @@ impl PromptsCache {
 mod tests {
     use super::*;
 
-    use crate::internal::testutils::run_with_env_and_cache;
+    use crate::internal::testutils::run_with_env;
 
     mod prompts_cache {
         use super::*;
 
         #[test]
         fn test_add_and_get_answers() {
-            run_with_env_and_cache(&[], || {
+            run_with_env(&[], || {
                 let cache = PromptsCache::get();
                 let org = "testorg";
                 let repo = "testrepo";
@@ -121,7 +121,7 @@ mod tests {
 
         #[test]
         fn test_org_level_answers() {
-            run_with_env_and_cache(&[], || {
+            run_with_env(&[], || {
                 let cache = PromptsCache::get();
                 let org = "testorg";
                 let repo = "testrepo";
@@ -154,7 +154,7 @@ mod tests {
 
         #[test]
         fn test_repo_override_org_answer() {
-            run_with_env_and_cache(&[], || {
+            run_with_env(&[], || {
                 let cache = PromptsCache::get();
                 let org = "testorg";
                 let repo = "testrepo";
@@ -187,7 +187,7 @@ mod tests {
 
         #[test]
         fn test_invalid_yaml_answer() {
-            run_with_env_and_cache(&[], || {
+            run_with_env(&[], || {
                 let cache = PromptsCache::get();
                 let org = "testorg";
                 let repo = "testrepo";
@@ -209,7 +209,7 @@ mod tests {
 
         #[test]
         fn test_multiple_answers_same_prompt() {
-            run_with_env_and_cache(&[], || {
+            run_with_env(&[], || {
                 let cache = PromptsCache::get();
                 let org = "testorg";
                 let repo = "testrepo";
@@ -240,7 +240,7 @@ mod tests {
 
         #[test]
         fn test_empty_repo_get_answers() {
-            run_with_env_and_cache(&[], || {
+            run_with_env(&[], || {
                 let cache = PromptsCache::get();
                 let org = "testorg";
 
@@ -259,7 +259,7 @@ mod tests {
 
         #[test]
         fn test_case_sensitivity() {
-            run_with_env_and_cache(&[], || {
+            run_with_env(&[], || {
                 let cache = PromptsCache::get();
                 let org = "TestOrg";
                 let repo = "TestRepo";
@@ -288,7 +288,7 @@ mod tests {
 
         #[test]
         fn test_empty_answers() {
-            run_with_env_and_cache(&[], || {
+            run_with_env(&[], || {
                 let cache = PromptsCache::get();
 
                 // Non-existent org/repo
@@ -309,7 +309,7 @@ mod tests {
 
         #[test]
         fn test_yaml_value_types() {
-            run_with_env_and_cache(&[], || {
+            run_with_env(&[], || {
                 let cache = PromptsCache::get();
                 let org = "testorg";
                 let repo = "testrepo";

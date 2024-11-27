@@ -1969,43 +1969,7 @@ mod tests {
 
         use crate::internal::self_updater::compatible_release_arch;
         use crate::internal::self_updater::compatible_release_os;
-
-        fn run_with_env<F>(envs: &[(String, Option<String>)], closure: F)
-        where
-            F: FnOnce(),
-        {
-            let tempdir = tempfile::Builder::new()
-                .prefix("omni_tests.")
-                .tempdir()
-                .expect("failed to create temp dir");
-
-            let run_env: Vec<(String, Option<String>)> = vec![
-                ("XDG_DATA_HOME".into(), None),
-                ("XDG_CONFIG_HOME".into(), None),
-                ("XDG_CACHE_HOME".into(), None),
-                ("XDG_RUNTIME_DIR".into(), None),
-                ("OMNI_DATA_HOME".into(), None),
-                ("OMNI_CACHE_HOME".into(), None),
-                ("OMNI_CMD_FILE".into(), None),
-                ("HOMEBREW_PREFIX".into(), None),
-                (
-                    "HOME".into(),
-                    Some(tempdir.path().join("home").to_string_lossy().to_string()),
-                ),
-                (
-                    "PATH".into(),
-                    Some(format!(
-                        "{}:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
-                        tempdir.path().join("bin").to_string_lossy()
-                    )),
-                ),
-            ]
-            .into_iter()
-            .chain(envs.iter().cloned())
-            .collect();
-
-            temp_env::with_vars(run_env, closure);
-        }
+        use crate::internal::testutils::run_with_env;
 
         #[test]
         fn latest_release_binary() {

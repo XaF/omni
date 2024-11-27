@@ -892,7 +892,7 @@ mod tests {
 
     use std::fs;
 
-    use crate::internal::testutils::run_with_env_and_cache;
+    use crate::internal::testutils::run_with_env;
 
     fn create_json_file(filename: &str, content: &str) {
         let cache_dir_path = PathBuf::from(global_config().cache.path.clone());
@@ -916,7 +916,7 @@ mod tests {
 
         #[test]
         fn test_basic_migration() {
-            run_with_env_and_cache(&[], || {
+            run_with_env(&[], || {
                 let test_data = r#"{
                     "workdir_env": {
                         "work1": "env1"
@@ -1005,7 +1005,7 @@ mod tests {
 
         #[test]
         fn test_invalid_file_migration() {
-            run_with_env_and_cache(&[], || {
+            run_with_env(&[], || {
                 create_json_file("up_environments.json", "invalid json");
 
                 let conn = get_conn();
@@ -1016,7 +1016,7 @@ mod tests {
 
         #[test]
         fn test_empty_file_migration() {
-            run_with_env_and_cache(&[], || {
+            run_with_env(&[], || {
                 create_json_file("up_environments.json", "");
 
                 let conn = get_conn();
@@ -1027,7 +1027,7 @@ mod tests {
 
         #[test]
         fn test_no_file_migration() {
-            run_with_env_and_cache(&[], || {
+            run_with_env(&[], || {
                 let conn = get_conn();
                 let result = migrate_up_environments(&conn);
                 assert!(result.is_ok(), "No file should not cause error");
@@ -1040,7 +1040,7 @@ mod tests {
 
         #[test]
         fn test_basic_migration() {
-            run_with_env_and_cache(&[], || {
+            run_with_env(&[], || {
                 let test_data = r#"{
                     "updated_at": "2024-01-01T00:00:00Z",
                     "update_error_log": "test error"
@@ -1073,7 +1073,7 @@ mod tests {
 
         #[test]
         fn test_invalid_file_migration() {
-            run_with_env_and_cache(&[], || {
+            run_with_env(&[], || {
                 create_json_file("omnipath.json", "invalid json");
 
                 let conn = get_conn();
@@ -1084,7 +1084,7 @@ mod tests {
 
         #[test]
         fn test_empty_file_migration() {
-            run_with_env_and_cache(&[], || {
+            run_with_env(&[], || {
                 create_json_file("omnipath.json", "");
 
                 let conn = get_conn();
@@ -1095,7 +1095,7 @@ mod tests {
 
         #[test]
         fn test_no_file_migration() {
-            run_with_env_and_cache(&[], || {
+            run_with_env(&[], || {
                 let conn = get_conn();
                 let result = migrate_omnipath(&conn);
                 assert!(result.is_ok(), "No file should not cause error");
@@ -1108,7 +1108,7 @@ mod tests {
 
         #[test]
         fn test_basic_migration() {
-            run_with_env_and_cache(&[], || {
+            run_with_env(&[], || {
                 let test_data = r#"{
                     "trusted": ["repo1", "repo2"],
                     "fingerprints": {
@@ -1156,7 +1156,7 @@ mod tests {
 
         #[test]
         fn test_invalid_file_migration() {
-            run_with_env_and_cache(&[], || {
+            run_with_env(&[], || {
                 create_json_file("repositories.json", "invalid json");
 
                 let conn = get_conn();
@@ -1167,7 +1167,7 @@ mod tests {
 
         #[test]
         fn test_empty_file_migration() {
-            run_with_env_and_cache(&[], || {
+            run_with_env(&[], || {
                 create_json_file("repositories.json", "");
 
                 let conn = get_conn();
@@ -1178,7 +1178,7 @@ mod tests {
 
         #[test]
         fn test_no_file_migration() {
-            run_with_env_and_cache(&[], || {
+            run_with_env(&[], || {
                 let conn = get_conn();
                 let result = migrate_repositories(&conn);
                 assert!(result.is_ok(), "No file should not cause error");
@@ -1191,7 +1191,7 @@ mod tests {
 
         #[test]
         fn test_basic_migration() {
-            run_with_env_and_cache(&[], || {
+            run_with_env(&[], || {
                 let test_data = r#"{
                     "answers": [
                         {
@@ -1232,7 +1232,7 @@ mod tests {
 
         #[test]
         fn test_invalid_file_migration() {
-            run_with_env_and_cache(&[], || {
+            run_with_env(&[], || {
                 create_json_file("prompts.json", "invalid json");
 
                 let conn = get_conn();
@@ -1243,7 +1243,7 @@ mod tests {
 
         #[test]
         fn test_empty_file_migration() {
-            run_with_env_and_cache(&[], || {
+            run_with_env(&[], || {
                 create_json_file("prompts.json", "");
 
                 let conn = get_conn();
@@ -1254,7 +1254,7 @@ mod tests {
 
         #[test]
         fn test_no_file_migration() {
-            run_with_env_and_cache(&[], || {
+            run_with_env(&[], || {
                 let conn = get_conn();
                 let result = migrate_prompts(&conn);
                 assert!(result.is_ok(), "No file should not cause error");
