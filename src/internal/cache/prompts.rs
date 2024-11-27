@@ -66,9 +66,7 @@ impl PromptsCache {
 
         let mut answers = HashMap::new();
         for (id, answer) in converted_answers {
-            if !answers.contains_key(&id) {
-                answers.insert(id, answer);
-            }
+            answers.entry(id).or_insert(answer);
         }
 
         answers

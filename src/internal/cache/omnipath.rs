@@ -17,7 +17,7 @@ impl OmniPathCache {
 
     pub fn try_exclusive_update(&self) -> bool {
         let mut db = CacheManager::get();
-        match db.transaction(|tx| {
+        db.transaction(|tx| {
             // Read the current updated_at timestamp
             let updated_at: Option<(bool, Option<String>)> = tx.query_one_optional(
                 include_str!("sql/omnipath_get_updated_at.sql"),
@@ -39,10 +39,8 @@ impl OmniPathCache {
             )?;
 
             Ok(updated > 0)
-        }) {
-            Ok(updated) => updated,
-            Err(_err) => false,
-        }
+        })
+        .unwrap_or_default()
     }
 
     pub fn update_error(&mut self, update_error_log: String) -> Result<bool, CacheManagerError> {
@@ -56,7 +54,7 @@ impl OmniPathCache {
 
     pub fn try_exclusive_update_error_log(&self) -> Option<String> {
         let mut db = CacheManager::get();
-        match db.transaction(|tx| {
+        db.transaction(|tx| {
             // Read the current update_error_log
             let update_error_log: Option<String> = tx.query_one_optional(
                 include_str!("sql/omnipath_get_update_error_log.sql"),
@@ -85,10 +83,8 @@ impl OmniPathCache {
             }
 
             Ok(update_error_log)
-        }) {
-            Ok(update_error_log) => Some(update_error_log),
-            Err(_err) => None,
-        }
+        })
+        .ok()
     }
 }
 

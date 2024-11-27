@@ -219,8 +219,8 @@ mod tests {
             run_with_env_and_cache(&[], || {
                 let mut cache = WorkdirsCache::get();
                 let workdir = test_trust_id(3);
-                let fp_types = vec!["type1", "type2", "type3"];
-                let fingerprints = vec![111u64, 222u64, 333u64];
+                let fp_types = ["type1", "type2", "type3"];
+                let fingerprints = [111u64, 222u64, 333u64];
 
                 // Add different fingerprint types
                 for (fp_type, &fingerprint) in fp_types.iter().zip(fingerprints.iter()) {
