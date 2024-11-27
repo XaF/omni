@@ -18,7 +18,7 @@ impl WorkdirsCache {
         let db = CacheManager::get();
         let trusted: bool = db
             .query_one(
-                include_str!("sql/workdir_trusted_check.sql"),
+                include_str!("database/sql/workdir_trusted_check.sql"),
                 params![workdir],
             )
             .unwrap_or(false);
@@ -28,7 +28,7 @@ impl WorkdirsCache {
     pub fn add_trusted(&mut self, workdir: &str) -> Result<bool, CacheManagerError> {
         let db = CacheManager::get();
         let inserted = db.execute(
-            include_str!("sql/workdir_trusted_add.sql"),
+            include_str!("database/sql/workdir_trusted_add.sql"),
             params![workdir],
         )?;
         Ok(inserted > 0)
@@ -37,7 +37,7 @@ impl WorkdirsCache {
     pub fn remove_trusted(&mut self, workdir: &str) -> Result<bool, CacheManagerError> {
         let db = CacheManager::get();
         let removed = db.execute(
-            include_str!("sql/workdir_trusted_remove.sql"),
+            include_str!("database/sql/workdir_trusted_remove.sql"),
             params![workdir],
         )?;
         Ok(removed > 0)
@@ -52,7 +52,7 @@ impl WorkdirsCache {
         let db = CacheManager::get();
         let fingerprint_matches: bool = db
             .query_one(
-                include_str!("sql/workdir_fingerprint_check.sql"),
+                include_str!("database/sql/workdir_fingerprint_check.sql"),
                 params![workdir, fingerprint_type, fingerprint],
             )
             .unwrap_or(false);
@@ -68,12 +68,12 @@ impl WorkdirsCache {
         let db = CacheManager::get();
         let changed = if fingerprint == 0 {
             db.execute(
-                include_str!("sql/workdir_fingerprint_remove.sql"),
+                include_str!("database/sql/workdir_fingerprint_remove.sql"),
                 params![workdir, fingerprint_type],
             )?
         } else {
             db.execute(
-                include_str!("sql/workdir_fingerprint_upsert.sql"),
+                include_str!("database/sql/workdir_fingerprint_upsert.sql"),
                 params![workdir, fingerprint_type, fingerprint],
             )?
         };

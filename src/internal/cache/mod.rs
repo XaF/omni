@@ -4,8 +4,6 @@ pub(crate) use asdf_operation::AsdfOperationCache;
 pub(crate) mod database;
 pub(crate) use database::CacheManager;
 pub(crate) use database::CacheManagerError;
-pub(crate) use database::FromRow;
-pub(crate) use database::RowExt;
 
 pub(crate) mod github_release;
 pub(crate) use github_release::GithubReleaseOperationCache;

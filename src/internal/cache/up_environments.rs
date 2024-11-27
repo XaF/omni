@@ -17,10 +17,10 @@ use crate::internal::config::parser::EnvOperationEnum;
 use crate::internal::config::up::utils::get_config_mod_times;
 use crate::internal::env::data_home;
 
+use crate::internal::cache::database::FromRow;
+use crate::internal::cache::database::RowExt;
 use crate::internal::cache::CacheManager;
 use crate::internal::cache::CacheManagerError;
-use crate::internal::cache::FromRow;
-use crate::internal::cache::RowExt;
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct UpEnvironmentsCache {}
@@ -33,7 +33,7 @@ impl UpEnvironmentsCache {
     pub fn get_env(&self, workdir_id: &str) -> Option<UpEnvironment> {
         let env: UpEnvironment = CacheManager::get()
             .query_one(
-                include_str!("sql/up_environments_get_workdir_env.sql"),
+                include_str!("database/sql/up_environments_get_workdir_env.sql"),
                 &[&workdir_id],
             )
             .ok()?;
@@ -47,13 +47,13 @@ impl UpEnvironmentsCache {
         db.transaction(|tx| {
             // Close the history entry for the workdir
             tx.execute(
-                include_str!("sql/up_environments_close_workdir_history.sql"),
+                include_str!("database/sql/up_environments_close_workdir_history.sql"),
                 params![&workdir_id],
             )?;
 
             // Clear the environment for the workdir
             tx.execute(
-                include_str!("sql/up_environments_clear_workdir_env.sql"),
+                include_str!("database/sql/up_environments_clear_workdir_env.sql"),
                 params![&workdir_id],
             )?;
 
@@ -81,7 +81,7 @@ impl UpEnvironmentsCache {
         db.transaction(|tx| {
             // Check if the environment with the given id already exists
             new_env = match tx.query_one::<bool>(
-                include_str!("sql/up_environments_check_env_version_exists.sql"),
+                include_str!("database/sql/up_environments_check_env_version_exists.sql"),
                 params![&env_version_id],
             ) {
                 Ok(found) => !found,
@@ -92,7 +92,7 @@ impl UpEnvironmentsCache {
             if new_env {
                 // Insert the environment version
                 tx.execute(
-                    include_str!("sql/up_environments_insert_env_version.sql"),
+                    include_str!("database/sql/up_environments_insert_env_version.sql"),
                     params![
                         &env_version_id,
                         serde_json::to_string(&environment.versions)?,
@@ -106,7 +106,7 @@ impl UpEnvironmentsCache {
 
             // Check if this is a new active environment for the work directory
             let replace_env: bool = match tx.query_one::<String>(
-                include_str!("sql/up_environments_get_workdir_env.sql"),
+                include_str!("database/sql/up_environments_get_workdir_env.sql"),
                 params![&workdir_id],
             ) {
                 Ok(current_env_version_id) => current_env_version_id != env_version_id,
@@ -117,7 +117,7 @@ impl UpEnvironmentsCache {
             if replace_env {
                 // Assign the environment to the workdir
                 tx.execute(
-                    include_str!("sql/up_environments_set_workdir_env.sql"),
+                    include_str!("database/sql/up_environments_set_workdir_env.sql"),
                     params![&workdir_id, &env_version_id],
                 )?;
             }
@@ -126,7 +126,7 @@ impl UpEnvironmentsCache {
             // env_version_id or head_sha, in which case we can close the current
             // entry and open a new one
             let replace_history: bool = match tx.query_one::<(String, Option<String>)>(
-                include_str!("sql/up_environments_get_workdir_history_open.sql"),
+                include_str!("database/sql/up_environments_get_workdir_history_open.sql"),
                 params![&workdir_id],
             ) {
                 Ok((current_env_version_id, current_head_sha)) => {
@@ -139,36 +139,36 @@ impl UpEnvironmentsCache {
             if replace_history {
                 // Close any open history entry for the workdir
                 tx.execute(
-                    include_str!("sql/up_environments_close_workdir_history.sql"),
+                    include_str!("database/sql/up_environments_close_workdir_history.sql"),
                     params![&workdir_id],
                 )?;
 
                 // Add an open history entry for the workdir
                 tx.execute(
-                    include_str!("sql/up_environments_add_workdir_history.sql"),
+                    include_str!("database/sql/up_environments_add_workdir_history.sql"),
                     params![&workdir_id, &env_version_id, &head_sha],
                 )?;
             }
 
             // Cleanup history
             tx.execute(
-                include_str!("sql/up_environments_cleanup_history_duplicate_opens.sql"),
+                include_str!("database/sql/up_environments_cleanup_history_duplicate_opens.sql"),
                 [],
             )?;
             tx.execute(
-                include_str!("sql/up_environments_cleanup_history_retention.sql"),
+                include_str!("database/sql/up_environments_cleanup_history_retention.sql"),
                 params![&cache_env_config.retention],
             )?;
             tx.execute(
-                include_str!("sql/up_environments_cleanup_history_max_per_workdir.sql"),
+                include_str!("database/sql/up_environments_cleanup_history_max_per_workdir.sql"),
                 params![&cache_env_config.max_per_workdir],
             )?;
             tx.execute(
-                include_str!("sql/up_environments_cleanup_history_max_total.sql"),
+                include_str!("database/sql/up_environments_cleanup_history_max_total.sql"),
                 params![&cache_env_config.max_total],
             )?;
             tx.execute(
-                include_str!("sql/up_environments_delete_orphaned_env.sql"),
+                include_str!("database/sql/up_environments_delete_orphaned_env.sql"),
                 [],
             )?;
 
@@ -181,7 +181,7 @@ impl UpEnvironmentsCache {
     #[cfg(test)]
     pub fn environment_ids(&self) -> BTreeSet<String> {
         let environment_ids: Vec<String> = CacheManager::get()
-            .query_as(include_str!("sql/up_environments_get_env_ids.sql"), &[])
+            .query_as(include_str!("database/sql/up_environments_get_env_ids.sql"), &[])
             .unwrap();
         environment_ids.into_iter().collect()
     }

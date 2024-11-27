@@ -26,7 +26,7 @@ impl PromptsCache {
     ) -> Result<bool, CacheManagerError> {
         let db = CacheManager::get();
         let inserted = db.execute(
-            include_str!("sql/prompts_add_answer.sql"),
+            include_str!("database/sql/prompts_add_answer.sql"),
             params![prompt_id, org, repo, serde_json::to_string(&answer)?],
         )?;
         Ok(inserted > 0)
@@ -48,7 +48,7 @@ impl PromptsCache {
         // is either matching or none
         let db = CacheManager::get();
         let answers: Vec<(String, String)> = match db.query_as(
-            include_str!("sql/prompts_get_answers.sql"),
+            include_str!("database/sql/prompts_get_answers.sql"),
             params![org, repo],
         ) {
             Ok(answers) => answers,
@@ -196,7 +196,7 @@ mod tests {
 
                 // Directly insert invalid YAML through SQL
                 db.execute(
-                    include_str!("sql/prompts_add_answer.sql"),
+                    include_str!("database/sql/prompts_add_answer.sql"),
                     params!["prompt1", org, repo, "{invalid: yaml: value:}"],
                 )
                 .expect("Failed to insert invalid YAML");

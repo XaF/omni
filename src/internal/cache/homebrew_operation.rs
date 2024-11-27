@@ -3,10 +3,10 @@ use rusqlite::Row;
 use serde::Deserialize;
 use serde::Serialize;
 
+use crate::internal::cache::database::FromRow;
 use crate::internal::cache::database::RowExt;
 use crate::internal::cache::CacheManager;
 use crate::internal::cache::CacheManagerError;
-use crate::internal::cache::FromRow;
 use crate::internal::config::global_config;
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -20,7 +20,7 @@ impl HomebrewOperationCache {
     pub fn add_tap(&self, tap_name: &str, tapped: bool) -> Result<bool, CacheManagerError> {
         let db = CacheManager::get();
         let inserted = db.execute(
-            include_str!("sql/homebrew_operation_add_tap.sql"),
+            include_str!("database/sql/homebrew_operation_add_tap.sql"),
             params![tap_name, tapped],
         )?;
         Ok(inserted > 0)
@@ -33,7 +33,7 @@ impl HomebrewOperationCache {
     ) -> Result<bool, CacheManagerError> {
         let db = CacheManager::get();
         let inserted = db.execute(
-            include_str!("sql/homebrew_operation_add_tap_required_by.sql"),
+            include_str!("database/sql/homebrew_operation_add_tap_required_by.sql"),
             params![tap_name, env_version_id],
         )?;
         Ok(inserted > 0)
@@ -48,7 +48,7 @@ impl HomebrewOperationCache {
     ) -> Result<bool, CacheManagerError> {
         let db = CacheManager::get();
         let inserted = db.execute(
-            include_str!("sql/homebrew_operation_add_install.sql"),
+            include_str!("database/sql/homebrew_operation_add_install.sql"),
             params![install_name, install_version, is_cask, installed],
         )?;
         Ok(inserted > 0)
@@ -63,7 +63,7 @@ impl HomebrewOperationCache {
     ) -> Result<bool, CacheManagerError> {
         let db = CacheManager::get();
         let inserted = db.execute(
-            include_str!("sql/homebrew_operation_add_install_required_by.sql"),
+            include_str!("database/sql/homebrew_operation_add_install_required_by.sql"),
             params![install_name, install_version, is_cask, env_version_id],
         )?;
         Ok(inserted > 0)
@@ -72,7 +72,7 @@ impl HomebrewOperationCache {
     pub fn homebrew_bin_path(&self) -> Option<String> {
         let db = CacheManager::get();
         let bin_path: Option<String> = db
-            .query_one(include_str!("sql/homebrew_operation_get_bin_path.sql"), &[])
+            .query_one(include_str!("database/sql/homebrew_operation_get_bin_path.sql"), &[])
             .unwrap_or_default();
         bin_path
     }
@@ -80,7 +80,7 @@ impl HomebrewOperationCache {
     pub fn set_homebrew_bin_path(&self, bin_path: String) -> Result<bool, CacheManagerError> {
         let db = CacheManager::get();
         let updated = db.execute(
-            include_str!("sql/homebrew_operation_set_bin_path.sql"),
+            include_str!("database/sql/homebrew_operation_set_bin_path.sql"),
             params![bin_path],
         )?;
         Ok(updated > 0)
@@ -89,7 +89,7 @@ impl HomebrewOperationCache {
     pub fn updated_homebrew(&self) -> Result<bool, CacheManagerError> {
         let db = CacheManager::get();
         let updated = db.execute(
-            include_str!("sql/homebrew_operation_updated_homebrew.sql"),
+            include_str!("database/sql/homebrew_operation_updated_homebrew.sql"),
             &[],
         )?;
         Ok(updated > 0)
@@ -99,7 +99,7 @@ impl HomebrewOperationCache {
         let db = CacheManager::get();
         let should_update: bool = db
             .query_row(
-                include_str!("sql/homebrew_operation_should_update_homebrew.sql"),
+                include_str!("database/sql/homebrew_operation_should_update_homebrew.sql"),
                 params![global_config().cache.homebrew.update_expire],
                 |row| row.get(0),
             )
@@ -116,7 +116,7 @@ impl HomebrewOperationCache {
         let db = CacheManager::get();
         let bin_paths: Option<String> = db
             .query_one(
-                include_str!("sql/homebrew_operation_get_install_bin_paths.sql"),
+                include_str!("database/sql/homebrew_operation_get_install_bin_paths.sql"),
                 params![install_name, install_version, is_cask],
             )
             .unwrap_or_default();
@@ -139,7 +139,7 @@ impl HomebrewOperationCache {
     ) -> Result<bool, CacheManagerError> {
         let db = CacheManager::get();
         let updated = db.execute(
-            include_str!("sql/homebrew_operation_set_install_bin_paths.sql"),
+            include_str!("database/sql/homebrew_operation_set_install_bin_paths.sql"),
             params![
                 install_name,
                 install_version,
@@ -153,7 +153,7 @@ impl HomebrewOperationCache {
     pub fn updated_tap(&self, tap_name: &str) -> Result<bool, CacheManagerError> {
         let db = CacheManager::get();
         let updated = db.execute(
-            include_str!("sql/homebrew_operation_updated_tap.sql"),
+            include_str!("database/sql/homebrew_operation_updated_tap.sql"),
             params![tap_name],
         )?;
         Ok(updated > 0)
@@ -163,7 +163,7 @@ impl HomebrewOperationCache {
         let db = CacheManager::get();
         let should_update: bool = db
             .query_row(
-                include_str!("sql/homebrew_operation_should_update_tap.sql"),
+                include_str!("database/sql/homebrew_operation_should_update_tap.sql"),
                 params![tap_name, global_config().cache.homebrew.tap_update_expire],
                 |row| row.get(0),
             )
@@ -179,7 +179,7 @@ impl HomebrewOperationCache {
     ) -> Result<bool, CacheManagerError> {
         let db = CacheManager::get();
         let updated = db.execute(
-            include_str!("sql/homebrew_operation_updated_install.sql"),
+            include_str!("database/sql/homebrew_operation_updated_install.sql"),
             params![install_name, install_version, is_cask],
         )?;
         Ok(updated > 0)
@@ -194,7 +194,7 @@ impl HomebrewOperationCache {
         let db = CacheManager::get();
         let should_update: bool = db
             .query_row(
-                include_str!("sql/homebrew_operation_should_update_install.sql"),
+                include_str!("database/sql/homebrew_operation_should_update_install.sql"),
                 params![
                     install_name,
                     install_version,
@@ -215,7 +215,7 @@ impl HomebrewOperationCache {
     ) -> Result<bool, CacheManagerError> {
         let db = CacheManager::get();
         let updated = db.execute(
-            include_str!("sql/homebrew_operation_checked_install.sql"),
+            include_str!("database/sql/homebrew_operation_checked_install.sql"),
             params![install_name, install_version, is_cask],
         )?;
         Ok(updated > 0)
@@ -230,7 +230,7 @@ impl HomebrewOperationCache {
         let db = CacheManager::get();
         let should_update: bool = db
             .query_row(
-                include_str!("sql/homebrew_operation_should_check_install.sql"),
+                include_str!("database/sql/homebrew_operation_should_check_install.sql"),
                 params![
                     install_name,
                     install_version,
@@ -260,7 +260,7 @@ impl HomebrewOperationCache {
         db.transaction(|tx| {
             // Get the list of formulas and casks that can be deleted
             let removable_installs: Vec<DeletableHomebrewInstall> = tx.query_as(
-                include_str!("sql/homebrew_operation_list_removable_install.sql"),
+                include_str!("database/sql/homebrew_operation_list_removable_install.sql"),
                 params![&grace_period],
             )?;
 
@@ -271,7 +271,7 @@ impl HomebrewOperationCache {
             for install in install_not_installed {
                 // Add the deletion to the transaction
                 tx.execute(
-                    include_str!("sql/homebrew_operation_remove_install.sql"),
+                    include_str!("database/sql/homebrew_operation_remove_install.sql"),
                     params![install.name, install.version, install.cask],
                 )?;
             }
@@ -288,14 +288,14 @@ impl HomebrewOperationCache {
 
                 // Add the deletion to the transaction
                 tx.execute(
-                    include_str!("sql/homebrew_operation_remove_install.sql"),
+                    include_str!("database/sql/homebrew_operation_remove_install.sql"),
                     params![install.name, install.version, install.cask],
                 )?;
             }
 
             // Get the list of taps that can be deleted
             let removable_taps: Vec<DeletableHomebrewTap> = tx.query_as(
-                include_str!("sql/homebrew_operation_list_removable_tap.sql"),
+                include_str!("database/sql/homebrew_operation_list_removable_tap.sql"),
                 params![&grace_period],
             )?;
 
@@ -306,7 +306,7 @@ impl HomebrewOperationCache {
             for tap in tap_not_tapped {
                 // Add the deletion to the transaction
                 tx.execute(
-                    include_str!("sql/homebrew_operation_remove_tap.sql"),
+                    include_str!("database/sql/homebrew_operation_remove_tap.sql"),
                     params![tap.name],
                 )?;
             }
@@ -318,7 +318,7 @@ impl HomebrewOperationCache {
 
                 // Add the deletion to the transaction
                 tx.execute(
-                    include_str!("sql/homebrew_operation_remove_tap.sql"),
+                    include_str!("database/sql/homebrew_operation_remove_tap.sql"),
                     params![tap.name],
                 )?;
             }
@@ -385,7 +385,7 @@ mod tests {
                 // otherwise the foreign key constraint will fail
                 let conn = get_conn();
                 conn.execute(
-                    include_str!("sql/up_environments_insert_env_version.sql"),
+                    include_str!("database/sql/up_environments_insert_env_version.sql"),
                     params![env_version_id, "{}", "[]", "[]", "{}", "hash"],
                 )
                 .expect("Failed to add environment version");
@@ -427,7 +427,7 @@ mod tests {
                 // otherwise the foreign key constraint will fail
                 let conn = get_conn();
                 conn.execute(
-                    include_str!("sql/up_environments_insert_env_version.sql"),
+                    include_str!("database/sql/up_environments_insert_env_version.sql"),
                     params![env_version_id, "{}", "[]", "[]", "{}", "hash"],
                 )
                 .expect("Failed to add environment version");
@@ -685,7 +685,7 @@ mod tests {
                 let conn = get_conn();
                 for env_id in &env_version_ids {
                     conn.execute(
-                        include_str!("sql/up_environments_insert_env_version.sql"),
+                        include_str!("database/sql/up_environments_insert_env_version.sql"),
                         params![env_id, "{}", "[]", "[]", "{}", "hash"],
                     )
                     .expect("Failed to add environment version");

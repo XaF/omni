@@ -4,11 +4,11 @@ use serde::Serialize;
 use time::format_description::well_known::Rfc3339;
 use time::OffsetDateTime;
 
+use crate::internal::cache::database::FromRow;
 use crate::internal::cache::database::RowExt;
 use crate::internal::cache::utils;
 use crate::internal::cache::CacheManager;
 use crate::internal::cache::CacheManagerError;
-use crate::internal::cache::FromRow;
 use crate::internal::config::global_config;
 use crate::internal::config::up::utils::VersionMatcher;
 use crate::internal::env::now as omni_now;
@@ -23,14 +23,14 @@ impl AsdfOperationCache {
 
     pub fn updated_asdf(&self) -> Result<bool, CacheManagerError> {
         let db = CacheManager::get();
-        let updated = db.execute(include_str!("sql/asdf_operation_updated_asdf.sql"), &[])?;
+        let updated = db.execute(include_str!("database/sql/asdf_operation_updated_asdf.sql"), &[])?;
         Ok(updated > 0)
     }
 
     pub fn updated_asdf_plugin(&self, plugin: &str) -> Result<bool, CacheManagerError> {
         let db = CacheManager::get();
         let updated = db.execute(
-            include_str!("sql/asdf_operation_updated_plugin.sql"),
+            include_str!("database/sql/asdf_operation_updated_plugin.sql"),
             params![plugin],
         )?;
         Ok(updated > 0)
@@ -43,7 +43,7 @@ impl AsdfOperationCache {
     ) -> Result<bool, CacheManagerError> {
         let db = CacheManager::get();
         let updated = db.execute(
-            include_str!("sql/asdf_operation_updated_plugin_versions.sql"),
+            include_str!("database/sql/asdf_operation_updated_plugin_versions.sql"),
             params![plugin, serde_json::to_string(&versions.versions)?],
         )?;
         Ok(updated > 0)
@@ -53,7 +53,7 @@ impl AsdfOperationCache {
         let db = CacheManager::get();
         let should_update: bool = db
             .query_row(
-                include_str!("sql/asdf_operation_should_update_asdf.sql"),
+                include_str!("database/sql/asdf_operation_should_update_asdf.sql"),
                 params![global_config().cache.asdf.update_expire],
                 |row| row.get(0),
             )
@@ -65,7 +65,7 @@ impl AsdfOperationCache {
         let db = CacheManager::get();
         let should_update: bool = db
             .query_row(
-                include_str!("sql/asdf_operation_should_update_plugin.sql"),
+                include_str!("database/sql/asdf_operation_should_update_plugin.sql"),
                 params![plugin, global_config().cache.asdf.plugin_update_expire,],
                 |row| row.get(0),
             )
@@ -77,7 +77,7 @@ impl AsdfOperationCache {
         let db = CacheManager::get();
         let versions: Option<AsdfPluginVersions> = db
             .query_one(
-                include_str!("sql/asdf_operation_get_plugin_versions.sql"),
+                include_str!("database/sql/asdf_operation_get_plugin_versions.sql"),
                 params![plugin],
             )
             .unwrap_or_default();
@@ -92,7 +92,7 @@ impl AsdfOperationCache {
     ) -> Result<bool, CacheManagerError> {
         let db = CacheManager::get();
         let inserted = db.execute(
-            include_str!("sql/asdf_operation_add_installed.sql"),
+            include_str!("database/sql/asdf_operation_add_installed.sql"),
             params![tool, tool_real_name, version],
         )?;
         Ok(inserted > 0)
@@ -106,7 +106,7 @@ impl AsdfOperationCache {
     ) -> Result<bool, CacheManagerError> {
         let db = CacheManager::get();
         let inserted = db.execute(
-            include_str!("sql/asdf_operation_add_required_by.sql"),
+            include_str!("database/sql/asdf_operation_add_required_by.sql"),
             params![tool, version, env_version_id],
         )?;
         Ok(inserted > 0)
@@ -124,7 +124,7 @@ impl AsdfOperationCache {
         db.transaction(|tx| {
             // Get the list of tools and versions that can be deleted
             let deletable_tools: Vec<DeletableAsdfTool> = tx.query_as(
-                include_str!("sql/asdf_operation_list_removable.sql"),
+                include_str!("database/sql/asdf_operation_list_removable.sql"),
                 params![&grace_period],
             )?;
 
@@ -134,7 +134,7 @@ impl AsdfOperationCache {
 
                 // Add the deletion of that tool and version to the transaction
                 tx.execute(
-                    include_str!("sql/asdf_operation_remove.sql"),
+                    include_str!("database/sql/asdf_operation_remove.sql"),
                     params![tool.tool, tool.version],
                 )?;
             }
@@ -308,7 +308,7 @@ mod tests {
                 // otherwise the foreign key constraint will fail
                 let conn = get_conn();
                 conn.execute(
-                    include_str!("sql/up_environments_insert_env_version.sql"),
+                    include_str!("database/sql/up_environments_insert_env_version.sql"),
                     params![env_version_id, "{}", "[]", "[]", "{}", "hash"],
                 )
                 .expect("Failed to add environment version");
@@ -356,7 +356,7 @@ mod tests {
                     .expect("Failed to insert test tool to keep because of date");
 
                 conn.execute(
-                    include_str!("sql/up_environments_insert_env_version.sql"),
+                    include_str!("database/sql/up_environments_insert_env_version.sql"),
                     params!["test-env", "{}", "[]", "[]", "{}", "hash"],
                 )
                 .expect("Failed to add environment version");

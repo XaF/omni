@@ -22,7 +22,7 @@ impl OmniPathCache {
         db.transaction(|tx| {
             // Read the current updated_at timestamp
             let updated_at: Option<(bool, Option<String>)> = tx.query_one_optional(
-                include_str!("sql/omnipath_get_updated_at.sql"),
+                include_str!("database/sql/omnipath_get_updated_at.sql"),
                 params![global_config().path_repo_updates.interval],
             )?;
 
@@ -36,7 +36,7 @@ impl OmniPathCache {
 
             // Update the updated_at timestamp
             let updated = tx.execute(
-                include_str!("sql/omnipath_set_updated_at.sql"),
+                include_str!("database/sql/omnipath_set_updated_at.sql"),
                 params![updated_at],
             )?;
 
@@ -48,7 +48,7 @@ impl OmniPathCache {
     pub fn update_error(&self, update_error_log: String) -> Result<bool, CacheManagerError> {
         let db = CacheManager::get();
         let updated = db.execute(
-            include_str!("sql/omnipath_set_update_error_log.sql"),
+            include_str!("database/sql/omnipath_set_update_error_log.sql"),
             params![update_error_log],
         )?;
         Ok(updated > 0)
@@ -59,7 +59,7 @@ impl OmniPathCache {
         db.transaction(|tx| {
             // Read the current update_error_log
             let update_error_log: Option<String> = tx.query_one_optional(
-                include_str!("sql/omnipath_get_update_error_log.sql"),
+                include_str!("database/sql/omnipath_get_update_error_log.sql"),
                 params![],
             )?;
 
@@ -74,7 +74,7 @@ impl OmniPathCache {
 
             // Clear the update_error_log
             let deleted = tx.execute(
-                include_str!("sql/omnipath_clear_update_error_log.sql"),
+                include_str!("database/sql/omnipath_clear_update_error_log.sql"),
                 params![],
             )?;
 
@@ -142,7 +142,7 @@ mod tests {
                 // Verify updated_at was set
                 let db = CacheManager::get();
                 let (_expired, updated_at): (bool, String) = db
-                    .query_one(include_str!("sql/omnipath_get_updated_at.sql"), params![0])
+                    .query_one(include_str!("database/sql/omnipath_get_updated_at.sql"), params![0])
                     .expect("Failed to get updated_at");
 
                 assert!(!updated_at.is_empty(), "updated_at should be set");
@@ -212,7 +212,7 @@ mod tests {
                 let db = CacheManager::get();
                 let stored_error: Option<String> = db
                     .query_one(
-                        include_str!("sql/omnipath_get_update_error_log.sql"),
+                        include_str!("database/sql/omnipath_get_update_error_log.sql"),
                         params![],
                     )
                     .expect("Failed to get error log");
@@ -254,7 +254,7 @@ mod tests {
                 let db = CacheManager::get();
                 let stored_error: Option<String> = db
                     .query_one_optional(
-                        include_str!("sql/omnipath_get_update_error_log.sql"),
+                        include_str!("database/sql/omnipath_get_update_error_log.sql"),
                         params![],
                     )
                     .expect("Failed to get error log");
@@ -284,7 +284,7 @@ mod tests {
                 // Check that the value is stored
                 let stored_error: Option<String> = db
                     .query_one(
-                        include_str!("sql/omnipath_get_update_error_log.sql"),
+                        include_str!("database/sql/omnipath_get_update_error_log.sql"),
                         params![],
                     )
                     .expect("Failed to get error log");
@@ -303,7 +303,7 @@ mod tests {
                 // Check that the entry is not stored anymore
                 let stored_error: Option<String> = db
                     .query_one_optional(
-                        include_str!("sql/omnipath_get_update_error_log.sql"),
+                        include_str!("database/sql/omnipath_get_update_error_log.sql"),
                         params![],
                     )
                     .expect("Failed to get error log");
@@ -334,7 +334,7 @@ mod tests {
                 // Check that the value is stored
                 let stored_error: Option<String> = db
                     .query_one(
-                        include_str!("sql/omnipath_get_update_error_log.sql"),
+                        include_str!("database/sql/omnipath_get_update_error_log.sql"),
                         params![],
                     )
                     .expect("Failed to get error log");
@@ -353,7 +353,7 @@ mod tests {
                 // Check that the entry is not stored anymore
                 let stored_error: Option<String> = db
                     .query_one_optional(
-                        include_str!("sql/omnipath_get_update_error_log.sql"),
+                        include_str!("database/sql/omnipath_get_update_error_log.sql"),
                         params![],
                     )
                     .expect("Failed to get error log");

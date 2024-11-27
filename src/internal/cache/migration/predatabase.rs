@@ -901,7 +901,7 @@ mod tests {
     }
 
     fn create_tables(conn: &Connection) {
-        conn.execute_batch(include_str!("../sql/create_tables.sql"))
+        conn.execute_batch(include_str!("../database/sql/create_tables.sql"))
             .expect("Failed to create tables");
     }
 

@@ -10,10 +10,10 @@ use serde::Serialize;
 use time::format_description::well_known::Rfc3339;
 use time::OffsetDateTime;
 
+use crate::internal::cache::database::FromRow;
 use crate::internal::cache::database::RowExt;
 use crate::internal::cache::CacheManager;
 use crate::internal::cache::CacheManagerError;
-use crate::internal::cache::FromRow;
 use crate::internal::config::global_config;
 use crate::internal::config::up::utils::VersionMatcher;
 use crate::internal::config::up::utils::VersionParser;
@@ -70,7 +70,7 @@ impl GithubReleaseOperationCache {
     ) -> Result<bool, CacheManagerError> {
         let db = CacheManager::get();
         let inserted = db.execute(
-            include_str!("sql/github_release_operation_add_releases.sql"),
+            include_str!("database/sql/github_release_operation_add_releases.sql"),
             params![repository, serde_json::to_string(&releases.releases)?],
         )?;
         Ok(inserted > 0)
@@ -80,7 +80,7 @@ impl GithubReleaseOperationCache {
         let db = CacheManager::get();
         let releases: Option<GithubReleases> = db
             .query_one(
-                include_str!("sql/github_release_operation_get_releases.sql"),
+                include_str!("database/sql/github_release_operation_get_releases.sql"),
                 params![repository],
             )
             .ok();
@@ -94,7 +94,7 @@ impl GithubReleaseOperationCache {
     ) -> Result<bool, CacheManagerError> {
         let db = CacheManager::get();
         let inserted = db.execute(
-            include_str!("sql/github_release_operation_add_install.sql"),
+            include_str!("database/sql/github_release_operation_add_install.sql"),
             params![repository, version],
         )?;
         Ok(inserted > 0)
@@ -108,7 +108,7 @@ impl GithubReleaseOperationCache {
     ) -> Result<bool, CacheManagerError> {
         let db = CacheManager::get();
         let inserted = db.execute(
-            include_str!("sql/github_release_operation_add_install_required_by.sql"),
+            include_str!("database/sql/github_release_operation_add_install_required_by.sql"),
             params![repository, version, env_version_id],
         )?;
         Ok(inserted > 0)
@@ -117,7 +117,7 @@ impl GithubReleaseOperationCache {
     pub fn list_installed(&self) -> Result<Vec<GithubReleaseInstalled>, CacheManagerError> {
         let db = CacheManager::get();
         let installed: Vec<GithubReleaseInstalled> = db.query_as(
-            include_str!("sql/github_release_operation_list_installed.sql"),
+            include_str!("database/sql/github_release_operation_list_installed.sql"),
             params![],
         )?;
         Ok(installed)
@@ -130,7 +130,7 @@ impl GithubReleaseOperationCache {
         let grace_period = config.cache.github_release.cleanup_after;
 
         db.execute(
-            include_str!("sql/github_release_operation_cleanup.sql"),
+            include_str!("database/sql/github_release_operation_cleanup.sql"),
             params![&grace_period],
         )?;
 
@@ -735,7 +735,7 @@ mod tests {
                 // Add environment version first for foreign key constraint
                 let conn = get_conn();
                 conn.execute(
-                    include_str!("sql/up_environments_insert_env_version.sql"),
+                    include_str!("database/sql/up_environments_insert_env_version.sql"),
                     params![env_version_id, "{}", "[]", "[]", "{}", "hash"],
                 )
                 .expect("Failed to add environment version");
@@ -783,7 +783,7 @@ mod tests {
                 let conn = get_conn();
                 for env_id in &env_version_ids {
                     conn.execute(
-                        include_str!("sql/up_environments_insert_env_version.sql"),
+                        include_str!("database/sql/up_environments_insert_env_version.sql"),
                         params![env_id, "{}", "[]", "[]", "{}", "hash"],
                     )
                     .expect("Failed to add environment version");
@@ -985,7 +985,7 @@ mod tests {
                 // Add environment
                 let conn = get_conn();
                 conn.execute(
-                    include_str!("sql/up_environments_insert_env_version.sql"),
+                    include_str!("database/sql/up_environments_insert_env_version.sql"),
                     params![env_id, "{}", "[]", "[]", "{}", "hash"],
                 )
                 .expect("Failed to add environment version");
@@ -1052,7 +1052,7 @@ mod tests {
                 for test in &tests {
                     // Add environment
                     conn.execute(
-                        include_str!("sql/up_environments_insert_env_version.sql"),
+                        include_str!("database/sql/up_environments_insert_env_version.sql"),
                         params![test.env_id, "{}", "[]", "[]", "{}", "hash"],
                     )
                     .expect("Failed to add environment version");
