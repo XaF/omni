@@ -126,33 +126,6 @@ jobs:
       sign: false
 
 
-  rust-machete:
-    name: Run rust-clippy analysis
-
-    runs-on: ubuntu-latest
-
-    needs:
-      - prepare-release-version
-
-    steps:
-      - name: Checkout commit
-        uses: actions/checkout@v4
-
-      - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
-
-      - name: Set up cargo cache
-        uses: Swatinem/rust-cache@v2
-        with:
-          shared-key: machete
-
-      - name: Install required cargo
-        run: cargo install cargo-machete
-
-      - name: Run machete
-        run: cargo machete --with-metadata
-
-
   rust-clippy-analysis:
     name: Run rust-clippy analysis
 
@@ -218,6 +191,33 @@ jobs:
             echo >&2 "Clippy found $results warnings or errors"
             exit 1
           fi
+
+
+  rust-machete:
+    name: Check for unused dependencies
+
+    runs-on: ubuntu-latest
+
+    needs:
+      - prepare-release-version
+
+    steps:
+      - name: Checkout commit
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Set up cargo cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: machete
+
+      - name: Install required cargo
+        run: cargo install cargo-machete
+
+      - name: Run machete
+        run: cargo machete --with-metadata
 
 
   deploy-website:
