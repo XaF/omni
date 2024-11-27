@@ -18,9 +18,8 @@ use tokio::process::Command as TokioCommand;
 
 use crate::internal::cache::up_environments::UpEnvironment;
 use crate::internal::cache::utils::Empty;
-use crate::internal::cache::CacheObject;
 use crate::internal::cache::PromptsCache;
-use crate::internal::cache::RepositoriesCache;
+use crate::internal::cache::WorkdirsCache;
 use crate::internal::commands::base::BuiltinCommand;
 use crate::internal::commands::Command;
 use crate::internal::config::config;
@@ -472,13 +471,14 @@ impl UpCommand {
             omni_error!(format!("Unable to update user configuration: {:?}", result));
         }
 
-        if let Err(err) = RepositoriesCache::exclusive(|repos| match workdir(".").id() {
-            Some(wd_id) => {
-                repos.update_fingerprint(&wd_id, "suggest_config", fingerprint(&suggest_config))
+        if let Some(wd_id) = workdir(".").id() {
+            if let Err(err) = WorkdirsCache::get().update_fingerprint(
+                &wd_id,
+                "suggest_config",
+                fingerprint(&suggest_config),
+            ) {
+                omni_warning!(format!("failed to update cache: {}", err));
             }
-            None => false,
-        }) {
-            omni_warning!(format!("failed to update cache: {}", err));
         }
     }
 
@@ -568,13 +568,11 @@ impl UpCommand {
             let config = config(".");
             let suggest_clone_repositories = config.suggest_clone.repositories(true);
             if !suggest_clone_repositories.is_empty() {
-                if let Err(err) = RepositoriesCache::exclusive(|repos| {
-                    repos.update_fingerprint(
-                        &wd_id,
-                        "suggest_clone",
-                        fingerprint(&suggest_clone_repositories),
-                    )
-                }) {
+                if let Err(err) = WorkdirsCache::get().update_fingerprint(
+                    &wd_id,
+                    "suggest_clone",
+                    fingerprint(&suggest_clone_repositories),
+                ) {
                     omni_warning!(format!("failed to update cache: {}", err));
                 }
             }
@@ -1388,7 +1386,7 @@ impl BuiltinCommand for UpCommand {
 
         if !self.update_repository() {
             if let (Some(wd_id), Some(git_commit)) = (wd.id(), git_env_fresh(".").commit()) {
-                if RepositoriesCache::get().check_fingerprint(
+                if WorkdirsCache::get().check_fingerprint(
                     &wd_id,
                     "head_commit",
                     fingerprint(&git_commit),
@@ -1426,7 +1424,7 @@ impl BuiltinCommand for UpCommand {
                 suggest_config = Some(suggest_config_value);
             } else if let Some(wd_id) = wd.id() {
                 let suggest_config_fingerprint = fingerprint(&suggest_config_value);
-                if !RepositoriesCache::get().check_fingerprint(
+                if !WorkdirsCache::get().check_fingerprint(
                     &wd_id,
                     "suggest_config",
                     suggest_config_fingerprint,
@@ -1451,7 +1449,7 @@ impl BuiltinCommand for UpCommand {
                     0 => 0,
                     _ => fingerprint(&suggest_clone_repositories),
                 };
-                if !RepositoriesCache::get().check_fingerprint(
+                if !WorkdirsCache::get().check_fingerprint(
                     &wd_id,
                     "suggest_clone",
                     suggest_clone_fingerprint,
@@ -1615,13 +1613,11 @@ impl BuiltinCommand for UpCommand {
 
                 // Save the head commit fingerprint to the repositories cache
                 if let Some(git_commit) = head_commit {
-                    if let Err(err) = RepositoriesCache::exclusive(|repos| {
-                        repos.update_fingerprint(
-                            &workdir_id,
-                            "head_commit",
-                            fingerprint(&git_commit),
-                        )
-                    }) {
+                    if let Err(err) = WorkdirsCache::get().update_fingerprint(
+                        &workdir_id,
+                        "head_commit",
+                        fingerprint(&git_commit),
+                    ) {
                         self.handle_sync_operation(
                             SyncUpdateOperation::OmniWarning(format!(
                                 "failed to update cache: {}",

@@ -9,7 +9,6 @@ use serde::Serialize;
 use shell_escape::escape;
 
 use crate::internal::cache::up_environments::UpEnvironment;
-use crate::internal::cache::CacheObject;
 use crate::internal::cache::UpEnvironmentsCache;
 use crate::internal::config;
 use crate::internal::config::parser::EnvOperationEnum;
@@ -305,7 +304,7 @@ pub enum DynamicEnvExportMode {
 
 pub struct DynamicEnv {
     path: Option<String>,
-    environment: Option<UpEnvironment>,
+    environment: OnceCell<Option<UpEnvironment>>,
     id: OnceCell<u64>,
     data_str: Option<String>,
     data: Option<DynamicEnvData>,
@@ -317,7 +316,7 @@ impl Default for DynamicEnv {
     fn default() -> Self {
         Self {
             path: None,
-            environment: None,
+            environment: OnceCell::new(),
             id: OnceCell::new(),
             data_str: None,
             data: None,
@@ -340,8 +339,13 @@ impl DynamicEnv {
         self
     }
 
+    #[allow(unused_mut)]
     fn with_environment(mut self, environment: Option<&UpEnvironment>) -> Self {
-        self.environment = environment.cloned();
+        if let Some(environment) = environment {
+            self.environment
+                .set(Some(environment.clone()))
+                .expect("failed to set environment (already set?)");
+        }
         self
     }
 
@@ -359,6 +363,19 @@ impl DynamicEnv {
         }
     }
 
+    pub fn environment(&self) -> Option<UpEnvironment> {
+        self.environment
+            .get_or_init(|| {
+                let path = self.path.clone().unwrap_or(".".to_string());
+                let workdir = workdir(&path);
+                match workdir.id() {
+                    Some(workdir_id) => self.cache.get_env(&workdir_id),
+                    None => None,
+                }
+            })
+            .clone()
+    }
+
     pub fn id(&self) -> u64 {
         *self.id.get_or_init(|| {
             // Get the current path
@@ -370,22 +387,16 @@ impl DynamicEnv {
                 return 0;
             }
 
-            // Get the workdir id
-            let workdir_id = match workdir.id() {
-                Some(workdir_id) => workdir_id,
-                None => return 0,
-            };
+            // Make sure there is a workdir id
+            if workdir.id().is_none() {
+                return 0;
+            }
 
             // Get the relative directory
             let dir = workdir.reldir(&path).unwrap_or("".to_string());
 
             // Check if repo is 'up' and should have its environment loaded
-            let up_env = if let Some(environment) = &self.environment {
-                Some(environment)
-            } else {
-                self.cache.get_env(&workdir_id)
-            };
-            let up_env = match up_env {
+            let up_env = match self.environment() {
                 Some(up_env) => up_env,
                 None => return 0,
             };
@@ -454,13 +465,7 @@ impl DynamicEnv {
         let path = self.path.clone().unwrap_or(".".to_string());
         let workdir = workdir(&path);
         if workdir.in_workdir() {
-            up_env = if let Some(environment) = &self.environment {
-                Some(environment)
-            } else if let Some(workdir_id) = workdir.id() {
-                self.cache.get_env(&workdir_id)
-            } else {
-                return;
-            }
+            up_env = self.environment();
         }
 
         if let Some(up_env) = &up_env {

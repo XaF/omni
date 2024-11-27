@@ -1,23 +1,14 @@
 use std::collections::BTreeMap;
 use std::collections::BTreeSet;
-use std::collections::HashMap;
 use std::hash::Hash;
 use std::hash::Hasher;
-use std::io;
 use std::path::PathBuf;
 
+use rusqlite::params;
+use rusqlite::Row;
 use serde::Deserialize;
 use serde::Serialize;
-use time::Duration;
-use time::OffsetDateTime;
 
-use crate::internal::cache::handler::exclusive;
-use crate::internal::cache::handler::shared;
-use crate::internal::cache::loaders::get_up_environments_cache;
-use crate::internal::cache::loaders::set_up_environments_cache;
-use crate::internal::cache::utils;
-use crate::internal::cache::utils::Empty;
-use crate::internal::cache::CacheObject;
 use crate::internal::config;
 use crate::internal::config::global_config;
 use crate::internal::config::parser::EnvConfig;
@@ -25,141 +16,177 @@ use crate::internal::config::parser::EnvOperationConfig;
 use crate::internal::config::parser::EnvOperationEnum;
 use crate::internal::config::up::utils::get_config_mod_times;
 use crate::internal::env::data_home;
-use crate::internal::env::now as omni_now;
 
-const UP_ENVIRONMENTS_CACHE_NAME: &str = "up_environments";
+use crate::internal::cache::database::FromRow;
+use crate::internal::cache::database::RowExt;
+use crate::internal::cache::CacheManager;
+use crate::internal::cache::CacheManagerError;
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct UpEnvironmentsCache {
-    #[serde(default = "BTreeMap::new", skip_serializing_if = "BTreeMap::is_empty")]
-    pub workdir_env: BTreeMap<String, String>,
-    #[serde(default = "BTreeMap::new", skip_serializing_if = "BTreeMap::is_empty")]
-    pub versioned_env: BTreeMap<String, UpEnvironment>,
-    #[serde(default, skip_serializing_if = "UpEnvironmentHistory::is_empty")]
-    pub history: UpEnvironmentHistory,
-    #[serde(default = "utils::origin_of_time", with = "time::serde::rfc3339")]
-    pub updated_at: OffsetDateTime,
-}
+pub struct UpEnvironmentsCache {}
 
 impl UpEnvironmentsCache {
-    fn updated(&mut self) {
-        self.updated_at = OffsetDateTime::now_utc();
+    pub fn get() -> Self {
+        Self {}
     }
 
-    pub fn contains(&self, workdir_id: &str) -> bool {
-        self.workdir_env.contains_key(workdir_id)
+    pub fn get_env(&self, workdir_id: &str) -> Option<UpEnvironment> {
+        let env: UpEnvironment = CacheManager::get()
+            .query_one(
+                include_str!("database/sql/up_environments_get_workdir_env.sql"),
+                &[&workdir_id],
+            )
+            .ok()?;
+        Some(env)
     }
 
-    pub fn get_env(&self, workdir_id: &str) -> Option<&UpEnvironment> {
-        let env_version_id = self.workdir_env.get(workdir_id)?;
-        self.get_env_version(env_version_id)
-    }
+    pub fn clear(&self, workdir_id: &str) -> Result<bool, CacheManagerError> {
+        let mut cleared = false;
 
-    pub fn get_env_version(&self, env_version_id: &str) -> Option<&UpEnvironment> {
-        self.versioned_env.get(env_version_id)
-    }
+        let mut db = CacheManager::get();
+        db.transaction(|tx| {
+            // Close the history entry for the workdir
+            tx.execute(
+                include_str!("database/sql/up_environments_close_workdir_history.sql"),
+                params![&workdir_id],
+            )?;
 
-    pub fn clear(&mut self, workdir_id: &str) -> bool {
-        if !self.contains(workdir_id) {
-            return false;
-        }
+            // Clear the environment for the workdir
+            tx.execute(
+                include_str!("database/sql/up_environments_clear_workdir_env.sql"),
+                params![&workdir_id],
+            )?;
 
-        self.workdir_env.remove(workdir_id);
-        self.history.close(workdir_id);
-        self.updated();
-        true
+            // Check if the row was cleared
+            cleared = tx.changes() == 1;
+
+            Ok(())
+        })?;
+
+        Ok(cleared)
     }
 
     pub fn assign_environment(
-        &mut self,
+        &self,
         workdir_id: &str,
         head_sha: Option<String>,
         environment: &mut UpEnvironment,
-    ) -> (bool, String) {
+    ) -> Result<(bool, String), CacheManagerError> {
         let mut new_env = true;
         let env_hash = environment.hash_string();
         let env_version_id = format!("{}%{}", workdir_id, env_hash);
+        let cache_env_config = global_config().cache.environment;
 
-        // Check if the version already exists in the cache
-        if let Some(existing_env) = self.versioned_env.get_mut(&env_version_id) {
-            existing_env.assigning();
-            new_env = false;
-        } else {
-            environment.assigning();
-            self.versioned_env
-                .insert(env_version_id.clone(), environment.clone());
-        }
+        let mut db = CacheManager::get();
+        db.transaction(|tx| {
+            // Check if the environment with the given id already exists
+            new_env = match tx.query_one::<bool>(
+                include_str!("database/sql/up_environments_check_env_version_exists.sql"),
+                params![&env_version_id],
+            ) {
+                Ok(found) => !found,
+                Err(CacheManagerError::SqlError(rusqlite::Error::QueryReturnedNoRows)) => true,
+                Err(err) => return Err(err),
+            };
 
-        self.workdir_env
-            .insert(workdir_id.to_string(), env_version_id.clone());
-        self.history.add(workdir_id, head_sha, &env_version_id);
+            if new_env {
+                // Insert the environment version
+                tx.execute(
+                    include_str!("database/sql/up_environments_insert_env_version.sql"),
+                    params![
+                        &env_version_id,
+                        serde_json::to_string(&environment.versions)?,
+                        serde_json::to_string(&environment.paths)?,
+                        serde_json::to_string(&environment.env_vars)?,
+                        serde_json::to_string(&environment.config_modtimes)?,
+                        environment.config_hash,
+                    ],
+                )?;
+            }
 
-        self.cleanup();
-        (new_env, env_version_id)
+            // Check if this is a new active environment for the work directory
+            let replace_env: bool = match tx.query_one::<String>(
+                include_str!("database/sql/up_environments_get_workdir_env.sql"),
+                params![&workdir_id],
+            ) {
+                Ok(current_env_version_id) => current_env_version_id != env_version_id,
+                Err(CacheManagerError::SqlError(rusqlite::Error::QueryReturnedNoRows)) => true,
+                Err(err) => return Err(err),
+            };
+
+            if replace_env {
+                // Assign the environment to the workdir
+                tx.execute(
+                    include_str!("database/sql/up_environments_set_workdir_env.sql"),
+                    params![&workdir_id, &env_version_id],
+                )?;
+            }
+
+            // Check if the currently active open entry is for a different
+            // env_version_id or head_sha, in which case we can close the current
+            // entry and open a new one
+            let replace_history: bool = match tx.query_one::<(String, Option<String>)>(
+                include_str!("database/sql/up_environments_get_workdir_history_open.sql"),
+                params![&workdir_id],
+            ) {
+                Ok((current_env_version_id, current_head_sha)) => {
+                    current_env_version_id != env_version_id || current_head_sha != head_sha
+                }
+                Err(CacheManagerError::SqlError(rusqlite::Error::QueryReturnedNoRows)) => true,
+                Err(err) => return Err(err),
+            };
+
+            if replace_history {
+                // Close any open history entry for the workdir
+                tx.execute(
+                    include_str!("database/sql/up_environments_close_workdir_history.sql"),
+                    params![&workdir_id],
+                )?;
+
+                // Add an open history entry for the workdir
+                tx.execute(
+                    include_str!("database/sql/up_environments_add_workdir_history.sql"),
+                    params![&workdir_id, &env_version_id, &head_sha],
+                )?;
+            }
+
+            // Cleanup history
+            tx.execute(
+                include_str!("database/sql/up_environments_cleanup_history_duplicate_opens.sql"),
+                [],
+            )?;
+            tx.execute(
+                include_str!("database/sql/up_environments_cleanup_history_retention.sql"),
+                params![&cache_env_config.retention],
+            )?;
+            tx.execute(
+                include_str!("database/sql/up_environments_cleanup_history_max_per_workdir.sql"),
+                params![&cache_env_config.max_per_workdir],
+            )?;
+            tx.execute(
+                include_str!("database/sql/up_environments_cleanup_history_max_total.sql"),
+                params![&cache_env_config.max_total],
+            )?;
+            tx.execute(
+                include_str!("database/sql/up_environments_delete_orphaned_env.sql"),
+                [],
+            )?;
+
+            Ok(())
+        })?;
+
+        Ok((new_env, env_version_id))
     }
 
+    #[cfg(test)]
     pub fn environment_ids(&self) -> BTreeSet<String> {
-        self.versioned_env.keys().cloned().collect()
-    }
-
-    pub fn cleanup(&mut self) {
-        let config = global_config().cache.environment;
-        self.history.cleanup(
-            Some(Duration::seconds(config.retention as i64)),
-            config.max_per_workdir,
-            config.max_total,
-        );
-
-        // Get all the environment IDs that are in the history or active
-        // (active should also be in the history but.. just in case)
-        let keep_env_ids: Vec<_> = self
-            .workdir_env
-            .values()
-            .chain(self.history.environment_ids().iter())
-            .cloned()
-            .collect();
-
-        // Remove any environment that is not in the history or active
-        self.versioned_env.retain(|id, _| keep_env_ids.contains(id));
-
-        // Mark as updated
-        self.updated();
-    }
-}
-
-impl Empty for UpEnvironmentsCache {
-    fn is_empty(&self) -> bool {
-        self.workdir_env.is_empty() && self.versioned_env.is_empty()
-    }
-}
-
-impl CacheObject for UpEnvironmentsCache {
-    fn new_empty() -> Self {
-        Self {
-            workdir_env: BTreeMap::new(),
-            versioned_env: BTreeMap::new(),
-            history: UpEnvironmentHistory::default(),
-            updated_at: utils::origin_of_time(),
-        }
-    }
-
-    fn get() -> Self {
-        get_up_environments_cache()
-    }
-
-    fn shared() -> io::Result<Self> {
-        shared::<Self>(UP_ENVIRONMENTS_CACHE_NAME)
-    }
-
-    fn exclusive<F>(processing_fn: F) -> io::Result<Self>
-    where
-        F: FnOnce(&mut Self) -> bool,
-    {
-        exclusive::<Self, F, fn(Self)>(
-            UP_ENVIRONMENTS_CACHE_NAME,
-            processing_fn,
-            set_up_environments_cache,
-        )
+        let environment_ids: Vec<String> = CacheManager::get()
+            .query_as(
+                include_str!("database/sql/up_environments_get_env_ids.sql"),
+                &[],
+            )
+            .unwrap();
+        environment_ids.into_iter().collect()
     }
 }
 
@@ -181,13 +208,6 @@ pub struct UpEnvironment {
     /// The hash of the configuration files
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub config_hash: String,
-    /// The time this environment was last updated
-    #[serde(
-        default = "utils::origin_of_time",
-        with = "time::serde::rfc3339",
-        skip_serializing_if = "utils::is_origin_of_time"
-    )]
-    pub last_assigned_at: OffsetDateTime,
 }
 
 impl Hash for UpEnvironment {
@@ -200,6 +220,32 @@ impl Hash for UpEnvironment {
     }
 }
 
+impl FromRow for UpEnvironment {
+    fn from_row(row: &Row) -> Result<Self, CacheManagerError> {
+        let versions_json: String = row.get(0)?;
+        let versions: Vec<UpVersion> = serde_json::from_str(&versions_json)?;
+
+        let paths_json: String = row.get(1)?;
+        let paths: Vec<PathBuf> = serde_json::from_str(&paths_json)?;
+
+        let env_vars_json: String = row.get(2)?;
+        let env_vars: Vec<UpEnvVar> = serde_json::from_str(&env_vars_json)?;
+
+        let config_modtimes_json: String = row.get(3)?;
+        let config_modtimes: BTreeMap<String, u64> = serde_json::from_str(&config_modtimes_json)?;
+
+        let config_hash: String = row.get(4)?;
+
+        Ok(Self {
+            versions,
+            paths,
+            env_vars,
+            config_modtimes,
+            config_hash,
+        })
+    }
+}
+
 impl UpEnvironment {
     pub fn new() -> Self {
         Self {
@@ -208,7 +254,6 @@ impl UpEnvironment {
             env_vars: Vec::new(),
             config_modtimes: BTreeMap::new(),
             config_hash: String::new(),
-            last_assigned_at: utils::origin_of_time(),
         }
     }
 
@@ -247,10 +292,6 @@ impl UpEnvironment {
         }
 
         versions.values().cloned().collect()
-    }
-
-    pub fn assigning(&mut self) {
-        self.last_assigned_at = OffsetDateTime::now_utc();
     }
 
     pub fn add_env_var<T>(&mut self, key: T, value: T) -> bool
@@ -422,473 +463,554 @@ impl From<EnvConfig> for Vec<UpEnvVar> {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone, Default)]
-#[serde(transparent)]
-pub struct UpEnvironmentHistory {
-    pub entries: Vec<UpEnvironmentHistoryEntry>,
-}
-
-impl Empty for UpEnvironmentHistory {
-    fn is_empty(&self) -> bool {
-        self.entries.is_empty()
-    }
-}
-
-impl UpEnvironmentHistory {
-    /// Adds a new entry if needed
-    pub fn add(
-        &mut self,
-        workdir_id: &str,
-        head_sha: Option<String>,
-        env_version_id: &str,
-    ) -> bool {
-        // Check if we have an open entry for this workdir
-        if let Some(open_entry) = self
-            .entries
-            .iter_mut()
-            .rev()
-            .find(|entry| entry.workdir_id == workdir_id && entry.is_open())
-        {
-            // Check if the environment version is different, in which case
-            // we can return right away since we are already on the correct
-            // version in the history
-            if open_entry.env_version_id == env_version_id && open_entry.head_sha == head_sha {
-                return false;
-            }
-
-            // Close the current entry
-            open_entry.used_until_date = Some(omni_now());
-        }
-
-        // If we get here, we need to add the new entry, at the beginning of the list
-        // to keep the most recent entries at the top
-        self.entries.insert(
-            0,
-            UpEnvironmentHistoryEntry::new(workdir_id, head_sha, env_version_id),
-        );
-
-        // Return true to indicate that we added a new entry
-        true
-    }
-
-    /// Closes the most recent open entry for the given workdir
-    pub fn close(&mut self, workdir_id: &str) -> bool {
-        if let Some(open_entry) = self
-            .entries
-            .iter_mut()
-            .rev()
-            .find(|entry| entry.workdir_id == workdir_id && entry.is_open())
-        {
-            open_entry.used_until_date = Some(omni_now());
-            true
-        } else {
-            false
-        }
-    }
-
-    /// Cleans up history entries based on given constraints:
-    /// - Ensures only one open entry per workdir (closes duplicates)
-    /// - If max_per_workdir specified, keeps only that many entries per workdir (keeping open ones)
-    /// - Removes entries older than max_retention if specified
-    /// - Limits total entries to max_total if specified
-    /// - Sorts entries with most recent at the top (open entries first)
-    pub fn cleanup(
-        &mut self,
-        max_retention: Option<Duration>,
-        max_per_workdir: Option<usize>,
-        max_total: Option<usize>,
-    ) {
-        let now = omni_now();
-
-        // Go over all the entries to make sure that we have only one open per work directory
-        let mut workdirs_open: BTreeSet<String> = BTreeSet::new();
-        for entry in self.entries.iter_mut() {
-            if entry.is_open() && !workdirs_open.insert(entry.workdir_id.clone()) {
-                // If we already have an open entry for this workdir, close this one
-                entry.used_until_date = Some(now);
-            }
-        }
-
-        // Apply retention policy if specified
-        if let Some(retention) = max_retention {
-            let cutoff = now - retention;
-            self.entries.retain(|entry| {
-                entry.is_open() || entry.used_until_date.map_or(true, |date| date > cutoff)
-            });
-        }
-
-        // Sort entries with most recent at top (open entries first)
-        self.entries.sort_by(|a, b| {
-            match (a.used_until_date, b.used_until_date) {
-                (None, None) => b.used_from_date.cmp(&a.used_from_date), // Both open, compare by start date
-                (None, Some(_)) => std::cmp::Ordering::Less, // a is open, should come first
-                (Some(_), None) => std::cmp::Ordering::Greater, // b is open, should come first
-                (Some(date_a), Some(date_b)) => match date_b.cmp(&date_a) {
-                    std::cmp::Ordering::Equal => b.used_from_date.cmp(&a.used_from_date), // Same end date, use start date
-                    other => other,
-                },
-            }
-        });
-
-        // Apply max_per_workdir limit if specified
-        if let Some(max_per_workdir) = max_per_workdir {
-            let mut workdir_counts: HashMap<String, usize> = HashMap::new();
-            self.entries.retain(|entry| {
-                let count = workdir_counts.entry(entry.workdir_id.clone()).or_insert(0);
-                *count += 1;
-                entry.is_open() || *count <= max_per_workdir
-            });
-        }
-
-        // Apply max_total limit if specified
-        if let Some(max_total) = max_total {
-            if self.entries.len() > max_total {
-                // Count open entries to ensure we don't remove them
-                let open_count = self.entries.iter().filter(|e| e.is_open()).count();
-                let to_keep = max_total.max(open_count);
-
-                // Remove oldest closed entries until we reach max_total
-                self.entries.truncate(to_keep);
-            }
-        }
-    }
-
-    pub fn environment_ids(&self) -> BTreeSet<String> {
-        self.entries
-            .iter()
-            .map(|entry| entry.env_version_id.clone())
-            .collect()
-    }
-}
-
-#[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct UpEnvironmentHistoryEntry {
-    #[serde(rename = "wd")]
-    pub workdir_id: String,
-    #[serde(rename = "sha", skip_serializing_if = "Option::is_none")]
-    pub head_sha: Option<String>,
-    #[serde(rename = "env")]
-    pub env_version_id: String,
-    #[serde(
-        rename = "from",
-        default = "utils::origin_of_time",
-        with = "time::serde::rfc3339"
-    )]
-    pub used_from_date: OffsetDateTime,
-    #[serde(
-        rename = "until",
-        default,
-        skip_serializing_if = "Option::is_none",
-        with = "utils::optional_rfc3339"
-    )]
-    pub used_until_date: Option<OffsetDateTime>,
-}
-
-impl UpEnvironmentHistoryEntry {
-    pub fn new(workdir_id: &str, head_sha: Option<String>, env_version_id: &str) -> Self {
-        Self {
-            workdir_id: workdir_id.to_string(),
-            head_sha,
-            env_version_id: env_version_id.to_string(),
-            used_from_date: omni_now(),
-            used_until_date: None,
-        }
-    }
-
-    pub fn is_open(&self) -> bool {
-        self.used_until_date.is_none()
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    use crate::internal::testutils::run_with_env;
+    use crate::internal::ConfigLoader;
+    use crate::internal::ConfigValue;
 
     mod up_environments_cache {
         use super::*;
 
         #[test]
-        fn test_environment_management() {
-            let mut cache = UpEnvironmentsCache::new_empty();
-            let workdir_id = "test_workdir";
-            let mut env = UpEnvironment::new();
-            env.add_version(
-                "python",
-                Some("python"),
-                "3.9.0",
-                BTreeSet::from(["".to_string()]),
-            );
+        fn test_get_and_assign_environment() {
+            run_with_env(&[], || {
+                let cache = UpEnvironmentsCache::get();
+                let workdir_id = "test-workdir";
+                let mut env = UpEnvironment::new().init();
 
-            // Test environment assignment
-            let (is_new, version_id) =
-                cache.assign_environment(workdir_id, Some("abc123".to_string()), &mut env);
-            assert!(is_new);
-            assert!(cache.contains(workdir_id));
+                // Initially no environment exists
+                assert!(cache.get_env(workdir_id).is_none());
 
-            // Test getting environment
-            let stored_env = cache.get_env(workdir_id);
-            assert!(stored_env.is_some());
-            assert_eq!(stored_env.unwrap().versions.len(), 1);
+                // Assign environment
+                let (is_new, _env_id) = cache
+                    .assign_environment(workdir_id, Some("test-sha".to_string()), &mut env)
+                    .expect("Failed to assign environment");
+                assert!(is_new);
 
-            // Test getting environment by version
-            let version_env = cache.get_env_version(&version_id);
-            assert!(version_env.is_some());
-            assert_eq!(version_env.unwrap().versions.len(), 1);
-
-            // Test clearing environment
-            assert!(cache.clear(workdir_id));
-            assert!(!cache.contains(workdir_id));
+                // Get environment and verify
+                let retrieved = cache
+                    .get_env(workdir_id)
+                    .expect("Failed to get environment");
+                assert_eq!(retrieved.config_hash, env.config_hash);
+            });
         }
 
         #[test]
-        fn test_cleanup() {
-            let mut cache = UpEnvironmentsCache::new_empty();
-            let workdir_id = "test_workdir";
-            let mut env = UpEnvironment::new();
+        fn test_assign_already_existing_environment() {
+            run_with_env(&[], || {
+                let cache = UpEnvironmentsCache::get();
+                let workdir_id = "test-workdir";
+                let mut env = UpEnvironment::new().init();
 
-            // Add multiple environments
-            for i in 0..3 {
-                env.add_version(
-                    "python",
-                    Some("python"),
-                    &format!("3.{}.0", i),
-                    BTreeSet::from(["".to_string()]),
-                );
-                let (_, _) =
-                    cache.assign_environment(workdir_id, Some(format!("sha{}", i)), &mut env);
-            }
+                // Assign environment
+                let (is_new, _env_id) = cache
+                    .assign_environment(workdir_id, Some("test-sha".to_string()), &mut env)
+                    .expect("Failed to assign environment");
+                assert!(is_new);
 
-            let initial_count = cache.versioned_env.len();
-            cache.cleanup();
-            // Cleanup should maintain active environments
-            assert!(cache.versioned_env.len() <= initial_count);
+                // Assign environment again
+                let (is_new, _env_id) = cache
+                    .assign_environment(workdir_id, Some("test-sha".to_string()), &mut env)
+                    .expect("Failed to assign environment");
+                assert!(!is_new);
+            });
+        }
+
+        #[test]
+        fn test_clear_environment() {
+            run_with_env(&[], || {
+                let cache = UpEnvironmentsCache::get();
+                let workdir_id = "test-workdir";
+                let mut env = UpEnvironment::new().init();
+
+                // Initially no environment exists
+                assert!(cache.get_env(workdir_id).is_none());
+
+                // Assign environment
+                let (_is_new, _env_id) = cache
+                    .assign_environment(workdir_id, Some("dumb".to_string()), &mut env)
+                    .expect("Failed to assign environment");
+
+                // Verify it now has an environment
+                assert!(cache.get_env(workdir_id).is_some());
+
+                // Clear environment
+                let cleared = cache
+                    .clear(workdir_id)
+                    .expect("Failed to clear environment");
+                assert!(cleared);
+
+                // Verify environment is cleared
+                assert!(cache.get_env(workdir_id).is_none());
+            });
+        }
+
+        #[test]
+        fn test_environment_ids() {
+            run_with_env(&[], || {
+                let cache = UpEnvironmentsCache::get();
+                let workdir_id = "test-workdir";
+                let mut env = UpEnvironment::new().init();
+
+                // Initially no environments
+                assert!(cache.environment_ids().is_empty());
+
+                // Assign environment
+                cache
+                    .assign_environment(workdir_id, None, &mut env)
+                    .expect("Failed to assign environment");
+
+                // Verify environment id exists
+                let ids = cache.environment_ids();
+                assert_eq!(ids.len(), 1);
+            });
+        }
+
+        #[test]
+        fn test_assign_environment_with_different_sha() {
+            run_with_env(&[], || {
+                let cache = UpEnvironmentsCache::get();
+                let workdir_id = "test-workdir";
+                let mut env = UpEnvironment::new().init();
+
+                // First assignment
+                let (is_new, env_id1) = cache
+                    .assign_environment(workdir_id, Some("sha1".to_string()), &mut env)
+                    .expect("Failed to assign environment");
+                assert!(is_new);
+
+                // Same environment, different SHA
+                let (is_new, env_id2) = cache
+                    .assign_environment(workdir_id, Some("sha2".to_string()), &mut env)
+                    .expect("Failed to assign environment");
+                assert!(!is_new);
+                assert_eq!(env_id1, env_id2);
+            });
+        }
+
+        #[test]
+        fn test_assign_environment_without_sha() {
+            run_with_env(&[], || {
+                let cache = UpEnvironmentsCache::get();
+                let workdir_id = "test-workdir";
+                let mut env = UpEnvironment::new().init();
+
+                // Assign without SHA
+                let (is_new, _) = cache
+                    .assign_environment(workdir_id, None, &mut env)
+                    .expect("Failed to assign environment");
+                assert!(is_new);
+
+                // Verify environment exists
+                assert!(cache.get_env(workdir_id).is_some());
+            });
+        }
+
+        #[test]
+        fn test_multiple_workdir_environments() {
+            run_with_env(&[], || {
+                let cache = UpEnvironmentsCache::get();
+                let mut env = UpEnvironment::new().init();
+
+                // Assign to multiple workdirs
+                let workdirs = ["workdir1", "workdir2", "workdir3"];
+                for workdir in workdirs {
+                    let (is_new, _) = cache
+                        .assign_environment(workdir, None, &mut env)
+                        .expect("Failed to assign environment");
+                    assert!(is_new);
+                }
+
+                // Verify each workdir has environment
+                for workdir in workdirs {
+                    assert!(cache.get_env(workdir).is_some());
+                }
+
+                // Verify environment_ids contains all workdirs
+                let ids = cache.environment_ids();
+                assert_eq!(ids.len(), workdirs.len());
+            });
+        }
+
+        #[test]
+        fn test_clear_nonexistent_environment() {
+            run_with_env(&[], || {
+                let cache = UpEnvironmentsCache::get();
+                let cleared = cache.clear("nonexistent-workdir").expect("Failed to clear");
+                assert!(!cleared);
+            });
+        }
+
+        #[test]
+        fn test_environment_history_cleanup() {
+            run_with_env(&[], || {
+                let cache = UpEnvironmentsCache::get();
+                let workdir_id = "test-workdir";
+                let mut env = UpEnvironment::new().init();
+
+                // Create multiple history entries
+                for sha in &["sha1", "sha2", "sha3"] {
+                    cache
+                        .assign_environment(workdir_id, Some(sha.to_string()), &mut env)
+                        .expect("Failed to assign environment");
+                }
+
+                // Clear and verify cleanup
+                let cleared = cache.clear(workdir_id).expect("Failed to clear");
+                assert!(cleared);
+                assert!(cache.get_env(workdir_id).is_none());
+            });
+        }
+
+        #[test]
+        fn test_assign_modified_environment() {
+            run_with_env(&[], || {
+                let cache = UpEnvironmentsCache::get();
+                let workdir_id = "test-workdir";
+                let mut env = UpEnvironment::new().init();
+
+                // Initial assignment
+                let (is_new, env_id1) = cache
+                    .assign_environment(workdir_id, None, &mut env)
+                    .expect("Failed to assign environment");
+                assert!(is_new);
+
+                // Modify environment
+                env.add_env_var("TEST_VAR", "test_value");
+                let (is_new, env_id2) = cache
+                    .assign_environment(workdir_id, None, &mut env)
+                    .expect("Failed to assign environment");
+                assert!(is_new);
+                assert_ne!(env_id1, env_id2);
+
+                // Verify modified environment
+                let retrieved = cache
+                    .get_env(workdir_id)
+                    .expect("Failed to get environment");
+                assert_eq!(retrieved.env_vars.len(), 1);
+                assert_eq!(retrieved.env_vars[0].name, "TEST_VAR");
+            });
+        }
+
+        #[test]
+        fn test_environment_retention_max_total_keep_open() {
+            run_with_env(&[], || {
+                let cache = UpEnvironmentsCache::get();
+
+                // Write the max_total to the config file
+                let expected_max_total = 5;
+                if let Err(err) = ConfigLoader::edit_main_user_config_file(|config_value| {
+                    // Write to cache.environment.max_total, using a yaml string
+                    *config_value = ConfigValue::from_str(
+                        format!(
+                            "cache:\n  environment:\n    max_total: {}",
+                            expected_max_total
+                        )
+                        .as_str(),
+                    )
+                    .expect("Failed to create config value");
+
+                    true
+                }) {
+                    panic!("Failed to edit main user config file: {}", err);
+                }
+
+                // Check if the config was written correctly
+                let max_total = match global_config().cache.environment.max_total {
+                    None => panic!("Failed to set max_total (None)"),
+                    Some(n) if n != expected_max_total => panic!(
+                        "Failed to set max_total (expected {}, got {})",
+                        expected_max_total, n
+                    ),
+                    Some(n) => n,
+                };
+
+                // Create environments up to max_total limit
+                let mut env = UpEnvironment::new().init();
+                for i in 0..(max_total + 3) {
+                    let workdir = format!("workdir{}", i);
+                    cache
+                        .assign_environment(&workdir, None, &mut env)
+                        .expect("Failed to assign environment");
+                }
+
+                // Verify that we keep the open environments, so none has been removed here
+                let ids = cache.environment_ids();
+                assert_eq!(ids.len(), max_total + 3);
+            });
+        }
+
+        #[test]
+        fn test_environment_retention_max_total() {
+            run_with_env(&[], || {
+                let cache = UpEnvironmentsCache::get();
+
+                // Write the max_total to the config file
+                let expected_max_total = 5;
+                if let Err(err) = ConfigLoader::edit_main_user_config_file(|config_value| {
+                    // Write to cache.environment.max_total, using a yaml string
+                    *config_value = ConfigValue::from_str(
+                        format!(
+                            "cache:\n  environment:\n    max_total: {}",
+                            expected_max_total
+                        )
+                        .as_str(),
+                    )
+                    .expect("Failed to create config value");
+
+                    true
+                }) {
+                    panic!("Failed to edit main user config file: {}", err);
+                }
+
+                // Check if the config was written correctly
+                let max_total = match global_config().cache.environment.max_total {
+                    None => panic!("Failed to set max_total (None)"),
+                    Some(n) if n != expected_max_total => panic!(
+                        "Failed to set max_total (expected {}, got {})",
+                        expected_max_total, n
+                    ),
+                    Some(n) => n,
+                };
+
+                // Create environments up to max_total limit
+                for i in 0..(max_total + 3) {
+                    let mut env = UpEnvironment::new().init();
+                    env.add_env_var("TEST_VAR".to_string(), format!("value{}", i));
+
+                    cache
+                        .assign_environment("workdir", None, &mut env)
+                        .expect("Failed to assign environment");
+                }
+
+                // Verify that we keep only kept max_total environments
+                let ids = cache.environment_ids();
+                assert_eq!(ids.len(), max_total);
+            });
+        }
+
+        #[test]
+        fn test_environment_retention_max_per_workdir() {
+            run_with_env(&[], || {
+                let cache = UpEnvironmentsCache::get();
+
+                // Write the max_total to the config file
+                let expected_max_per_workdir = 2;
+                if let Err(err) = ConfigLoader::edit_main_user_config_file(|config_value| {
+                    // Write to cache.environment.max_total, using a yaml string
+                    *config_value = ConfigValue::from_str(
+                        format!(
+                            "cache:\n  environment:\n    max_per_workdir: {}",
+                            expected_max_per_workdir
+                        )
+                        .as_str(),
+                    )
+                    .expect("Failed to create config value");
+
+                    true
+                }) {
+                    panic!("Failed to edit main user config file: {}", err);
+                }
+
+                // Check if the config was written correctly
+                let max_per_workdir = match global_config().cache.environment.max_per_workdir {
+                    None => panic!("Failed to set max_per_workdir (None)"),
+                    Some(n) if n != expected_max_per_workdir => panic!(
+                        "Failed to set max_per_workdir (expected {}, got {})",
+                        expected_max_per_workdir, n
+                    ),
+                    Some(n) => n,
+                };
+
+                // Create environments up to max_total limit
+                let num_workdirs = 5;
+                for i in 0..num_workdirs {
+                    let workdir = format!("workdir{}", i);
+                    for j in 0..(max_per_workdir + 3) {
+                        let mut env = UpEnvironment::new().init();
+                        env.add_env_var("TEST_VAR".to_string(), format!("value.{}.{}", i, j));
+
+                        cache
+                            .assign_environment(&workdir, None, &mut env)
+                            .expect("Failed to assign environment");
+                    }
+                }
+
+                let expected_total = num_workdirs * max_per_workdir;
+                let ids = cache.environment_ids();
+                assert_eq!(ids.len(), expected_total);
+            });
         }
     }
 
-    mod up_environment_history {
+    mod up_environment {
         use super::*;
 
         #[test]
-        fn test_add_first_entry() {
-            let mut history = UpEnvironmentHistory {
-                entries: Vec::new(),
-            };
-
-            assert!(history.add("work1", Some("sha1".to_string()), "env1"));
-            assert_eq!(history.entries.len(), 1);
-            assert!(history.entries[0].is_open());
-            assert_eq!(history.entries[0].workdir_id, "work1");
-            assert_eq!(history.entries[0].head_sha, Some("sha1".to_string()));
-            assert_eq!(history.entries[0].env_version_id, "env1");
+        fn test_new_and_init() {
+            let env = UpEnvironment::new().init();
+            assert!(env.versions.is_empty());
+            assert!(env.paths.is_empty());
+            assert!(env.env_vars.is_empty());
+            assert!(!env.config_hash.is_empty());
+            assert!(!env.config_modtimes.is_empty());
         }
 
         #[test]
-        fn test_add_same_environment() {
-            let mut history = UpEnvironmentHistory {
-                entries: Vec::new(),
-            };
+        fn test_versions_for_dir() {
+            let mut env = UpEnvironment::new();
 
-            assert!(history.add("work1", Some("sha1".to_string()), "env1"));
-            assert!(!history.add("work1", Some("sha1".to_string()), "env1")); // Should return false for same environment
-            assert_eq!(history.entries.len(), 1);
-            assert!(history.entries[0].is_open());
-        }
-
-        #[test]
-        fn test_add_different_environment() {
-            let mut history = UpEnvironmentHistory {
-                entries: Vec::new(),
-            };
-
-            assert!(history.add("work1", Some("sha1".to_string()), "env1"));
-            assert!(history.add("work1", Some("sha2".to_string()), "env2"));
-
-            assert_eq!(history.entries.len(), 2);
-            assert!(history.entries[0].is_open());
-            assert!(!history.entries[1].is_open());
-
-            assert_eq!(history.entries[0].env_version_id, "env2");
-            assert_eq!(history.entries[1].env_version_id, "env1");
-        }
-
-        #[test]
-        fn test_add_multiple_workdirs() {
-            let mut history = UpEnvironmentHistory {
-                entries: Vec::new(),
-            };
-
-            assert!(history.add("work1", Some("sha1".to_string()), "env1"));
-            assert!(history.add("work2", Some("sha2".to_string()), "env2"));
-
-            assert_eq!(history.entries.len(), 2);
-            // Both entries should be open since they're for different workdirs
-            assert!(history.entries.iter().all(|e| e.is_open()));
-        }
-
-        #[test]
-        fn test_cleanup_single_open_per_workdir() {
-            let mut history = UpEnvironmentHistory {
-                entries: Vec::new(),
-            };
-
-            // Add multiple open entries for same workdir
-            history.add("work1", Some("sha1".to_string()), "env1");
-            // Manually add another open entry for the same workdir
-            history.entries.push(UpEnvironmentHistoryEntry::new(
-                "work1",
-                Some("sha2".to_string()),
-                "env2",
-            ));
-
-            history.cleanup(None, None, None);
-
-            // Should only have one open entry per workdir
-            assert_eq!(history.entries.iter().filter(|e| e.is_open()).count(), 1);
-        }
-
-        #[test]
-        fn test_cleanup_max_per_workdir() {
-            let mut history = UpEnvironmentHistory {
-                entries: Vec::new(),
-            };
-
-            // Add multiple entries for same workdir
-            history.add("work1", Some("sha1".to_string()), "env1");
-            history.add("work1", Some("sha2".to_string()), "env2");
-            history.add("work1", Some("sha3".to_string()), "env3");
-
-            history.cleanup(None, Some(2), None);
-
-            assert_eq!(history.entries.len(), 2);
-            // Should keep the most recent entries
-            assert!(history.entries[0].env_version_id == "env3");
-        }
-
-        #[test]
-        fn test_cleanup_retention() {
-            let mut history = UpEnvironmentHistory {
-                entries: Vec::new(),
-            };
-            let now = omni_now();
-
-            // Add an old entry
-            let mut old_entry =
-                UpEnvironmentHistoryEntry::new("work1", Some("sha1".to_string()), "env1");
-            old_entry.used_from_date = now - Duration::hours(5);
-            old_entry.used_until_date = Some(now - Duration::hours(4));
-            history.entries.push(old_entry);
-
-            // Add a recent entry
-            history.add("work1", Some("sha2".to_string()), "env2");
-
-            history.cleanup(Some(Duration::hours(3)), None, None);
-
-            assert_eq!(history.entries.len(), 1);
-            assert_eq!(history.entries[0].env_version_id, "env2");
-        }
-
-        #[test]
-        fn test_cleanup_max_total() {
-            let mut history = UpEnvironmentHistory {
-                entries: Vec::new(),
-            };
-
-            // Add entries for different workdirs
-            history.add("work1", Some("sha1.1".to_string()), "env1.1");
-            history.add("work1", Some("sha1.2".to_string()), "env1.2");
-            history.add("work2", Some("sha2.1".to_string()), "env2.1");
-            history.add("work2", Some("sha2.2".to_string()), "env2.2");
-            history.add("work3", Some("sha3.1".to_string()), "env3.1");
-            history.add("work3", Some("sha3.2".to_string()), "env3.2");
-
-            history.cleanup(None, None, Some(5));
-
-            assert_eq!(history.entries.len(), 5);
-            // Should keep open entries
-            assert!(history.entries.iter().any(|e| e.env_version_id == "env3.2"));
-            assert!(history.entries.iter().any(|e| e.env_version_id == "env2.2"));
-            assert!(history.entries.iter().any(|e| e.env_version_id == "env1.2"));
-            // And should keep the most recent closed entries
-            assert!(history.entries.iter().any(|e| e.env_version_id == "env3.1"));
-            assert!(history.entries.iter().any(|e| e.env_version_id == "env2.1"));
-
-            // Now try to cleanup with a max of 2
-            history.cleanup(None, None, Some(2));
-
-            assert_eq!(history.entries.len(), 3);
-            // Should still keep open entries
-            assert!(history.entries.iter().any(|e| e.env_version_id == "env3.2"));
-            assert!(history.entries.iter().any(|e| e.env_version_id == "env2.2"));
-            assert!(history.entries.iter().any(|e| e.env_version_id == "env1.2"));
-        }
-
-        #[test]
-        fn test_cleanup_sorting() {
-            let mut history = UpEnvironmentHistory {
-                entries: Vec::new(),
-            };
-            let now = omni_now();
-
-            // Add entries in mixed order with same close dates
-            let mut entry1 =
-                UpEnvironmentHistoryEntry::new("work1", Some("sha1".to_string()), "env1");
-            entry1.used_from_date = now - Duration::hours(3);
-            entry1.used_until_date = Some(now - Duration::hours(1));
-
-            let mut entry2 =
-                UpEnvironmentHistoryEntry::new("work1", Some("sha2".to_string()), "env2");
-            entry2.used_from_date = now - Duration::hours(2);
-            entry2.used_until_date = Some(now - Duration::hours(1));
-
-            let entry3 = UpEnvironmentHistoryEntry::new("work2", Some("sha3".to_string()), "env3");
-
-            history.entries.extend([entry1, entry2, entry3]);
-
-            history.cleanup(None, None, None);
-
-            // Check sorting:
-            // 1. Open entries first
-            assert!(history.entries[0].is_open());
-            // 2. For same close dates, sort by start date
-            assert!(history.entries[1].used_from_date > history.entries[2].used_from_date);
-        }
-
-        #[test]
-        fn test_multiple_constraints() {
-            let mut history = UpEnvironmentHistory {
-                entries: Vec::new(),
-            };
-            let now = omni_now();
-
-            // Add multiple entries with various dates and states
-            for i in 0..10 {
-                let mut entry = UpEnvironmentHistoryEntry::new(
-                    &format!("work{}", i % 2),
-                    Some(format!("sha{}", i)),
-                    &format!("env{}", i),
-                );
-                if i < 4 {
-                    entry.used_from_date = now - Duration::hours(5 - i as i64);
-                    entry.used_until_date = Some(now - Duration::hours(4 - i as i64));
-                }
-                history.entries.push(entry);
-            }
-
-            // Apply multiple constraints
-            history.cleanup(
-                Some(Duration::hours(2)), // retain only last 2 hours
-                Some(2),                  // max 2 per workdir
-                Some(3),                  // max 3 total
+            // Add versions for different directories
+            env.add_version("tool1", None, "1.0.0", BTreeSet::from(["dir1".to_string()]));
+            env.add_version(
+                "tool2",
+                None,
+                "2.0.0",
+                BTreeSet::from(["dir1/subdir".to_string()]),
             );
+            env.add_version("tool3", None, "3.0.0", BTreeSet::from(["dir2".to_string()]));
 
-            assert!(history.entries.len() <= 3);
-            // Should keep open entries
-            assert!(history.entries.iter().any(|e| e.is_open()));
-            // Should respect retention
-            assert!(history
-                .entries
-                .iter()
-                .all(|e| e.is_open() || e.used_until_date.unwrap() > (now - Duration::hours(2))));
+            // Test dir1 versions
+            let dir1_versions = env.versions_for_dir("dir1");
+            assert_eq!(dir1_versions.len(), 1);
+            assert_eq!(dir1_versions[0].tool, "tool1");
+
+            // Test dir1/subdir versions
+            let subdir_versions = env.versions_for_dir("dir1/subdir");
+            assert_eq!(subdir_versions.len(), 2);
+
+            // Test dir2 versions
+            let dir2_versions = env.versions_for_dir("dir2");
+            assert_eq!(dir2_versions.len(), 1);
+            assert_eq!(dir2_versions[0].tool, "tool3");
+        }
+
+        #[test]
+        fn test_env_vars() {
+            let mut env = UpEnvironment::new();
+
+            // Test adding basic env var
+            assert!(env.add_env_var("KEY1", "value1"));
+            assert_eq!(env.env_vars.len(), 1);
+            assert_eq!(env.env_vars[0].name, "KEY1");
+            assert_eq!(env.env_vars[0].value, Some("value1".to_string()));
+
+            // Test adding env var with operation
+            assert!(env.add_env_var_operation("KEY2", "value2", EnvOperationEnum::Append));
+            assert_eq!(env.env_vars[1].operation, EnvOperationEnum::Append);
+
+            // Test adding raw env vars
+            let raw_vars = vec![UpEnvVar {
+                name: "KEY3".to_string(),
+                value: Some("value3".to_string()),
+                operation: EnvOperationEnum::Set,
+            }];
+            assert!(env.add_raw_env_vars(raw_vars));
+            assert_eq!(env.env_vars.len(), 3);
+        }
+
+        #[test]
+        fn test_paths() {
+            let mut env = UpEnvironment::new();
+            let data_home_path = PathBuf::from(data_home()).join("test");
+            let regular_path = PathBuf::from("/usr/local/bin");
+
+            // Test adding single path
+            assert!(env.add_path(regular_path.clone()));
+            assert_eq!(env.paths.len(), 1);
+
+            // Test data_home path gets prepended
+            assert!(env.add_path(data_home_path.clone()));
+            assert_eq!(env.paths[0], data_home_path);
+
+            // Test adding multiple paths
+            assert!(env.add_paths(vec![PathBuf::from("/path1"), PathBuf::from("/path2")]));
+            assert_eq!(env.paths.len(), 4);
+        }
+
+        #[test]
+        fn test_version_management() {
+            let mut env = UpEnvironment::new();
+
+            // Test adding version
+            assert!(env.add_version(
+                "tool1",
+                Some("real-name"),
+                "1.0.0",
+                BTreeSet::from(["dir1".to_string()])
+            ));
+            assert_eq!(env.versions.len(), 1);
+
+            // Test adding same version doesn't duplicate
+            assert!(!env.add_version(
+                "tool1",
+                Some("real-name"),
+                "1.0.0",
+                BTreeSet::from(["dir1".to_string()])
+            ));
+            assert_eq!(env.versions.len(), 1);
+
+            // Test adding data path
+            assert!(env.add_version_data_path("tool1", "1.0.0", "dir1", "/data/path"));
+            assert_eq!(env.versions[0].data_path, Some("/data/path".to_string()));
+        }
+    }
+
+    mod up_version {
+        use super::*;
+
+        #[test]
+        fn test_new() {
+            let version = UpVersion::new("tool1", Some("real-name"), "1.0.0", "dir1");
+            assert_eq!(version.tool, "tool1");
+            assert_eq!(version.tool_real_name, Some("real-name".to_string()));
+            assert_eq!(version.version, "1.0.0");
+            assert_eq!(version.dir, "dir1");
+            assert!(version.data_path.is_none());
+        }
+    }
+
+    mod up_env_var {
+        use super::*;
+
+        #[test]
+        fn test_from_env_operation_config() {
+            let config = EnvOperationConfig {
+                name: "TEST_VAR".to_string(),
+                value: Some("test_value".to_string()),
+                operation: EnvOperationEnum::Set,
+            };
+
+            let env_var: UpEnvVar = config.into();
+            assert_eq!(env_var.name, "TEST_VAR");
+            assert_eq!(env_var.value, Some("test_value".to_string()));
+            assert_eq!(env_var.operation, EnvOperationEnum::Set);
+        }
+
+        #[test]
+        fn test_from_env_config() {
+            let config = EnvConfig {
+                operations: vec![
+                    EnvOperationConfig {
+                        name: "VAR1".to_string(),
+                        value: Some("value1".to_string()),
+                        operation: EnvOperationEnum::Set,
+                    },
+                    EnvOperationConfig {
+                        name: "VAR2".to_string(),
+                        value: Some("value2".to_string()),
+                        operation: EnvOperationEnum::Append,
+                    },
+                ],
+            };
+
+            let env_vars: Vec<UpEnvVar> = config.into();
+            assert_eq!(env_vars.len(), 2);
+            assert_eq!(env_vars[0].name, "VAR1");
+            assert_eq!(env_vars[1].name, "VAR2");
         }
     }
 }

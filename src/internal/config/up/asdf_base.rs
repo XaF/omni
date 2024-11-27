@@ -13,12 +13,11 @@ use sha2::Sha256;
 use tokio::process::Command as TokioCommand;
 use walkdir::WalkDir;
 
-use crate::internal::cache::asdf_operation::AsdfOperationUpdateCachePluginVersions;
+use crate::internal::cache::asdf_operation::AsdfPluginVersions;
 use crate::internal::cache::up_environments::UpEnvironment;
 use crate::internal::cache::utils as cache_utils;
 use crate::internal::cache::AsdfOperationCache;
-use crate::internal::cache::CacheObject;
-use crate::internal::cache::UpEnvironmentsCache;
+use crate::internal::cache::CacheManagerError;
 use crate::internal::config;
 use crate::internal::config::global_config;
 use crate::internal::config::up::homebrew::HomebrewInstall;
@@ -137,7 +136,8 @@ fn install_asdf(progress_handler: &dyn ProgressHandler) -> Result<(), UpError> {
 }
 
 fn update_asdf(progress_handler: &dyn ProgressHandler) -> Result<(), UpError> {
-    if !AsdfOperationCache::get().should_update_asdf() {
+    let cache = AsdfOperationCache::get();
+    if !cache.should_update_asdf() {
         return Ok(());
     }
 
@@ -152,10 +152,7 @@ fn update_asdf(progress_handler: &dyn ProgressHandler) -> Result<(), UpError> {
         RunConfig::default(),
     )?;
 
-    if let Err(err) = AsdfOperationCache::exclusive(|asdf_cache| {
-        asdf_cache.updated_asdf();
-        true
-    }) {
+    if let Err(err) = cache.updated_asdf() {
         return Err(UpError::Cache(err.to_string()));
     }
 
@@ -412,9 +409,9 @@ impl UpConfigAsdfBase {
 
         progress_handler.progress("updating cache".to_string());
 
-        if let Err(err) = AsdfOperationCache::exclusive(|asdf_cache| {
-            asdf_cache.add_installed(&self.tool, &version, self.tool_real_name.as_deref())
-        }) {
+        let cache = AsdfOperationCache::get();
+        if let Err(err) = cache.add_installed(&self.tool, &version, self.tool_real_name.as_deref())
+        {
             progress_handler.progress(format!("failed to update tool cache: {}", err));
             return;
         }
@@ -459,14 +456,8 @@ impl UpConfigAsdfBase {
             Err(_err) => return Err(UpError::Exec("failed to get version".to_string())),
         };
 
-        if let Err(err) = AsdfOperationCache::exclusive(|asdf_cache| {
-            asdf_cache.add_required_by(
-                env_version_id,
-                &self.tool,
-                &version,
-                self.tool_real_name.as_deref(),
-            )
-        }) {
+        let cache = AsdfOperationCache::get();
+        if let Err(err) = cache.add_required_by(env_version_id, &self.tool, &version) {
             return Err(UpError::Cache(err.to_string()));
         }
 
@@ -765,9 +756,9 @@ impl UpConfigAsdfBase {
         &self,
         options: &UpOptions,
         progress_handler: &UpProgressHandler,
-    ) -> Result<AsdfOperationUpdateCachePluginVersions, UpError> {
+    ) -> Result<AsdfPluginVersions, UpError> {
+        let cache = AsdfOperationCache::get();
         let cached_versions = if options.read_cache {
-            let cache = AsdfOperationCache::get();
             if let Some(versions) = cache.get_asdf_plugin_versions(&self.tool) {
                 let versions = versions.clone();
                 let config = global_config();
@@ -789,10 +780,7 @@ impl UpConfigAsdfBase {
             Ok(versions) => {
                 if options.write_cache {
                     progress_handler.progress("updating cache with version list".to_string());
-                    if let Err(err) = AsdfOperationCache::exclusive(|cache| {
-                        cache.set_asdf_plugin_versions(&self.tool, versions.clone());
-                        true
-                    }) {
+                    if let Err(err) = cache.set_asdf_plugin_versions(&self.tool, versions.clone()) {
                         progress_handler.progress(format!("failed to update cache: {}", err));
                     }
                 }
@@ -817,7 +805,7 @@ impl UpConfigAsdfBase {
     fn list_versions_from_plugin(
         &self,
         progress_handler: &dyn ProgressHandler,
-    ) -> Result<AsdfOperationUpdateCachePluginVersions, UpError> {
+    ) -> Result<AsdfPluginVersions, UpError> {
         self.update_plugin(progress_handler)?;
 
         progress_handler.progress("listing available versions for plugin".to_string());
@@ -851,13 +839,13 @@ impl UpConfigAsdfBase {
             .filter(|line| !line.is_empty())
             .collect::<Vec<String>>();
 
-        Ok(AsdfOperationUpdateCachePluginVersions::new(versions))
+        Ok(AsdfPluginVersions::new(versions))
     }
 
     fn list_installed_versions_from_plugin(
         &self,
         _progress_handler: &dyn ProgressHandler,
-    ) -> Result<AsdfOperationUpdateCachePluginVersions, UpError> {
+    ) -> Result<AsdfPluginVersions, UpError> {
         let mut asdf_list = asdf_sync_command();
         asdf_list.arg("list");
         asdf_list.arg(&self.tool);
@@ -891,20 +879,14 @@ impl UpConfigAsdfBase {
             .filter(|line| !line.is_empty())
             .collect::<Vec<String>>();
 
-        Ok(AsdfOperationUpdateCachePluginVersions::new(versions))
+        Ok(AsdfPluginVersions::new(versions))
     }
 
-    fn resolve_version(
-        &self,
-        versions: &AsdfOperationUpdateCachePluginVersions,
-    ) -> Result<String, UpError> {
+    fn resolve_version(&self, versions: &AsdfPluginVersions) -> Result<String, UpError> {
         self.resolve_version_from_str(&self.version, versions)
     }
 
-    fn latest_version(
-        &self,
-        versions: &AsdfOperationUpdateCachePluginVersions,
-    ) -> Result<String, UpError> {
+    fn latest_version(&self, versions: &AsdfPluginVersions) -> Result<String, UpError> {
         let version_str = self.resolve_version_from_str("latest", versions)?;
         Ok(VersionParser::parse(&version_str)
             .expect("failed to parse version string")
@@ -915,7 +897,7 @@ impl UpConfigAsdfBase {
     fn resolve_version_from_str(
         &self,
         match_version: &str,
-        versions: &AsdfOperationUpdateCachePluginVersions,
+        versions: &AsdfPluginVersions,
     ) -> Result<String, UpError> {
         let matcher = VersionMatcher::new(match_version);
 
@@ -994,10 +976,8 @@ impl UpConfigAsdfBase {
         )?;
 
         // Update the cache
-        if let Err(err) = AsdfOperationCache::exclusive(|cache| {
-            cache.updated_asdf_plugin(&self.tool);
-            true
-        }) {
+        let cache = AsdfOperationCache::get();
+        if let Err(err) = cache.updated_asdf_plugin(&self.tool) {
             return Err(UpError::Cache(err.to_string()));
         }
 
@@ -1188,68 +1168,36 @@ impl UpConfigAsdfBase {
 
     pub fn cleanup(progress_handler: &dyn ProgressHandler) -> Result<Option<String>, UpError> {
         let mut uninstalled = Vec::new();
-        if let Err(err) = AsdfOperationCache::exclusive(|asdf_cache| {
-            // Update the asdf versions cache
-            let mut updated = false;
-            let mut to_remove = Vec::new();
 
-            let environment_ids = if !asdf_cache.installed.is_empty() {
-                UpEnvironmentsCache::get().environment_ids()
-            } else {
-                BTreeSet::new()
-            };
-
-            for (idx, exists) in asdf_cache.installed.iter_mut().enumerate() {
-                let required_by_len = exists.required_by.len();
-                exists.required_by.retain(|id| environment_ids.contains(id));
-                if exists.required_by.len() != required_by_len {
-                    updated = true;
-                }
-                if exists.removable() {
-                    to_remove.push((idx, exists.clone()));
-                }
-            }
-
-            if to_remove.is_empty() {
-                return updated;
-            }
-
-            for (idx, to_remove) in to_remove.iter().rev() {
-                if is_asdf_tool_version_installed(&to_remove.tool, &to_remove.version) {
-                    progress_handler.progress(format!(
-                        "uninstalling {} {}",
-                        to_remove.tool, to_remove.version,
-                    ));
+        let cache = AsdfOperationCache::get();
+        cache
+            .cleanup(|tool, version| {
+                if is_asdf_tool_version_installed(tool, version) {
+                    progress_handler.progress(format!("uninstalling {} {}", tool, version));
 
                     let mut asdf_uninstall = asdf_async_command();
                     asdf_uninstall.arg("uninstall");
-                    asdf_uninstall.arg(to_remove.tool.clone());
-                    asdf_uninstall.arg(to_remove.version.clone());
+                    asdf_uninstall.arg(tool);
+                    asdf_uninstall.arg(version);
 
-                    if let Err(_err) = run_progress(
+                    if let Err(err) = run_progress(
                         &mut asdf_uninstall,
                         Some(progress_handler),
                         RunConfig::default(),
                     ) {
                         progress_handler.error_with_message(format!(
                             "failed to uninstall {} {}",
-                            to_remove.tool, to_remove.version,
+                            tool, version,
                         ));
-                        return updated;
+                        return Err(CacheManagerError::Other(err.to_string()));
                     }
 
-                    uninstalled.push(format!("{}:{}", to_remove.tool, to_remove.version));
+                    uninstalled.push(format!("{}:{}", tool, version));
                 }
 
-                asdf_cache.installed.remove(*idx);
-                updated = true;
-            }
-
-            updated
-        }) {
-            progress_handler.progress(format!("failed to update cache: {}", err));
-            return Err(UpError::Exec("failed to update cache".to_string()));
-        }
+                Ok(())
+            })
+            .map_err(|err| UpError::Cache(err.to_string()))?;
 
         if uninstalled.is_empty() {
             Ok(None)

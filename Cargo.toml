@@ -45,7 +45,7 @@ indicatif = "0.17.9"
 is-terminal = "0.4.13"
 itertools = "0.13.0"
 lazy_static = "1.4.0"
-libz-sys = { version = "1.1.19", features = ["static"] }
+libz-sys = { version = "1.1.19", features = ["static"] }  # So we can force static linking
 machine-uid = "0.5.2"
 md-5 = "0.10.6"
 nix = "0.29.0"
@@ -55,13 +55,16 @@ num-bigint = "0.4.6"
 num-integer = "0.1.46"
 num-traits = "0.2.18"
 once_cell = "1.20.1"
-openssl = { version = "0.10", features = ["vendored"] }
+openssl = { version = "0.10", features = ["vendored"] }  # So it can be bundled with the binary
 path-clean = "1.0.1"
 pathdiff = "0.2.3"
 petname = "2.0.2"
+r2d2 = "0.8.10"
+r2d2_sqlite = { version = "0.25.0", features = ["bundled"] }
 regex = "1.11.1"
 requestty = "0.5.0"
 reqwest = { version = "0.12.9", features = ["blocking"] }
+rusqlite = { version = "0.32.1", features = ["bundled"] }
 self-replace = "1.5.0"
 semver = "1.0.23"
 serde = { version = "1.0", features = ["derive"] }
@@ -86,3 +89,6 @@ walkdir = "2.4.0"
 which = "7.0.0"
 whoami = "1.5.2"
 zip-extract = "0.2.1"
+
+[package.metadata.cargo-machete]
+ignored = ["libz-sys", "openssl"]

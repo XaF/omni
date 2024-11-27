@@ -32,3 +32,6 @@ pub(crate) mod dynenv;
 
 pub(crate) mod self_updater;
 pub(crate) use self_updater::self_update;
+
+#[cfg(test)]
+pub(crate) mod testutils;

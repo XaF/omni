@@ -26,11 +26,9 @@ use crate::internal::cache::github_release::GithubReleaseAsset;
 use crate::internal::cache::github_release::GithubReleasesSelector;
 use crate::internal::cache::up_environments::UpEnvironment;
 use crate::internal::cache::utils as cache_utils;
-use crate::internal::cache::CacheObject;
 use crate::internal::cache::GithubReleaseOperationCache;
 use crate::internal::cache::GithubReleaseVersion;
 use crate::internal::cache::GithubReleases;
-use crate::internal::cache::UpEnvironmentsCache;
 use crate::internal::config;
 use crate::internal::config::global_config;
 use crate::internal::config::parser::GithubAuthConfig;
@@ -45,8 +43,6 @@ use crate::internal::config::up::UpOptions;
 use crate::internal::config::ConfigValue;
 use crate::internal::env::data_home;
 use crate::internal::user_interface::StringColor;
-use crate::internal::workdir;
-use std::collections::BTreeSet;
 
 const GITHUB_API_URL: &str = "https://api.github.com";
 
@@ -292,66 +288,38 @@ impl UpConfigGithubReleases {
     }
 
     pub fn cleanup(progress_handler: &UpProgressHandler) -> Result<Option<String>, UpError> {
-        let mut return_value: Result<(bool, usize, Vec<PathBuf>), UpError> =
-            Err(UpError::Exec("cleanup_path not run".to_string()));
+        progress_handler.init("github releases:".light_blue());
+        progress_handler.progress("checking for unused github releases".to_string());
 
-        if let Err(err) = GithubReleaseOperationCache::exclusive(|ghrelease| {
-            progress_handler.init("github releases:".light_blue());
-            progress_handler.progress("checking for unused github releases".to_string());
+        let cache = GithubReleaseOperationCache::get();
 
-            let mut updated = false;
+        // Cleanup removable releases from the database
+        cache.cleanup().map_err(|err| {
+            progress_handler.progress(format!("failed to cleanup github releases cache: {}", err));
+            UpError::Cache(format!("failed to cleanup homebrew cache: {}", err))
+        })?;
 
-            let environment_ids = if !ghrelease.installed.is_empty() {
-                UpEnvironmentsCache::get().environment_ids()
-            } else {
-                BTreeSet::new()
-            };
+        // List releases that should exist
+        let expected_releases = cache.list_installed().map_err(|err| {
+            progress_handler.progress(format!("failed to list installed github releases: {}", err));
+            UpError::Cache(format!("failed to list installed github releases: {}", err))
+        })?;
 
-            // Use 'retain' so we can cleanup the github release cache of the releases
-            // that are being removed entirely
-            ghrelease.installed.retain_mut(|install| {
-                // Cleanup the references to this repository for
-                // any installed github release that is not used by any
-                // of the existing environments (active or in the history)
-                let required_by_len = install.required_by.len();
-                install
-                    .required_by
-                    .retain(|id| environment_ids.contains(id));
-                if required_by_len != install.required_by.len() {
-                    updated = true;
-                }
+        let expected_paths = expected_releases
+            .iter()
+            .map(|install| {
+                github_releases_bin_path()
+                    .join(&install.repository)
+                    .join(&install.version)
+            })
+            .collect::<Vec<PathBuf>>();
 
-                if install.removable() {
-                    updated = true;
-                    false
-                } else {
-                    true
-                }
-            });
-
-            let expected_paths = ghrelease
-                .installed
-                .iter()
-                .map(|install| {
-                    github_releases_bin_path()
-                        .join(&install.repository)
-                        .join(&install.version)
-                })
-                .collect::<Vec<PathBuf>>();
-
-            return_value = cleanup_path(
-                github_releases_bin_path(),
-                expected_paths,
-                progress_handler,
-                true,
-            );
-
-            return_value.is_ok() && updated
-        }) {
-            progress_handler.progress(format!("failed to update cache: {}", err).light_yellow());
-        }
-
-        let (root_removed, num_removed, removed_paths) = return_value?;
+        let (root_removed, num_removed, removed_paths) = cleanup_path(
+            github_releases_bin_path(),
+            expected_paths,
+            progress_handler,
+            true,
+        )?;
 
         if root_removed {
             return Ok(Some("removed all github releases".to_string()));
@@ -700,9 +668,9 @@ impl UpConfigGithubRelease {
 
         progress_handler.progress("updating cache".to_string());
 
-        if let Err(err) = GithubReleaseOperationCache::exclusive(|ghrelease| {
-            ghrelease.add_installed(&self.repository, version)
-        }) {
+        if let Err(err) =
+            GithubReleaseOperationCache::get().add_installed(&self.repository, version)
+        {
             progress_handler.progress(format!("failed to update github release cache: {}", err));
             return;
         }
@@ -775,9 +743,11 @@ impl UpConfigGithubRelease {
             }
         };
 
-        if let Err(err) = GithubReleaseOperationCache::exclusive(|ghrelease| {
-            ghrelease.add_required_by(env_version_id, &self.repository, version)
-        }) {
+        if let Err(err) = GithubReleaseOperationCache::get().add_required_by(
+            env_version_id,
+            &self.repository,
+            version,
+        ) {
             return Err(UpError::Cache(format!(
                 "failed to update github release cache: {}",
                 err
@@ -787,35 +757,7 @@ impl UpConfigGithubRelease {
         Ok(())
     }
 
-    pub fn down(&self, progress_handler: &UpProgressHandler) -> Result<(), UpError> {
-        let wd = workdir(".");
-        let wd_id = match wd.id() {
-            Some(wd_id) => wd_id,
-            None => return Ok(()),
-        };
-
-        if let Err(err) = GithubReleaseOperationCache::exclusive(|ghrelease| {
-            progress_handler.init(self.desc().light_blue());
-            progress_handler.progress("updating github release dependencies".to_string());
-
-            let mut updated = false;
-
-            for install in ghrelease
-                .installed
-                .iter_mut()
-                .filter(|install| install.required_by.contains(&wd_id))
-            {
-                install.required_by.retain(|id| id != &wd_id);
-                updated = true;
-            }
-
-            updated
-        }) {
-            progress_handler.progress(format!("failed to update cache: {}", err).light_yellow());
-        }
-
-        progress_handler.success_with_message("github release dependencies cleaned".light_green());
-
+    pub fn down(&self, _progress_handler: &UpProgressHandler) -> Result<(), UpError> {
         Ok(())
     }
 
@@ -949,8 +891,8 @@ impl UpConfigGithubRelease {
         options: &UpOptions,
         progress_handler: &UpProgressHandler,
     ) -> Result<GithubReleases, UpError> {
+        let cache = GithubReleaseOperationCache::get();
         let cached_releases = if options.read_cache {
-            let cache = GithubReleaseOperationCache::get();
             if let Some(releases) = cache.get_releases(&self.repository) {
                 let releases = releases.clone();
                 let config = global_config();
@@ -972,9 +914,7 @@ impl UpConfigGithubRelease {
             Ok(releases) => {
                 if options.write_cache {
                     progress_handler.progress("updating cache with release list".to_string());
-                    if let Err(err) = GithubReleaseOperationCache::exclusive(|ghrelease| {
-                        ghrelease.add_releases(&self.repository, &releases)
-                    }) {
+                    if let Err(err) = cache.add_releases(&self.repository, &releases) {
                         progress_handler.progress(format!("failed to update cache: {}", err));
                     }
                 }
@@ -2029,43 +1969,7 @@ mod tests {
 
         use crate::internal::self_updater::compatible_release_arch;
         use crate::internal::self_updater::compatible_release_os;
-
-        fn run_with_env<F>(envs: &[(String, Option<String>)], closure: F)
-        where
-            F: FnOnce(),
-        {
-            let tempdir = tempfile::Builder::new()
-                .prefix("omni_tests.")
-                .tempdir()
-                .expect("failed to create temp dir");
-
-            let run_env: Vec<(String, Option<String>)> = vec![
-                ("XDG_DATA_HOME".into(), None),
-                ("XDG_CONFIG_HOME".into(), None),
-                ("XDG_CACHE_HOME".into(), None),
-                ("XDG_RUNTIME_DIR".into(), None),
-                ("OMNI_DATA_HOME".into(), None),
-                ("OMNI_CACHE_HOME".into(), None),
-                ("OMNI_CMD_FILE".into(), None),
-                ("HOMEBREW_PREFIX".into(), None),
-                (
-                    "HOME".into(),
-                    Some(tempdir.path().join("home").to_string_lossy().to_string()),
-                ),
-                (
-                    "PATH".into(),
-                    Some(format!(
-                        "{}:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
-                        tempdir.path().join("bin").to_string_lossy()
-                    )),
-                ),
-            ]
-            .into_iter()
-            .chain(envs.iter().cloned())
-            .collect();
-
-            temp_env::with_vars(run_env, closure);
-        }
+        use crate::internal::testutils::run_with_env;
 
         #[test]
         fn latest_release_binary() {

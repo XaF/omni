@@ -3,6 +3,8 @@ up:
       upgrade: true
   - node: auto
   - bats: 1
+  - github-releases:
+      quarylabs/sqruff: 0.21.0
 
 commands:
   create-tag:

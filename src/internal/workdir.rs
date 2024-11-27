@@ -1,5 +1,4 @@
-use crate::internal::cache::CacheObject;
-use crate::internal::cache::RepositoriesCache;
+use crate::internal::cache::WorkdirsCache;
 use crate::internal::env::shell_is_interactive;
 use crate::internal::git::ORG_LOADER;
 use crate::internal::git_env;
@@ -21,7 +20,7 @@ pub fn is_trusted<T: AsRef<str>>(path: T) -> bool {
 
     let workdir = workdir(path);
     if let Some(workdir_id) = workdir.trust_id() {
-        RepositoriesCache::get().has_trusted(&workdir_id)
+        WorkdirsCache::get().has_trusted(&workdir_id)
     } else {
         false
     }
@@ -81,7 +80,7 @@ pub fn is_trusted_or_ask(path: &str, ask: String) -> bool {
 pub fn add_trust(path: &str) -> bool {
     let wd = workdir(path);
     if let Some(workdir_id) = wd.trust_id() {
-        if let Err(err) = RepositoriesCache::exclusive(|repos| repos.add_trusted(&workdir_id)) {
+        if let Err(err) = WorkdirsCache::get().add_trusted(&workdir_id) {
             omni_error!(format!("Unable to update cache: {:?}", err.to_string()));
             return false;
         }
@@ -95,7 +94,7 @@ pub fn add_trust(path: &str) -> bool {
 pub fn remove_trust(path: &str) -> bool {
     let wd = workdir(path);
     if let Some(workdir_id) = wd.trust_id() {
-        if let Err(err) = RepositoriesCache::exclusive(|repos| repos.remove_trusted(&workdir_id)) {
+        if let Err(err) = WorkdirsCache::get().remove_trusted(&workdir_id) {
             omni_error!(format!("Unable to update cache: {:?}", err.to_string()));
             return false;
         }

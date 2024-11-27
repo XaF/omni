@@ -8,7 +8,6 @@ use serde::Deserialize;
 use serde::Serialize;
 use tera::Tera;
 
-use crate::internal::cache::utils::CacheObject;
 use crate::internal::cache::PromptsCache;
 use crate::internal::git::Repo;
 use crate::internal::git_env;

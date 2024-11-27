@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::collections::HashSet;
 use std::env;
 use std::fs::File;
 use std::io;
@@ -7,12 +8,12 @@ use std::path::PathBuf;
 
 use serde::Deserialize;
 use serde::Serialize;
+use time::OffsetDateTime;
 
-use crate::internal::cache::up_environments::UpEnvironment;
-use crate::internal::cache::AsdfOperationCache;
-use crate::internal::cache::GithubReleaseOperationCache;
-use crate::internal::cache::HomebrewOperationCache;
+use crate::internal::cache::offsetdatetime_hashmap;
+use crate::internal::cache::utils;
 use crate::internal::config::global_config;
+use crate::internal::config::parser::EnvOperationEnum;
 use crate::internal::git_env_fresh;
 use crate::internal::ORG_LOADER;
 
@@ -39,16 +40,73 @@ use crate::internal::ORG_LOADER;
 // - homebrew_operation.json
 //    - Replace the references to the repository by references to the versions
 
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct Pre0029UpEnvironment {
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub versions: Vec<Pre0029UpVersion>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub paths: Vec<PathBuf>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub env_vars: Vec<Pre0029UpEnvVar>,
+    #[serde(default, skip_serializing_if = "HashMap::is_empty")]
+    pub config_modtimes: HashMap<String, u64>,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub config_hash: String,
+    #[serde(
+        default = "utils::origin_of_time",
+        with = "time::serde::rfc3339",
+        skip_serializing_if = "utils::is_origin_of_time"
+    )]
+    pub last_assigned_at: OffsetDateTime,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone, Hash)]
+pub struct Pre0029UpVersion {
+    pub tool: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tool_real_name: Option<String>,
+    pub version: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub dir: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub data_path: Option<String>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone, Hash)]
+pub struct Pre0029UpEnvVar {
+    #[serde(
+        rename = "n",
+        alias = "name",
+        default,
+        skip_serializing_if = "String::is_empty"
+    )]
+    pub name: String,
+    #[serde(
+        rename = "v",
+        alias = "value",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub value: Option<String>,
+    #[serde(
+        rename = "o",
+        alias = "operation",
+        default,
+        skip_serializing_if = "EnvOperationEnum::is_default"
+    )]
+    pub operation: EnvOperationEnum,
+}
+
 #[derive(Debug, Serialize, Deserialize)]
 struct Pre0029UpEnvironmentsCache {
-    env: HashMap<String, UpEnvironment>,
+    env: HashMap<String, Pre0029UpEnvironment>,
     updated_at: serde_json::Value,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
 struct Post0029UpEnvironmentsCache {
     workdir_env: HashMap<String, String>,
-    versioned_env: HashMap<String, UpEnvironment>,
+    versioned_env: HashMap<String, Pre0029UpEnvironment>,
     history: Vec<Post0029UpEnvironmentHistoryEntry>,
     updated_at: serde_json::Value,
 }
@@ -63,6 +121,267 @@ struct Post0029UpEnvironmentHistoryEntry {
     env_version_id: String,
     #[serde(rename = "from")]
     used_from_date: serde_json::Value,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct Pre0029AsdfOperationCache {
+    #[serde(default = "Vec::new", skip_serializing_if = "Vec::is_empty")]
+    pub installed: Vec<Pre0029AsdfInstalled>,
+    #[serde(
+        default = "Pre0029AsdfOperationUpdateCache::new",
+        skip_serializing_if = "Pre0029AsdfOperationUpdateCache::is_empty"
+    )]
+    pub update_cache: Pre0029AsdfOperationUpdateCache,
+    #[serde(
+        default = "utils::origin_of_time",
+        with = "time::serde::rfc3339",
+        skip_serializing_if = "utils::is_origin_of_time"
+    )]
+    pub updated_at: OffsetDateTime,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct Pre0029AsdfInstalled {
+    pub tool: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tool_real_name: Option<String>,
+    pub version: String,
+    #[serde(default = "HashSet::new", skip_serializing_if = "HashSet::is_empty")]
+    pub required_by: HashSet<String>,
+    #[serde(default = "utils::origin_of_time", with = "time::serde::rfc3339")]
+    pub last_required_at: OffsetDateTime,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct Pre0029AsdfOperationUpdateCache {
+    #[serde(
+        default = "utils::origin_of_time",
+        with = "time::serde::rfc3339",
+        skip_serializing_if = "utils::is_origin_of_time"
+    )]
+    pub asdf_updated_at: OffsetDateTime,
+    #[serde(
+        default = "HashMap::new",
+        skip_serializing_if = "HashMap::is_empty",
+        with = "offsetdatetime_hashmap"
+    )]
+    pub plugins_updated_at: HashMap<String, OffsetDateTime>,
+    #[serde(default = "HashMap::new", skip_serializing_if = "HashMap::is_empty")]
+    pub plugins_versions: HashMap<String, Pre0029AsdfOperationUpdateCachePluginVersions>,
+}
+
+impl Pre0029AsdfOperationUpdateCache {
+    pub fn new() -> Self {
+        Self {
+            asdf_updated_at: utils::origin_of_time(),
+            plugins_updated_at: HashMap::new(),
+            plugins_versions: HashMap::new(),
+        }
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.asdf_updated_at == utils::origin_of_time()
+            && self.plugins_updated_at.is_empty()
+            && self.plugins_versions.is_empty()
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct Pre0029AsdfOperationUpdateCachePluginVersions {
+    #[serde(default = "Vec::new", skip_serializing_if = "Vec::is_empty")]
+    pub versions: Vec<String>,
+    #[serde(
+        default = "utils::origin_of_time",
+        with = "time::serde::rfc3339",
+        skip_serializing_if = "utils::is_origin_of_time"
+    )]
+    pub updated_at: OffsetDateTime,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct Pre0029HomebrewOperationCache {
+    #[serde(default = "Vec::new", skip_serializing_if = "Vec::is_empty")]
+    pub installed: Vec<Pre0029HomebrewInstalled>,
+    #[serde(default = "Vec::new", skip_serializing_if = "Vec::is_empty")]
+    pub tapped: Vec<Pre0029HomebrewTapped>,
+    #[serde(
+        default = "Pre0029HomebrewOperationUpdateCache::new",
+        skip_serializing_if = "Pre0029HomebrewOperationUpdateCache::is_empty"
+    )]
+    pub update_cache: Pre0029HomebrewOperationUpdateCache,
+    #[serde(
+        default = "utils::origin_of_time",
+        with = "time::serde::rfc3339",
+        skip_serializing_if = "utils::is_origin_of_time"
+    )]
+    pub updated_at: OffsetDateTime,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct Pre0029HomebrewInstalled {
+    pub name: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub version: Option<String>,
+    #[serde(default = "utils::set_false", skip_serializing_if = "utils::is_false")]
+    pub cask: bool,
+    #[serde(default = "utils::set_false", skip_serializing_if = "utils::is_false")]
+    pub installed: bool,
+    #[serde(default = "HashSet::new", skip_serializing_if = "HashSet::is_empty")]
+    pub required_by: HashSet<String>,
+    #[serde(default = "utils::origin_of_time", with = "time::serde::rfc3339")]
+    pub last_required_at: OffsetDateTime,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct Pre0029HomebrewTapped {
+    pub name: String,
+    #[serde(default = "utils::set_false", skip_serializing_if = "utils::is_false")]
+    pub tapped: bool,
+    #[serde(default = "HashSet::new", skip_serializing_if = "HashSet::is_empty")]
+    pub required_by: HashSet<String>,
+    #[serde(default = "utils::origin_of_time", with = "time::serde::rfc3339")]
+    pub last_required_at: OffsetDateTime,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct Pre0029HomebrewOperationUpdateCache {
+    #[serde(
+        default = "Pre0029HomebrewOperationUpdateCacheHomebrew::new",
+        skip_serializing_if = "Pre0029HomebrewOperationUpdateCacheHomebrew::is_empty"
+    )]
+    pub homebrew: Pre0029HomebrewOperationUpdateCacheHomebrew,
+    #[serde(default = "HashMap::new", skip_serializing_if = "HashMap::is_empty")]
+    pub install: HashMap<String, Pre0029HomebrewOperationUpdateCacheInstall>,
+    #[serde(default = "HashMap::new", skip_serializing_if = "HashMap::is_empty")]
+    pub tap: HashMap<String, Pre0029HomebrewOperationUpdateCacheTap>,
+}
+
+impl Pre0029HomebrewOperationUpdateCache {
+    pub fn new() -> Self {
+        Self {
+            homebrew: Pre0029HomebrewOperationUpdateCacheHomebrew::new(),
+            install: HashMap::new(),
+            tap: HashMap::new(),
+        }
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.homebrew.is_empty() && self.install.is_empty() && self.tap.is_empty()
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct Pre0029HomebrewOperationUpdateCacheHomebrew {
+    #[serde(
+        default = "utils::origin_of_time",
+        with = "time::serde::rfc3339",
+        skip_serializing_if = "utils::is_origin_of_time"
+    )]
+    pub updated_at: OffsetDateTime,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub bin_path: Option<String>,
+}
+
+impl Pre0029HomebrewOperationUpdateCacheHomebrew {
+    pub fn new() -> Self {
+        Self {
+            updated_at: utils::origin_of_time(),
+            bin_path: None,
+        }
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.bin_path.is_none()
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct Pre0029HomebrewOperationUpdateCacheInstall {
+    #[serde(
+        default = "utils::origin_of_time",
+        with = "time::serde::rfc3339",
+        skip_serializing_if = "utils::is_origin_of_time"
+    )]
+    pub updated_at: OffsetDateTime,
+    #[serde(
+        default = "utils::origin_of_time",
+        with = "time::serde::rfc3339",
+        skip_serializing_if = "utils::is_origin_of_time"
+    )]
+    pub checked_at: OffsetDateTime,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub bin_paths: Option<Vec<String>>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct Pre0029HomebrewOperationUpdateCacheTap {
+    #[serde(
+        default = "utils::origin_of_time",
+        with = "time::serde::rfc3339",
+        skip_serializing_if = "utils::is_origin_of_time"
+    )]
+    pub updated_at: OffsetDateTime,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct Pre0029GithubReleaseOperationCache {
+    #[serde(default = "Vec::new", skip_serializing_if = "Vec::is_empty")]
+    pub installed: Vec<Pre0029GithubReleaseInstalled>,
+    #[serde(default = "HashMap::new", skip_serializing_if = "HashMap::is_empty")]
+    pub releases: HashMap<String, Pre0029GithubReleases>,
+    #[serde(
+        default = "utils::origin_of_time",
+        with = "time::serde::rfc3339",
+        skip_serializing_if = "utils::is_origin_of_time"
+    )]
+    pub updated_at: OffsetDateTime,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct Pre0029GithubReleaseInstalled {
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub repository: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub version: String,
+    #[serde(default, skip_serializing_if = "HashSet::is_empty")]
+    pub required_by: HashSet<String>,
+    #[serde(default = "utils::origin_of_time", with = "time::serde::rfc3339")]
+    pub last_required_at: OffsetDateTime,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct Pre0029GithubReleases {
+    pub releases: Vec<Pre0029GithubReleaseVersion>,
+    #[serde(default = "OffsetDateTime::now_utc", with = "time::serde::rfc3339")]
+    pub fetched_at: OffsetDateTime,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct Pre0029GithubReleaseVersion {
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub tag_name: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub name: String,
+    #[serde(default)]
+    pub draft: bool,
+    #[serde(default)]
+    pub prerelease: bool,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub assets: Vec<Pre0029GithubReleaseAsset>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct Pre0029GithubReleaseAsset {
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub name: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub browser_download_url: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub state: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub content_type: String,
+    #[serde(default)]
+    pub size: u64,
 }
 
 pub fn convert_cache_pre_0_0_29() -> io::Result<()> {
@@ -161,7 +480,7 @@ pub fn convert_cache_pre_0_0_29() -> io::Result<()> {
 
     // First the AsdfOperationCache
     let asdf_operation_path = cache_path.join("asdf_operation.json");
-    let asdf_operation: Option<AsdfOperationCache> = match File::open(&asdf_operation_path) {
+    let asdf_operation: Option<Pre0029AsdfOperationCache> = match File::open(&asdf_operation_path) {
         Ok(file) => serde_json::from_reader(file).ok(),
         Err(_) => None,
     };
@@ -198,7 +517,7 @@ pub fn convert_cache_pre_0_0_29() -> io::Result<()> {
 
     // The HomebrewOperationCache
     let homebrew_operation_path = cache_path.join("homebrew_operation.json");
-    let homebrew_operation: Option<HomebrewOperationCache> =
+    let homebrew_operation: Option<Pre0029HomebrewOperationCache> =
         match File::open(&homebrew_operation_path) {
             Ok(file) => serde_json::from_reader(file).ok(),
             Err(_) => None,
@@ -251,7 +570,7 @@ pub fn convert_cache_pre_0_0_29() -> io::Result<()> {
 
     // The GithubReleaseOperationCache
     let github_release_operation_path = cache_path.join("github_release_operation.json");
-    let github_release_operation: Option<GithubReleaseOperationCache> =
+    let github_release_operation: Option<Pre0029GithubReleaseOperationCache> =
         match File::open(&github_release_operation_path) {
             Ok(file) => serde_json::from_reader(file).ok(),
             Err(_) => None,
