@@ -126,7 +126,14 @@ fn upgrade_database(conn: &Connection) -> Result<(), CacheManagerError> {
         conn.execute_batch(include_str!("sql/create_tables.sql"))?;
 
         // Migrate the JSON files to the database
-        migrate_json_to_database(conn)?;
+        if let Err(err) = migrate_json_to_database(conn) {
+            // Delete the database file if the migration fails, so it can be retried
+            if let Some(path) = conn.path() {
+                std::fs::remove_file(path)?;
+            }
+
+            return Err(err.into());
+        }
     }
 
     // Run the migration SQL, which should handle any migrations
@@ -228,77 +235,6 @@ impl CacheManager {
             .execute(query, params)
             .map_err(CacheManagerError::from)
     }
-
-    // /// Executes a SQL file containing multiple statements with numbered parameters
-    // ///
-    // /// The SQL file can contain multiple statements separated by semicolons.
-    // /// Parameters in the SQL should use numbered placeholders like ?1, ?2, etc.
-    // /// The same parameter number can be used multiple times in the SQL.
-    // ///
-    // /// # Arguments
-    // /// * `sql_content` - The content of the SQL file
-    // /// * `parameters` - Vec of parameters that will be mapped to ?1, ?2, etc.
-    // ///
-    // /// # Returns
-    // /// * `Result<()>` - Success or error
-    // pub fn execute_batch_with_params(
-    // &mut self,
-    // sql_content: &str,
-    // parameters: &[Box<dyn rusqlite::ToSql>],
-    // ) -> Result<(), CacheManagerError> {
-    // // Split the content into individual statements
-    // let statements: Vec<&str> = sql_content
-    // .split(';')
-    // .map(|s| s.trim())
-    // .filter(|s| !s.is_empty())
-    // .collect();
-
-    // // Find the highest parameter number used in the SQL
-    // let max_param = statements
-    // .iter()
-    // .flat_map(|stmt| {
-    // stmt.match_indices("?").filter_map(|(i, _)| {
-    // if let Some(num_str) = stmt[i + 1..]
-    // .chars()
-    // .take_while(|c| c.is_ascii_digit())
-    // .collect::<String>()
-    // .parse::<usize>()
-    // .ok()
-    // {
-    // Some(num_str)
-    // } else {
-    // None
-    // }
-    // })
-    // })
-    // .max()
-    // .unwrap_or(0);
-
-    // // Verify we have enough parameters
-    // if max_param > parameters.len() {
-    // return Err(rusqlite::Error::InvalidQuery(format!(
-    // "SQL uses parameter ?{} but only {} parameters provided",
-    // max_param,
-    // parameters.len()
-    // )));
-    // }
-
-    // // Start a transaction
-    // let tx = self.conn.transaction()?;
-
-    // // Execute each statement
-    // for stmt in statements {
-    // if stmt.contains('?') {
-    // tx.execute(stmt, rusqlite::params_from_iter(parameters.iter()))?;
-    // } else {
-    // tx.execute(stmt, [])?;
-    // }
-    // }
-
-    // // Commit the transaction
-    // tx.commit()?;
-    // Ok(())
-    // }
 }
 
 impl RowExt for CacheManager {
