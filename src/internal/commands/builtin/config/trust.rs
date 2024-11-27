@@ -2,7 +2,7 @@ use std::collections::BTreeMap;
 use std::path::PathBuf;
 use std::process::exit;
 
-use crate::internal::cache::RepositoriesCache;
+use crate::internal::cache::WorkdirsCache;
 use crate::internal::commands::base::BuiltinCommand;
 use crate::internal::commands::Command;
 use crate::internal::config::parser::ParseArgsValue;
@@ -204,7 +204,7 @@ impl BuiltinCommand for ConfigTrustCommand {
             }
 
             let wd_trust_id = wd.trust_id().expect("trust id not found");
-            if !RepositoriesCache::get().has_trusted(wd_trust_id.as_str()) {
+            if !WorkdirsCache::get().has_trusted(wd_trust_id.as_str()) {
                 omni_error!(format!(
                     "work directory {} is in a trusted organization",
                     wd_id.light_blue()

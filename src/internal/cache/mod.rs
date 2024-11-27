@@ -23,8 +23,8 @@ pub(crate) use omnipath::OmniPathCache;
 pub(crate) mod prompts;
 pub(crate) use prompts::PromptsCache;
 
-pub(crate) mod repositories;
-pub(crate) use repositories::RepositoriesCache;
+pub(crate) mod workdirs;
+pub(crate) use workdirs::WorkdirsCache;
 
 mod migration;
 

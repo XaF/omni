@@ -7,9 +7,9 @@ use crate::internal::cache::CacheManager;
 use crate::internal::cache::CacheManagerError;
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct RepositoriesCache {}
+pub struct WorkdirsCache {}
 
-impl RepositoriesCache {
+impl WorkdirsCache {
     pub fn get() -> Self {
         Self {}
     }
