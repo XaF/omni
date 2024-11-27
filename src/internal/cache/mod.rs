@@ -1,5 +1,3 @@
-pub(crate) mod loaders;
-
 pub(crate) mod asdf_operation;
 pub(crate) use asdf_operation::AsdfOperationCache;
 
@@ -13,8 +11,6 @@ pub(crate) mod github_release;
 pub(crate) use github_release::GithubReleaseOperationCache;
 pub(crate) use github_release::GithubReleaseVersion;
 pub(crate) use github_release::GithubReleases;
-
-pub(crate) mod handler;
 
 pub(crate) mod homebrew_operation;
 pub(crate) use homebrew_operation::HomebrewOperationCache;
@@ -36,4 +32,3 @@ pub(crate) mod up_environments;
 pub(crate) use up_environments::UpEnvironmentsCache;
 
 pub(crate) mod utils;
-pub(crate) use utils::CacheObject;

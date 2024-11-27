@@ -15,18 +15,6 @@ impl OmniPathCache {
         Self {}
     }
 
-    // pub fn should_update(&self) -> bool {
-    // let db = CacheManager::get();
-    // let should_update: bool = db
-    // .query_row(
-    // include_str!("sql/omnipath_should_update.sql"),
-    // params![global_config().path_repo_updates.interval],
-    // |row| row.get(0),
-    // )
-    // .unwrap_or(true);
-    // should_update
-    // }
-
     pub fn try_exclusive_update(&self) -> bool {
         let mut db = CacheManager::get();
         match db.transaction(|tx| {

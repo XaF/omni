@@ -2,7 +2,6 @@ use std::collections::BTreeMap;
 use std::path::PathBuf;
 use std::process::exit;
 
-use crate::internal::cache::utils::CacheObject;
 use crate::internal::cache::RepositoriesCache;
 use crate::internal::commands::base::BuiltinCommand;
 use crate::internal::commands::Command;

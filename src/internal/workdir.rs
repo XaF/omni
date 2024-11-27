@@ -1,4 +1,3 @@
-use crate::internal::cache::CacheObject;
 use crate::internal::cache::RepositoriesCache;
 use crate::internal::env::shell_is_interactive;
 use crate::internal::git::ORG_LOADER;
@@ -81,7 +80,7 @@ pub fn is_trusted_or_ask(path: &str, ask: String) -> bool {
 pub fn add_trust(path: &str) -> bool {
     let wd = workdir(path);
     if let Some(workdir_id) = wd.trust_id() {
-        if let Err(err) = RepositoriesCache::exclusive(|repos| repos.add_trusted(&workdir_id)) {
+        if let Err(err) = RepositoriesCache::get().add_trusted(&workdir_id) {
             omni_error!(format!("Unable to update cache: {:?}", err.to_string()));
             return false;
         }
@@ -95,7 +94,7 @@ pub fn add_trust(path: &str) -> bool {
 pub fn remove_trust(path: &str) -> bool {
     let wd = workdir(path);
     if let Some(workdir_id) = wd.trust_id() {
-        if let Err(err) = RepositoriesCache::exclusive(|repos| repos.remove_trusted(&workdir_id)) {
+        if let Err(err) = RepositoriesCache::get().remove_trusted(&workdir_id) {
             omni_error!(format!("Unable to update cache: {:?}", err.to_string()));
             return false;
         }
