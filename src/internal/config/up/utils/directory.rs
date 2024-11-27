@@ -216,7 +216,7 @@ pub fn cleanup_path(
 
         progress_handler.progress(format!("removing {}", path.display()));
 
-        if path.is_file() {
+        if path.is_symlink() || path.is_file() {
             if let Err(error) = std::fs::remove_file(path) {
                 return Err(UpError::Exec(format!(
                     "failed to remove {}: {}",
