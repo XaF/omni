@@ -132,7 +132,7 @@ fn upgrade_database(conn: &Connection) -> Result<(), CacheManagerError> {
                 std::fs::remove_file(path)?;
             }
 
-            return Err(err.into());
+            return Err(err);
         }
     }
 
