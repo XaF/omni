@@ -1,25 +1,9 @@
-#[cfg(test)]
-use std::collections::HashMap;
-#[cfg(not(test))]
-use std::path::PathBuf;
-#[cfg(test)]
-use std::sync::Mutex;
-
 use lazy_static::lazy_static;
 use r2d2::Pool as R2d2Pool;
 use r2d2::PooledConnection;
 use r2d2_sqlite::SqliteConnectionManager;
-use rusqlite::Connection;
-use rusqlite::OptionalExtension;
-use rusqlite::Result as SqliteResult;
-use rusqlite::Row;
-use thiserror::Error;
 
 use crate::internal::cache::database::upgrade_database;
-use crate::internal::cache::migration::convert_cache;
-use crate::internal::cache::migration::migrate_json_to_database;
-#[cfg(not(test))]
-use crate::internal::config::global_config;
 
 /// Type alias for a SQLite connection pool
 pub type SqlitePool = R2d2Pool<SqliteConnectionManager>;
@@ -29,6 +13,8 @@ pub type SqliteConnection = PooledConnection<SqliteConnectionManager>;
 
 cfg_if::cfg_if! {
     if #[cfg(test)] {
+        use std::collections::HashMap;
+        use std::sync::Mutex;
 
         lazy_static! {
             // Map of test IDs to their respective pools
@@ -77,6 +63,10 @@ cfg_if::cfg_if! {
             }
         }
     } else {
+        use std::path::PathBuf;
+
+        use crate::internal::config::global_config;
+
         lazy_static! {
             static ref SQLITE_POOL: SqlitePool = {
                 let cache_dir_path = PathBuf::from(global_config().cache.path.clone());

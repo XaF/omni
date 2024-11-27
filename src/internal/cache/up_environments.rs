@@ -181,7 +181,10 @@ impl UpEnvironmentsCache {
     #[cfg(test)]
     pub fn environment_ids(&self) -> BTreeSet<String> {
         let environment_ids: Vec<String> = CacheManager::get()
-            .query_as(include_str!("database/sql/up_environments_get_env_ids.sql"), &[])
+            .query_as(
+                include_str!("database/sql/up_environments_get_env_ids.sql"),
+                &[],
+            )
             .unwrap();
         environment_ids.into_iter().collect()
     }

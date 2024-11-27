@@ -72,7 +72,10 @@ impl HomebrewOperationCache {
     pub fn homebrew_bin_path(&self) -> Option<String> {
         let db = CacheManager::get();
         let bin_path: Option<String> = db
-            .query_one(include_str!("database/sql/homebrew_operation_get_bin_path.sql"), &[])
+            .query_one(
+                include_str!("database/sql/homebrew_operation_get_bin_path.sql"),
+                &[],
+            )
             .unwrap_or_default();
         bin_path
     }

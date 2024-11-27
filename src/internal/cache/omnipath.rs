@@ -142,7 +142,10 @@ mod tests {
                 // Verify updated_at was set
                 let db = CacheManager::get();
                 let (_expired, updated_at): (bool, String) = db
-                    .query_one(include_str!("database/sql/omnipath_get_updated_at.sql"), params![0])
+                    .query_one(
+                        include_str!("database/sql/omnipath_get_updated_at.sql"),
+                        params![0],
+                    )
                     .expect("Failed to get updated_at");
 
                 assert!(!updated_at.is_empty(), "updated_at should be set");

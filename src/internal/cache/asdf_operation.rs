@@ -23,7 +23,10 @@ impl AsdfOperationCache {
 
     pub fn updated_asdf(&self) -> Result<bool, CacheManagerError> {
         let db = CacheManager::get();
-        let updated = db.execute(include_str!("database/sql/asdf_operation_updated_asdf.sql"), &[])?;
+        let updated = db.execute(
+            include_str!("database/sql/asdf_operation_updated_asdf.sql"),
+            &[],
+        )?;
         Ok(updated > 0)
     }
 
