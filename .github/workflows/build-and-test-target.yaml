@@ -276,6 +276,11 @@ jobs:
           cd "${bats_dir}"
           ./install.sh "${HOME}/.local"
 
+      - name: Show bash version
+        shell: bash
+        run: |
+          bash --version
+
       - name: Show bats version
         shell: bash
         run: |

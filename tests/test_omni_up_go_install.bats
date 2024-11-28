@@ -65,6 +65,32 @@ EOF
 }
 
 # bats test_tags=omni:up,omni:up:go-install
+@test "omni up go-install operation fallbacks to parents to list versions" {
+  cat > .omni.yaml <<EOF
+up:
+  - go-install:
+    - github.com/my/super/test/tool
+EOF
+
+  go_version=$(asdf_tool_latest_version golang)
+  add_fakebin "$(asdf_tool_path golang "$go_version")/bin/go"
+  add_brew_golang_calls
+  add_asdf_golang_calls version="$go_version"
+
+  add_command go list -m -versions -json github.com/my/super/test/tool exit=1
+  add_command go list -m -versions -json github.com/my/super/test exit=1
+  add_command go list -m -versions -json github.com/my/super <<< '{"Version":"v0.0.0"}'
+  add_command go list -m -versions -json github.com/my \
+    <<< '{"Version":"v0.0.0","Versions":["v1.0.0","v1.1.0","v2.0.0"]}'
+  add_command go install -v github.com/my/super/test/tool@v2.0.0 <<< "$(go_install_success)"
+
+  run omni up --trust 3>&-
+  echo "STATUS: $status"
+  echo "OUTPUT: $output"
+  [ "$status" -eq 0 ]
+}
+
+# bats test_tags=omni:up,omni:up:go-install
 @test "omni up go-install operation uses specified version" {
   cat > .omni.yaml <<EOF
 up:
@@ -87,41 +113,6 @@ EOF
   echo "OUTPUT: $output"
   [ "$status" -eq 0 ]
 }
-
-# # bats test_tags=omni:up,omni:up:go-install
-# @test "omni up go-install operation upgrades when specified" {
-  # cat > .omni.yaml <<EOF
-# up:
-  # - go-install:
-      # tools:
-      # - path: github.com/test/tool
-        # upgrade: true
-# EOF
-
-  # add_command go list -m -versions -json github.com/test/tool output='{"Version":"v0.0.0","Versions":["v1.0.0","v1.1.0","v2.0.0"]}'
-  # add_command go install -v github.com/test/tool@v2.0.0
-  # add_command go --prefix
-
-  # run omni up --trust 3>&-
-  # [ "$status" -eq 0 ]
-# }
-
-# # bats test_tags=omni:up,omni:up:go-install
-# @test "omni up go-install operation upgrades with command line flag" {
-  # cat > .omni.yaml <<EOF
-# up:
-  # - go-install:
-      # tools:
-      # - github.com/test/tool
-# EOF
-
-  # add_command go list -m -versions -json github.com/test/tool output='{"Version":"v0.0.0","Versions":["v1.0.0","v1.1.0","v2.0.0"]}'
-  # add_command go install -v github.com/test/tool@v2.0.0
-  # add_command go --prefix
-
-  # run omni up --trust --upgrade 3>&-
-  # [ "$status" -eq 0 ]
-# }
 
 # bats test_tags=omni:up,omni:up:go-install
 @test "omni up go-install operation handles prerelease versions when specified" {
