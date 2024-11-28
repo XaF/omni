@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 use std::path::Path;
 use std::path::PathBuf;
+use std::process::Command as ProcessCommand;
 
 use itertools::Itertools;
 use once_cell::sync::OnceCell;
@@ -975,7 +976,7 @@ impl UpConfigGoInstall {
                 break;
             }
 
-            let mut go_list_cmd = TokioCommand::new(go_bin);
+            let mut go_list_cmd = ProcessCommand::new(go_bin);
             go_list_cmd.arg("list");
             go_list_cmd.arg("-m");
             go_list_cmd.arg("-versions");
@@ -984,7 +985,7 @@ impl UpConfigGoInstall {
             go_list_cmd.stdout(std::process::Stdio::piped());
             go_list_cmd.stderr(std::process::Stdio::piped());
 
-            match get_command_output(&mut go_list_cmd, RunConfig::new().with_askpass()) {
+            match go_list_cmd.output() {
                 Err(err) => {
                     let msg = format!("go list failed: {}", err);
                     progress_handler.error_with_message(msg.clone());
@@ -1004,6 +1005,36 @@ impl UpConfigGoInstall {
                     }
                 }
             }
+
+            // let mut go_list_cmd = TokioCommand::new(go_bin);
+            // go_list_cmd.arg("list");
+            // go_list_cmd.arg("-m");
+            // go_list_cmd.arg("-versions");
+            // go_list_cmd.arg("-json");
+            // go_list_cmd.arg(current_path);
+            // go_list_cmd.stdout(std::process::Stdio::piped());
+            // go_list_cmd.stderr(std::process::Stdio::piped());
+
+            // match get_command_output(&mut go_list_cmd, RunConfig::new().with_askpass()) {
+            // Err(err) => {
+            // let msg = format!("go list failed: {}", err);
+            // progress_handler.error_with_message(msg.clone());
+            // return Err(UpError::Exec(msg));
+            // }
+            // Ok(output) if !output.status.success() => {
+            // eprintln!("DEBUG: EXIT CODE IS NOT 0: {:?}", output);
+            // }
+            // Ok(output) => {
+            // let output = String::from_utf8(output.stdout).unwrap().trim().to_string();
+            // match serde_json::from_str::<GoInstallVersions>(&output) {
+            // Ok(versions) => return Ok(versions),
+            // Err(err) => {
+            // eprintln!("DEBUG: OUTPUT: {:?}", output);
+            // eprintln!("DEBUG: JSON ERROR: {:?}", err);
+            // }
+            // }
+            // }
+            // }
 
             package_path = current_path.parent();
         }

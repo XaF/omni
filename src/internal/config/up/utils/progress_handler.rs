@@ -90,24 +90,6 @@ async fn async_get_output(
     };
     listener_manager.start();
 
-    // let mut listener_manager = ListenerManager::new();
-
-    // match AskPassListener::new(&command_str(process_command), &run_config).await {
-    // Ok(Some(listener)) => {
-    // listener.set_process_env(process_command);
-    // listener_manager.add_listener(Box::new(listener));
-    // }
-    // Ok(None) => {}
-    // Err(err) => {
-    // return Err(std::io::Error::new(
-    // std::io::ErrorKind::Other,
-    // err.to_string(),
-    // ));
-    // }
-    // };
-
-    // listener_manager.start();
-
     process_command.kill_on_drop(true);
     let mut command = match process_command.spawn() {
         Ok(command) => command,
@@ -221,21 +203,6 @@ where
         }
     };
     listener_manager.start();
-
-    // let mut listener_manager = ListenerManager::new();
-
-    // match AskPassListener::new(&command_str(process_command), &run_config).await {
-    // Ok(Some(mut listener)) => {
-    // listener.set_process_env(process_command);
-    // listener_manager.add_listener(Box::new(listener));
-    // }
-    // Ok(None) => {}
-    // Err(err) => {
-    // return Err(UpError::Exec(err.to_string()));
-    // }
-    // };
-
-    // listener_manager.start();
 
     if let Ok(mut command) = process_command.spawn() {
         // Create a temporary file to store the output
