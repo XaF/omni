@@ -3,6 +3,7 @@ use serde::Serialize;
 
 use crate::internal::config::parser::cache::AsdfCacheConfig;
 use crate::internal::config::parser::cache::GithubReleaseCacheConfig;
+use crate::internal::config::parser::cache::GoInstallCacheConfig;
 use crate::internal::config::parser::cache::HomebrewCacheConfig;
 use crate::internal::config::parser::cache::UpEnvironmentCacheConfig;
 use crate::internal::config::ConfigValue;
@@ -14,6 +15,7 @@ pub struct CacheConfig {
     pub environment: UpEnvironmentCacheConfig,
     pub asdf: AsdfCacheConfig,
     pub github_release: GithubReleaseCacheConfig,
+    pub go_install: GoInstallCacheConfig,
     pub homebrew: HomebrewCacheConfig,
 }
 
@@ -24,6 +26,7 @@ impl Default for CacheConfig {
             environment: UpEnvironmentCacheConfig::default(),
             asdf: AsdfCacheConfig::default(),
             github_release: GithubReleaseCacheConfig::default(),
+            go_install: GoInstallCacheConfig::default(),
             homebrew: HomebrewCacheConfig::default(),
         }
     }
@@ -46,6 +49,7 @@ impl CacheConfig {
         let asdf = AsdfCacheConfig::from_config_value(config_value.get("asdf"));
         let github_release =
             GithubReleaseCacheConfig::from_config_value(config_value.get("github_release"));
+        let go_install = GoInstallCacheConfig::from_config_value(config_value.get("go_install"));
         let homebrew = HomebrewCacheConfig::from_config_value(config_value.get("homebrew"));
 
         Self {
@@ -53,6 +57,7 @@ impl CacheConfig {
             environment,
             asdf,
             github_release,
+            go_install,
             homebrew,
         }
     }

@@ -15,6 +15,7 @@ use crate::internal::config::up::UpConfigAsdfBaseParams;
 use crate::internal::config::up::UpConfigBundler;
 use crate::internal::config::up::UpConfigCustom;
 use crate::internal::config::up::UpConfigGithubReleases;
+use crate::internal::config::up::UpConfigGoInstalls;
 use crate::internal::config::up::UpConfigGolang;
 use crate::internal::config::up::UpConfigHomebrew;
 use crate::internal::config::up::UpConfigNix;
@@ -62,6 +63,10 @@ pub enum UpConfigTool {
 
     /// Go represents the golang tool.
     Go(UpConfigGolang),
+
+    /// GoInstall represents a tool that can be installed from
+    /// a call to `go install`.
+    GoInstall(UpConfigGoInstalls),
 
     /// Homebrew represents the homebrew tool.
     Homebrew(UpConfigHomebrew),
@@ -114,6 +119,9 @@ impl Serialize for UpConfigTool {
                 create_hashmap("github-release", config).serialize(serializer)
             }
             UpConfigTool::Go(config) => create_hashmap("go", config).serialize(serializer),
+            UpConfigTool::GoInstall(config) => {
+                create_hashmap("go-install", config).serialize(serializer)
+            }
             UpConfigTool::Homebrew(config) => {
                 create_hashmap("homebrew", config).serialize(serializer)
             }
@@ -169,6 +177,9 @@ impl UpConfigTool {
             "go" | "golang" => Some(UpConfigTool::Go(UpConfigGolang::from_config_value(
                 config_value,
             ))),
+            "go-install" | "goinstall" => Some(UpConfigTool::GoInstall(
+                UpConfigGoInstalls::from_config_value(config_value),
+            )),
             "homebrew" | "brew" => Some(UpConfigTool::Homebrew(
                 UpConfigHomebrew::from_config_value(config_value),
             )),
@@ -230,6 +241,7 @@ impl UpConfigTool {
                 config.up(options, environment, progress_handler)
             }
             UpConfigTool::Go(config) => config.up(options, environment, progress_handler),
+            UpConfigTool::GoInstall(config) => config.up(options, environment, progress_handler),
             UpConfigTool::Homebrew(config) => config.up(options, environment, progress_handler),
             UpConfigTool::Nix(config) => config.up(options, environment, progress_handler),
             UpConfigTool::Nodejs(config) => config.up(options, environment, progress_handler),
@@ -280,6 +292,11 @@ impl UpConfigTool {
                     config.commit(options, env_version_id)?;
                 }
             }
+            UpConfigTool::GoInstall(config) => {
+                if config.was_upped() {
+                    config.commit(options, env_version_id)?;
+                }
+            }
             UpConfigTool::Homebrew(config) => {
                 if config.was_upped() {
                     config.commit(options, env_version_id)?;
@@ -315,6 +332,7 @@ impl UpConfigTool {
             UpConfigTool::Custom(config) => config.down(progress_handler),
             UpConfigTool::GithubRelease(config) => config.down(progress_handler),
             UpConfigTool::Go(config) => config.down(progress_handler),
+            UpConfigTool::GoInstall(config) => config.down(progress_handler),
             UpConfigTool::Homebrew(config) => config.down(progress_handler),
             UpConfigTool::Nix(config) => config.down(progress_handler),
             UpConfigTool::Nodejs(config) => config.down(progress_handler),
@@ -351,6 +369,7 @@ impl UpConfigTool {
             UpConfigTool::Custom(config) => config.was_upped(),
             // UpConfigTool::GithubRelease(config) => config.was_upped(),
             UpConfigTool::Go(config) => config.was_upped(),
+            UpConfigTool::GoInstall(config) => config.was_upped(),
             // UpConfigTool::Homebrew(config) => config.was_upped(),
             UpConfigTool::Nix(config) => config.was_upped(),
             UpConfigTool::Nodejs(config) => config.asdf_base.was_upped(),
@@ -380,6 +399,7 @@ impl UpConfigTool {
             UpConfigTool::Custom(config) => config.data_paths(),
             // UpConfigTool::GithubRelease(config) => config.data_paths(),
             UpConfigTool::Go(config) => config.data_paths(),
+            // UpConfigTool::GoInstall(config) => config.data_paths(),
             // UpConfigTool::Homebrew(config) => config.data_paths(),
             UpConfigTool::Nix(config) => config.data_paths(),
             UpConfigTool::Nodejs(config) => config.asdf_base.data_paths(),
@@ -399,6 +419,7 @@ impl UpConfigTool {
             UpConfigTool::Custom(_) => "custom".into(),
             UpConfigTool::GithubRelease(_) => "github-release".into(),
             UpConfigTool::Go(_) => "go".into(),
+            UpConfigTool::GoInstall(_) => "go-install".into(),
             UpConfigTool::Homebrew(_) => "homebrew".into(),
             UpConfigTool::Nix(_) => "nix".into(),
             UpConfigTool::Nodejs(_) => "nodejs".into(),

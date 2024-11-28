@@ -10,6 +10,10 @@ pub(crate) use github_release::GithubReleaseOperationCache;
 pub(crate) use github_release::GithubReleaseVersion;
 pub(crate) use github_release::GithubReleases;
 
+pub(crate) mod go_install;
+pub(crate) use go_install::GoInstallOperationCache;
+pub(crate) use go_install::GoInstallVersions;
+
 pub(crate) mod homebrew_operation;
 pub(crate) use homebrew_operation::HomebrewOperationCache;
 

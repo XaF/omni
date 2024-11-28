@@ -94,6 +94,33 @@ CREATE TABLE IF NOT EXISTS github_releases (
     fetched_at TEXT NOT NULL
 );
 
+-- Table containing the tools that were installed using `go install`
+-- and the versions that were installed
+CREATE TABLE IF NOT EXISTS go_installed (
+    import_path TEXT NOT NULL COLLATE NOCASE,
+    version TEXT NOT NULL COLLATE NOCASE,
+    last_required_at TEXT NOT NULL DEFAULT '1970-01-01T00:00:00.000Z',
+    PRIMARY KEY (import_path, version)
+);
+
+-- Table containing the information of which workdir is
+-- requiring a given go installed binary
+CREATE TABLE IF NOT EXISTS go_install_required_by (
+    import_path TEXT NOT NULL COLLATE NOCASE,
+    version TEXT NOT NULL COLLATE NOCASE,
+    env_version_id TEXT NOT NULL,
+    PRIMARY KEY (import_path, version, env_version_id),
+    FOREIGN KEY(import_path, version) REFERENCES go_installed(import_path, version) ON DELETE CASCADE,
+    FOREIGN KEY(env_version_id) REFERENCES env_versions(env_version_id) ON DELETE CASCADE
+);
+
+-- Table containing the cache of versions that can be go-installed per import_path
+CREATE TABLE IF NOT EXISTS go_versions (
+    import_path TEXT PRIMARY KEY COLLATE NOCASE,
+    versions TEXT NOT NULL,  -- JSON array of String
+    fetched_at TEXT NOT NULL
+);
+
 -- Table containing the formulae and casks that were installed using Homebrew
 CREATE TABLE IF NOT EXISTS homebrew_install (
     name TEXT NOT NULL COLLATE NOCASE,
@@ -163,15 +190,12 @@ CREATE TABLE IF NOT EXISTS workdir_fingerprints (
 
 -- Add indexes for frequently queried columns
 CREATE INDEX IF NOT EXISTS idx_workdir_env_env_version_id ON workdir_env(env_version_id);
---  CREATE INDEX IF NOT EXISTS idx_env_versions_assigned ON env_versions(last_assigned_at);
 CREATE INDEX IF NOT EXISTS idx_env_history_workdir ON env_history(workdir_id);
 CREATE INDEX IF NOT EXISTS idx_env_history_env_version_id ON env_history(env_version_id);
 CREATE INDEX IF NOT EXISTS idx_asdf_installed_required_by ON asdf_installed_required_by(tool, version);
---  CREATE INDEX IF NOT EXISTS idx_asdf_installed_required ON asdf_installed(last_required_at);
-CREATE INDEX IF NOT EXISTS idx_github_installed_required_by ON github_release_required_by(repository, version);
---  CREATE INDEX IF NOT EXISTS idx_github_installed_required ON github_release_install(last_required_at);
+CREATE INDEX IF NOT EXISTS idx_github_release_required_by ON github_release_required_by(repository, version);
+CREATE INDEX IF NOT EXISTS idx_go_install_required_by ON go_install_required_by(import_path, version);
 CREATE INDEX IF NOT EXISTS idx_homebrew_install_required_by ON homebrew_install_required_by(name, version, cask);
-CREATE INDEX IF NOT EXISTS idx_homebrew_tap_required_by ON homebrew_tap(name);
---  CREATE INDEX IF NOT EXISTS idx_homebrew_install_required ON homebrew_install(last_required_at);
+CREATE INDEX IF NOT EXISTS idx_homebrew_tap_required_by ON homebrew_tap_required_by(name);
 CREATE INDEX IF NOT EXISTS idx_prompts_organization ON prompts(organization);
 CREATE INDEX IF NOT EXISTS idx_prompts_repository ON prompts(organization, repository);

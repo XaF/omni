@@ -296,7 +296,7 @@ impl UpConfigGithubReleases {
         // Cleanup removable releases from the database
         cache.cleanup().map_err(|err| {
             progress_handler.progress(format!("failed to cleanup github releases cache: {}", err));
-            UpError::Cache(format!("failed to cleanup homebrew cache: {}", err))
+            UpError::Cache(format!("failed to cleanup github releases cache: {}", err))
         })?;
 
         // List releases that should exist
@@ -498,7 +498,7 @@ struct UpConfigGithubRelease {
     pub auth: GithubAuthConfig,
 
     #[serde(default, skip)]
-    pub actual_version: OnceCell<String>,
+    actual_version: OnceCell<String>,
 
     #[serde(default, skip)]
     was_handled: OnceCell<GithubReleaseHandled>,

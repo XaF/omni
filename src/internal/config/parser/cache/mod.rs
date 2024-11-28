@@ -7,6 +7,9 @@ pub(crate) use asdf::AsdfCacheConfig;
 mod github_release;
 pub(crate) use github_release::GithubReleaseCacheConfig;
 
+mod go_install;
+pub(crate) use go_install::GoInstallCacheConfig;
+
 mod homebrew;
 pub(crate) use homebrew::HomebrewCacheConfig;
 
