@@ -15,6 +15,7 @@ use crate::internal::cache::GoInstallOperationCache;
 use crate::internal::cache::GoInstallVersions;
 use crate::internal::config::config;
 use crate::internal::config::global_config;
+use crate::internal::config::up::asdf_tool_path;
 use crate::internal::config::up::utils::cleanup_path;
 use crate::internal::config::up::utils::get_command_output;
 use crate::internal::config::up::utils::progress_handler::ProgressHandler;
@@ -23,6 +24,8 @@ use crate::internal::config::up::utils::RunConfig;
 use crate::internal::config::up::utils::UpProgressHandler;
 use crate::internal::config::up::utils::VersionMatcher;
 use crate::internal::config::up::utils::VersionParser;
+use crate::internal::config::up::UpConfigGolang;
+use crate::internal::config::up::UpConfigTool;
 use crate::internal::config::up::UpError;
 use crate::internal::config::up::UpOptions;
 use crate::internal::config::ConfigValue;
@@ -139,18 +142,18 @@ impl UpConfigGoInstalls {
         progress_handler: &UpProgressHandler,
     ) -> Result<(), UpError> {
         if self.tools.len() == 1 {
-            return self.tools[0].up(options, environment, progress_handler);
+            progress_handler.init(self.tools[0].desc().light_blue());
+        } else {
+            progress_handler.init("go install:".light_blue());
+            if self.tools.is_empty() {
+                progress_handler.error_with_message("no import path".to_string());
+                return Err(UpError::Config(
+                    "at least one import path required".to_string(),
+                ));
+            }
         }
 
-        progress_handler.init("go install:".light_blue());
-        if self.tools.is_empty() {
-            progress_handler.error_with_message("no import path".to_string());
-            return Err(UpError::Config(
-                "at least one import path required".to_string(),
-            ));
-        }
-
-        progress_handler.progress("install dependencies".to_string());
+        let go_bin = self.get_go_bin(options, progress_handler)?;
 
         let num = self.tools.len();
         for (idx, tool) in self.tools.iter().enumerate() {
@@ -164,7 +167,7 @@ impl UpConfigGoInstalls {
                 )
                 .light_yellow(),
             );
-            tool.up(options, environment, &subhandler)
+            tool.up(options, environment, &subhandler, &go_bin)
                 .inspect_err(|_err| {
                     progress_handler.error();
                 })?;
@@ -173,6 +176,35 @@ impl UpConfigGoInstalls {
         progress_handler.success_with_message(self.get_up_message());
 
         Ok(())
+    }
+
+    fn get_go_bin(
+        &self,
+        options: &UpOptions,
+        progress_handler: &UpProgressHandler,
+    ) -> Result<PathBuf, UpError> {
+        progress_handler.progress("install dependencies".to_string());
+        let go_tool = UpConfigTool::Go(UpConfigGolang::new_any_version());
+
+        // We create a fake environment since we do not want to add this
+        // go version as part of it, but we want to be able to use `go`
+        // to call `go list`, `go install`, etc.
+        let mut fake_env = UpEnvironment::new();
+
+        let subhandler = progress_handler.subhandler(&"go: ".light_black());
+        go_tool.up(options, &mut fake_env, &subhandler)?;
+
+        // Grab the tool from inside go_tool
+        let go = match go_tool {
+            UpConfigTool::Go(go) => go,
+            _ => unreachable!("go_tool is not a Go tool"),
+        };
+
+        let installed_version = go.version()?;
+        let install_path = PathBuf::from(asdf_tool_path("golang", &installed_version));
+        let go_bin = install_path.join("bin").join("go");
+
+        Ok(go_bin)
     }
 
     pub fn commit(&self, options: &UpOptions, env_version_id: &str) -> Result<(), UpError> {
@@ -269,7 +301,7 @@ impl UpConfigGoInstalls {
 
     pub fn cleanup(progress_handler: &UpProgressHandler) -> Result<Option<String>, UpError> {
         progress_handler.init("go install:".light_blue());
-        progress_handler.progress("checking for unused tools".to_string());
+        progress_handler.progress("checking for unused go-installed tools".to_string());
 
         let cache = GoInstallOperationCache::get();
 
@@ -589,8 +621,8 @@ impl UpConfigGoInstall {
             return;
         }
 
-        let release_version_path = self.version_path(version);
-        environment.add_path(release_version_path);
+        let version_path = self.version_path(version);
+        environment.add_path(version_path.join("bin"));
 
         progress_handler.progress("updated cache".to_string());
     }
@@ -628,6 +660,7 @@ impl UpConfigGoInstall {
         options: &UpOptions,
         environment: &mut UpEnvironment,
         progress_handler: &UpProgressHandler,
+        go_bin: &Path,
     ) -> Result<(), UpError> {
         progress_handler.init(self.desc().light_blue());
 
@@ -641,7 +674,7 @@ impl UpConfigGoInstall {
             return Err(UpError::Config("path is required".to_string()));
         }
 
-        let installed = self.resolve_and_install_version(options, progress_handler)?;
+        let installed = self.resolve_and_install_version(go_bin, options, progress_handler)?;
 
         self.update_cache(options, environment, progress_handler);
 
@@ -702,6 +735,7 @@ impl UpConfigGoInstall {
 
     fn resolve_and_install_version(
         &self,
+        go_bin: &Path,
         options: &UpOptions,
         progress_handler: &UpProgressHandler,
     ) -> Result<bool, UpError> {
@@ -714,7 +748,7 @@ impl UpConfigGoInstall {
                 ));
             }
 
-            match self.install_version(options, &version, progress_handler) {
+            match self.install_version(go_bin, options, &version, progress_handler) {
                 Ok(installed) => return self.handle_installed(&version, Ok(installed)),
                 Err(err) => {
                     progress_handler.error_with_message(err.message());
@@ -733,7 +767,7 @@ impl UpConfigGoInstall {
             let resolve_str = match self.version.as_ref() {
                 Some(version) if version != "latest" => version.to_string(),
                 _ => {
-                    let list_versions = self.list_versions(options, progress_handler)?;
+                    let list_versions = self.list_versions(go_bin, options, progress_handler)?;
                     versions = Some(list_versions.clone());
                     let latest = self.latest_version(&list_versions)?;
                     progress_handler.progress(
@@ -763,7 +797,7 @@ impl UpConfigGoInstall {
         if version.is_empty() {
             let versions = match versions {
                 Some(versions) => versions,
-                None => self.list_versions(options, progress_handler)?,
+                None => self.list_versions(go_bin, options, progress_handler)?,
             };
             version = match self.resolve_version(&versions.versions) {
                 Ok(version) => version,
@@ -775,6 +809,7 @@ impl UpConfigGoInstall {
                         progress_handler.progress("no matching version found in cache".to_string());
 
                         let versions = self.list_versions(
+                            go_bin,
                             &UpOptions {
                                 read_cache: false,
                                 ..options.clone()
@@ -794,7 +829,7 @@ impl UpConfigGoInstall {
             };
 
             // Try installing the version found
-            install_version = self.install_version(options, &version, progress_handler);
+            install_version = self.install_version(go_bin, options, &version, progress_handler);
             if install_version.is_err() && !options.fail_on_upgrade {
                 // If we get here and there is an issue downloading the version,
                 // list all installed versions and check if one of those could
@@ -848,6 +883,7 @@ impl UpConfigGoInstall {
 
     fn list_versions(
         &self,
+        go_bin: &Path,
         options: &UpOptions,
         progress_handler: &UpProgressHandler,
     ) -> Result<GoInstallVersions, UpError> {
@@ -870,7 +906,7 @@ impl UpConfigGoInstall {
         };
 
         progress_handler.progress("refreshing versions list".to_string());
-        match self.list_versions_from_go(progress_handler) {
+        match self.list_versions_from_go(go_bin, progress_handler) {
             Ok(versions) => {
                 if options.write_cache {
                     progress_handler.progress("updating cache with version list".to_string());
@@ -898,6 +934,7 @@ impl UpConfigGoInstall {
 
     fn list_versions_from_go(
         &self,
+        go_bin: &Path,
         progress_handler: &UpProgressHandler,
     ) -> Result<GoInstallVersions, UpError> {
         // We need to:
@@ -911,7 +948,7 @@ impl UpConfigGoInstall {
 
         let mut package_path = Some(Path::new(&self.path));
         while let Some(current_path) = package_path {
-            let mut go_list_cmd = TokioCommand::new("go");
+            let mut go_list_cmd = TokioCommand::new(go_bin);
             go_list_cmd.arg("list");
             go_list_cmd.arg("-m");
             go_list_cmd.arg("-versions");
@@ -1013,6 +1050,7 @@ impl UpConfigGoInstall {
 
     fn install_version(
         &self,
+        go_bin: &Path,
         options: &UpOptions,
         version: &str,
         progress_handler: &dyn ProgressHandler,
@@ -1036,7 +1074,7 @@ impl UpConfigGoInstall {
             })?;
         let tmp_bin_path = tmp_dir.path().join("bin");
 
-        let mut go_install_cmd = TokioCommand::new("go");
+        let mut go_install_cmd = TokioCommand::new(go_bin);
         go_install_cmd.arg("install");
         go_install_cmd.arg("-v");
         go_install_cmd.arg(format!("{}@{}", self.path, version));

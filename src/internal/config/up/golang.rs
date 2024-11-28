@@ -66,7 +66,26 @@ impl Serialize for UpConfigGolang {
     }
 }
 
+impl Default for UpConfigGolang {
+    fn default() -> Self {
+        Self {
+            version: None,
+            version_file: None,
+            upgrade: false,
+            asdf_base: OnceCell::new(),
+            dirs: BTreeSet::new(),
+        }
+    }
+}
+
 impl UpConfigGolang {
+    pub fn new_any_version() -> Self {
+        Self {
+            version: Some("*".to_string()),
+            ..Default::default()
+        }
+    }
+
     pub fn from_config_value(config_value: Option<&ConfigValue>) -> Self {
         let mut version = None;
         let mut version_file = None;
@@ -166,6 +185,10 @@ impl UpConfigGolang {
 
             Ok(asdf_base)
         })
+    }
+
+    pub fn version(&self) -> Result<String, UpError> {
+        self.asdf_base()?.version()
     }
 
     fn extract_version_from_gomod(&self) -> Result<Option<String>, UpError> {
