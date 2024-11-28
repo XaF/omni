@@ -118,6 +118,9 @@ async fn async_get_output(
             }
         };
 
+    let mut stdout_open = true;
+    let mut stderr_open = true;
+
     loop {
         tokio::select! {
             stdout_line = stdout_reader.next_line() => {
@@ -125,7 +128,7 @@ async fn async_get_output(
                     Ok(Some(line)) => {
                         stdout_vec.extend_from_slice(line.as_bytes());
                     }
-                    Ok(None) => break,  // End of stdout stream
+                    Ok(None) => stdout_open = false,  // End of stdout stream
                     Err(err) => {
                         result = Some(Err(err));
                         break;
@@ -137,7 +140,7 @@ async fn async_get_output(
                     Ok(Some(line)) => {
                         stderr_vec.extend_from_slice(line.as_bytes());
                     }
-                    Ok(None) => break,  // End of stderr stream
+                    Ok(None) => stderr_open = false,  // End of stderr stream
                     Err(err) => {
                         result = Some(Err(err));
                         break;
@@ -153,6 +156,10 @@ async fn async_get_output(
                 result = Some(Err(std::io::Error::new(std::io::ErrorKind::TimedOut, "timeout")));
                 break;
             }
+        }
+
+        if !stdout_open && !stderr_open {
+            break;
         }
     }
 
