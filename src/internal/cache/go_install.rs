@@ -1,4 +1,3 @@
-use itertools::Itertools;
 use rusqlite::params;
 use rusqlite::Row;
 use serde::Deserialize;
