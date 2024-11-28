@@ -990,11 +990,17 @@ impl UpConfigGoInstall {
                     progress_handler.error_with_message(msg.clone());
                     return Err(UpError::Exec(msg));
                 }
-                Ok(output) if !output.status.success() => {}
+                Ok(output) if !output.status.success() => {
+                    eprintln!("DEBUG: EXIT CODE IS NOT 0: {:?}", output);
+                }
                 Ok(output) => {
                     let output = String::from_utf8(output.stdout).unwrap().trim().to_string();
-                    if let Ok(versions) = serde_json::from_str::<GoInstallVersions>(&output) {
-                        return Ok(versions);
+                    match serde_json::from_str::<GoInstallVersions>(&output) {
+                        Ok(versions) => return Ok(versions),
+                        Err(err) => {
+                            eprintln!("DEBUG: OUTPUT: {:?}", output);
+                            eprintln!("DEBUG: JSON ERROR: {:?}", err);
+                        }
                     }
                 }
             }
