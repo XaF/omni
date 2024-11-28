@@ -19,6 +19,9 @@ pub(crate) use github_release::UpConfigGithubReleases;
 pub(crate) mod golang;
 pub(crate) use golang::UpConfigGolang;
 
+pub(crate) mod go_install;
+pub(crate) use go_install::UpConfigGoInstalls;
+
 pub(crate) mod nix;
 pub(crate) use nix::UpConfigNix;
 

@@ -90,24 +90,6 @@ async fn async_get_output(
     };
     listener_manager.start();
 
-    // let mut listener_manager = ListenerManager::new();
-
-    // match AskPassListener::new(&command_str(process_command), &run_config).await {
-    // Ok(Some(listener)) => {
-    // listener.set_process_env(process_command);
-    // listener_manager.add_listener(Box::new(listener));
-    // }
-    // Ok(None) => {}
-    // Err(err) => {
-    // return Err(std::io::Error::new(
-    // std::io::ErrorKind::Other,
-    // err.to_string(),
-    // ));
-    // }
-    // };
-
-    // listener_manager.start();
-
     process_command.kill_on_drop(true);
     let mut command = match process_command.spawn() {
         Ok(command) => command,
@@ -136,6 +118,9 @@ async fn async_get_output(
             }
         };
 
+    let mut stdout_open = true;
+    let mut stderr_open = true;
+
     loop {
         tokio::select! {
             stdout_line = stdout_reader.next_line() => {
@@ -143,7 +128,7 @@ async fn async_get_output(
                     Ok(Some(line)) => {
                         stdout_vec.extend_from_slice(line.as_bytes());
                     }
-                    Ok(None) => break,  // End of stdout stream
+                    Ok(None) => stdout_open = false,  // End of stdout stream
                     Err(err) => {
                         result = Some(Err(err));
                         break;
@@ -155,7 +140,7 @@ async fn async_get_output(
                     Ok(Some(line)) => {
                         stderr_vec.extend_from_slice(line.as_bytes());
                     }
-                    Ok(None) => break,  // End of stderr stream
+                    Ok(None) => stderr_open = false,  // End of stderr stream
                     Err(err) => {
                         result = Some(Err(err));
                         break;
@@ -171,6 +156,10 @@ async fn async_get_output(
                 result = Some(Err(std::io::Error::new(std::io::ErrorKind::TimedOut, "timeout")));
                 break;
             }
+        }
+
+        if !stdout_open && !stderr_open {
+            break;
         }
     }
 
@@ -222,21 +211,6 @@ where
     };
     listener_manager.start();
 
-    // let mut listener_manager = ListenerManager::new();
-
-    // match AskPassListener::new(&command_str(process_command), &run_config).await {
-    // Ok(Some(mut listener)) => {
-    // listener.set_process_env(process_command);
-    // listener_manager.add_listener(Box::new(listener));
-    // }
-    // Ok(None) => {}
-    // Err(err) => {
-    // return Err(UpError::Exec(err.to_string()));
-    // }
-    // };
-
-    // listener_manager.start();
-
     if let Ok(mut command) = process_command.spawn() {
         // Create a temporary file to store the output
         let log_file_prefix = format!(
@@ -261,11 +235,14 @@ where
             let mut stderr_buffer = [0; 1024];
             let mut last_read = std::time::Instant::now();
 
+            let mut stdout_open = true;
+            let mut stderr_open = true;
+
             loop {
                 tokio::select! {
                     stdout_result = stdout.read(&mut stdout_buffer) => {
                         match stdout_result {
-                            Ok(0) => break,  // End of stdout stream
+                            Ok(0) => stdout_open = false,  // End of stdout stream
                             Ok(n) => {
                                 last_read = std::time::Instant::now();
                                 let stdout_output = &stdout_buffer[..n];
@@ -286,7 +263,7 @@ where
                     }
                     stderr_result = stderr.read(&mut stderr_buffer) => {
                         match stderr_result {
-                            Ok(0) => break,  // End of stderr stream
+                            Ok(0) => stderr_open = false,  // End of stderr stream
                             Ok(n) => {
                                 last_read = std::time::Instant::now();
                                 let stderr_output = &stderr_buffer[..n];
@@ -326,6 +303,10 @@ where
                             }
                         }
                     }
+                }
+
+                if !stdout_open && !stderr_open {
+                    break;
                 }
             }
         }
@@ -374,6 +355,9 @@ where
             let mut stdout_reader = BufReader::new(stdout).lines();
             let mut stderr_reader = BufReader::new(stderr).lines();
 
+            let mut stdout_open = true;
+            let mut stderr_open = true;
+
             loop {
                 tokio::select! {
                     stdout_line = stdout_reader.next_line() => {
@@ -385,7 +369,7 @@ where
                                 } else { line }), None);
 
                             }
-                            Ok(None) => break,  // End of stdout stream
+                            Ok(None) => stdout_open = false,  // End of stdout stream
                             Err(err) => return Err(UpError::Exec(err.to_string())),
                         }
                     }
@@ -397,7 +381,7 @@ where
                                     filter_control_characters(&line)
                                 } else { line }));
                             }
-                            Ok(None) => break,  // End of stderr stream
+                            Ok(None) => stderr_open = false,  // End of stderr stream
                             Err(err) => return Err(UpError::Exec(err.to_string())),
                         }
                     }
@@ -411,6 +395,10 @@ where
                             }
                         }
                     }
+                }
+
+                if !stdout_open && !stderr_open {
+                    break;
                 }
             }
         }

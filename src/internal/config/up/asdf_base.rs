@@ -912,7 +912,7 @@ impl UpConfigAsdfBase {
         Ok(version)
     }
 
-    fn version(&self) -> Result<String, UpError> {
+    pub fn version(&self) -> Result<String, UpError> {
         self.actual_version
             .get()
             .map(|version| version.to_string())

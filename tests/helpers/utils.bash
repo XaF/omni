@@ -199,11 +199,11 @@ add_fakebin() {
 # Example: add_command "brew install" exit=0 <<< "==> Installing"
 add_command() {
   # Get the command
-  cmd=("$@")
+  local cmd=("$@")
 
   # Get the special parameters
-  exit_code=0
-  required=1
+  local exit_code=0
+  local required=1
   while [ 1 ]; do
     if [[ "${cmd[-1]}" == "--" ]]; then
       unset cmd[-1]
@@ -220,13 +220,13 @@ add_command() {
   done
 
   # Get the binary
-  binary="${cmd[0]}"
+  local binary="${cmd[0]}"
 
   # Get the args
-  args=("${cmd[@]:1}")
+  local args=("${cmd[@]:1}")
 
   # Get the output from stdin but do not hang if there is no input,
-  output=()
+  local output=()
   if read -t 0; then
     # Read input but maintain line returns
     while read -r line; do
@@ -235,17 +235,17 @@ add_command() {
   fi
 
   # Prepare the commands directory
-  commands="${HOME}/.commands"
+  local commands="${HOME}/.commands"
   mkdir -p "${commands}"
 
   # Get the position, looking at the files that currently exist
-  position=0
+  local position=0
   while [ -f "${commands}/${binary}_${position}" ]; do
     position=$((position + 1))
   done
 
   # Get the command file
-  file="${commands}/${binary}_${position}"
+  local file="${commands}/${binary}_${position}"
   echo -n > "${file}"
 
   # Add the arguments to the command file

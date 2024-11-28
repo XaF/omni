@@ -11,6 +11,7 @@ use crate::internal::config::up::utils::ProgressHandler;
 use crate::internal::config::up::utils::UpProgressHandler;
 use crate::internal::config::up::UpConfigAsdfBase;
 use crate::internal::config::up::UpConfigGithubReleases;
+use crate::internal::config::up::UpConfigGoInstalls;
 use crate::internal::config::up::UpConfigHomebrew;
 use crate::internal::config::up::UpConfigTool;
 use crate::internal::config::up::UpError;
@@ -311,6 +312,9 @@ impl UpConfig {
             cleanups.push(cleanup);
         }
         if let Some(cleanup) = UpConfigGithubReleases::cleanup(&progress_handler)? {
+            cleanups.push(cleanup);
+        }
+        if let Some(cleanup) = UpConfigGoInstalls::cleanup(&progress_handler)? {
             cleanups.push(cleanup);
         }
 

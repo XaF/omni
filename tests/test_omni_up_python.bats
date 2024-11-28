@@ -1,6 +1,7 @@
 #!/usr/bin/env bats
 
 load 'helpers/utils'
+load 'helpers/asdf'
 
 setup() {
   # Setup the environment for the test; this should override $HOME too
@@ -20,171 +21,11 @@ teardown() {
 }
 
 add_asdf_python_calls() {
-  version="latest"
-  fallback_version=
-  plugin_installed=false
-  installed=false
-  others_installed=false
-  venv=true
-  cache_versions=false
-  list_versions=true
-  upgrade=false
-  no_upgrade_installed=false
-
-  for arg in "$@"; do
-    case $arg in
-      version=*)
-        version="${arg#version=}"
-        shift
-        ;;
-      fallback_version=*)
-        fallback_version="${arg#fallback_version=}"
-        shift
-        ;;
-      plugin_installed=*)
-        plugin_installed="${arg#plugin_installed=}"
-        shift
-        ;;
-      installed=*)
-        installed="${arg#installed=}"
-        shift
-        ;;
-      others_installed=*)
-        others_installed="${arg#others_installed=}"
-        shift
-        ;;
-      venv=*)
-        venv="${arg#venv=}"
-        shift
-        ;;
-      cache_versions=*)
-        cache_versions="${arg#cache_versions=}"
-        shift
-        ;;
-      list_versions=*)
-        list_versions="${arg#list_versions=}"
-        shift
-        ;;
-      upgrade=*)
-        upgrade="${arg#upgrade=}"
-        shift
-        ;;
-      no_upgrade_installed=*)
-        no_upgrade_installed="${arg#no_upgrade_installed=}"
-        shift
-        ;;
-      *)
-        echo "Unknown argument: $arg"
-        return 1
-        ;;
-    esac
-  done
-
-  if [ "$version" = "latest" ]; then
-    version="3.12.3"
-  fi
-
-  if [ "$cache_versions" = "true" ] || [ "$cache_versions" = "expired" ]; then
-    if [ "$cache_versions" = "true" ]; then
-      date=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
-    else
-      # This allows to support GNU date but also BSD date
-      date=$(date -u +"%Y-%m-%dT%H:%M:%SZ" -d "300 days ago" 2>/dev/null ||
-             date -u -v-300d +"%Y-%m-%dT%H:%M:%SZ")
-    fi
-    mkdir -p "${HOME}/.cache/omni"
-    perl -pe 's/{{ UPDATED_AT }}/'"${date}"'/g' "${PROJECT_DIR}/tests/fixtures/asdf_operation_cache.json" > "${HOME}/.cache/omni/asdf_operation.json"
-  fi
-
-  add_command asdf update
-
-  if [ "$plugin_installed" = "true" ]; then
-    add_command asdf plugin list
-    add_command asdf plugin add python
-  else
-    add_command asdf plugin list <<EOF
-python
-EOF
-  fi
-
-  if [ "$upgrade" = "false" ]; then
-    if [ "$no_upgrade_installed" = "false" ]; then
-      add_command asdf list python
-    else
-      add_command asdf list python <<EOF
-$(for v in $(echo "${no_upgrade_installed}" | perl -pe 's/,+/,/g' | sort -u); do echo "  ${v}"; done)
-EOF
-    fi
-  fi
-
-  if [ "$list_versions" = "true" ]; then
-    add_command asdf plugin update python
-    add_command asdf list all python <"${PROJECT_DIR}/tests/fixtures/python-versions.txt"
-  elif [ "$list_versions" = "fail-update" ]; then
-    add_command asdf plugin update python exit=1
-  elif [ "$list_versions" = "fail" ]; then
-    add_command asdf plugin update python
-    add_command asdf list all python exit=1
-  fi
-
-  if [ "$installed" = "true" ]; then
-    installed_versions=$(echo "${others_installed},${no_upgrade_installed},${version}" | \
-      perl -pe 's/(^|,)false(?=,|$)/,/g' | \
-      perl -pe 's/,+/\n/g' | \
-      perl -pe '/^$/d' | \
-      sort -u)
-    add_command asdf list python "${version}" exit=0 <<EOF
-$(for v in ${installed_versions}; do echo "  ${v}"; done)
-EOF
-
-  else
-    if [ "$others_installed" = "false" ]; then
-      installed_versions=""
-      add_command asdf list python "${version}" exit=1
-    else
-      installed_versions=$(echo "${others_installed}" | tr ',' '\n' | sort -u)
-      add_command asdf list python "${version}" exit=0 <<EOF
-$(for v in ${installed_versions}; do echo "  ${v}"; done)
-EOF
-    fi
-    if [ "$installed" = "fail" ]; then
-      add_command asdf install python "${version}" exit=1 <<EOF
-stderr:Error installing python ${version}
-EOF
-      add_command asdf list python <<EOF
-$(for v in ${installed_versions}; do echo "  ${v}"; done)
-EOF
-
-      if [ -n "${fallback_version}" ]; then
-        # Replace version by the fallback version here!
-        version="${fallback_version}"
-        add_command asdf list python "${version}" exit=0 <<EOF
-  ${version}
-EOF
-      fi
-    else
-      add_command asdf install python "${version}"
-    fi
-  fi
-
-  if [ "$venv" = "true" ]; then
-    add_fakebin "${HOME}/.local/share/omni/asdf/installs/python/${version}/bin/python"
-    add_command python -m venv "regex:${HOME}/\.local/share/omni/wd/.*/python/${version}/root"
-  fi
+  add_asdf_tool_calls tool=python venv=true "$@"
 }
 
 add_brew_python_calls() {
-  local checked_prefix=false
-  formulas=(autoconf coreutils curl libyaml openssl@3 readline pkg-config)
-  for formula in "${formulas[@]}"; do
-    add_command brew list --formula "${formula}" exit=1
-    add_command brew install --formula "${formula}"
-    add_command brew --prefix --installed "${formula}"
-    if [ "$checked_prefix" = false ]; then
-      checked_prefix=true
-      add_command brew --prefix
-    fi
-  done
+  add_asdf_tool_brew_calls python
 }
 
 add_nix_python_calls() {

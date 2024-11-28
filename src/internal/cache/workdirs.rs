@@ -53,7 +53,7 @@ impl WorkdirsCache {
         let fingerprint_matches: bool = db
             .query_one(
                 include_str!("database/sql/workdir_fingerprint_check.sql"),
-                params![workdir, fingerprint_type, fingerprint],
+                params![workdir, fingerprint_type, fingerprint.to_string()],
             )
             .unwrap_or(false);
         fingerprint_matches
@@ -74,7 +74,7 @@ impl WorkdirsCache {
         } else {
             db.execute(
                 include_str!("database/sql/workdir_fingerprint_upsert.sql"),
-                params![workdir, fingerprint_type, fingerprint],
+                params![workdir, fingerprint_type, fingerprint.to_string()],
             )?
         };
         Ok(changed > 0)
