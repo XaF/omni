@@ -3,6 +3,12 @@ use crate::internal::config::up::utils::ProgressHandler;
 #[derive(Debug, Clone)]
 pub struct VoidProgressHandler {}
 
+impl VoidProgressHandler {
+    pub fn new() -> Self {
+        VoidProgressHandler {}
+    }
+}
+
 impl ProgressHandler for VoidProgressHandler {
     fn println(&self, _message: String) {
         // do nothing
