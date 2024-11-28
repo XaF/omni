@@ -5,6 +5,29 @@ use node_semver::Version as semverVersion;
 use serde::Deserialize;
 use serde::Serialize;
 
+pub struct VersionParserOptions {
+    pub complete_version: bool,
+}
+
+impl Default for VersionParserOptions {
+    fn default() -> Self {
+        Self {
+            complete_version: true,
+        }
+    }
+}
+
+impl VersionParserOptions {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    pub fn complete_version(mut self, complete_version: bool) -> Self {
+        self.complete_version = complete_version;
+        self
+    }
+}
+
 #[derive(Debug, Serialize, Deserialize, Clone, Eq, PartialEq)]
 pub struct VersionParser {
     original: String,
@@ -47,6 +70,13 @@ impl VersionParser {
     }
 
     pub fn parse(version_string: &str) -> Option<Self> {
+        Self::parse_with_options(version_string, &VersionParserOptions::default())
+    }
+
+    pub fn parse_with_options(
+        version_string: &str,
+        options: &VersionParserOptions,
+    ) -> Option<Self> {
         // Find the first digit in the version string
         let first_digit = match version_string.chars().position(|c| c.is_ascii_digit()) {
             Some(pos) => pos,
@@ -63,32 +93,36 @@ impl VersionParser {
             ),
         };
 
-        // Complete the version if needed
-        let reg = regex::Regex::new(Self::MAJOR_MINOR_PATCH_REGEX).unwrap();
-        let captures = match reg.captures(&parseable_version_string) {
-            Some(captures) => captures,
-            None => return None,
-        };
+        let parseable_version_string = if options.complete_version {
+            // Complete the version if needed
+            let reg = regex::Regex::new(Self::MAJOR_MINOR_PATCH_REGEX).unwrap();
+            let captures = match reg.captures(&parseable_version_string) {
+                Some(captures) => captures,
+                None => return None,
+            };
 
-        let parseable_version_string = format!(
-            "{}.{}.{}{}",
-            match captures.name("major") {
-                Some(major) => major.as_str(),
-                None => "0",
-            },
-            match captures.name("minor") {
-                Some(minor) => minor.as_str(),
-                None => "0",
-            },
-            match captures.name("patch") {
-                Some(patch) => patch.as_str(),
-                None => "0",
-            },
-            match captures.name("suffix") {
-                Some(suffix) => suffix.as_str(),
-                None => "",
-            },
-        );
+            format!(
+                "{}.{}.{}{}",
+                match captures.name("major") {
+                    Some(major) => major.as_str(),
+                    None => "0",
+                },
+                match captures.name("minor") {
+                    Some(minor) => minor.as_str(),
+                    None => "0",
+                },
+                match captures.name("patch") {
+                    Some(patch) => patch.as_str(),
+                    None => "0",
+                },
+                match captures.name("suffix") {
+                    Some(suffix) => suffix.as_str(),
+                    None => "",
+                },
+            )
+        } else {
+            parseable_version_string
+        };
 
         // Try parsing the version with the node_semver::Version object
         let version = match semverVersion::from_str(&parseable_version_string) {
@@ -141,6 +175,14 @@ impl VersionParser {
 
     pub fn major(&self) -> u64 {
         self.version.major
+    }
+
+    pub fn pre_release(&self) -> Vec<node_semver::Identifier> {
+        self.version.pre_release.clone()
+    }
+
+    pub fn prefix(&self) -> Option<&str> {
+        self.prefix.as_deref()
     }
 }
 

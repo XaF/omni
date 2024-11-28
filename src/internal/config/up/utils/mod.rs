@@ -45,6 +45,7 @@ pub(crate) use up_progress_handler::UpProgressHandler;
 pub(crate) mod version;
 pub(crate) use version::VersionMatcher;
 pub(crate) use version::VersionParser;
+pub(crate) use version::VersionParserOptions;
 
 pub(crate) mod void_progress_handler;
 #[allow(unused_imports)]

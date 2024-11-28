@@ -7,6 +7,8 @@ use once_cell::sync::OnceCell;
 use serde::Deserialize;
 use serde::Serialize;
 use thiserror::Error;
+use time::macros::format_description;
+use time::PrimitiveDateTime;
 use tokio::process::Command as TokioCommand;
 
 use crate::internal::cache::up_environments::UpEnvironment;
@@ -24,6 +26,7 @@ use crate::internal::config::up::utils::RunConfig;
 use crate::internal::config::up::utils::UpProgressHandler;
 use crate::internal::config::up::utils::VersionMatcher;
 use crate::internal::config::up::utils::VersionParser;
+use crate::internal::config::up::utils::VersionParserOptions;
 use crate::internal::config::up::UpConfigGolang;
 use crate::internal::config::up::UpConfigTool;
 use crate::internal::config::up::UpError;
@@ -157,17 +160,21 @@ impl UpConfigGoInstalls {
 
         let num = self.tools.len();
         for (idx, tool) in self.tools.iter().enumerate() {
-            let subhandler = progress_handler.subhandler(
-                &format!(
-                    "[{current:padding$}/{total:padding$}] {tool} ",
-                    current = idx + 1,
-                    total = num,
-                    padding = format!("{}", num).len(),
-                    tool = tool.desc(),
+            let subhandler = if self.tools.len() == 1 {
+                progress_handler
+            } else {
+                &progress_handler.subhandler(
+                    &format!(
+                        "[{current:padding$}/{total:padding$}] {tool} ",
+                        current = idx + 1,
+                        total = num,
+                        padding = format!("{}", num).len(),
+                        tool = tool.desc(),
+                    )
+                    .light_yellow(),
                 )
-                .light_yellow(),
-            );
-            tool.up(options, environment, &subhandler, &go_bin)
+            };
+            tool.up(options, environment, subhandler, &go_bin)
                 .inspect_err(|_err| {
                     progress_handler.error();
                 })?;
@@ -539,6 +546,12 @@ impl UpConfigGoInstall {
                         let mut path_config = table.clone();
                         path_config.insert("path".to_string(), path_config_value);
                         return UpConfigGoInstall::from_table(&path_config);
+                    } else if let (true, Ok(path_config_value)) =
+                        (value.is_null(), ConfigValue::from_str(key))
+                    {
+                        let path_config =
+                            HashMap::from_iter(vec![("path".to_string(), path_config_value)]);
+                        return UpConfigGoInstall::from_table(&path_config);
                     }
                 }
                 return UpConfigGoInstall {
@@ -733,13 +746,23 @@ impl UpConfigGoInstall {
         self.upgrade || options.upgrade || config(".").up_command.upgrade
     }
 
+    fn exact(&self) -> bool {
+        self.exact || {
+            if let Some(version) = &self.version {
+                is_go_pseudo_version(version)
+            } else {
+                false
+            }
+        }
+    }
+
     fn resolve_and_install_version(
         &self,
         go_bin: &Path,
         options: &UpOptions,
         progress_handler: &UpProgressHandler,
     ) -> Result<bool, UpError> {
-        if self.exact {
+        if self.exact() {
             let version = self.version.clone().unwrap_or("latest".to_string());
             if version == "latest" {
                 progress_handler.error_with_message("exact version cannot be 'latest'".to_string());
@@ -948,6 +971,10 @@ impl UpConfigGoInstall {
 
         let mut package_path = Some(Path::new(&self.path));
         while let Some(current_path) = package_path {
+            if current_path.file_name().is_none() {
+                break;
+            }
+
             let mut go_list_cmd = TokioCommand::new(go_bin);
             go_list_cmd.arg("list");
             go_list_cmd.arg("-m");
@@ -1199,4 +1226,224 @@ where
     };
 
     Ok((cleaned_path, version))
+}
+
+// This returns true if the provided version is in the format of a go pseudo-version
+// e.g.:
+//   - v0.0.0-20191109021931-daa7c04131f5
+//   - vX.0.0-yyyymmddhhmmss-abcdefabcdef
+//   - vX.Y.Z-pre.0.yyyymmddhhmmss-abcdefabcdef
+//   - vX.Y.(Z+1)-0.yyyymmddhhmmss-abcdefabcdef
+fn is_go_pseudo_version(version: &str) -> bool {
+    // The version parser should be able to parse the version
+    let parse_options = VersionParserOptions::new().complete_version(false);
+    let parsed_version = match VersionParser::parse_with_options(version, &parse_options) {
+        Some(parsed_version) => parsed_version,
+        None => return false,
+    };
+
+    // The version should start with `v`
+    match parsed_version.prefix() {
+        Some("v") => {}
+        _ => return false,
+    }
+
+    // There should be a pre-release bit, and it should be alphanumeric;
+    // if there are multiple bits, we are only interested in the last one
+    let pre_release = parsed_version.pre_release();
+    let pre_release_last_bit = match pre_release.last() {
+        Some(node_semver::Identifier::AlphaNumeric(chunk)) => chunk,
+        _ => return false,
+    };
+
+    // That last bit should be two strings separated by a dash
+    let pre_release_parts: Vec<&str> = pre_release_last_bit.split('-').collect();
+    if pre_release_parts.len() != 2 {
+        return false;
+    }
+
+    // The first part should be a date in the format of yyyymmddhhmmss
+    let date = pre_release_parts[0];
+    if date.len() != 14 || !date.chars().all(char::is_numeric) {
+        return false;
+    }
+
+    // Validate the date can be parsed
+    if PrimitiveDateTime::parse(
+        date,
+        format_description!("[year][month][day][hour][minute][second]"),
+    )
+    .is_err()
+    {
+        return false;
+    }
+
+    // The second part should be a commit hash
+    let commit_hash = pre_release_parts[1];
+    if commit_hash.len() != 12 || !commit_hash.chars().all(|c| c.is_ascii_hexdigit()) {
+        return false;
+    }
+
+    // If we got here, this is a pseudo-version
+    true
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_validate_go_install_version() {
+        let valid = vec!["v1.0.0", "latest", "v0.0.1", "master", "1234abcd"];
+        for v in valid {
+            assert!(
+                validate_go_install_version(v).is_ok(),
+                "Failed for valid version: {}",
+                v
+            );
+        }
+
+        let invalid = vec![
+            "version with spaces",
+            "v1.0.0@tag",
+            "<1.0.0>",
+            "v1.0.0;",
+            "v1.0.0,next",
+        ];
+        for v in invalid {
+            assert!(
+                validate_go_install_version(v).is_err(),
+                "Failed to reject invalid version: {}",
+                v
+            );
+        }
+    }
+
+    #[test]
+    fn test_validate_go_install_path() {
+        let test_cases = vec![
+            ("github.com/user/repo", Ok("github.com/user/repo")),
+            ("https://github.com/user/repo", Ok("github.com/user/repo")),
+            ("//github.com/user/repo", Ok("github.com/user/repo")),
+            ("github.com//user///repo", Ok("github.com/user/repo")),
+            ("", Err("empty import path")),
+            ("///", Err("empty path after cleaning")),
+        ];
+
+        for (input, expected) in test_cases {
+            match validate_go_install_path(input) {
+                Ok(path) => {
+                    assert_eq!(path, expected.unwrap(), "Failed for input: {}", input);
+                }
+                Err(e) => {
+                    assert_eq!(
+                        e.to_string(),
+                        format!("invalid path: {}", expected.unwrap_err())
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn test_parse_go_install_path() {
+        let test_cases = vec![
+            (
+                "github.com/user/repo@v1.0.0",
+                Ok((
+                    "github.com/user/repo".to_string(),
+                    Some("v1.0.0".to_string()),
+                )),
+            ),
+            (
+                "github.com/user/repo",
+                Ok(("github.com/user/repo".to_string(), None)),
+            ),
+            (
+                "github.com/user/repo@v0.0.0-20191109021931-daa7c04131f5",
+                Ok((
+                    "github.com/user/repo".to_string(),
+                    Some("v0.0.0-20191109021931-daa7c04131f5".to_string()),
+                )),
+            ),
+            (
+                "github.com/user/repo@tag@extra",
+                Err("multiple @ symbols found"),
+            ),
+            ("", Err("empty import path")),
+        ];
+
+        for (input, expected) in test_cases {
+            match parse_go_install_path(input) {
+                Ok(result) => {
+                    assert_eq!(result, expected.unwrap(), "Failed for input: {}", input);
+                }
+                Err(e) => {
+                    assert_eq!(
+                        e.to_string(),
+                        format!("invalid path: {}", expected.unwrap_err())
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn test_go_pseudo_versions() {
+        let test_cases = vec![
+            // Valid base format variations
+            ("v0.0.0-20191109021931-daa7c04131f5", true),
+            ("v1.0.0-20191109021931-daa7c04131f5", true),
+            ("v2.0.0-20191109021931-daa7c04131f5", true),
+            // Valid pre-release format variations
+            ("v1.2.3-pre.0.20191109021931-daa7c04131f5", true),
+            ("v1.2.3-alpha.0.20191109021931-daa7c04131f5", true),
+            ("v1.2.3-beta.0.20191109021931-daa7c04131f5", true),
+            ("v1.2.3-RC.0.20191109021931-daa7c04131f5", true),
+            // Valid release format variations
+            ("v1.2.4-0.20191109021931-daa7c04131f5", true),
+            ("v2.3.4-0.20191109021931-daa7c04131f5", true),
+            ("v99999.99999.99999-0.20191109021931-daa7c04131f5", true),
+            ("v1.2.3-pre.0.20191109021931-AABBCCDDEE11", true),
+            // Invalid version formats
+            ("not-a-version", false),
+            ("v1.0.0", false),
+            ("v1.0.0-alpha", false),
+            ("1.0.0-20191109021931-daa7c04131f5", false),
+            ("v0-20191109021931-daa7c04131f5", false),
+            ("v0.0-20191109021931-daa7c04131f5", false),
+            ("v0.0.0.0-20191109021931-daa7c04131f5", false),
+            ("va.0.0-20191109021931-daa7c04131f5", false),
+            ("v0.b.0-20191109021931-daa7c04131f5", false),
+            ("v0.0.c-20191109021931-daa7c04131f5", false),
+            // Invalid timestamps
+            ("v0.0.0-2019110902193-daa7c04131f5", false),
+            ("v0.0.0-201911090219311-daa7c04131f5", false),
+            ("v0.0.0-abcd11090219-daa7c04131f5", false),
+            ("v0.0.0-abcdef123456-daa7c04131f5", false),
+            ("v0.0.0-99999999999999-ffffffffffff", false),
+            ("v0.0.0-00000000000000-000000000000", false),
+            // Invalid hashes
+            ("v0.0.0-20191109021931-daa7c0413", false),
+            ("v0.0.0-20191109021931-short", false),
+            ("v0.0.0-20191109021931-notahexnumber", false),
+            ("v0.0.0-20191109021931-daa7c04131f5aa", false),
+            ("v0.0.0-20191109021931-xyz7c04131f5", false),
+            // Invalid separators and missing parts
+            ("v0.0.0-20191109021931-", false),
+            ("v0.0.0--daa7c04131f5", false),
+            ("v0.0.0_20191109021931-daa7c04131f5", false),
+            ("v0.0.0-20191109021931_daa7c04131f5", false),
+        ];
+
+        for (version, expected) in test_cases {
+            assert_eq!(
+                is_go_pseudo_version(version),
+                expected,
+                "Failed for version: {} (expected: {})",
+                version,
+                expected
+            );
+        }
+    }
 }

@@ -566,6 +566,12 @@ impl UpConfigGithubRelease {
                         let mut repo_config = table.clone();
                         repo_config.insert("repository".to_string(), repo_config_value);
                         return UpConfigGithubRelease::from_table(&repo_config);
+                    } else if let (true, Ok(repo_config_value)) =
+                        (value.is_null(), ConfigValue::from_str(key))
+                    {
+                        let repo_config =
+                            HashMap::from_iter(vec![("repository".to_string(), repo_config_value)]);
+                        return UpConfigGithubRelease::from_table(&repo_config);
                     }
                 }
                 return UpConfigGithubRelease::default();
