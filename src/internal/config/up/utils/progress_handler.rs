@@ -235,11 +235,14 @@ where
             let mut stderr_buffer = [0; 1024];
             let mut last_read = std::time::Instant::now();
 
+            let mut stdout_open = true;
+            let mut stderr_open = true;
+
             loop {
                 tokio::select! {
                     stdout_result = stdout.read(&mut stdout_buffer) => {
                         match stdout_result {
-                            Ok(0) => break,  // End of stdout stream
+                            Ok(0) => stdout_open = false,  // End of stdout stream
                             Ok(n) => {
                                 last_read = std::time::Instant::now();
                                 let stdout_output = &stdout_buffer[..n];
@@ -260,7 +263,7 @@ where
                     }
                     stderr_result = stderr.read(&mut stderr_buffer) => {
                         match stderr_result {
-                            Ok(0) => break,  // End of stderr stream
+                            Ok(0) => stderr_open = false,  // End of stderr stream
                             Ok(n) => {
                                 last_read = std::time::Instant::now();
                                 let stderr_output = &stderr_buffer[..n];
@@ -300,6 +303,10 @@ where
                             }
                         }
                     }
+                }
+
+                if !stdout_open && !stderr_open {
+                    break;
                 }
             }
         }
@@ -348,6 +355,9 @@ where
             let mut stdout_reader = BufReader::new(stdout).lines();
             let mut stderr_reader = BufReader::new(stderr).lines();
 
+            let mut stdout_open = true;
+            let mut stderr_open = true;
+
             loop {
                 tokio::select! {
                     stdout_line = stdout_reader.next_line() => {
@@ -359,7 +369,7 @@ where
                                 } else { line }), None);
 
                             }
-                            Ok(None) => break,  // End of stdout stream
+                            Ok(None) => stdout_open = false,  // End of stdout stream
                             Err(err) => return Err(UpError::Exec(err.to_string())),
                         }
                     }
@@ -371,7 +381,7 @@ where
                                     filter_control_characters(&line)
                                 } else { line }));
                             }
-                            Ok(None) => break,  // End of stderr stream
+                            Ok(None) => stderr_open = false,  // End of stderr stream
                             Err(err) => return Err(UpError::Exec(err.to_string())),
                         }
                     }
@@ -385,6 +395,10 @@ where
                             }
                         }
                     }
+                }
+
+                if !stdout_open && !stderr_open {
+                    break;
                 }
             }
         }
