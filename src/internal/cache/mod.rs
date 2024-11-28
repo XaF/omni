@@ -1,6 +1,10 @@
 pub(crate) mod asdf_operation;
 pub(crate) use asdf_operation::AsdfOperationCache;
 
+pub(crate) mod cargo_install;
+pub(crate) use cargo_install::CargoInstallOperationCache;
+pub(crate) use cargo_install::CargoInstallVersions;
+
 pub(crate) mod database;
 pub(crate) use database::CacheManager;
 pub(crate) use database::CacheManagerError;

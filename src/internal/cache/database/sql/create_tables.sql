@@ -67,6 +67,33 @@ CREATE TABLE IF NOT EXISTS asdf_plugins (
     versions_fetched_at TEXT
 );
 
+-- Table containing the tools that were installed using `cargo install`
+-- and the versions that were installed
+CREATE TABLE IF NOT EXISTS cargo_installed (
+    crate TEXT NOT NULL COLLATE NOCASE,
+    version TEXT NOT NULL COLLATE NOCASE,
+    last_required_at TEXT NOT NULL DEFAULT '1970-01-01T00:00:00.000Z',
+    PRIMARY KEY (crate, version)
+);
+
+-- Table containing the information of which workdir is
+-- requiring a given cargo installed binary
+CREATE TABLE IF NOT EXISTS cargo_install_required_by (
+    crate TEXT NOT NULL COLLATE NOCASE,
+    version TEXT NOT NULL COLLATE NOCASE,
+    env_version_id TEXT NOT NULL,
+    PRIMARY KEY (crate, version, env_version_id),
+    FOREIGN KEY(crate, version) REFERENCES cargo_installed(crate, version) ON DELETE CASCADE,
+    FOREIGN KEY(env_version_id) REFERENCES env_versions(env_version_id) ON DELETE CASCADE
+);
+
+-- Table containing the cache of versions that can be cargo-installed per crate
+CREATE TABLE IF NOT EXISTS cargo_versions (
+    crate TEXT PRIMARY KEY COLLATE NOCASE,
+    versions TEXT NOT NULL,  -- JSON array of String
+    fetched_at TEXT NOT NULL
+);
+
 -- Table containing the tools that were installed using Github releases
 -- and the versions that were installed
 CREATE TABLE IF NOT EXISTS github_release_installed (
@@ -189,13 +216,14 @@ CREATE TABLE IF NOT EXISTS workdir_fingerprints (
 );
 
 -- Add indexes for frequently queried columns
-CREATE INDEX IF NOT EXISTS idx_workdir_env_env_version_id ON workdir_env(env_version_id);
-CREATE INDEX IF NOT EXISTS idx_env_history_workdir ON env_history(workdir_id);
-CREATE INDEX IF NOT EXISTS idx_env_history_env_version_id ON env_history(env_version_id);
 CREATE INDEX IF NOT EXISTS idx_asdf_installed_required_by ON asdf_installed_required_by(tool, version);
+CREATE INDEX IF NOT EXISTS idx_cargo_install_required_by ON cargo_install_required_by(crate, version);
+CREATE INDEX IF NOT EXISTS idx_env_history_env_version_id ON env_history(env_version_id);
+CREATE INDEX IF NOT EXISTS idx_env_history_workdir ON env_history(workdir_id);
 CREATE INDEX IF NOT EXISTS idx_github_release_required_by ON github_release_required_by(repository, version);
 CREATE INDEX IF NOT EXISTS idx_go_install_required_by ON go_install_required_by(import_path, version);
 CREATE INDEX IF NOT EXISTS idx_homebrew_install_required_by ON homebrew_install_required_by(name, version, cask);
 CREATE INDEX IF NOT EXISTS idx_homebrew_tap_required_by ON homebrew_tap_required_by(name);
 CREATE INDEX IF NOT EXISTS idx_prompts_organization ON prompts(organization);
 CREATE INDEX IF NOT EXISTS idx_prompts_repository ON prompts(organization, repository);
+CREATE INDEX IF NOT EXISTS idx_workdir_env_env_version_id ON workdir_env(env_version_id);

@@ -13,6 +13,7 @@ use crate::internal::config::up::UpConfig;
 use crate::internal::config::up::UpConfigAsdfBase;
 use crate::internal::config::up::UpConfigAsdfBaseParams;
 use crate::internal::config::up::UpConfigBundler;
+use crate::internal::config::up::UpConfigCargoInstalls;
 use crate::internal::config::up::UpConfigCustom;
 use crate::internal::config::up::UpConfigGithubReleases;
 use crate::internal::config::up::UpConfigGoInstalls;
@@ -51,6 +52,10 @@ pub enum UpConfigTool {
 
     /// Bundler represents the bundler tool.
     Bundler(UpConfigBundler),
+
+    /// CargoInstall represents a tool that can be installed from
+    /// a call to `cargo install`.
+    CargoInstall(UpConfigCargoInstalls),
 
     /// Custom represents a custom tool, where the user can define
     /// a custom command to run to up/down the tool.
@@ -114,6 +119,9 @@ impl Serialize for UpConfigTool {
             UpConfigTool::Bundler(config) => {
                 create_hashmap("bundler", config).serialize(serializer)
             }
+            UpConfigTool::CargoInstall(config) => {
+                create_hashmap("cargo-install", config).serialize(serializer)
+            }
             UpConfigTool::Custom(config) => create_hashmap("custom", config).serialize(serializer),
             UpConfigTool::GithubRelease(config) => {
                 create_hashmap("github-release", config).serialize(serializer)
@@ -165,6 +173,9 @@ impl UpConfigTool {
             "bundler" | "bundle" => Some(UpConfigTool::Bundler(
                 UpConfigBundler::from_config_value(config_value),
             )),
+            "cargo-install" | "cargo_install" | "cargoinstall" => Some(UpConfigTool::CargoInstall(
+                UpConfigCargoInstalls::from_config_value(config_value),
+            )),
             "custom" => Some(UpConfigTool::Custom(UpConfigCustom::from_config_value(
                 config_value,
             ))),
@@ -177,7 +188,7 @@ impl UpConfigTool {
             "go" | "golang" => Some(UpConfigTool::Go(UpConfigGolang::from_config_value(
                 config_value,
             ))),
-            "go-install" | "goinstall" => Some(UpConfigTool::GoInstall(
+            "go-install" | "go_install" | "goinstall" => Some(UpConfigTool::GoInstall(
                 UpConfigGoInstalls::from_config_value(config_value),
             )),
             "homebrew" | "brew" => Some(UpConfigTool::Homebrew(
@@ -236,6 +247,7 @@ impl UpConfigTool {
             UpConfigTool::Asdf(config) => config.up(options, environment, progress_handler),
             UpConfigTool::Bash(config) => config.up(options, environment, progress_handler),
             UpConfigTool::Bundler(config) => config.up(options, environment, progress_handler),
+            UpConfigTool::CargoInstall(config) => config.up(options, environment, progress_handler),
             UpConfigTool::Custom(config) => config.up(options, environment, progress_handler),
             UpConfigTool::GithubRelease(config) => {
                 config.up(options, environment, progress_handler)
@@ -281,6 +293,11 @@ impl UpConfigTool {
                 }
             }
             UpConfigTool::Bundler(_config) => {}
+            UpConfigTool::CargoInstall(config) => {
+                if config.was_upped() {
+                    config.commit(options, env_version_id)?;
+                }
+            }
             UpConfigTool::Custom(_config) => {}
             UpConfigTool::GithubRelease(config) => {
                 if config.was_upped() {
@@ -329,6 +346,7 @@ impl UpConfigTool {
             UpConfigTool::Asdf(config) => config.down(progress_handler),
             UpConfigTool::Bash(config) => config.down(progress_handler),
             UpConfigTool::Bundler(config) => config.down(progress_handler),
+            UpConfigTool::CargoInstall(config) => config.down(progress_handler),
             UpConfigTool::Custom(config) => config.down(progress_handler),
             UpConfigTool::GithubRelease(config) => config.down(progress_handler),
             UpConfigTool::Go(config) => config.down(progress_handler),
@@ -366,6 +384,7 @@ impl UpConfigTool {
             UpConfigTool::Asdf(config) => config.was_upped(),
             UpConfigTool::Bash(config) => config.was_upped(),
             // UpConfigTool::Bundler(config) => config.was_upped(),
+            UpConfigTool::CargoInstall(config) => config.was_upped(),
             UpConfigTool::Custom(config) => config.was_upped(),
             // UpConfigTool::GithubRelease(config) => config.was_upped(),
             UpConfigTool::Go(config) => config.was_upped(),
@@ -396,6 +415,7 @@ impl UpConfigTool {
             UpConfigTool::Asdf(config) => config.data_paths(),
             UpConfigTool::Bash(config) => config.data_paths(),
             // UpConfigTool::Bundler(config) => config.data_paths(),
+            // UpConfigTool::CargoInstall(config) => config.data_paths(),
             UpConfigTool::Custom(config) => config.data_paths(),
             // UpConfigTool::GithubRelease(config) => config.data_paths(),
             UpConfigTool::Go(config) => config.data_paths(),
@@ -416,6 +436,7 @@ impl UpConfigTool {
             UpConfigTool::Or(_) => "or".into(),
             UpConfigTool::Bash(_) => "bash".into(),
             UpConfigTool::Bundler(_) => "bundler".into(),
+            UpConfigTool::CargoInstall(_) => "cargo-install".into(),
             UpConfigTool::Custom(_) => "custom".into(),
             UpConfigTool::GithubRelease(_) => "github-release".into(),
             UpConfigTool::Go(_) => "go".into(),

@@ -269,13 +269,21 @@ pub struct UpConfigAsdfBase {
 }
 
 impl UpConfigAsdfBase {
+    pub fn new_any_version(tool: &str) -> Self {
+        Self {
+            tool: tool.to_string(),
+            version: "*".to_string(),
+            ..Default::default()
+        }
+    }
+
     pub fn new(tool: &str, version: &str, dirs: BTreeSet<String>, upgrade: bool) -> Self {
-        UpConfigAsdfBase {
+        Self {
             tool: tool.to_string(),
             version: version.to_string(),
             upgrade,
             dirs: dirs.clone(),
-            ..UpConfigAsdfBase::default()
+            ..Default::default()
         }
     }
 
