@@ -38,9 +38,8 @@ The following strings can be used to specify the version:
 | `1.2.x`   | Accepts `1.2.0`, `1.2.1`, etc. but will not accept `1.3.0` |
 | `*`       | Matches any version (same as `latest`, except that when `upgrade` is `false`, will match any installed version) |
 | `latest`  | Latest release (when `upgrade` is set to `false`, will only match with installed versions of the latest major) |
-| `auto`    | Lookup for any version files in the project directory (`.tool-versions`, `.go-version`, `.golang-version` or `.go.mod`) and apply version parsing |
 
-The version also supports the `||` operator to specify ranges. This operator is not compatible with the `latest` and `auto` keywords. For instance, `1.2.x || >1.3.5 <=1.4.0` will match any version between `1.2.0` included and `1.3.0` excluded, or between `1.3.5` excluded and `1.4.0` included.
+The version also supports the `||` operator to specify ranges. This operator is not compatible with the `latest` and keywords. For instance, `1.2.x || >1.3.5 <=1.4.0` will match any version between `1.2.0` included and `1.3.0` excluded, or between `1.3.5` excluded and `1.4.0` included.
 
 The latest version satisfying the requirements will be installed.
 
