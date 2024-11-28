@@ -388,7 +388,7 @@ impl UpConfigGoInstalls {
 
         if removed_tools.is_empty() {
             return Ok(Some(format!(
-                "removed {} tool{}",
+                "removed {} go-installed tool{}",
                 num_removed.light_yellow(),
                 if num_removed > 1 { "s" } else { "" }
             )));
