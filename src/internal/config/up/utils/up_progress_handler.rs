@@ -59,7 +59,7 @@ impl<'a> UpProgressHandler<'a> {
             ..Default::default()
         };
 
-        if let Err(_) = new.handler.set(Box::new(handler)) {
+        if new.handler.set(Box::new(handler)).is_err() {
             panic!("failed to set progress handler");
         }
 

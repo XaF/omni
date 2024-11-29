@@ -4,6 +4,7 @@ use crate::internal::config::up::utils::ProgressHandler;
 pub struct VoidProgressHandler {}
 
 impl VoidProgressHandler {
+    #[cfg(test)]
     pub fn new() -> Self {
         VoidProgressHandler {}
     }

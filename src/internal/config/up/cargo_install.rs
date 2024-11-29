@@ -1129,7 +1129,7 @@ impl UpConfigCargoInstall {
         cargo_install_cmd.arg(version);
         cargo_install_cmd.arg("--no-track");
         cargo_install_cmd.arg("--root");
-        cargo_install_cmd.arg(&tmp_dir.path());
+        cargo_install_cmd.arg(tmp_dir.path());
         cargo_install_cmd.arg("--bins");
         cargo_install_cmd.arg("--force");
 
@@ -1137,7 +1137,7 @@ impl UpConfigCargoInstall {
         // installation is done in the temporary directory
         cargo_install_cmd.env("CARGO_HOME", cargo_home);
         cargo_install_cmd.env("RUSTUP_HOME", cargo_home);
-        cargo_install_cmd.env("CARGO_INSTALL_ROOT", &tmp_dir.path());
+        cargo_install_cmd.env("CARGO_INSTALL_ROOT", tmp_dir.path());
 
         cargo_install_cmd.stdout(std::process::Stdio::piped());
         cargo_install_cmd.stderr(std::process::Stdio::piped());
