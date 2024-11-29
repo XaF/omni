@@ -20,6 +20,9 @@ use crate::omni_error;
 use crate::omni_info;
 use crate::omni_warning;
 
+#[cfg(test)]
+use crate::internal::config::up::utils::VoidProgressHandler;
+
 pub struct UpProgressHandler<'a> {
     handler: OnceCell<Box<dyn ProgressHandler>>,
     handler_id: Option<String>,
@@ -31,20 +34,46 @@ pub struct UpProgressHandler<'a> {
     desc: OnceCell<String>,
 }
 
-impl<'a> UpProgressHandler<'a> {
-    pub fn new(progress: Option<(usize, usize)>) -> Self {
-        // Generate a random handler ID
-        let handler_id = uuid::Uuid::new_v4().to_string();
-
+impl Default for UpProgressHandler<'_> {
+    fn default() -> Self {
         UpProgressHandler {
             handler: OnceCell::new(),
-            handler_id: Some(handler_id),
-            step: progress,
+            handler_id: None,
+            step: None,
             prefix: "".to_string(),
             parent: None,
             allow_ending: true,
             sync_file: None,
             desc: OnceCell::new(),
+        }
+    }
+}
+
+impl<'a> UpProgressHandler<'a> {
+    #[cfg(test)]
+    pub fn new_void() -> Self {
+        let handler = VoidProgressHandler::new();
+
+        let new = UpProgressHandler {
+            handler: OnceCell::new(),
+            ..Default::default()
+        };
+
+        if new.handler.set(Box::new(handler)).is_err() {
+            panic!("failed to set progress handler");
+        }
+
+        new
+    }
+
+    pub fn new(progress: Option<(usize, usize)>) -> Self {
+        // Generate a random handler ID
+        let handler_id = uuid::Uuid::new_v4().to_string();
+
+        UpProgressHandler {
+            handler_id: Some(handler_id),
+            step: progress,
+            ..Default::default()
         }
     }
 

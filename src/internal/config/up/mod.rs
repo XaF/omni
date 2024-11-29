@@ -10,6 +10,9 @@ pub(crate) use tool::UpConfigTool;
 pub(crate) mod bundler;
 pub(crate) use bundler::UpConfigBundler;
 
+pub(crate) mod cargo_install;
+pub(crate) use cargo_install::UpConfigCargoInstalls;
+
 pub(crate) mod custom;
 pub(crate) use custom::UpConfigCustom;
 

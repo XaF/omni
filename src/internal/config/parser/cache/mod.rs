@@ -4,6 +4,9 @@ pub(crate) use root::CacheConfig;
 mod asdf;
 pub(crate) use asdf::AsdfCacheConfig;
 
+mod cargo_install;
+pub(crate) use cargo_install::CargoInstallCacheConfig;
+
 mod github_release;
 pub(crate) use github_release::GithubReleaseCacheConfig;
 

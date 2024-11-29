@@ -10,6 +10,7 @@ use crate::internal::config::up::utils::reshim;
 use crate::internal::config::up::utils::ProgressHandler;
 use crate::internal::config::up::utils::UpProgressHandler;
 use crate::internal::config::up::UpConfigAsdfBase;
+use crate::internal::config::up::UpConfigCargoInstalls;
 use crate::internal::config::up::UpConfigGithubReleases;
 use crate::internal::config::up::UpConfigGoInstalls;
 use crate::internal::config::up::UpConfigHomebrew;
@@ -315,6 +316,9 @@ impl UpConfig {
             cleanups.push(cleanup);
         }
         if let Some(cleanup) = UpConfigGoInstalls::cleanup(&progress_handler)? {
+            cleanups.push(cleanup);
+        }
+        if let Some(cleanup) = UpConfigCargoInstalls::cleanup(&progress_handler)? {
             cleanups.push(cleanup);
         }
 

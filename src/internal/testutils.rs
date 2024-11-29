@@ -15,7 +15,7 @@ cfg_if::cfg_if! {
             // Take the lock, we need to manage it ourselves because we want to
             // avoid side-effects of the environment variables being already set
             // for another test, which could impact this test
-            let _lock = RUN_WITH_ENV_LOCK.lock().unwrap();
+            let _lock = RUN_WITH_ENV_LOCK.lock().expect("failed to lock");
 
             // We create a temporary directory which will host all file-system
             // related operations for the test environment

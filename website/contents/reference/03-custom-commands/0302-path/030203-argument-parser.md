@@ -6,7 +6,7 @@ description: The argument parser for custom commands
 
 Omni provides an argument parser for custom commands. This argument parser reads the command metadata to parse the user input, and puts the resulting data into environment variables to be consumed by the command.
 
-To configure the argument parser, set the [`argparser` metadata](metadata#argparser) to `true`, and define the required arguments and optional parameters using the [`arg` and `opt` metadata](metadata#args). The argument parser can be used for path commands and configuration commands.
+To configure the argument parser, set the [`argparser` metadata](metadata#argparser) to `true`, and define the required arguments and optional parameters using the [`arg` and `opt` metadata](metadata#arg-and-opt). The argument parser can be used for path commands and configuration commands.
 
 ## Environment variables
 

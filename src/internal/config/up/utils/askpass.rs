@@ -33,6 +33,7 @@ use crate::internal::user_interface::colors::StringColor;
 use crate::internal::user_interface::ensure_newline;
 
 const ASKPASS_TOOLS: [&str; 2] = ["sudo", "ssh"];
+const MAX_SOCKET_PATH_LEN: usize = 104;
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct AskPassRequest {
@@ -248,6 +249,29 @@ impl AskPassListener {
 
         // Prepare the paths to the socket
         let socket_path = tmp_dir.path().join("socket");
+        let (_short_tmpdir, socket_path) =
+            if socket_path.to_string_lossy().to_string().len() > MAX_SOCKET_PATH_LEN {
+                // This is a fallback in case the temp directory following the system's
+                // temporary directory is too long. This is a rare case, but it can happen
+                // on some systems with very long temporary directories.
+                let short_tmpdir = tempfile::Builder::new()
+                    .prefix(&tmpdir_cleanup_prefix("askpass"))
+                    .tempdir_in("/tmp") // Use /tmp to avoid long paths
+                    .map_err(|err| {
+                        UpError::Exec(
+                            format!("failed to create temporary directory: {:?}", err).to_string(),
+                        )
+                    })?;
+
+                let short_socket_path = short_tmpdir.path().join("socket");
+                if short_socket_path.to_string_lossy().to_string().len() > MAX_SOCKET_PATH_LEN {
+                    return Err(UpError::Exec("socket path is too long".to_string()));
+                }
+
+                (Some(short_tmpdir), short_socket_path)
+            } else {
+                (None, socket_path)
+            };
 
         // Generate the script
         let mut context = Context::new();
