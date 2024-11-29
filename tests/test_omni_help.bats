@@ -31,12 +31,25 @@ setup() {
   validate_test_output omni/help.txt skip_lines=1 omni help
 }
 
+# bats test_tags=generate,omni:help,omni:help:self,omni:help:json
+@test "omni help shows in JSON the help message with default omni commands" {
+# Avoiding any shorter-than-expected wrapping
+  export COLUMNS=1000
+
+    validate_test_output omni/help-json.txt skip_lines=1 omni help --output json
+}
+
 # bats test_tags=generate,omni:help,omni:help:self
 @test "omni help shows the help message with all omni commands when using --unfold" {
   # Avoiding any shorter-than-expected wrapping
   export COLUMNS=1000
 
   validate_test_output omni/help-unfold.txt skip_lines=1 omni help --unfold
+}
+
+# bats test_tags=generate,omni:help,omni:help:self,omni:help:json
+@test "omni help shows in JSON the help message with all omni commands when using --unfold" {
+  validate_test_output omni/help-unfold-json.txt skip_lines=1 omni help --unfold --output json
 }
 
 # bats test_tags=generate,omni:help
@@ -52,9 +65,19 @@ setup() {
   validate_test_output omni/help-config.txt skip_lines=1 omni help config
 }
 
+# bats test_tags=generate,omni:help,omni:help:json
+@test "omni help config shows in JSON the help message for the command" {
+  validate_test_output omni/help-config-json.txt omni help -o json config
+}
+
 # bats test_tags=generate,omni:help
 @test "omni help config bootstrap shows the help message for the command" {
   validate_test_output omni/help-config-bootstrap.txt skip_lines=1 omni help config bootstrap
+}
+
+# bats test_tags=generate,omni:help,omni:help:json
+@test "omni help config bootstrap shows in JSON the help message for the command" {
+  validate_test_output omni/help-config-bootstrap-json.txt omni help -o json config bootstrap
 }
 
 # bats test_tags=generate,omni:help
@@ -117,6 +140,11 @@ setup() {
   validate_test_output omni/help-cd.txt skip_lines=1 omni help cd
 }
 
+# bats test_tags=generate,omni:help,omni:help:json
+@test "omni help cd shows in JSON the help message for the command" {
+  validate_test_output omni/help-cd-json.txt omni help -o json cd
+}
+
 # bats test_tags=generate,omni:help
 @test "omni help clone shows the help message for the command" {
   validate_test_output omni/help-clone.txt skip_lines=1 omni help clone
@@ -140,6 +168,11 @@ setup() {
 # bats test_tags=generate,omni:help,omni:help:up
 @test "omni help up shows the help message for the command" {
   validate_test_output omni/help-up.txt skip_lines=1 omni help up
+}
+
+# bats test_tags=generate,omni:help,omni:help:up,omni:help:json
+@test "omni help up shows in JSON the help message for the command" {
+  validate_test_output omni/help-up-json.txt omni help -o json up
 }
 
 setup_very_long_config_command() {

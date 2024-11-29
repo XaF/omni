@@ -9,6 +9,7 @@ Arguments:
   [COMMAND]...   The command to get help for
 
 Options:
-  --unfold       Show all subcommands
+  --unfold               Show all subcommands
+  -o, --output <OUTPUT>  Output format [default: plain] [possible values: json, plain]
 
 Source: builtin

@@ -1,6 +1,5 @@
 use std::io::Write;
 
-use regex::Regex;
 use tempfile::NamedTempFile;
 use time::format_description::well_known::Rfc3339;
 use tokio::io::AsyncBufReadExt;
@@ -12,6 +11,7 @@ use tokio::time::Duration;
 
 use crate::internal::config::up::utils::RunConfig;
 use crate::internal::config::up::UpError;
+use crate::internal::user_interface::print::filter_control_characters;
 use crate::internal::user_interface::StringColor;
 use crate::omni_warning;
 
@@ -412,9 +412,4 @@ where
     }
 
     Ok(())
-}
-
-fn filter_control_characters(input: &str) -> String {
-    let control_chars_regex = Regex::new(r"(\x1B\[[0-9;]*[ABCDK]|\x0D)").unwrap();
-    control_chars_regex.replace_all(input, "").to_string()
 }

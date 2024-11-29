@@ -1,0 +1,27 @@
+{
+  "usage": "omni config bootstrap [OPTIONS]",
+  "source": "builtin",
+  "category": [
+    "General"
+  ],
+  "short_help": "Bootstraps the configuration of omni",
+  "help": "Bootstraps the configuration of omni\n\nThis will walk you through setting up the initial configuration to use omni, such as setting up the worktree, format to use when cloning repositories, and setting up initial organizations.\n",
+  "options": [
+    {
+      "name": "--worktree",
+      "desc": "Bootstrap the main worktree location"
+    },
+    {
+      "name": "--repo-path-format",
+      "desc": "Bootstrap the repository path format"
+    },
+    {
+      "name": "--organizations",
+      "desc": "Bootstrap the organizations"
+    },
+    {
+      "name": "--shell",
+      "desc": "Bootstrap the shell integration"
+    }
+  ]
+}

@@ -1,0 +1,109 @@
+  "usage": "omni <command> [options] ARG...",
+  "subcommands": [
+    {
+      "name": "config bootstrap",
+      "category": [
+        "General"
+      ],
+      "desc": "Bootstraps the configuration of omni"
+    },
+    {
+      "name": "config path switch",
+      "category": [
+        "General"
+      ],
+      "desc": "Switch the source of a repository in the omnipath"
+    },
+    {
+      "name": "config reshim",
+      "category": [
+        "General"
+      ],
+      "desc": "Regenerate the shims for the environments managed by omni"
+    },
+    {
+      "name": "config trust, config untrust",
+      "category": [
+        "General"
+      ],
+      "desc": "Trust or untrust a work directory."
+    },
+    {
+      "name": "help",
+      "category": [
+        "General"
+      ],
+      "desc": "Show help for omni commands"
+    },
+    {
+      "name": "hook",
+      "category": [
+        "General"
+      ],
+      "desc": "Call one of omni's hooks for the shell\n"
+    },
+    {
+      "name": "hook env",
+      "category": [
+        "General"
+      ],
+      "desc": "Hook used to update the dynamic environment"
+    },
+    {
+      "name": "hook init",
+      "category": [
+        "General"
+      ],
+      "desc": "Hook used to initialize the shell"
+    },
+    {
+      "name": "hook uuid",
+      "category": [
+        "General"
+      ],
+      "desc": "Hook to generate a UUID"
+    },
+    {
+      "name": "status",
+      "category": [
+        "General"
+      ],
+      "desc": "Show the status of omni"
+    },
+    {
+      "name": "cd",
+      "category": [
+        "Git commands"
+      ],
+      "desc": "Change directory to the root of the specified work directory"
+    },
+    {
+      "name": "clone",
+      "category": [
+        "Git commands"
+      ],
+      "desc": "Clone the specified repository"
+    },
+    {
+      "name": "up, down",
+      "category": [
+        "Git commands"
+      ],
+      "desc": "Sets up or tear down a repository depending on its up configuration"
+    },
+    {
+      "name": "scope",
+      "category": [
+        "Git commands"
+      ],
+      "desc": "Runs an omni command in the context of the specified repository"
+    },
+    {
+      "name": "tidy",
+      "category": [
+        "Git commands"
+      ],
+      "desc": "Organize your git repositories using the configured format"
+    }
+  ]
+}

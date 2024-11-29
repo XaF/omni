@@ -185,6 +185,10 @@ pub fn strip_ansi_codes(text: &str) -> String {
     COLOR_PATTERN.replace_all(text, "").to_string()
 }
 
+pub fn filter_control_characters(input: &str) -> String {
+    let control_chars_regex = Regex::new(r"(\x1B\[[0-9;]*[ABCDK]|\x0D)").unwrap();
+    control_chars_regex.replace_all(input, "").to_string()
+}
 pub fn wrap_text(text: &str, width: usize) -> Vec<String> {
     let mut lines = vec![];
     let mut line = String::new();

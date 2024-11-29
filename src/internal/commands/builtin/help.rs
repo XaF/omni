@@ -2,6 +2,9 @@ use std::collections::BTreeMap;
 use std::collections::HashSet;
 use std::process::exit;
 
+use serde::Serialize;
+
+use crate::internal::cache::utils as cache_utils;
 use crate::internal::commands::base::BuiltinCommand;
 use crate::internal::commands::command_loader;
 use crate::internal::commands::void::VoidCommand;
@@ -23,6 +26,7 @@ use crate::omni_print;
 #[derive(Debug, Clone)]
 struct HelpCommandArgs {
     unfold: bool,
+    output: HelpCommandOutput,
     command: Vec<String>,
 }
 
@@ -39,9 +43,27 @@ impl From<BTreeMap<String, ParseArgsValue>> for HelpCommandArgs {
                 .collect::<Vec<String>>(),
             _ => vec![],
         };
+        let output = match args.get("output") {
+            Some(ParseArgsValue::SingleString(Some(value))) => match value.as_str() {
+                "json" => HelpCommandOutput::JSON,
+                "plain" => HelpCommandOutput::Plain,
+                _ => unreachable!("unknown value for output"),
+            },
+            _ => HelpCommandOutput::Plain,
+        };
 
-        Self { unfold, command }
+        Self {
+            unfold,
+            output,
+            command,
+        }
     }
+}
+
+#[derive(Debug, Clone)]
+enum HelpCommandOutput {
+    Plain,
+    JSON,
 }
 
 #[derive(Debug, Clone)]
@@ -52,7 +74,148 @@ impl HelpCommand {
         Self {}
     }
 
-    fn help_global(&self, unfold: bool) {
+    fn help_global(&self, printer: &dyn HelpCommandPrinter, unfold: bool) {
+        printer.print_global_help(unfold);
+    }
+
+    fn help_command(
+        &self,
+        printer: &dyn HelpCommandPrinter,
+        command: &Command,
+        called_as: Vec<String>,
+        unfold: bool,
+    ) {
+        printer.print_command_help(command, called_as, unfold);
+    }
+
+    fn help_void(&self, printer: &dyn HelpCommandPrinter, called_as: Vec<String>, unfold: bool) {
+        self.help_command(
+            printer,
+            &Command::Void(VoidCommand::new_for_help(called_as.clone())),
+            called_as,
+            unfold,
+        );
+    }
+
+    pub fn exec_with_exit_code(&self, argv: Vec<String>, exit_code: i32) {
+        let command = Command::Builtin(self.clone_boxed());
+        let args = HelpCommandArgs::from(
+            command
+                .exec_parse_args_typed(argv, self.name())
+                .expect("should have args to parse"),
+        );
+
+        let printer: Box<dyn HelpCommandPrinter> = match args.output {
+            HelpCommandOutput::Plain => Box::new(HelpCommandPlainPrinter::new()),
+            HelpCommandOutput::JSON => Box::new(HelpCommandJsonPrinter::new()),
+        };
+
+        let argv = args.command.clone();
+        if argv.is_empty() {
+            self.help_global(&*printer, args.unfold);
+            exit(exit_code);
+        }
+
+        let command_loader = command_loader(".");
+        if let Some((omni_cmd, called_as, argv)) = command_loader.to_serve(&argv) {
+            if argv.is_empty() {
+                self.help_command(&*printer, omni_cmd, called_as, args.unfold);
+                exit(exit_code);
+            }
+        }
+
+        if command_loader.has_subcommand_of(&argv) {
+            self.help_void(&*printer, argv.to_vec(), args.unfold);
+            exit(exit_code);
+        }
+
+        omni_print!(format!("{} {}", "command not found:".red(), argv.join(" ")));
+        exit(1);
+    }
+}
+
+impl BuiltinCommand for HelpCommand {
+    fn new_boxed() -> Box<dyn BuiltinCommand> {
+        Box::new(Self::new())
+    }
+
+    fn clone_boxed(&self) -> Box<dyn BuiltinCommand> {
+        Box::new(self.clone())
+    }
+
+    fn name(&self) -> Vec<String> {
+        vec!["help".to_string()]
+    }
+
+    fn aliases(&self) -> Vec<Vec<String>> {
+        vec![]
+    }
+
+    fn help(&self) -> Option<String> {
+        Some(
+            concat!(
+                "Show help for omni commands\n",
+                "\n",
+                "If no command is given, show a list of all available commands.",
+            )
+            .to_string(),
+        )
+    }
+
+    fn syntax(&self) -> Option<CommandSyntax> {
+        Some(CommandSyntax {
+            parameters: vec![
+                SyntaxOptArg {
+                    names: vec!["--unfold".to_string()],
+                    desc: Some("Show all subcommands".to_string()),
+                    arg_type: SyntaxOptArgType::Flag,
+                    ..Default::default()
+                },
+                SyntaxOptArg {
+                    names: vec!["-o".to_string(), "--output".to_string()],
+                    desc: Some("Output format".to_string()),
+                    arg_type: SyntaxOptArgType::Enum(vec!["json".to_string(), "plain".to_string()]),
+                    default: Some("plain".to_string()),
+                    ..Default::default()
+                },
+                SyntaxOptArg {
+                    names: vec!["command".to_string()],
+                    desc: Some("The command to get help for".to_string()),
+                    leftovers: true,
+                    allow_hyphen_values: true,
+                    ..Default::default()
+                },
+            ],
+            ..Default::default()
+        })
+    }
+
+    fn category(&self) -> Option<Vec<String>> {
+        Some(vec!["General".to_string()])
+    }
+
+    fn exec(&self, argv: Vec<String>) {
+        self.exec_with_exit_code(argv, 0);
+    }
+
+    fn autocompletion(&self) -> bool {
+        true
+    }
+
+    fn autocomplete(&self, comp_cword: usize, argv: Vec<String>) -> Result<(), ()> {
+        command_loader(".").complete(comp_cword, argv, false)
+    }
+}
+
+trait HelpCommandPrinter {
+    fn print_global_help(&self, unfold: bool);
+    fn print_command_help(&self, command: &Command, called_as: Vec<String>, unfold: bool);
+}
+
+struct HelpCommandPlainPrinter {}
+
+impl HelpCommandPrinter for HelpCommandPlainPrinter {
+    fn print_global_help(&self, unfold: bool) {
         eprintln!(
             "{}\n\n{} {} {} {} {}",
             omni_header!(),
@@ -67,7 +230,7 @@ impl HelpCommand {
         eprintln!();
     }
 
-    fn help_command(&self, command: &Command, called_as: Vec<String>, unfold: bool) {
+    fn print_command_help(&self, command: &Command, called_as: Vec<String>, unfold: bool) {
         eprintln!("{}", omni_header!());
 
         let max_width = term_width() - 4;
@@ -134,13 +297,11 @@ impl HelpCommand {
             command.help_source().underline()
         );
     }
+}
 
-    fn help_void(&self, called_as: Vec<String>, unfold: bool) {
-        self.help_command(
-            &Command::Void(VoidCommand::new_for_help(called_as.clone())),
-            called_as,
-            unfold,
-        );
+impl HelpCommandPlainPrinter {
+    fn new() -> Self {
+        Self {}
     }
 
     fn print_syntax_column_help(&self, args: &[&SyntaxOptArg]) -> Result<(), String> {
@@ -380,104 +541,175 @@ impl HelpCommand {
 
         true
     }
+}
 
-    pub fn exec_with_exit_code(&self, argv: Vec<String>, exit_code: i32) {
-        let command = Command::Builtin(self.clone_boxed());
-        let args = HelpCommandArgs::from(
-            command
-                .exec_parse_args_typed(argv, self.name())
-                .expect("should have args to parse"),
-        );
+struct HelpCommandJsonPrinter {}
 
-        let argv = args.command.clone();
-        if argv.is_empty() {
-            self.help_global(args.unfold);
-            exit(exit_code);
+#[derive(Debug, Serialize, Clone)]
+struct SerializableCommandHelp {
+    #[serde(skip_serializing_if = "String::is_empty")]
+    usage: String,
+    #[serde(skip_serializing_if = "String::is_empty")]
+    source: String,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    category: Vec<String>,
+    #[serde(skip_serializing_if = "String::is_empty")]
+    short_help: String,
+    #[serde(skip_serializing_if = "String::is_empty")]
+    help: String,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    arguments: Vec<SerializableCommandSyntax>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    options: Vec<SerializableCommandSyntax>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    subcommands: Vec<SerializableSubcommand>,
+}
+
+impl Default for SerializableCommandHelp {
+    fn default() -> Self {
+        Self {
+            usage: "".to_string(),
+            source: "".to_string(),
+            category: vec![],
+            short_help: "".to_string(),
+            help: "".to_string(),
+            arguments: vec![],
+            options: vec![],
+            subcommands: vec![],
         }
-
-        let command_loader = command_loader(".");
-        if let Some((omni_cmd, called_as, argv)) = command_loader.to_serve(&argv) {
-            if argv.is_empty() {
-                self.help_command(omni_cmd, called_as, args.unfold);
-                exit(exit_code);
-            }
-        }
-
-        if command_loader.has_subcommand_of(&argv) {
-            self.help_void(argv.to_vec(), args.unfold);
-            exit(exit_code);
-        }
-
-        omni_print!(format!("{} {}", "command not found:".red(), argv.join(" ")));
-        exit(1);
     }
 }
 
-impl BuiltinCommand for HelpCommand {
-    fn new_boxed() -> Box<dyn BuiltinCommand> {
-        Box::new(Self::new())
-    }
+#[derive(Debug, Serialize, Clone)]
+struct SerializableCommandSyntax {
+    name: String,
+    #[serde(skip_serializing_if = "String::is_empty")]
+    desc: String,
+}
 
-    fn clone_boxed(&self) -> Box<dyn BuiltinCommand> {
-        Box::new(self.clone())
-    }
+#[derive(Debug, Serialize, Clone)]
+pub struct SerializableSubcommand {
+    name: String,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    category: Vec<String>,
+    #[serde(skip_serializing_if = "String::is_empty")]
+    desc: String,
+    #[serde(skip_serializing_if = "cache_utils::is_zero")]
+    folded: usize,
+}
 
-    fn name(&self) -> Vec<String> {
-        vec!["help".to_string()]
-    }
-
-    fn aliases(&self) -> Vec<Vec<String>> {
-        vec![]
-    }
-
-    fn help(&self) -> Option<String> {
-        Some(
-            concat!(
-                "Show help for omni commands\n",
-                "\n",
-                "If no command is given, show a list of all available commands.",
-            )
-            .to_string(),
-        )
-    }
-
-    fn syntax(&self) -> Option<CommandSyntax> {
-        Some(CommandSyntax {
-            parameters: vec![
-                SyntaxOptArg {
-                    names: vec!["--unfold".to_string()],
-                    desc: Some("Show all subcommands".to_string()),
-                    arg_type: SyntaxOptArgType::Flag,
-                    required: false,
-                    ..Default::default()
-                },
-                SyntaxOptArg {
-                    names: vec!["command".to_string()],
-                    desc: Some("The command to get help for".to_string()),
-                    leftovers: true,
-                    allow_hyphen_values: true,
-                    required: false,
-                    ..Default::default()
-                },
-            ],
+impl HelpCommandPrinter for HelpCommandJsonPrinter {
+    fn print_global_help(&self, unfold: bool) {
+        let subcommands = self.subcommands(vec![], unfold);
+        let command_help = SerializableCommandHelp {
+            usage: "omni <command> [options] ARG...".to_string(),
+            subcommands,
             ..Default::default()
-        })
+        };
+
+        let json =
+            serde_json::to_string_pretty(&command_help).expect("failed to serialize help to JSON");
+        println!("{}", json);
     }
 
-    fn category(&self) -> Option<Vec<String>> {
-        Some(vec!["General".to_string()])
+    fn print_command_help(&self, command: &Command, called_as: Vec<String>, unfold: bool) {
+        let category: Vec<String> = command.category().unwrap_or_default();
+        let short_help = strip_ansi_codes(&command.help_short());
+        let help = strip_ansi_codes(&command.help());
+        let source = command.help_source();
+        let usage = strip_ansi_codes(&command.usage(Some(called_as.join(" "))));
+
+        let mut arguments = vec![];
+        let mut options = vec![];
+        if let Some(syntax) = command.syntax() {
+            if !syntax.parameters.is_empty() {
+                for param in syntax.parameters.iter() {
+                    let name = param.help_name(true, false);
+                    let desc = strip_ansi_codes(&param.help_desc());
+
+                    let serializable_syntax = SerializableCommandSyntax { name, desc };
+
+                    if param.is_positional() {
+                        arguments.push(serializable_syntax);
+                    } else {
+                        options.push(serializable_syntax);
+                    }
+                }
+            }
+        }
+
+        let subcommands = self.subcommands(called_as, unfold);
+
+        // Create a serializable command help object
+        let command_help = SerializableCommandHelp {
+            usage,
+            source,
+            category,
+            short_help,
+            help,
+            arguments,
+            options,
+            subcommands,
+        };
+
+        // Serialize the command help to JSON
+        let json =
+            serde_json::to_string_pretty(&command_help).expect("failed to serialize help to JSON");
+        println!("{}", json);
+    }
+}
+
+impl HelpCommandJsonPrinter {
+    fn new() -> Self {
+        Self {}
     }
 
-    fn exec(&self, argv: Vec<String>) {
-        self.exec_with_exit_code(argv, 0);
-    }
+    fn subcommands(&self, prefix: Vec<String>, unfold: bool) -> Vec<SerializableSubcommand> {
+        let command_loader = command_loader(".");
+        let organizer = HelpCommandOrganizer::new_from_commands(command_loader.commands.clone());
+        let commands = organizer.get_commands_with_fold(
+            prefix.clone(),
+            match unfold {
+                true => 0,
+                false => 1,
+            },
+        );
 
-    fn autocompletion(&self) -> bool {
-        true
-    }
+        if commands.is_empty() {
+            return vec![];
+        }
 
-    fn autocomplete(&self, comp_cword: usize, argv: Vec<String>) -> Result<(), ()> {
-        command_loader(".").complete(comp_cword, argv, false)
+        let mut subcommands = vec![];
+
+        let mut seen = HashSet::new();
+        for cmd in commands.iter() {
+            let command = &cmd.command;
+            let name = command.name().join(" ");
+            if !seen.insert(name.clone()) {
+                continue;
+            }
+
+            let category = command.category().unwrap_or_default();
+            let folded = cmd.num_folded();
+
+            let all_names = command
+                .all_names_with_prefix(prefix.clone())
+                .iter()
+                .map(|name| name.join(" "))
+                .collect::<Vec<String>>()
+                .join(", ");
+
+            let subcommand = SerializableSubcommand {
+                name: all_names,
+                category,
+                desc: strip_ansi_codes(&command.help_short()),
+                folded,
+            };
+
+            subcommands.push(subcommand);
+        }
+
+        subcommands
     }
 }
 
