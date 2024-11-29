@@ -1384,7 +1384,7 @@ mod tests {
 
                 let options = UpOptions::default().cache_disabled();
                 let mut environment = UpEnvironment::new();
-                let progress_handler = UpProgressHandler::new(None);
+                let progress_handler = UpProgressHandler::new_void();
 
                 let result = config.up(&options, &mut environment, &progress_handler, &cargo_bin);
 
