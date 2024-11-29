@@ -1,0 +1,68 @@
+askpass:
+  enable_gui: true
+  enabled: true
+  prefer_gui: false
+cache:
+  asdf:
+    cleanup_after: 604800
+    plugin_update_expire: 86400
+    plugin_versions_expire: 3600
+    update_expire: 86400
+  cargo_install:
+    cleanup_after: 604800
+    versions_expire: 86400
+  environment:
+    retention: 7776000
+  github_release:
+    cleanup_after: 604800
+    versions_expire: 86400
+  go_install:
+    cleanup_after: 604800
+    versions_expire: 86400
+  homebrew:
+    cleanup_after: 604800
+    install_check_expire: 43200
+    install_update_expire: 86400
+    tap_update_expire: 86400
+    update_expire: 86400
+  path: <BATS_TEST_TMPDIR>/.cache/omni
+cd:
+  fast_search: true
+  path_match_min_score: 0.12
+  path_match_skip_prompt_if:
+    enabled: false
+    first_min: 0.8
+    second_max: 0.6
+clone:
+  auto_up: true
+  ls_remote_timeout: 5
+command_match_min_score: 0.12
+command_match_skip_prompt_if:
+  enabled: false
+  first_min: 0.8
+  second_max: 0.6
+config_commands:
+  split_on_dash: true
+  split_on_slash: true
+makefile_commands:
+  enabled: true
+  split_on_dash: true
+  split_on_slash: true
+path: {}
+path_repo_updates:
+  background_updates: true
+  background_updates_timeout: 3600
+  enabled: true
+  interval: 43200
+  on_command_not_found: ask
+  pre_auth: true
+  pre_auth_timeout: 120
+  ref_type: branch
+  self_update: ask
+repo_path_format: '%{host}/%{org}/%{repo}'
+up_command:
+  auto_bootstrap: true
+  notify_workdir_config_available: true
+  notify_workdir_config_updated: true
+  upgrade: false
+worktree: <BATS_TEST_TMPDIR>/git

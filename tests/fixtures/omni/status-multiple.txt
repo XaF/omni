@@ -1,0 +1,6 @@
+
+Loaded configuration files
+  - <BATS_TEST_TMPDIR>/.config/omni/config.yaml
+
+Current omnipath
+  none

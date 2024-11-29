@@ -1,0 +1,15 @@
+
+Shell integration
+  loaded
+
+Loaded configuration files
+  - <BATS_TEST_TMPDIR>/.config/omni/config.yaml
+
+Worktree
+  <BATS_TEST_TMPDIR>/git
+
+Git Orgs
+  none
+
+Current omnipath
+  none
