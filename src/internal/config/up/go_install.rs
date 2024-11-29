@@ -507,9 +507,13 @@ impl UpConfigGoInstall {
                 }
             };
 
+            // If version is set through the path, it is exact
+            let exact = version.is_some();
+
             UpConfigGoInstall {
                 path,
                 version,
+                exact,
                 ..UpConfigGoInstall::default()
             }
         } else {
@@ -573,20 +577,34 @@ impl UpConfigGoInstall {
             }
         };
 
-        // If version is specified, it overrides the version in the path
+        let exact = match table.get("exact").map(|v| v.as_bool_forced()) {
+            Some(Some(exact)) => exact,
+            _ => version.is_some(),
+        };
+
+        // If version is specified, and version is also specified in the path,
+        // then we raise an error as the version should not be specified in both
         let version = match table
             .get("version")
             .map(|v| v.as_str_forced())
             .unwrap_or(None)
         {
-            Some(version) => Some(version.to_string()),
+            Some(version_field) => {
+                if version.is_some() {
+                    return UpConfigGoInstall {
+                        path,
+                        config_error: Some(
+                            "version should not be specified in both path and version fields"
+                                .to_string(),
+                        ),
+                        ..Default::default()
+                    };
+                }
+                Some(version_field.to_string())
+            }
             None => version,
         };
-        let exact = table
-            .get("exact")
-            .map(|v| v.as_bool_forced())
-            .unwrap_or(None)
-            .unwrap_or(false);
+
         let upgrade = table
             .get("upgrade")
             .map(|v| v.as_bool_forced())
