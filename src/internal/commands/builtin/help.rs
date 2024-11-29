@@ -129,7 +129,7 @@ impl HelpCommand {
             exit(exit_code);
         }
 
-        omni_print!(format!("{} {}", "command not found:".red(), argv.join(" ")));
+        printer.print_error("command not found", &argv.join(" "));
         exit(1);
     }
 }
@@ -210,6 +210,7 @@ impl BuiltinCommand for HelpCommand {
 trait HelpCommandPrinter {
     fn print_global_help(&self, unfold: bool);
     fn print_command_help(&self, command: &Command, called_as: Vec<String>, unfold: bool);
+    fn print_error(&self, error_type: &str, error_msg: &str);
 }
 
 struct HelpCommandPlainPrinter {}
@@ -296,6 +297,14 @@ impl HelpCommandPrinter for HelpCommandPlainPrinter {
             "Source:".light_black(),
             command.help_source().underline()
         );
+    }
+
+    fn print_error(&self, error_type: &str, error_msg: &str) {
+        omni_print!(format!(
+            "{} {}",
+            format!("{}:", error_type.red()),
+            error_msg,
+        ));
     }
 }
 
@@ -548,6 +557,8 @@ struct HelpCommandJsonPrinter {}
 #[derive(Debug, Serialize, Clone)]
 struct SerializableCommandHelp {
     #[serde(skip_serializing_if = "String::is_empty")]
+    name: String,
+    #[serde(skip_serializing_if = "String::is_empty")]
     usage: String,
     #[serde(skip_serializing_if = "String::is_empty")]
     source: String,
@@ -568,6 +579,7 @@ struct SerializableCommandHelp {
 impl Default for SerializableCommandHelp {
     fn default() -> Self {
         Self {
+            name: "".to_string(),
             usage: "".to_string(),
             source: "".to_string(),
             category: vec![],
@@ -613,6 +625,7 @@ impl HelpCommandPrinter for HelpCommandJsonPrinter {
     }
 
     fn print_command_help(&self, command: &Command, called_as: Vec<String>, unfold: bool) {
+        let name = command.name().join(" ");
         let category: Vec<String> = command.category().unwrap_or_default();
         let short_help = strip_ansi_codes(&command.help_short());
         let help = strip_ansi_codes(&command.help());
@@ -642,6 +655,7 @@ impl HelpCommandPrinter for HelpCommandJsonPrinter {
 
         // Create a serializable command help object
         let command_help = SerializableCommandHelp {
+            name,
             usage,
             source,
             category,
@@ -656,6 +670,15 @@ impl HelpCommandPrinter for HelpCommandJsonPrinter {
         let json =
             serde_json::to_string_pretty(&command_help).expect("failed to serialize help to JSON");
         println!("{}", json);
+    }
+
+    fn print_error(&self, error_type: &str, error_msg: &str) {
+        let json = serde_json::json!({
+            "error_type": error_type,
+            "error_msg": error_msg,
+        });
+
+        println!("{}", serde_json::to_string_pretty(&json).unwrap());
     }
 }
 
