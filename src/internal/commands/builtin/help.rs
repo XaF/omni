@@ -45,7 +45,7 @@ impl From<BTreeMap<String, ParseArgsValue>> for HelpCommandArgs {
         };
         let output = match args.get("output") {
             Some(ParseArgsValue::SingleString(Some(value))) => match value.as_str() {
-                "json" => HelpCommandOutput::JSON,
+                "json" => HelpCommandOutput::Json,
                 "plain" => HelpCommandOutput::Plain,
                 _ => unreachable!("unknown value for output"),
             },
@@ -63,7 +63,7 @@ impl From<BTreeMap<String, ParseArgsValue>> for HelpCommandArgs {
 #[derive(Debug, Clone)]
 enum HelpCommandOutput {
     Plain,
-    JSON,
+    Json,
 }
 
 #[derive(Debug, Clone)]
@@ -107,7 +107,7 @@ impl HelpCommand {
 
         let printer: Box<dyn HelpCommandPrinter> = match args.output {
             HelpCommandOutput::Plain => Box::new(HelpCommandPlainPrinter::new()),
-            HelpCommandOutput::JSON => Box::new(HelpCommandJsonPrinter::new()),
+            HelpCommandOutput::Json => Box::new(HelpCommandJsonPrinter::new()),
         };
 
         let argv = args.command.clone();
