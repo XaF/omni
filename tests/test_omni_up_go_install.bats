@@ -244,7 +244,7 @@ up:
     - github.com/test/tool1@v2.0.0
     - github.com/test/tool2: v5.0.0
     - github.com/test/tool3:
-        version: v4.0.0
+        version: 4
     - github.com/test/tool4:
 EOF
 
@@ -253,8 +253,6 @@ EOF
   add_brew_golang_calls
   add_asdf_golang_calls version="$go_version"
 
-  add_command go list -m -versions -json github.com/test/tool1 \
-    <<< '{"Version":"v0.0.0","Versions":["v1.0.0","v1.1.0","v2.0.0"]}'
   add_command go install -v github.com/test/tool1@v2.0.0 <<< "$(go_install_success)"
 
   add_command go list -m -versions -json github.com/test/tool2 \

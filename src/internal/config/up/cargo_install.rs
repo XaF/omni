@@ -503,9 +503,13 @@ impl UpConfigCargoInstall {
                 }
             };
 
+            // If version is set through the path, it is exact
+            let exact = version.is_some();
+
             UpConfigCargoInstall {
                 crate_name,
                 version,
+                exact,
                 ..UpConfigCargoInstall::default()
             }
         } else {
@@ -571,20 +575,34 @@ impl UpConfigCargoInstall {
             }
         };
 
-        // If version is specified, it overrides the version in the crate_name
+        let exact = match table.get("exact").map(|v| v.as_bool_forced()) {
+            Some(Some(exact)) => exact,
+            _ => version.is_some(),
+        };
+
+        // If version is specified, and version is also specified in the path,
+        // then we raise an error as the version should not be specified in both
         let version = match table
             .get("version")
             .map(|v| v.as_str_forced())
             .unwrap_or(None)
         {
-            Some(version) => Some(version.to_string()),
+            Some(version_field) => {
+                if version.is_some() {
+                    return UpConfigCargoInstall {
+                        crate_name,
+                        config_error: Some(
+                            "version should not be specified in both crate and version fields"
+                                .to_string(),
+                        ),
+                        ..Default::default()
+                    };
+                }
+                Some(version_field.to_string())
+            }
             None => version,
         };
-        let exact = table
-            .get("exact")
-            .map(|v| v.as_bool_forced())
-            .unwrap_or(None)
-            .unwrap_or(false);
+
         let upgrade = table
             .get("upgrade")
             .map(|v| v.as_bool_forced())
