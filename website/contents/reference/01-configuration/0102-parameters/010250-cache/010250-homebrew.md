@@ -18,9 +18,10 @@ Configuration of the cache for `homebrew` operations.
 ## Example
 
 ```yaml
-homebrew:
-  update_expire: 1d
-  install_update_expire: 1d
-  install_check_expire: 12h
-  cleanup_after: 1w
+cache:
+  homebrew:
+    update_expire: 1d
+    install_update_expire: 1d
+    install_check_expire: 12h
+    cleanup_after: 1w
 ```

@@ -1,12 +1,12 @@
 ---
-description: Configuration of the `asdf` parameter
+description: Configuration of the `github_release` parameter
 ---
 
 # `asdf`
 
 ## Parameters
 
-Configuration of the cache for `asdf` operations.
+Configuration of the cache for `github-release` operations.
 
 | Operation | Type | Description                                                    |
 |-----------|------|---------------------------------------------------------|
@@ -16,7 +16,8 @@ Configuration of the cache for `asdf` operations.
 ## Example
 
 ```yaml
-asdf:
-  versions_expire: 1d
-  cleanup_after: 1w
+cache:
+  github_release:
+    versions_expire: 1d
+    cleanup_after: 1w
 ```
