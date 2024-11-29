@@ -1786,9 +1786,7 @@ pub fn parse_arg_name(arg_name: &str) -> (Vec<String>, SyntaxOptArgType, Vec<Str
     let def_parts: Vec<&str> = arg_name.split(',').map(str::trim).collect();
 
     for part in def_parts {
-        let name_parts = part
-            .splitn(2, |c| c == ' ' || c == '\t' || c == '=')
-            .collect::<Vec<&str>>();
+        let name_parts = part.splitn(2, [' ', '\t', '=']).collect::<Vec<&str>>();
         if name_parts.is_empty() {
             continue;
         }
