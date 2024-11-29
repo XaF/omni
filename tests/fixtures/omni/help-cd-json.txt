@@ -1,4 +1,5 @@
 {
+  "name": "cd",
   "usage": "omni cd [OPTIONS] [WORKDIR]",
   "source": "builtin",
   "category": [

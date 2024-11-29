@@ -1,4 +1,5 @@
 {
+  "name": "config bootstrap",
   "usage": "omni config bootstrap [OPTIONS]",
   "source": "builtin",
   "category": [

@@ -1,4 +1,5 @@
 {
+  "name": "up",
   "usage": "omni up [OPTIONS]",
   "source": "builtin",
   "category": [

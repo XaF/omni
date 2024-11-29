@@ -1,4 +1,5 @@
 {
+  "name": "config",
   "usage": "omni config <SUBCOMMAND> [OPTIONS]...",
   "source": "auto-generated",
   "short_help": "Provides config commands",
