@@ -218,10 +218,13 @@ CREATE TABLE IF NOT EXISTS workdir_fingerprints (
 -- Add indexes for frequently queried columns
 CREATE INDEX IF NOT EXISTS idx_asdf_installed_required_by ON asdf_installed_required_by(tool, version);
 CREATE INDEX IF NOT EXISTS idx_cargo_install_required_by ON cargo_install_required_by(crate, version);
+CREATE INDEX IF NOT EXISTS idx_cargo_installed_crate ON cargo_installed(crate);
 CREATE INDEX IF NOT EXISTS idx_env_history_env_version_id ON env_history(env_version_id);
 CREATE INDEX IF NOT EXISTS idx_env_history_workdir ON env_history(workdir_id);
+CREATE INDEX IF NOT EXISTS idx_github_release_installed_repository ON github_release_installed(repository);
 CREATE INDEX IF NOT EXISTS idx_github_release_required_by ON github_release_required_by(repository, version);
 CREATE INDEX IF NOT EXISTS idx_go_install_required_by ON go_install_required_by(import_path, version);
+CREATE INDEX IF NOT EXISTS idx_go_installed_import_path ON go_installed(import_path);
 CREATE INDEX IF NOT EXISTS idx_homebrew_install_required_by ON homebrew_install_required_by(name, version, cask);
 CREATE INDEX IF NOT EXISTS idx_homebrew_tap_required_by ON homebrew_tap_required_by(name);
 CREATE INDEX IF NOT EXISTS idx_prompts_organization ON prompts(organization);

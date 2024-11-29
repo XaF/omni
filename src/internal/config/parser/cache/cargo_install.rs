@@ -7,6 +7,7 @@ use crate::internal::config::ConfigValue;
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct CargoInstallCacheConfig {
     pub versions_expire: u64,
+    pub versions_retention: u64,
     pub cleanup_after: u64,
 }
 
@@ -14,6 +15,7 @@ impl Default for CargoInstallCacheConfig {
     fn default() -> Self {
         Self {
             versions_expire: Self::DEFAULT_VERSIONS_EXPIRE,
+            versions_retention: Self::DEFAULT_VERSIONS_RETENTION,
             cleanup_after: Self::DEFAULT_CLEANUP_AFTER,
         }
     }
@@ -21,6 +23,7 @@ impl Default for CargoInstallCacheConfig {
 
 impl CargoInstallCacheConfig {
     const DEFAULT_VERSIONS_EXPIRE: u64 = 86400; // 1 day
+    const DEFAULT_VERSIONS_RETENTION: u64 = 7776000; // 90 days
     const DEFAULT_CLEANUP_AFTER: u64 = 604800; // 1 week
 
     pub fn from_config_value(config_value: Option<ConfigValue>) -> Self {
@@ -34,6 +37,11 @@ impl CargoInstallCacheConfig {
             Self::DEFAULT_VERSIONS_EXPIRE,
         );
 
+        let versions_retention = parse_duration_or_default(
+            config_value.get("versions_retention").as_ref(),
+            Self::DEFAULT_VERSIONS_RETENTION,
+        );
+
         let cleanup_after = parse_duration_or_default(
             config_value.get("cleanup_after").as_ref(),
             Self::DEFAULT_CLEANUP_AFTER,
@@ -41,6 +49,7 @@ impl CargoInstallCacheConfig {
 
         Self {
             versions_expire,
+            versions_retention,
             cleanup_after,
         }
     }

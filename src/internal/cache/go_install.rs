@@ -77,14 +77,17 @@ impl GoInstallOperationCache {
     }
 
     pub fn cleanup(&self) -> Result<(), CacheManagerError> {
+        let config = global_config();
         let db = CacheManager::get();
 
-        let config = global_config();
-        let grace_period = config.cache.go_install.cleanup_after;
+        db.execute(
+            include_str!("database/sql/go_install_operation_cleanup_installed.sql"),
+            params![&config.cache.go_install.cleanup_after],
+        )?;
 
         db.execute(
-            include_str!("database/sql/go_install_operation_cleanup.sql"),
-            params![&grace_period],
+            include_str!("database/sql/go_install_operation_cleanup_versions.sql"),
+            params![&config.cache.go_install.versions_retention],
         )?;
 
         Ok(())

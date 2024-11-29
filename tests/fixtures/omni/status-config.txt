@@ -11,14 +11,17 @@ cache:
   cargo_install:
     cleanup_after: 604800
     versions_expire: 86400
+    versions_retention: 7776000
   environment:
     retention: 7776000
   github_release:
     cleanup_after: 604800
     versions_expire: 86400
+    versions_retention: 7776000
   go_install:
     cleanup_after: 604800
     versions_expire: 86400
+    versions_retention: 7776000
   homebrew:
     cleanup_after: 604800
     install_check_expire: 43200
