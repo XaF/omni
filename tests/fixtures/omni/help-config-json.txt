@@ -1,0 +1,47 @@
+{
+  "name": "config",
+  "usage": "omni config <SUBCOMMAND> [OPTIONS]...",
+  "source": "auto-generated",
+  "short_help": "Provides config commands",
+  "help": "Provides config commands",
+  "arguments": [
+    {
+      "name": "<SUBCOMMAND>",
+      "desc": "Subcommand to be called"
+    },
+    {
+      "name": "[OPTIONS]...",
+      "desc": "Options to pass to the subcommand"
+    }
+  ],
+  "subcommands": [
+    {
+      "name": "bootstrap",
+      "category": [
+        "General"
+      ],
+      "desc": "Bootstraps the configuration of omni"
+    },
+    {
+      "name": "path switch",
+      "category": [
+        "General"
+      ],
+      "desc": "Switch the source of a repository in the omnipath"
+    },
+    {
+      "name": "reshim",
+      "category": [
+        "General"
+      ],
+      "desc": "Regenerate the shims for the environments managed by omni"
+    },
+    {
+      "name": "trust, untrust",
+      "category": [
+        "General"
+      ],
+      "desc": "Trust or untrust a work directory."
+    }
+  ]
+}

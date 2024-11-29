@@ -1,0 +1,70 @@
+{
+  "usage": "omni <command> [options] ARG...",
+  "subcommands": [
+    {
+      "name": "config",
+      "category": [
+        "General"
+      ],
+      "desc": "Provides config commands",
+      "folded": 6
+    },
+    {
+      "name": "help",
+      "category": [
+        "General"
+      ],
+      "desc": "Show help for omni commands"
+    },
+    {
+      "name": "hook",
+      "category": [
+        "General"
+      ],
+      "desc": "Call one of omni's hooks for the shell\n",
+      "folded": 4
+    },
+    {
+      "name": "status",
+      "category": [
+        "General"
+      ],
+      "desc": "Show the status of omni"
+    },
+    {
+      "name": "cd",
+      "category": [
+        "Git commands"
+      ],
+      "desc": "Change directory to the root of the specified work directory"
+    },
+    {
+      "name": "clone",
+      "category": [
+        "Git commands"
+      ],
+      "desc": "Clone the specified repository"
+    },
+    {
+      "name": "up, down",
+      "category": [
+        "Git commands"
+      ],
+      "desc": "Sets up or tear down a repository depending on its up configuration"
+    },
+    {
+      "name": "scope",
+      "category": [
+        "Git commands"
+      ],
+      "desc": "Runs an omni command in the context of the specified repository"
+    },
+    {
+      "name": "tidy",
+      "category": [
+        "Git commands"
+      ],
+      "desc": "Organize your git repositories using the configured format"
+    }
+  ]
+}

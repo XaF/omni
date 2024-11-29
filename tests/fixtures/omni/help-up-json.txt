@@ -1,0 +1,52 @@
+{
+  "name": "up",
+  "usage": "omni up [OPTIONS]",
+  "source": "builtin",
+  "category": [
+    "Git commands"
+  ],
+  "short_help": "Sets up or tear down a repository depending on its up configuration",
+  "help": "Sets up or tear down a repository depending on its up configuration",
+  "options": [
+    {
+      "name": "--no-cache",
+      "desc": "Whether we should disable the cache while running the command (default: no)"
+    },
+    {
+      "name": "--fail-on-upgrade",
+      "desc": "If provided, will fail the operation if a resource failed to upgrade, even if a currently-existing version can satisfy the dependencies (default: no)"
+    },
+    {
+      "name": "--bootstrap",
+      "desc": "Same as using --update-user-config --clone-suggested; if any of the options are directly provided, they will take precedence over the default values of the options"
+    },
+    {
+      "name": "--clone-suggested [CLONE_SUGGESTED]",
+      "desc": "Whether we should clone suggested repositories found in the configuration of the repository if any (yes/ask/no) [default: no] [default missing value: ask] [possible values: yes, ask, no]"
+    },
+    {
+      "name": "--prompt <PROMPT_ID>",
+      "desc": "Trigger prompts for the given prompt ids, specified as arguments, as well as the currently unanswered prompts"
+    },
+    {
+      "name": "--prompt-all",
+      "desc": "Trigger all prompts for the current work directory, even if they have already been answered"
+    },
+    {
+      "name": "--trust [TRUST]",
+      "desc": "Define how to trust the repository (always/yes/no) to run the command [default missing value: yes] [possible values: always, yes, no]"
+    },
+    {
+      "name": "--update-repository",
+      "desc": "Whether we should update the repository before running the command; if the repository is already up to date, the rest of the process will be skipped"
+    },
+    {
+      "name": "--update-user-config [UPDATE_USER_CONFIG]",
+      "desc": "Whether we should handle suggestions found in the configuration of the repository if any (yes/ask/no); When using up, the suggest_config configuration will be copied to the home directory of the user to be loaded on every omni call [default: no] [default missing value: ask] [possible values: yes, ask, no]"
+    },
+    {
+      "name": "--upgrade",
+      "desc": "Whether we should upgrade the resources when the currently-installed version already matches version constraints. If false, this also means that if an already installed version for another repository matches version contraints, we will avoid downloading and building a more recent version"
+    }
+  ]
+}
