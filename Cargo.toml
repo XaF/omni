@@ -92,3 +92,22 @@ zip-extract = "0.2.1"
 
 [package.metadata.cargo-machete]
 ignored = ["libz-sys", "openssl"]
+
+[package.metadata.binstall]
+pkg-fmt = "tgz"
+
+[package.metadata.binstall.overrides.x86_64-apple-darwin]
+pkg-url = "{ repo }/releases/download/v{ version }/{ name }-{ version }-x86_64-darwin.tar.gz"
+checksum-url = "{ repo }/releases/download/v{ version }/{ name }-{ version }-x86_64-darwin.sha256"
+
+[package.metadata.binstall.overrides.aarch64-apple-darwin]
+pkg-url = "{ repo }/releases/download/v{ version }/{ name }-{ version }-arm64-darwin.tar.gz"
+checksum-url = "{ repo }/releases/download/v{ version }/{ name }-{ version }-arm64-darwin.sha256"
+
+[package.metadata.binstall.overrides.x86_64-unknown-linux-gnu]
+pkg-url = "{ repo }/releases/download/v{ version }/{ name }-{ version }-x86_64-linux.tar.gz"
+checksum-url = "{ repo }/releases/download/v{ version }/{ name }-{ version }-x86_64-linux.sha256"
+
+[package.metadata.binstall.overrides.aarch64-unknown-linux-gnu]
+pkg-url = "{ repo }/releases/download/v{ version }/{ name }-{ version }-arm64-linux.tar.gz"
+checksum-url = "{ repo }/releases/download/v{ version }/{ name }-{ version }-arm64-linux.sha256"
