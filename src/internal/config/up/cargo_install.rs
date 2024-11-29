@@ -1355,9 +1355,22 @@ mod tests {
             );
         }
 
+        #[test]
+        fn with_build() {
+            test_install_crate(
+                TestOptions::default().version("2.0.0+build"),
+                UpConfigCargoInstall {
+                    crate_name: "test-crate".to_string(),
+                    build: true,
+                    ..UpConfigCargoInstall::default()
+                },
+            );
+        }
+
         struct TestOptions {
             expected_version: Option<String>,
             list_versions: bool,
+            versions: CratesApiVersions,
         }
 
         impl Default for TestOptions {
@@ -1365,6 +1378,30 @@ mod tests {
                 TestOptions {
                     expected_version: None,
                     list_versions: true,
+                    versions: CratesApiVersions {
+                        versions: vec![
+                            CratesApiVersion {
+                                num: "1.0.0".to_string(),
+                                yanked: false,
+                            },
+                            CratesApiVersion {
+                                num: "1.2.3".to_string(),
+                                yanked: false,
+                            },
+                            CratesApiVersion {
+                                num: "2.0.0-alpha".to_string(),
+                                yanked: false,
+                            },
+                            CratesApiVersion {
+                                num: "2.0.0+build".to_string(),
+                                yanked: false,
+                            },
+                            CratesApiVersion {
+                                num: "3.0.0".to_string(),
+                                yanked: true,
+                            },
+                        ],
+                    },
                 }
             }
         }
@@ -1392,15 +1429,8 @@ mod tests {
                 };
 
                 // Mock the crates.io API response
-                let versions_response = format!(
-                    r#"{{
-                        "versions": [
-                            {{"num": "2.0.0-alpha", "yanked": false}},
-                            {{"num": "1.2.3", "yanked": false}},
-                            {{"num": "1.0.0", "yanked": false}}
-                        ]
-                    }}"#
-                );
+                let versions_response =
+                    serde_json::to_string(&test.versions).expect("failed to serialize versions");
 
                 let mock_versions = mock_server
                     .mock(
