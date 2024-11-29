@@ -124,14 +124,17 @@ impl GithubReleaseOperationCache {
     }
 
     pub fn cleanup(&self) -> Result<(), CacheManagerError> {
+        let config = global_config();
         let db = CacheManager::get();
 
-        let config = global_config();
-        let grace_period = config.cache.github_release.cleanup_after;
+        db.execute(
+            include_str!("database/sql/github_release_operation_cleanup_installed.sql"),
+            params![&config.cache.github_release.cleanup_after],
+        )?;
 
         db.execute(
-            include_str!("database/sql/github_release_operation_cleanup.sql"),
-            params![&grace_period],
+            include_str!("database/sql/github_release_operation_cleanup_versions.sql"),
+            params![&config.cache.github_release.versions_retention],
         )?;
 
         Ok(())
