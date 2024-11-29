@@ -69,7 +69,7 @@ self-replace = "1.5.0"
 semver = "1.0.23"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0.133"
-serde_yaml = "0.9"
+serde_yaml = { package = "serde_yml", version = "0.0.12" }
 sha1 = "0.10.6"
 sha2 = "0.10.8"
 shell-escape = "0.1.5"
