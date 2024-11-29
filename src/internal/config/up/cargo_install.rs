@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::os::unix::fs::PermissionsExt;
 use std::path::Path;
 use std::path::PathBuf;
 
@@ -1148,7 +1149,28 @@ impl UpConfigCargoInstall {
         )?;
 
         if !tmp_bin_path.exists() {
-            let msg = "failed to install (bin directory empty)".to_string();
+            let msg = "failed to install (bin directory was not created)".to_string();
+            progress_handler.error_with_message(msg.clone());
+            return Err(UpError::Exec(msg));
+        }
+
+        // Check that there is at least one binary in the bin directory
+        let bin_files = std::fs::read_dir(&tmp_bin_path).map_err(|err| {
+            let msg = format!("failed to read bin directory: {}", err);
+            progress_handler.error_with_message(msg.clone());
+            UpError::Exec(msg)
+        })?;
+        let found_binary = bin_files
+            .filter_map(|entry| entry.ok())
+            .filter(|entry| entry.file_type().map(|ft| ft.is_file()).unwrap_or(false))
+            .any(|entry| {
+                entry
+                    .metadata()
+                    .map(|metadata| metadata.permissions().mode() & 0o111 != 0)
+                    .unwrap_or(false)
+            });
+        if !found_binary {
+            let msg = "failed to install (no binary found in bin directory)".to_string();
             progress_handler.error_with_message(msg.clone());
             return Err(UpError::Exec(msg));
         }
@@ -1311,7 +1333,7 @@ mod tests {
         #[test]
         fn specific_version() {
             test_install_crate(
-                TestOptions::default().version("1.0.0"),
+                TestOptions::default().version("1.0.0").no_list(),
                 UpConfigCargoInstall {
                     crate_name: "test-crate".to_string(),
                     version: Some("1.0.0".to_string()),
@@ -1333,14 +1355,28 @@ mod tests {
             );
         }
 
-        #[derive(Default)]
         struct TestOptions {
             expected_version: Option<String>,
+            list_versions: bool,
+        }
+
+        impl Default for TestOptions {
+            fn default() -> Self {
+                TestOptions {
+                    expected_version: None,
+                    list_versions: true,
+                }
+            }
         }
 
         impl TestOptions {
             fn version(mut self, version: &str) -> Self {
                 self.expected_version = Some(version.to_string());
+                self
+            }
+
+            fn no_list(mut self) -> Self {
+                self.list_versions = false;
                 self
             }
         }
@@ -1378,7 +1414,43 @@ mod tests {
                 // Create a temporary cargo binary for testing
                 let temp_dir = tempfile::tempdir().unwrap();
                 let cargo_bin = temp_dir.path().join("cargo");
-                std::fs::write(&cargo_bin, "#!/bin/sh\nexit 0").unwrap();
+                let script = r#"#!/usr/bin/env bash
+                    echo "Running mock cargo with args: $@" >&2
+                    if [[ "$1" != "install" ]]; then
+                        echo "Nothing to do" >&2
+                        exit 0
+                    fi
+                    next_arg_is_root=false
+                    for arg in "$@"; do
+                        echo "Processing arg: $arg" >&2
+                        if [[ "$next_arg_is_root" == "true" ]]; then
+                            root_dir="$arg"
+                            next_arg_is_root=false
+                            break
+                        fi
+                        case "$arg" in
+                            --root=*)
+                                root_dir="${arg#--root=}"
+                                break
+                                ;;
+                            --root)
+                                next_arg_is_root=true
+                                ;;
+                        esac
+                    done
+                    if [[ -z "$root_dir" ]]; then
+                        echo "No root directory provided" >&2
+                        exit 1
+                    fi
+                    echo "Creating bin directory in $root_dir" >&2
+                    mkdir -p "$root_dir/bin"
+                    new_bin="$root_dir/bin/fakecrate"
+                    touch "$new_bin"
+                    chmod +x "$new_bin"
+                    exit 0
+                "#;
+
+                std::fs::write(&cargo_bin, script).expect("failed to write cargo script");
                 std::fs::set_permissions(&cargo_bin, std::fs::Permissions::from_mode(0o755))
                     .expect("failed to set permissions");
 
@@ -1389,7 +1461,14 @@ mod tests {
                 let result = config.up(&options, &mut environment, &progress_handler, &cargo_bin);
 
                 assert!(result.is_ok(), "result should be ok, got {:?}", result);
-                mock_versions.assert();
+                if test.list_versions {
+                    mock_versions.assert();
+                } else {
+                    assert!(
+                        !mock_versions.matched(),
+                        "should not have called the API to list versions"
+                    );
+                }
 
                 // Verify the installed version
                 if let Some(expected_version) = test.expected_version {

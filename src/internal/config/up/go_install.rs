@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::os::unix::fs::PermissionsExt;
 use std::path::Path;
 use std::path::PathBuf;
 
@@ -1122,6 +1123,33 @@ impl UpConfigGoInstall {
 
         if !tmp_bin_path.exists() {
             let msg = "failed to install (bin directory empty)".to_string();
+            progress_handler.error_with_message(msg.clone());
+            return Err(UpError::Exec(msg));
+        }
+
+        if !tmp_bin_path.exists() {
+            let msg = "failed to install (bin directory was not created)".to_string();
+            progress_handler.error_with_message(msg.clone());
+            return Err(UpError::Exec(msg));
+        }
+
+        // Check that there is at least one binary in the bin directory
+        let bin_files = std::fs::read_dir(&tmp_bin_path).map_err(|err| {
+            let msg = format!("failed to read bin directory: {}", err);
+            progress_handler.error_with_message(msg.clone());
+            UpError::Exec(msg)
+        })?;
+        let found_binary = bin_files
+            .filter_map(|entry| entry.ok())
+            .filter(|entry| entry.file_type().map(|ft| ft.is_file()).unwrap_or(false))
+            .any(|entry| {
+                entry
+                    .metadata()
+                    .map(|metadata| metadata.permissions().mode() & 0o111 != 0)
+                    .unwrap_or(false)
+            });
+        if !found_binary {
+            let msg = "failed to install (no binary found in bin directory)".to_string();
             progress_handler.error_with_message(msg.clone());
             return Err(UpError::Exec(msg));
         }
