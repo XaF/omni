@@ -1786,7 +1786,7 @@ pub fn parse_arg_name(arg_name: &str) -> (Vec<String>, SyntaxOptArgType, Vec<Str
     let def_parts: Vec<&str> = arg_name.split(',').map(str::trim).collect();
 
     for part in def_parts {
-        let name_parts = part.splitn(2, ' ').collect::<Vec<&str>>();
+        let name_parts = part.splitn(2, [' ', '\t', '=']).collect::<Vec<&str>>();
         if name_parts.is_empty() {
             continue;
         }
@@ -1800,12 +1800,12 @@ pub fn parse_arg_name(arg_name: &str) -> (Vec<String>, SyntaxOptArgType, Vec<Str
 
         if name.starts_with('-') {
             if name_parts.len() > 1 {
-                placeholders.push(
+                placeholders.extend(
                     name_parts[1]
                         .split_whitespace()
                         .map(|s| s.trim().to_string())
                         .filter(|s| !s.is_empty())
-                        .collect(),
+                        .collect::<Vec<String>>(),
                 );
             }
 
@@ -4963,6 +4963,148 @@ mod tests {
 
                 check_expectations(&syntax, &expectations);
             }
+        }
+    }
+
+    mod parse_arg_name {
+        use super::*;
+
+        #[test]
+        fn test_simple_positional() {
+            let (names, arg_type, placeholders, leftovers) = parse_arg_name("arg");
+            assert_eq!(names, vec!["arg"]);
+            assert_eq!(arg_type, SyntaxOptArgType::String);
+            assert!(placeholders.is_empty());
+            assert!(!leftovers);
+        }
+
+        #[test]
+        fn test_short_option() {
+            let (names, arg_type, placeholders, leftovers) = parse_arg_name("-a");
+            assert_eq!(names, vec!["-a"]);
+            assert_eq!(arg_type, SyntaxOptArgType::String);
+            assert!(placeholders.is_empty());
+            assert!(!leftovers);
+        }
+
+        #[test]
+        fn test_long_option() {
+            let (names, arg_type, placeholders, leftovers) = parse_arg_name("--option");
+            assert_eq!(names, vec!["--option"]);
+            assert_eq!(arg_type, SyntaxOptArgType::String);
+            assert!(placeholders.is_empty());
+            assert!(!leftovers);
+        }
+
+        #[test]
+        fn test_multiple_names() {
+            let (names, arg_type, placeholders, leftovers) = parse_arg_name("-a, --alpha");
+            assert_eq!(names, vec!["-a", "--alpha"]);
+            assert_eq!(arg_type, SyntaxOptArgType::String);
+            assert!(placeholders.is_empty());
+            assert!(!leftovers);
+        }
+
+        #[test]
+        fn test_counter_option() {
+            let (names, arg_type, placeholders, leftovers) = parse_arg_name("--count...");
+            assert_eq!(names, vec!["--count"]);
+            assert_eq!(arg_type, SyntaxOptArgType::Counter);
+            assert!(placeholders.is_empty());
+            assert!(!leftovers);
+        }
+
+        #[test]
+        fn test_positional_with_placeholder() {
+            let (names, arg_type, placeholders, leftovers) = parse_arg_name("arg PLACEHOLDER");
+            assert_eq!(names, vec!["arg"]);
+            assert_eq!(arg_type, SyntaxOptArgType::String);
+            assert_eq!(placeholders, vec!["PLACEHOLDER"]);
+            assert!(!leftovers);
+        }
+
+        #[test]
+        fn test_option_with_placeholder() {
+            let (names, arg_type, placeholders, leftovers) = parse_arg_name("--option VALUE");
+            assert_eq!(names, vec!["--option"]);
+            assert_eq!(arg_type, SyntaxOptArgType::String);
+            assert_eq!(placeholders, vec!["VALUE"]);
+            assert!(!leftovers);
+        }
+
+        #[test]
+        fn test_multiple_placeholders() {
+            let (names, arg_type, placeholders, leftovers) =
+                parse_arg_name("--option FIRST SECOND");
+            assert_eq!(names, vec!["--option"]);
+            assert_eq!(arg_type, SyntaxOptArgType::String);
+            assert_eq!(placeholders, vec!["FIRST", "SECOND"]);
+            assert!(!leftovers);
+        }
+
+        #[test]
+        fn test_leftovers_positional() {
+            let (names, arg_type, placeholders, leftovers) = parse_arg_name("args...");
+            assert_eq!(names, vec!["args"]);
+            assert_eq!(arg_type, SyntaxOptArgType::String);
+            assert!(placeholders.is_empty());
+            assert!(leftovers);
+        }
+
+        #[test]
+        fn test_multiple_names_with_placeholder_at_the_end() {
+            let (names, arg_type, placeholders, leftovers) = parse_arg_name("-f, --file FILENAME");
+            assert_eq!(names, vec!["-f", "--file"]);
+            assert_eq!(arg_type, SyntaxOptArgType::String);
+            assert_eq!(placeholders, vec!["FILENAME"]);
+            assert!(!leftovers);
+        }
+
+        #[test]
+        fn test_multiple_names_with_placeholders_for_each() {
+            let (names, arg_type, placeholders, leftovers) =
+                parse_arg_name("-f FILENAME1, --file FILENAME2");
+            assert_eq!(names, vec!["-f", "--file"]);
+            assert_eq!(arg_type, SyntaxOptArgType::String);
+            assert_eq!(placeholders, vec!["FILENAME1", "FILENAME2"]);
+            assert!(!leftovers);
+        }
+
+        #[test]
+        fn test_equals_separator() {
+            let (names, arg_type, placeholders, leftovers) = parse_arg_name("--option=VALUE");
+            assert_eq!(names, vec!["--option"]);
+            assert_eq!(arg_type, SyntaxOptArgType::String);
+            assert_eq!(placeholders, vec!["VALUE"]);
+            assert!(!leftovers);
+        }
+
+        #[test]
+        fn test_empty_input() {
+            let (names, arg_type, placeholders, leftovers) = parse_arg_name("");
+            assert_eq!(names, vec![""]);
+            assert_eq!(arg_type, SyntaxOptArgType::String);
+            assert!(placeholders.is_empty());
+            assert!(!leftovers);
+        }
+
+        #[test]
+        fn test_whitespace_handling() {
+            let (names, arg_type, placeholders, leftovers) = parse_arg_name("  --option  VALUE  ");
+            assert_eq!(names, vec!["--option"]);
+            assert_eq!(arg_type, SyntaxOptArgType::String);
+            assert_eq!(placeholders, vec!["VALUE"]);
+            assert!(!leftovers);
+        }
+
+        #[test]
+        fn test_multiple_names_whitespace() {
+            let (names, arg_type, placeholders, leftovers) =
+                parse_arg_name("-f,   --file,  -F  FILENAME");
+            assert_eq!(names, vec!["-f", "--file", "-F"]);
+            assert_eq!(arg_type, SyntaxOptArgType::String);
+            assert_eq!(placeholders, vec!["FILENAME"]);
+            assert!(!leftovers);
         }
     }
 }
