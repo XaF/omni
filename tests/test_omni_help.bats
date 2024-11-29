@@ -33,10 +33,7 @@ setup() {
 
 # bats test_tags=generate,omni:help,omni:help:self,omni:help:json
 @test "omni help shows in JSON the help message with default omni commands" {
-# Avoiding any shorter-than-expected wrapping
-  export COLUMNS=1000
-
-    validate_test_output omni/help-json.txt skip_lines=1 omni help --output json
+  validate_test_output omni/help-json.txt omni help --output json
 }
 
 # bats test_tags=generate,omni:help,omni:help:self
@@ -49,7 +46,7 @@ setup() {
 
 # bats test_tags=generate,omni:help,omni:help:self,omni:help:json
 @test "omni help shows in JSON the help message with all omni commands when using --unfold" {
-  validate_test_output omni/help-unfold-json.txt skip_lines=1 omni help --unfold --output json
+  validate_test_output omni/help-unfold-json.txt omni help --unfold --output json
 }
 
 # bats test_tags=generate,omni:help

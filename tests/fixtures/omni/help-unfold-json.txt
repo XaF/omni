@@ -1,3 +1,4 @@
+{
   "usage": "omni <command> [options] ARG...",
   "subcommands": [
     {
