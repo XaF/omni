@@ -1,22 +1,22 @@
 ---
-description: Configuration of the `go-install` kind of `up` parameter
+description: Configuration of the `cargo-install` kind of `up` parameter
 ---
 
-# `go-install` operation
+# `cargo-install` operation
 
-Install a tool through `go install`.
+Install a tool through `cargo install`.
 
 This is done in a way that is shareable across work directories managed by omni; i.e. once a tool is installed in a given version, if required from another work directory it will not need to be reinstalled.
 
-This will automatically install a version of [`go`](go) if none is available through omni to run the `go install` command, but won't add it to the dynamic environment.
+This will automatically install a version of [`rust`](rust) if none is available through omni to run the `cargo install` command, but won't add it to the dynamic environment.
 
 ## Parameters
 
 | Parameter        | Type      | Description                                           |
 |------------------|-----------|-------------------------------------------------------|
-| `path` | string | The `<path>` part of `go install <path>[@<version>]` |
+| `crate` | string | The name of the crate to install |
 | `version` | string | The version to install; see [version handling](#version-handling) below for more details. |
-| `exact` | boolean | Whether to match the exact version or not; if set to `true`, `go install <path>@<version>` will be called directly instead of listing the available versions and following the [version handling](#version-handling) rules *(default: `false`)* |
+| `exact` | boolean | Whether to match the exact version or not; if set to `true`, `cargo install <crate>@<version>` will be called directly instead of listing the available versions and following the [version handling](#version-handling) rules *(default: `false`)* |
 | `upgrade` | boolean | whether or not to always upgrade to the most up to date matching release, even if an already-installed version matches the requirements *(default: false)* |
 | `prerelease` | boolean | Whether to download a prerelease version or only match stable releases; this will also apply to versions with prerelease specification, e.g. `1.2.3-alpha`. Ignored when `exact` is set to `true` *(default: `false`)* |
 | `build` | boolean | Whether to download a version with build specification, e.g. `1.2.3+build`. Ignored when `exact` is set to `true` *(default: `false`)* |
@@ -48,52 +48,52 @@ The latest version satisfying the requirements will be installed.
 ```yaml
 up:
   # Will error out since no repository is provided
-  - go-install
+  - cargo-install
 
-  # Will install the latest release of `protoc-gen-go`
-  - go-install: google.golang.org/protobuf/cmd/protoc-gen-go
+  # Will install the latest release of `ripgrep`
+  - cargo-install: ripgrep
 
   # Will also install the latest version
-  - go-install:
-      path: google.golang.org/protobuf/cmd/protoc-gen-go
+  - cargo-install:
+      crate: ripgrep
       version: latest
 
-  # Will install any version starting with 1.27
-  - go-install:
-      path: google.golang.org/protobuf/cmd/protoc-gen-go
-      version: 1.27
+  # Will install any version starting with 14.0
+  - cargo-install:
+      crate: ripgrep
+      version: 14.0
 
-  # Will install any version starting with 1
-  - go-install:
-      path: google.golang.org/protobuf/cmd/protoc-gen-go
-      version: 1
+  # Will install any version starting with 14
+  - cargo-install:
+      crate: ripgrep
+      version: 14
 
   # Full specification of the parameter to identify the version;
-  # this will install any version starting with 1.27.0
-  - go-install:
-      path: google.golang.org/protobuf/cmd/protoc-gen-go
-      version: 1.27.0
+  # this will install any version starting with 14.0.1
+  - cargo-install:
+      crate: ripgrep
+      version: 14.0.1
 
-  # Will install any version starting with 1, including
+  # Will install any version starting with 14, including
   # any pre-release versions
-  - go-install:
-      path: google.golang.org/protobuf/cmd/protoc-gen-go
-      version: 1
+  - cargo-install:
+      path: ripgrep
+      version: 14
       prerelease: true
 
   # Will install all the specified releases
-  - go-install:
-      google.golang.org/protobuf/cmd/protoc-gen-go: 1.27.0
-      google.golang.org/grpc/cmd/protoc-gen-go-grpc:
-        version: 1.5.0
-        prerelease: true
+  - cargo-install:
+      ripgrep: 14.0.1
+      exa:
+        version: 0.9.0
+        build: true
 
   # Will install all the listed releases
-  - go-install:
-      - google.golang.org/protobuf/cmd/protoc-gen-go@1.27.0
-      - google.golang.org/grpc/cmd/protoc-gen-go: 1.27.1
-      - path: google.golang.org/grpc/cmd/protoc-gen-go-grpc
-        version: 1.5.0
+  - cargo-install:
+      - ripgrep@14.0.1
+      - exa: 0.9.0
+      - crate: bat
+        version: 0.15.0
 ```
 
 ## Dynamic environment
