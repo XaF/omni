@@ -459,14 +459,19 @@ impl UpConfigAsdfBase {
     }
 
     pub fn commit(&self, _options: &UpOptions, env_version_id: &str) -> Result<(), UpError> {
-        let version = match self.version() {
-            Ok(version) => version,
-            Err(_err) => return Err(UpError::Exec("failed to get version".to_string())),
+        let versions = if let Some(version) = self.actual_version.get() {
+            vec![version]
+        } else if let Some(versions) = self.actual_versions.get() {
+            versions.iter().map(|(version, _)| version).collect()
+        } else {
+            return Err(UpError::Exec("failed to get version".to_string()));
         };
 
         let cache = AsdfOperationCache::get();
-        if let Err(err) = cache.add_required_by(env_version_id, &self.tool, &version) {
-            return Err(UpError::Cache(err.to_string()));
+        for version in versions.iter() {
+            if let Err(err) = cache.add_required_by(env_version_id, &self.tool, version) {
+                return Err(UpError::Cache(err.to_string()));
+            }
         }
 
         Ok(())
