@@ -50,7 +50,7 @@ up:
 EOF
 
   go_version=$(asdf_tool_latest_version golang)
-  add_fakebin "$(asdf_tool_path golang "$go_version")/bin/go"
+  add_fakebin "$(asdf_tool_path golang "$go_version")/go/bin/go"
   add_brew_golang_calls
   add_asdf_golang_calls version="$go_version"
 
@@ -73,7 +73,7 @@ up:
 EOF
 
   go_version=$(asdf_tool_latest_version golang)
-  add_fakebin "$(asdf_tool_path golang "$go_version")/bin/go"
+  add_fakebin "$(asdf_tool_path golang "$go_version")/go/bin/go"
   add_brew_golang_calls
   add_asdf_golang_calls version="$go_version"
 
@@ -100,7 +100,7 @@ up:
 EOF
 
   go_version=$(asdf_tool_latest_version golang)
-  add_fakebin "$(asdf_tool_path golang "$go_version")/bin/go"
+  add_fakebin "$(asdf_tool_path golang "$go_version")/go/bin/go"
   add_brew_golang_calls
   add_asdf_golang_calls version="$go_version"
 
@@ -124,7 +124,7 @@ up:
 EOF
 
   go_version=$(asdf_tool_latest_version golang)
-  add_fakebin "$(asdf_tool_path golang "$go_version")/bin/go"
+  add_fakebin "$(asdf_tool_path golang "$go_version")/go/bin/go"
   add_brew_golang_calls
   add_asdf_golang_calls version="$go_version"
 
@@ -148,7 +148,7 @@ up:
 EOF
 
   go_version=$(asdf_tool_latest_version golang)
-  add_fakebin "$(asdf_tool_path golang "$go_version")/bin/go"
+  add_fakebin "$(asdf_tool_path golang "$go_version")/go/bin/go"
   add_brew_golang_calls
   add_asdf_golang_calls version="$go_version"
 
@@ -173,7 +173,7 @@ up:
 EOF
 
   go_version=$(asdf_tool_latest_version golang)
-  add_fakebin "$(asdf_tool_path golang "$go_version")/bin/go"
+  add_fakebin "$(asdf_tool_path golang "$go_version")/go/bin/go"
   add_brew_golang_calls
   add_asdf_golang_calls version="$go_version"
 
@@ -196,7 +196,7 @@ up:
 EOF
 
   go_version=$(asdf_tool_latest_version golang)
-  add_fakebin "$(asdf_tool_path golang "$go_version")/bin/go"
+  add_fakebin "$(asdf_tool_path golang "$go_version")/go/bin/go"
   add_brew_golang_calls
   add_asdf_golang_calls version="$go_version"
 
@@ -218,7 +218,7 @@ up:
 EOF
 
   go_version=$(asdf_tool_latest_version golang)
-  add_fakebin "$(asdf_tool_path golang "$go_version")/bin/go"
+  add_fakebin "$(asdf_tool_path golang "$go_version")/go/bin/go"
   add_brew_golang_calls
   add_asdf_golang_calls version="$go_version"
 
@@ -249,7 +249,7 @@ up:
 EOF
 
   go_version=$(asdf_tool_latest_version golang)
-  add_fakebin "$(asdf_tool_path golang "$go_version")/bin/go"
+  add_fakebin "$(asdf_tool_path golang "$go_version")/go/bin/go"
   add_brew_golang_calls
   add_asdf_golang_calls version="$go_version"
 
@@ -282,7 +282,7 @@ up:
 EOF
 
   go_version=$(asdf_tool_latest_version golang)
-  add_fakebin "$(asdf_tool_path golang "$go_version")/bin/go"
+  add_fakebin "$(asdf_tool_path golang "$go_version")/go/bin/go"
   add_brew_golang_calls
   add_asdf_golang_calls version="$go_version"
 
