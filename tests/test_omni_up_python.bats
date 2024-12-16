@@ -175,7 +175,7 @@ up:
 EOF
 
   add_brew_python_calls
-  add_asdf_python_calls plugin_installed=true
+  add_asdf_python_calls plugin_list=installed
 
   run omni up --trust 3>&-
   echo "STATUS: $status"
@@ -562,3 +562,63 @@ EOF
   [ "$status" -eq 0 ]
 }
 
+# bats test_tags=omni:up,omni:up:python
+@test "omni up python operation (auto) with only the root directory" {
+  cat > .omni.yaml <<EOF
+up:
+  - python: auto
+EOF
+
+  echo "3.11.9" > .python-version
+
+  add_brew_python_calls
+  add_asdf_python_calls version=3.11.9
+
+  run omni up --trust 3>&-
+  echo "STATUS: $status"
+  echo "OUTPUT: $output"
+  [ "$status" -eq 0 ]
+}
+
+# bats test_tags=omni:up,omni:up:python
+@test "omni up python operation (auto) with only a subdirectory" {
+  cat > .omni.yaml <<EOF
+up:
+  - python: auto
+EOF
+
+  mkdir subdir
+  echo "3.11.9" > subdir/.python-version
+
+  add_brew_python_calls
+  add_asdf_python_calls version=3.11.9 subdir=true
+
+  run omni up --trust 3>&-
+  echo "STATUS: $status"
+  echo "OUTPUT: $output"
+  [ "$status" -eq 0 ]
+}
+
+# bats test_tags=omni:up,omni:up:python
+@test "omni up python operation (auto) with multiple directories" {
+  cat > .omni.yaml <<EOF
+up:
+  - python: auto
+EOF
+
+  echo "3.12.0" > .python-version
+  mkdir subdir1
+  echo "3.11.7" > subdir1/.python-version
+  mkdir subdir2
+  echo "python 3.11.9" > subdir2/.tool-versions
+
+  add_brew_python_calls
+  add_asdf_python_calls version=3.11.7 subdir=true
+  add_asdf_python_calls version=3.11.9 subdir=true list_versions=false asdf_update=false plugin_list=skip
+  add_asdf_python_calls version=3.12.0 list_versions=false asdf_update=false plugin_list=skip
+
+  run omni up --trust 3>&-
+  echo "STATUS: $status"
+  echo "OUTPUT: $output"
+  [ "$status" -eq 0 ]
+}

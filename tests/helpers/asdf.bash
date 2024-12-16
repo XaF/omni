@@ -35,7 +35,7 @@ add_asdf_tool_calls() {
   local latest_version=
   local version="latest"
   local fallback_version=
-  local plugin_installed=false
+  local plugin_list="not-installed"
   local installed=false
   local others_installed=false
   local venv=false
@@ -43,6 +43,8 @@ add_asdf_tool_calls() {
   local list_versions=true
   local upgrade=false
   local no_upgrade_installed=false
+  local subdir=false
+  local asdf_update=true
 
   for arg in "$@"; do
     case $arg in
@@ -62,8 +64,8 @@ add_asdf_tool_calls() {
         fallback_version="${arg#fallback_version=}"
         shift
         ;;
-      plugin_installed=*)
-        plugin_installed="${arg#plugin_installed=}"
+      plugin_list=*)
+        plugin_list="${arg#plugin_list=}"
         shift
         ;;
       installed=*)
@@ -92,6 +94,14 @@ add_asdf_tool_calls() {
         ;;
       no_upgrade_installed=*)
         no_upgrade_installed="${arg#no_upgrade_installed=}"
+        shift
+        ;;
+      subdir=*)
+        subdir="${arg#subdir=}"
+        shift
+        ;;
+      asdf_update=*)
+        asdf_update="${arg#asdf_update=}"
         shift
         ;;
       *)
@@ -125,9 +135,13 @@ add_asdf_tool_calls() {
     perl -pe 's/{{ UPDATED_AT }}/'"${date}"'/g' "${PROJECT_DIR}/tests/fixtures/asdf_operation_cache.json" > "${HOME}/.cache/omni/asdf_operation.json"
   fi
 
-  add_command asdf update
+  if [ "$asdf_update" = "true" ]; then
+    add_command asdf update
+  fi
 
-  if [ "$plugin_installed" = "true" ]; then
+  if [ "$plugin_list" = "skip" ]; then
+    : # Do nothing
+  elif [ "$plugin_list" = "not-installed" ]; then
     add_command asdf plugin list
     add_command asdf plugin add ${tool}
   else
@@ -198,7 +212,11 @@ EOF
 
   if [ "$venv" = "true" ]; then
     add_fakebin "${HOME}/.local/share/omni/asdf/installs/${tool}/${version}/bin/${tool}"
-    add_command ${tool} -m venv "regex:${HOME}/\.local/share/omni/wd/.*/${tool}/${version}/root"
+    sub=root
+    if [ "$subdir" = "true" ]; then
+      sub="[^ /]+"
+    fi
+    add_command ${tool} -m venv "regex:${HOME}/\.local/share/omni/wd/[^ /]+/${tool}/${version}/${sub}"
   fi
 }
 
