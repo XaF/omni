@@ -210,7 +210,7 @@ impl UpConfigGoInstalls {
 
         let installed_version = go.version()?;
         let install_path = PathBuf::from(asdf_tool_path("golang", &installed_version));
-        let go_bin = install_path.join("bin").join("go");
+        let go_bin = install_path.join("go").join("bin").join("go");
 
         Ok(go_bin)
     }
