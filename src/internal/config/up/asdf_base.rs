@@ -122,38 +122,14 @@ fn install_asdf(progress_handler: &dyn ProgressHandler) -> Result<(), UpError> {
         git_clone.arg("https://github.com/asdf-vm/asdf.git");
         git_clone.arg(asdf_path());
         git_clone.arg("--branch");
-        // We hardcode the version we initially get, but since we update asdf right after,
-        // and then update it on every run, this is not _this_ version that will keep being
-        // used, we just need "one version" that works well with updating after.
-        git_clone.arg("v0.12.0");
+        // We hardcode the version we get, and 0.14.1 is the latest version compatible with
+        // the current use of asdf by omni; this needs a rewrite since asdf 0.15.0 is now
+        // rewritten in golang entirely
+        git_clone.arg("v0.14.1");
         git_clone.stdout(std::process::Stdio::piped());
         git_clone.stderr(std::process::Stdio::piped());
 
         run_progress(&mut git_clone, Some(progress_handler), RunConfig::default())?;
-    }
-
-    update_asdf(progress_handler)
-}
-
-fn update_asdf(progress_handler: &dyn ProgressHandler) -> Result<(), UpError> {
-    let cache = AsdfOperationCache::get();
-    if !cache.should_update_asdf() {
-        return Ok(());
-    }
-
-    progress_handler.progress("updating asdf".to_string());
-
-    let mut asdf_update = asdf_async_command();
-    asdf_update.arg("update");
-
-    run_progress(
-        &mut asdf_update,
-        Some(progress_handler),
-        RunConfig::default(),
-    )?;
-
-    if let Err(err) = cache.updated_asdf() {
-        return Err(UpError::Cache(err.to_string()));
     }
 
     Ok(())

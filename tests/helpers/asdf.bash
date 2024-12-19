@@ -135,10 +135,6 @@ add_asdf_tool_calls() {
     perl -pe 's/{{ UPDATED_AT }}/'"${date}"'/g' "${PROJECT_DIR}/tests/fixtures/asdf_operation_cache.json" > "${HOME}/.cache/omni/asdf_operation.json"
   fi
 
-  if [ "$asdf_update" = "true" ]; then
-    add_command asdf update
-  fi
-
   if [ "$plugin_list" = "skip" ]; then
     : # Do nothing
   elif [ "$plugin_list" = "not-installed" ]; then

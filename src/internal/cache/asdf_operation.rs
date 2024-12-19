@@ -21,6 +21,7 @@ impl AsdfOperationCache {
         Self {}
     }
 
+    #[allow(dead_code)]
     pub fn updated_asdf(&self) -> Result<bool, CacheManagerError> {
         let db = CacheManager::get();
         let updated = db.execute(
@@ -52,6 +53,7 @@ impl AsdfOperationCache {
         Ok(updated > 0)
     }
 
+    #[allow(dead_code)]
     pub fn should_update_asdf(&self) -> bool {
         let db = CacheManager::get();
         let should_update: bool = db
