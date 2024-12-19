@@ -1,6 +1,7 @@
 use serde::Deserialize;
 use serde::Serialize;
 
+use crate::internal::config::parser::ConfigErrorKind;
 use crate::internal::config::parser::MatchSkipPromptIfConfig;
 use crate::internal::config::ConfigValue;
 
@@ -15,25 +16,38 @@ impl CdConfig {
     const DEFAULT_FAST_SEARCH: bool = true;
     const DEFAULT_PATH_MATCH_MIN_SCORE: f64 = 0.12;
 
-    pub(super) fn from_config_value(config_value: Option<ConfigValue>) -> Self {
-        if config_value.is_none() {
-            return Self {
-                fast_search: Self::DEFAULT_FAST_SEARCH,
-                path_match_min_score: Self::DEFAULT_PATH_MATCH_MIN_SCORE,
-                path_match_skip_prompt_if: MatchSkipPromptIfConfig::default(),
-            };
-        }
-        let config_value = config_value.unwrap();
+    pub(super) fn from_config_value(
+        config_value: Option<ConfigValue>,
+        errors: &mut Vec<ConfigErrorKind>,
+    ) -> Self {
+        let config_value = match config_value {
+            Some(config_value) => config_value,
+            None => {
+                return Self {
+                    fast_search: Self::DEFAULT_FAST_SEARCH,
+                    path_match_min_score: Self::DEFAULT_PATH_MATCH_MIN_SCORE,
+                    path_match_skip_prompt_if: MatchSkipPromptIfConfig::default(),
+                }
+            }
+        };
 
         Self {
-            fast_search: config_value
-                .get_as_bool_forced("fast_search")
-                .unwrap_or(Self::DEFAULT_FAST_SEARCH),
-            path_match_min_score: config_value
-                .get_as_float("path_match_min_score")
-                .unwrap_or(Self::DEFAULT_PATH_MATCH_MIN_SCORE),
+            fast_search: config_value.get_as_bool_or_default(
+                "fast_search",
+                Self::DEFAULT_FAST_SEARCH,
+                "cd.fast_search",
+                errors,
+            ),
+            path_match_min_score: config_value.get_as_float_or_default(
+                "path_match_min_score",
+                Self::DEFAULT_PATH_MATCH_MIN_SCORE,
+                "cd.path_match_min_score",
+                errors,
+            ),
             path_match_skip_prompt_if: MatchSkipPromptIfConfig::from_config_value(
                 config_value.get("path_match_skip_prompt_if"),
+                "cd.path_match_skip_prompt_if",
+                errors,
             ),
         }
     }

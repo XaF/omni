@@ -1,6 +1,7 @@
 use serde::Deserialize;
 use serde::Serialize;
 
+use crate::internal::config::parser::ConfigErrorKind;
 use crate::internal::config::utils::parse_duration_or_default;
 use crate::internal::config::ConfigValue;
 
@@ -14,7 +15,10 @@ impl CloneConfig {
     const DEFAULT_AUTO_UP: bool = true;
     const DEFAULT_LS_REMOTE_TIMEOUT: u64 = 5;
 
-    pub(super) fn from_config_value(config_value: Option<ConfigValue>) -> Self {
+    pub(super) fn from_config_value(
+        config_value: Option<ConfigValue>,
+        errors: &mut Vec<ConfigErrorKind>,
+    ) -> Self {
         let config_value = match config_value {
             Some(config_value) => config_value,
             None => {
@@ -30,12 +34,17 @@ impl CloneConfig {
             config_value
                 .get_as_unsigned_integer("ls_remote_timeout_seconds")
                 .unwrap_or(Self::DEFAULT_LS_REMOTE_TIMEOUT),
+            "clone.ls_remote_timeout",
+            errors,
         );
 
         Self {
-            auto_up: config_value
-                .get_as_bool_forced("auto_up")
-                .unwrap_or(Self::DEFAULT_AUTO_UP),
+            auto_up: config_value.get_as_bool_or_default(
+                "auto_up",
+                Self::DEFAULT_AUTO_UP,
+                "clone.auto_up",
+                errors,
+            ),
             ls_remote_timeout,
         }
     }

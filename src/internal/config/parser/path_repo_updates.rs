@@ -3,6 +3,7 @@ use std::collections::HashMap;
 use serde::Deserialize;
 use serde::Serialize;
 
+use crate::internal::config::parser::ConfigErrorKind;
 use crate::internal::config::utils::parse_duration_or_default;
 use crate::internal::config::ConfigValue;
 use crate::internal::env::shell_is_interactive;
@@ -52,7 +53,10 @@ impl PathRepoUpdatesConfig {
     const DEFAULT_INTERVAL: u64 = 43200; // 12 hours
     const DEFAULT_REF_TYPE: &'static str = "branch";
 
-    pub(super) fn from_config_value(config_value: Option<ConfigValue>) -> Self {
+    pub(super) fn from_config_value(
+        config_value: Option<ConfigValue>,
+        errors: &mut Vec<ConfigErrorKind>,
+    ) -> Self {
         let config_value = match config_value {
             Some(config_value) => config_value,
             None => return Self::default(),
@@ -71,56 +75,118 @@ impl PathRepoUpdatesConfig {
         let pre_auth_timeout = parse_duration_or_default(
             config_value.get("pre_auth_timeout").as_ref(),
             Self::DEFAULT_PRE_AUTH_TIMEOUT,
+            "path_repo_updates.pre_auth_timeout",
+            errors,
         );
         let background_updates_timeout = parse_duration_or_default(
             config_value.get("background_updates_timeout").as_ref(),
             Self::DEFAULT_BACKGROUND_UPDATES_TIMEOUT,
+            "path_repo_updates.background_updates_timeout",
+            errors,
         );
         let interval = parse_duration_or_default(
             config_value.get("interval").as_ref(),
             Self::DEFAULT_INTERVAL,
+            "path_repo_updates.interval",
+            errors,
         );
 
-        let self_update = if let Some(value) = config_value.get_as_bool("self_update") {
-            PathRepoUpdatesSelfUpdateEnum::from_bool(value)
-        } else if let Some(value) = config_value.get_as_str("self_update") {
-            PathRepoUpdatesSelfUpdateEnum::from_str(&value)
-        } else if let Some(value) = config_value.get_as_integer("self_update") {
-            PathRepoUpdatesSelfUpdateEnum::from_int(value)
+        let self_update = if let Some(value) = config_value.get("self_update") {
+            if let Some(value) = value.as_bool() {
+                PathRepoUpdatesSelfUpdateEnum::from_bool(value)
+            } else if let Some(value) = value.as_str() {
+                // TODO: handle errors here ?
+                PathRepoUpdatesSelfUpdateEnum::from_str(&value)
+            } else if let Some(value) = value.as_integer() {
+                PathRepoUpdatesSelfUpdateEnum::from_int(value)
+            } else {
+                errors.push(ConfigErrorKind::ValueType {
+                    key: "path_repo_updates.self_update".to_string(),
+                    expected: "boolean, string, or integer".to_string(),
+                    found: value.as_serde_yaml(),
+                });
+                PathRepoUpdatesSelfUpdateEnum::default()
+            }
         } else {
             PathRepoUpdatesSelfUpdateEnum::default()
         };
 
-        let on_command_not_found =
-            if let Some(value) = config_value.get_as_bool("on_command_not_found") {
+        let on_command_not_found = if let Some(value) = config_value.get("on_command_not_found") {
+            if let Some(value) = value.as_bool() {
                 PathRepoUpdatesOnCommandNotFoundEnum::from_bool(value)
-            } else if let Some(value) = config_value.get_as_str("on_command_not_found") {
+            } else if let Some(value) = value.as_str() {
+                // TODO: handle errors here ?
                 PathRepoUpdatesOnCommandNotFoundEnum::from_str(&value)
-            } else if let Some(value) = config_value.get_as_integer("on_command_not_found") {
+            } else if let Some(value) = value.as_integer() {
                 PathRepoUpdatesOnCommandNotFoundEnum::from_int(value)
             } else {
+                errors.push(ConfigErrorKind::ValueType {
+                    key: "path_repo_updates.on_command_not_found".to_string(),
+                    expected: "boolean, string, or integer".to_string(),
+                    found: value.as_serde_yaml(),
+                });
                 PathRepoUpdatesOnCommandNotFoundEnum::default()
-            };
+            }
+        } else {
+            PathRepoUpdatesOnCommandNotFoundEnum::default()
+        };
+
+        let ref_type = if let Some(value) = config_value.get("ref_type") {
+            if let Some(value) = value.as_str() {
+                value.to_string()
+            } else {
+                errors.push(ConfigErrorKind::ValueType {
+                    key: "path_repo_updates.ref_type".to_string(),
+                    expected: "string".to_string(),
+                    found: value.as_serde_yaml(),
+                });
+                Self::DEFAULT_REF_TYPE.to_string()
+            }
+        } else {
+            Self::DEFAULT_REF_TYPE.to_string()
+        };
+
+        let ref_match = if let Some(value) = config_value.get("ref_match") {
+            if let Some(value) = value.as_str() {
+                Some(value.to_string())
+            } else {
+                errors.push(ConfigErrorKind::ValueType {
+                    key: "path_repo_updates.ref_match".to_string(),
+                    expected: "string".to_string(),
+                    found: value.as_serde_yaml(),
+                });
+                None
+            }
+        } else {
+            None
+        };
 
         Self {
-            enabled: config_value
-                .get_as_bool_forced("enabled")
-                .unwrap_or(Self::DEFAULT_ENABLED),
+            enabled: config_value.get_as_bool_or_default(
+                "enabled",
+                Self::DEFAULT_ENABLED,
+                "path_repo_updates.enabled",
+                errors,
+            ),
             self_update,
             on_command_not_found,
-            pre_auth: config_value
-                .get_as_bool_forced("pre_auth")
-                .unwrap_or(Self::DEFAULT_PRE_AUTH),
+            pre_auth: config_value.get_as_bool_or_default(
+                "pre_auth",
+                Self::DEFAULT_PRE_AUTH,
+                "path_repo_updates.pre_auth",
+                errors,
+            ),
             pre_auth_timeout,
-            background_updates: config_value
-                .get_as_bool_forced("background_updates")
-                .unwrap_or(Self::DEFAULT_BACKGROUND_UPDATES),
+            background_updates: config_value.get_as_bool_or_default(
+                "background_updates",
+                Self::DEFAULT_BACKGROUND_UPDATES,
+                "path_repo_updates.background_updates",
+                errors,
+            ),
             background_updates_timeout,
             interval,
-            ref_type: config_value
-                .get_as_str("ref_type")
-                .unwrap_or(Self::DEFAULT_REF_TYPE.to_string()),
-            ref_match: config_value.get_as_str("ref_match"),
+            ref_type,
+            ref_match,
             per_repo_config,
         }
     }
