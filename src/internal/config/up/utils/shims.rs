@@ -2,7 +2,6 @@ use std::collections::BTreeSet;
 use std::env;
 use std::fs;
 use std::os::unix::fs::symlink;
-use std::os::unix::fs::PermissionsExt;
 use std::os::unix::process::CommandExt;
 use std::path::PathBuf;
 use std::process::exit;
@@ -13,6 +12,7 @@ use crate::internal::config::up::utils::cleanup_path;
 use crate::internal::config::up::utils::directory::force_remove_all;
 use crate::internal::config::up::utils::ProgressHandler;
 use crate::internal::config::up::UpError;
+use crate::internal::config::utils::is_executable;
 use crate::internal::dynenv::update_dynamic_env_for_command;
 use crate::internal::env::current_exe;
 use crate::internal::env::data_home;
@@ -99,6 +99,24 @@ pub fn reshim(progress_handler: &dyn ProgressHandler) -> Result<Option<String>, 
         }
     }
 
+    // Use a glob to get the shims from the go-install tools
+    // bin directories
+    let go_glob = format!("{}/go-install/**/bin", data_home());
+    if let Ok(entries) = glob::glob(&go_glob) {
+        for entry in entries.flatten() {
+            shims_sources.push(entry);
+        }
+    }
+
+    // Use a glob to get the shims from the cargo-install tools
+    // bin directories
+    let cargo_glob = format!("{}/cargo-install/**/bin", data_home());
+    if let Ok(entries) = glob::glob(&cargo_glob) {
+        for entry in entries.flatten() {
+            shims_sources.push(entry);
+        }
+    }
+
     // Figure out the required shims
     let mut expected_shims = BTreeSet::new();
 
@@ -125,13 +143,7 @@ pub fn reshim(progress_handler: &dyn ProgressHandler) -> Result<Option<String>, 
                 continue;
             }
 
-            let metadata = match path.metadata() {
-                Ok(metadata) => metadata,
-                Err(_err) => continue,
-            };
-
-            let is_executable = metadata.permissions().mode() & 0o111 != 0;
-            if !is_executable {
+            if !is_executable(&path) {
                 continue;
             }
 
