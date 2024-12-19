@@ -1,6 +1,7 @@
 use serde::Deserialize;
 use serde::Serialize;
 
+use crate::internal::config::parser::errors::ConfigErrorKind;
 use crate::internal::config::ConfigScope;
 use crate::internal::config::ConfigValue;
 
@@ -26,7 +27,10 @@ impl AskPassConfig {
     const DEFAULT_ENABLE_GUI: bool = true;
     const DEFAULT_PREFER_GUI: bool = false;
 
-    pub(super) fn from_config_value(config_value: Option<ConfigValue>) -> Self {
+    pub(super) fn from_config_value(
+        config_value: Option<ConfigValue>,
+        errors: &mut Vec<ConfigErrorKind>,
+    ) -> Self {
         let config_value = match config_value {
             Some(config_value) => config_value,
             None => return Self::default(),
@@ -38,15 +42,24 @@ impl AskPassConfig {
         };
 
         Self {
-            enabled: config_value
-                .get_as_bool_forced("enabled")
-                .unwrap_or(Self::DEFAULT_ENABLED),
-            enable_gui: config_value
-                .get_as_bool_forced("enable_gui")
-                .unwrap_or(Self::DEFAULT_ENABLE_GUI),
-            prefer_gui: config_value
-                .get_as_bool_forced("prefer_gui")
-                .unwrap_or(Self::DEFAULT_PREFER_GUI),
+            enabled: config_value.get_as_bool_or_default(
+                "enabled",
+                Self::DEFAULT_ENABLED,
+                "askpass.enabled",
+                errors,
+            ),
+            enable_gui: config_value.get_as_bool_or_default(
+                "enable_gui",
+                Self::DEFAULT_ENABLE_GUI,
+                "askpass.enable_gui",
+                errors,
+            ),
+            prefer_gui: config_value.get_as_bool_or_default(
+                "prefer_gui",
+                Self::DEFAULT_PREFER_GUI,
+                "askpass.prefer_gui",
+                errors,
+            ),
         }
     }
 }

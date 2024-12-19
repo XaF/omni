@@ -1,5 +1,37 @@
 use std::fmt;
 
+use thiserror::Error;
+
+#[derive(Debug, Error, Clone)]
+pub enum ConfigErrorKind {
+    #[error("Value for key {key} should be a {expected} but found {found:?}")]
+    ValueType {
+        key: String,
+        expected: String,
+        found: serde_yaml::Value,
+    },
+    #[error("Value for key {key} should be one of {expected:?} but found {found:?}")]
+    InvalidValue {
+        key: String,
+        expected: Vec<String>,
+        found: serde_yaml::Value,
+    },
+    #[error("Value for key {key} is missing")]
+    MissingKey { key: String },
+    #[error(
+        "Value for key {key} should be a table with a single key-value pair but found: {found:?}"
+    )]
+    NotExactlyOneKeyInTable {
+        key: String,
+        found: serde_yaml::Value,
+    },
+    #[error("Value {found:?} for {key} is not supported in this context")]
+    UnsupportedValueInContext {
+        key: String,
+        found: serde_yaml::Value,
+    },
+}
+
 /// This is the error type for the `parse_args` function
 #[derive(Debug)]
 pub enum ParseArgsErrorKind {

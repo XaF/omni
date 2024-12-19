@@ -2,6 +2,7 @@ use serde::Deserialize;
 use serde::Serialize;
 
 use crate::internal::cache::utils::Empty;
+use crate::internal::config::parser::ConfigErrorKind;
 use crate::internal::config::ConfigValue;
 
 #[derive(Debug, Serialize, Deserialize, Clone, Default)]
@@ -17,7 +18,10 @@ impl Empty for GithubConfig {
 }
 
 impl GithubConfig {
-    pub(super) fn from_config_value(config_value: Option<ConfigValue>) -> Self {
+    pub(super) fn from_config_value(
+        config_value: Option<ConfigValue>,
+        errors: &mut Vec<ConfigErrorKind>,
+    ) -> Self {
         let config_value = match config_value {
             Some(config_value) => config_value,
             None => return Self::default(),
@@ -26,6 +30,8 @@ impl GithubConfig {
         Self {
             auth_list: GithubAuthConfigWithFilters::from_config_value_multi(
                 config_value.get("auth"),
+                "github.auth",
+                errors,
             ),
         }
     }
@@ -63,7 +69,11 @@ impl GithubAuthConfigWithFilters {
         self.repo.matches(repo) && self.hostname.matches(api_hostname)
     }
 
-    pub(super) fn from_config_value_multi(config_value: Option<ConfigValue>) -> Vec<Self> {
+    pub(super) fn from_config_value_multi(
+        config_value: Option<ConfigValue>,
+        error_key: &str,
+        errors: &mut Vec<ConfigErrorKind>,
+    ) -> Vec<Self> {
         let config_value = match config_value {
             Some(config_value) => config_value,
             None => return vec![],
@@ -72,20 +82,45 @@ impl GithubAuthConfigWithFilters {
         if let Some(array) = config_value.as_array() {
             array
                 .iter()
-                .map(GithubAuthConfigWithFilters::from_config_value)
+                .enumerate()
+                .map(|(index, item)| {
+                    GithubAuthConfigWithFilters::from_config_value(
+                        item,
+                        &format!("{}[{}]", error_key, index),
+                        errors,
+                    )
+                })
                 .collect()
         } else {
             vec![GithubAuthConfigWithFilters::from_config_value(
                 &config_value,
+                error_key,
+                errors,
             )]
         }
     }
 
-    fn from_config_value(config_value: &ConfigValue) -> Self {
+    fn from_config_value(
+        config_value: &ConfigValue,
+        error_key: &str,
+        errors: &mut Vec<ConfigErrorKind>,
+    ) -> Self {
         Self {
-            repo: StringFilter::from_config_value(config_value.get("repo")),
-            hostname: StringFilter::from_config_value(config_value.get("hostname")),
-            auth: GithubAuthConfig::from_config_value(Some(config_value.clone())),
+            repo: StringFilter::from_config_value(
+                config_value.get("repo"),
+                &format!("{}.repo", error_key),
+                errors,
+            ),
+            hostname: StringFilter::from_config_value(
+                config_value.get("hostname"),
+                &format!("{}.hostname", error_key),
+                errors,
+            ),
+            auth: GithubAuthConfig::from_config_value(
+                Some(config_value.clone()),
+                error_key,
+                errors,
+            ),
         }
     }
 }
@@ -121,6 +156,8 @@ impl GithubAuthConfig {
 
     pub(in crate::internal::config) fn from_config_value(
         config_value: Option<ConfigValue>,
+        error_key: &str,
+        errors: &mut Vec<ConfigErrorKind>,
     ) -> Self {
         let config_value = match config_value {
             Some(config_value) => config_value,
@@ -142,20 +179,40 @@ impl GithubAuthConfig {
             };
         } else if let Some(table) = config_value.as_table() {
             if let Some(skip) = table.get("skip") {
-                if skip.as_bool().unwrap_or(false) {
-                    return Self::Skip(true);
-                }
+                match skip.as_bool_forced() {
+                    Some(true) => return Self::Skip(true),
+                    Some(false) => {}
+                    None => {
+                        errors.push(ConfigErrorKind::ValueType {
+                            key: format!("{}.skip", error_key),
+                            expected: "bool".to_string(),
+                            found: skip.as_serde_yaml(),
+                        });
+                    }
+                };
             }
 
             if let Some(token_env_var) = table.get("token_env_var") {
                 if let Some(token_env_var) = token_env_var.as_str_forced() {
                     return Self::TokenEnvVar(token_env_var.to_string());
+                } else {
+                    errors.push(ConfigErrorKind::ValueType {
+                        key: format!("{}.token_env_var", error_key),
+                        expected: "string".to_string(),
+                        found: token_env_var.as_serde_yaml(),
+                    });
                 }
             }
 
             if let Some(token) = table.get("token") {
                 if let Some(token) = token.as_str_forced() {
                     return Self::Token(token.to_string());
+                } else {
+                    errors.push(ConfigErrorKind::ValueType {
+                        key: format!("{}.token", error_key),
+                        expected: "string".to_string(),
+                        found: token.as_serde_yaml(),
+                    });
                 }
             }
 
@@ -172,6 +229,12 @@ impl GithubAuthConfig {
                     }
                 } else if let Some(gh_string) = gh_value.as_str_forced() {
                     hostname = Some(gh_string.to_string());
+                } else {
+                    errors.push(ConfigErrorKind::ValueType {
+                        key: format!("{}.gh", error_key),
+                        expected: "string or table".to_string(),
+                        found: gh_value.as_serde_yaml(),
+                    });
                 }
 
                 return Self::GhCli { hostname, user };
@@ -224,7 +287,11 @@ impl StringFilter {
         }
     }
 
-    pub(super) fn from_config_value(config_value: Option<ConfigValue>) -> Self {
+    pub(super) fn from_config_value(
+        config_value: Option<ConfigValue>,
+        error_key: &str,
+        errors: &mut Vec<ConfigErrorKind>,
+    ) -> Self {
         let config_value = match config_value {
             Some(config_value) => config_value,
             None => return Self::default(),
@@ -238,36 +305,66 @@ impl StringFilter {
                 if let Some(value) = entry.as_str_forced() {
                     StringFilter::Contains(value)
                 } else {
+                    errors.push(ConfigErrorKind::ValueType {
+                        key: format!("{}.contains", error_key),
+                        expected: "string".to_string(),
+                        found: entry.as_serde_yaml(),
+                    });
                     Self::default()
                 }
             } else if let Some(entry) = table.get("starts_with") {
                 if let Some(value) = entry.as_str_forced() {
                     StringFilter::StartsWith(value)
                 } else {
+                    errors.push(ConfigErrorKind::ValueType {
+                        key: format!("{}.starts_with", error_key),
+                        expected: "string".to_string(),
+                        found: entry.as_serde_yaml(),
+                    });
                     Self::default()
                 }
             } else if let Some(entry) = table.get("ends_with") {
                 if let Some(value) = entry.as_str_forced() {
                     StringFilter::EndsWith(value)
                 } else {
+                    errors.push(ConfigErrorKind::ValueType {
+                        key: format!("{}.ends_with", error_key),
+                        expected: "string".to_string(),
+                        found: entry.as_serde_yaml(),
+                    });
                     Self::default()
                 }
             } else if let Some(entry) = table.get("regex") {
                 if let Some(value) = entry.as_str_forced() {
                     StringFilter::Regex(value)
                 } else {
+                    errors.push(ConfigErrorKind::ValueType {
+                        key: format!("{}.regex", error_key),
+                        expected: "string".to_string(),
+                        found: entry.as_serde_yaml(),
+                    });
                     Self::default()
                 }
             } else if let Some(entry) = table.get("glob") {
                 if let Some(value) = entry.as_str_forced() {
                     StringFilter::Glob(value)
                 } else {
+                    errors.push(ConfigErrorKind::ValueType {
+                        key: format!("{}.glob", error_key),
+                        expected: "string".to_string(),
+                        found: entry.as_serde_yaml(),
+                    });
                     Self::default()
                 }
             } else if let Some(entry) = table.get("exact") {
                 if let Some(value) = entry.as_str_forced() {
                     StringFilter::Exact(value)
                 } else {
+                    errors.push(ConfigErrorKind::ValueType {
+                        key: format!("{}.exact", error_key),
+                        expected: "string".to_string(),
+                        found: entry.as_serde_yaml(),
+                    });
                     Self::default()
                 }
             } else {

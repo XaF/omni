@@ -5,6 +5,7 @@ use std::path::Path;
 use serde::Deserialize;
 use serde::Serialize;
 
+use crate::internal::config::parser::ConfigErrorKind;
 use crate::internal::config::parser::PathEntryConfig;
 use crate::internal::config::utils::sort_serde_yaml;
 use crate::internal::env::user_home;
@@ -627,11 +628,59 @@ impl ConfigValue {
         None
     }
 
+    pub fn get_as_bool_or_default(
+        &self,
+        key: &str,
+        default: bool,
+        error_key: &str,
+        errors: &mut Vec<ConfigErrorKind>,
+    ) -> bool {
+        if let Some(value) = self.get(key) {
+            match value.as_bool_forced() {
+                Some(value) => value,
+                None => {
+                    errors.push(ConfigErrorKind::ValueType {
+                        key: error_key.to_string(),
+                        expected: "bool".to_string(),
+                        found: value.as_serde_yaml(),
+                    });
+                    default
+                }
+            }
+        } else {
+            default
+        }
+    }
+
     pub fn get_as_float(&self, key: &str) -> Option<f64> {
         if let Some(value) = self.get(key) {
             return value.as_float();
         }
         None
+    }
+
+    pub fn get_as_float_or_default(
+        &self,
+        key: &str,
+        default: f64,
+        error_key: &str,
+        errors: &mut Vec<ConfigErrorKind>,
+    ) -> f64 {
+        if let Some(value) = self.get(key) {
+            match value.as_float() {
+                Some(value) => value,
+                None => {
+                    errors.push(ConfigErrorKind::ValueType {
+                        key: error_key.to_string(),
+                        expected: "float".to_string(),
+                        found: value.as_serde_yaml(),
+                    });
+                    default
+                }
+            }
+        } else {
+            default
+        }
     }
 
     pub fn get_as_integer(&self, key: &str) -> Option<i64> {

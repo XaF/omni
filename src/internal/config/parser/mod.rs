@@ -33,6 +33,7 @@ pub(crate) use env::EnvOperationConfig;
 pub(crate) use env::EnvOperationEnum;
 
 mod errors;
+pub(crate) use errors::ConfigErrorKind;
 pub(crate) use errors::ParseArgsErrorKind;
 
 mod github;

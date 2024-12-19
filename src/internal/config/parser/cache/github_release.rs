@@ -1,6 +1,7 @@
 use serde::Deserialize;
 use serde::Serialize;
 
+use crate::internal::config::parser::errors::ConfigErrorKind;
 use crate::internal::config::utils::parse_duration_or_default;
 use crate::internal::config::ConfigValue;
 
@@ -26,7 +27,10 @@ impl GithubReleaseCacheConfig {
     const DEFAULT_VERSIONS_RETENTION: u64 = 7776000; // 90 days
     const DEFAULT_CLEANUP_AFTER: u64 = 604800; // 1 week
 
-    pub fn from_config_value(config_value: Option<ConfigValue>) -> Self {
+    pub fn from_config_value(
+        config_value: Option<ConfigValue>,
+        errors: &mut Vec<ConfigErrorKind>,
+    ) -> Self {
         let config_value = match config_value {
             Some(config_value) => config_value,
             None => return Self::default(),
@@ -35,16 +39,22 @@ impl GithubReleaseCacheConfig {
         let versions_expire = parse_duration_or_default(
             config_value.get("versions_expire").as_ref(),
             Self::DEFAULT_VERSIONS_EXPIRE,
+            "cache.github_release.versions_expire",
+            errors,
         );
 
         let versions_retention = parse_duration_or_default(
             config_value.get("versions_retention").as_ref(),
             Self::DEFAULT_VERSIONS_RETENTION,
+            "cache.github_release.versions_retention",
+            errors,
         );
 
         let cleanup_after = parse_duration_or_default(
             config_value.get("cleanup_after").as_ref(),
             Self::DEFAULT_CLEANUP_AFTER,
+            "cache.github_release.cleanup_after",
+            errors,
         );
 
         Self {

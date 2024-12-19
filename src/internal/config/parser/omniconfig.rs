@@ -5,6 +5,7 @@ use serde::Deserialize;
 use serde::Serialize;
 
 use crate::internal::cache::utils::Empty;
+use crate::internal::config::parser::errors::ConfigErrorKind;
 use crate::internal::config::parser::AskPassConfig;
 use crate::internal::config::parser::CacheConfig;
 use crate::internal::config::parser::CdConfig;
@@ -83,6 +84,9 @@ pub struct OmniConfig {
     pub up_command: UpCommandConfig,
     #[serde(skip_serializing_if = "String::is_empty")]
     pub worktree: String,
+
+    #[serde(skip)]
+    pub config_errors: Vec<ConfigErrorKind>,
 }
 
 impl OmniConfig {
@@ -90,13 +94,23 @@ impl OmniConfig {
     const DEFAULT_REPO_PATH_FORMAT: &'static str = "%{host}/%{org}/%{repo}";
 
     pub fn from_config_value(config_value: &ConfigValue) -> Self {
+        let mut errors = Vec::new();
+
         let mut commands_config = HashMap::new();
         if let Some(value) = config_value.get("commands") {
-            for (key, value) in value.as_table().unwrap() {
-                commands_config.insert(
-                    key.to_string(),
-                    CommandDefinition::from_config_value(&value),
-                );
+            if let Some(table) = value.as_table() {
+                for (key, value) in table {
+                    commands_config.insert(
+                        key.to_string(),
+                        CommandDefinition::from_config_value(&value),
+                    );
+                }
+            } else {
+                errors.push(ConfigErrorKind::ValueType {
+                    key: "commands".to_string(),
+                    expected: "table".to_string(),
+                    found: value.as_serde_yaml(),
+                });
             }
         }
 
@@ -110,48 +124,109 @@ impl OmniConfig {
                     for value in array {
                         org_config.push(OrgConfig::from_config_value(&value));
                     }
+                } else {
+                    errors.push(ConfigErrorKind::ValueType {
+                        key: "org".to_string(),
+                        expected: "array".to_string(),
+                        found: value.as_serde_yaml(),
+                    });
                 }
             }
         }
 
+        let askpass = AskPassConfig::from_config_value(config_value.get("askpass"), &mut errors);
+        let cache = CacheConfig::from_config_value(config_value.get("cache"), &mut errors);
+        let cd = CdConfig::from_config_value(config_value.get("cd"), &mut errors);
+        let clone = CloneConfig::from_config_value(config_value.get("clone"), &mut errors);
+        let command_match_min_score = config_value.get_as_float_or_default(
+            "command_match_min_score",
+            Self::DEFAULT_COMMAND_MATCH_MIN_SCORE,
+            "command_match_min_score",
+            &mut errors,
+        );
+        let command_match_skip_prompt_if = MatchSkipPromptIfConfig::from_config_value(
+            config_value.get("command_match_skip_prompt_if"),
+            "command_match_skip_prompt_if",
+            &mut errors,
+        );
+        let config_commands = ConfigCommandsConfig::from_config_value(
+            config_value.get("config_commands"),
+            &mut errors,
+        );
+        let env = EnvConfig::from_config_value(config_value.get("env"), &mut errors);
+        let github = GithubConfig::from_config_value(config_value.get("github"), &mut errors);
+        let makefile_commands =
+            MakefileCommandsConfig::from_config_value(config_value.get("makefile_commands"));
+        let path = PathConfig::from_config_value(config_value.get("path"));
+        let path_repo_updates = PathRepoUpdatesConfig::from_config_value(
+            config_value.get("path_repo_updates"),
+            &mut errors,
+        );
+        let prompts = PromptsConfig::from_config_value(config_value.get("prompts"));
+        let repo_path_format = if let Some(value) = config_value.get("repo_path_format") {
+            if let Some(value) = value.as_str() {
+                value.to_string()
+            } else {
+                errors.push(ConfigErrorKind::ValueType {
+                    key: "repo_path_format".to_string(),
+                    expected: "string".to_string(),
+                    found: value.as_serde_yaml(),
+                });
+                Self::DEFAULT_REPO_PATH_FORMAT.to_string()
+            }
+        } else {
+            Self::DEFAULT_REPO_PATH_FORMAT.to_string()
+        };
+
+        let shell_aliases =
+            ShellAliasesConfig::from_config_value(config_value.get("shell_aliases"));
+        let suggest_clone =
+            SuggestCloneConfig::from_config_value(config_value.get("suggest_clone"));
+        let suggest_config = SuggestConfig::from_config_value(config_value.get("suggest_config"));
+        let up = UpConfig::from_config_value(config_value.get("up"));
+        let up_command = UpCommandConfig::from_config_value(config_value.get("up_command"));
+
+        let worktree = if let Some(value) = config_value.get("worktree") {
+            if let Some(value) = value.as_str() {
+                value.to_string()
+            } else {
+                errors.push(ConfigErrorKind::ValueType {
+                    key: "worktree".to_string(),
+                    expected: "string".to_string(),
+                    found: value.as_serde_yaml(),
+                });
+                (*DEFAULT_WORKTREE).to_string()
+            }
+        } else {
+            (*DEFAULT_WORKTREE).to_string()
+        };
+
+        eprintln!("DEBUG: errors: {:?}", errors);
+
         Self {
-            askpass: AskPassConfig::from_config_value(config_value.get("askpass")),
-            cache: CacheConfig::from_config_value(config_value.get("cache")),
-            cd: CdConfig::from_config_value(config_value.get("cd")),
-            clone: CloneConfig::from_config_value(config_value.get("clone")),
-            command_match_min_score: config_value
-                .get_as_float("command_match_min_score")
-                .unwrap_or(Self::DEFAULT_COMMAND_MATCH_MIN_SCORE),
-            command_match_skip_prompt_if: MatchSkipPromptIfConfig::from_config_value(
-                config_value.get("command_match_skip_prompt_if"),
-            ),
+            askpass,
+            cache,
+            cd,
+            clone,
+            command_match_min_score,
+            command_match_skip_prompt_if,
             commands: commands_config,
-            config_commands: ConfigCommandsConfig::from_config_value(
-                config_value.get("config_commands"),
-            ),
-            env: EnvConfig::from_config_value(config_value.get("env")),
-            github: GithubConfig::from_config_value(config_value.get("github")),
-            makefile_commands: MakefileCommandsConfig::from_config_value(
-                config_value.get("makefile_commands"),
-            ),
+            config_commands,
+            env,
+            github,
+            makefile_commands,
             org: org_config,
-            path: PathConfig::from_config_value(config_value.get("path")),
-            path_repo_updates: PathRepoUpdatesConfig::from_config_value(
-                config_value.get("path_repo_updates"),
-            ),
-            prompts: PromptsConfig::from_config_value(config_value.get("prompts")),
-            repo_path_format: config_value
-                .get_as_str("repo_path_format")
-                .unwrap_or(Self::DEFAULT_REPO_PATH_FORMAT.to_string())
-                .to_string(),
-            shell_aliases: ShellAliasesConfig::from_config_value(config_value.get("shell_aliases")),
-            suggest_clone: SuggestCloneConfig::from_config_value(config_value.get("suggest_clone")),
-            suggest_config: SuggestConfig::from_config_value(config_value.get("suggest_config")),
-            up: UpConfig::from_config_value(config_value.get("up")),
-            up_command: UpCommandConfig::from_config_value(config_value.get("up_command")),
-            worktree: config_value
-                .get_as_str("worktree")
-                .unwrap_or_else(|| (*DEFAULT_WORKTREE).to_string()),
+            path,
+            path_repo_updates,
+            prompts,
+            repo_path_format,
+            shell_aliases,
+            suggest_clone,
+            suggest_config,
+            up,
+            up_command,
+            worktree,
+            config_errors: errors,
         }
     }
 

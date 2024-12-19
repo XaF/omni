@@ -657,7 +657,12 @@ impl UpConfigGithubRelease {
             .map(|v| v.as_str_forced())
             .unwrap_or(None);
         let checksum = GithubReleaseChecksumConfig::from_config_value(table.get("checksum"));
-        let auth = GithubAuthConfig::from_config_value(table.get("auth").cloned());
+        // TODO: fix error passing
+        let auth = GithubAuthConfig::from_config_value(
+            table.get("auth").cloned(),
+            "ERROR_KEY",
+            &mut vec![],
+        );
 
         UpConfigGithubRelease {
             repository,
