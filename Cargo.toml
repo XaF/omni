@@ -86,7 +86,7 @@ tokio = { version = "1.42.0", features = ["full"] }
 url = "2.5.3"
 uuid = { version = "1.11.0", features = ["v4", "fast-rng"] }
 walkdir = "2.4.0"
-which = "7.0.0"
+which = "7.0.1"
 whoami = "1.5.2"
 zip-extract = "0.2.1"
 
