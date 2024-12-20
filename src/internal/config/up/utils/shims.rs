@@ -7,7 +7,7 @@ use std::path::PathBuf;
 use std::process::exit;
 
 use crate::internal::commands::utils::abs_path;
-use crate::internal::config::up::asdf_base::asdf_path;
+use crate::internal::config::up::mise::mise_path;
 use crate::internal::config::up::utils::cleanup_path;
 use crate::internal::config::up::utils::directory::force_remove_all;
 use crate::internal::config::up::utils::ProgressHandler;
@@ -78,8 +78,8 @@ pub fn reshim(progress_handler: &dyn ProgressHandler) -> Result<Option<String>, 
     // Get all the directories that we need to build shims for
     let mut shims_sources = vec![];
 
-    // The default asdf shims
-    shims_sources.push(PathBuf::from(asdf_path()).join("shims"));
+    // The default mise shims
+    shims_sources.push(PathBuf::from(mise_path()).join("shims"));
 
     // Use a glob to get the shims from the different tools bin
     // directories in the isolated workdir environments

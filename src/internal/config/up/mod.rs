@@ -17,6 +17,7 @@ pub(crate) mod custom;
 pub(crate) use custom::UpConfigCustom;
 
 pub(crate) mod github_release;
+pub(crate) use github_release::UpConfigGithubRelease;
 pub(crate) use github_release::UpConfigGithubReleases;
 
 pub(crate) mod golang;
@@ -37,11 +38,11 @@ pub(crate) use python::UpConfigPython;
 pub(crate) mod homebrew;
 pub(crate) use homebrew::UpConfigHomebrew;
 
-pub(crate) mod asdf_base;
-pub(crate) use asdf_base::asdf_tool_path;
-pub(crate) use asdf_base::AsdfToolUpVersion;
-pub(crate) use asdf_base::UpConfigAsdfBase;
-pub(crate) use asdf_base::UpConfigAsdfBaseParams;
+pub(crate) mod mise;
+pub(crate) use mise::mise_tool_path;
+pub(crate) use mise::MiseToolUpVersion;
+pub(crate) use mise::UpConfigMise;
+pub(crate) use mise::UpConfigMiseParams;
 
 pub(crate) mod error;
 pub(crate) use error::UpError;

@@ -1,9 +1,6 @@
 mod root;
 pub(crate) use root::CacheConfig;
 
-mod asdf;
-pub(crate) use asdf::AsdfCacheConfig;
-
 mod cargo_install;
 pub(crate) use cargo_install::CargoInstallCacheConfig;
 
@@ -15,6 +12,9 @@ pub(crate) use go_install::GoInstallCacheConfig;
 
 mod homebrew;
 pub(crate) use homebrew::HomebrewCacheConfig;
+
+mod mise;
+pub(crate) use mise::MiseCacheConfig;
 
 mod up_environment;
 pub(crate) use up_environment::UpEnvironmentCacheConfig;

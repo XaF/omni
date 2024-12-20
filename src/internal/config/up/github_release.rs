@@ -289,7 +289,6 @@ impl UpConfigGithubReleases {
 
     pub fn cleanup(progress_handler: &UpProgressHandler) -> Result<Option<String>, UpError> {
         progress_handler.init("github releases:".light_blue());
-        progress_handler.progress("checking for unused github releases".to_string());
 
         let cache = GithubReleaseOperationCache::get();
 
@@ -411,7 +410,7 @@ pub enum GithubReleaseHandled {
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
-struct UpConfigGithubRelease {
+pub struct UpConfigGithubRelease {
     /// The repository to install the tool from, should
     /// be in the format `owner/repo`
     pub repository: String,
@@ -526,6 +525,15 @@ impl Default for UpConfigGithubRelease {
 }
 
 impl UpConfigGithubRelease {
+    pub fn new_latest_version(repository: &str) -> Self {
+        Self {
+            repository: repository.to_string(),
+            version: Some("latest".to_string()),
+            upgrade: true,
+            ..UpConfigGithubRelease::default()
+        }
+    }
+
     pub fn from_config_value(config_value: Option<&ConfigValue>) -> Self {
         let config_value = match config_value {
             Some(config_value) => config_value,
@@ -741,18 +749,26 @@ impl UpConfigGithubRelease {
         )
     }
 
-    pub fn commit(&self, _options: &UpOptions, env_version_id: &str) -> Result<(), UpError> {
-        let version = match self.actual_version.get() {
-            Some(version) => version,
-            None => {
-                return Err(UpError::Exec("version not set".to_string()));
-            }
-        };
+    pub fn version(&self) -> Result<String, UpError> {
+        match self.actual_version.get() {
+            Some(version) => Ok(version.to_string()),
+            None => Err(UpError::Exec("version not set".to_string())),
+        }
+    }
 
+    pub fn install_path(&self) -> Result<PathBuf, UpError> {
+        let version = self.version()?;
+        Ok(github_releases_bin_path()
+            .join(&self.repository)
+            .join(&version))
+    }
+
+    pub fn commit(&self, _options: &UpOptions, env_version_id: &str) -> Result<(), UpError> {
+        let version = self.version()?;
         if let Err(err) = GithubReleaseOperationCache::get().add_required_by(
             env_version_id,
             &self.repository,
-            version,
+            &version,
         ) {
             return Err(UpError::Cache(format!(
                 "failed to update github release cache: {}",
@@ -1602,7 +1618,7 @@ impl UpConfigGithubRelease {
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, Default)]
-struct GithubReleaseChecksumConfig {
+pub struct GithubReleaseChecksumConfig {
     /// Whether checksum verification is enabled; if set to
     /// `false`, checksum verification will be skipped.
     #[serde(default, skip_serializing_if = "Option::is_none")]

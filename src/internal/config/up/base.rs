@@ -9,11 +9,11 @@ use crate::internal::config::up::utils::cleanup_path;
 use crate::internal::config::up::utils::reshim;
 use crate::internal::config::up::utils::ProgressHandler;
 use crate::internal::config::up::utils::UpProgressHandler;
-use crate::internal::config::up::UpConfigAsdfBase;
 use crate::internal::config::up::UpConfigCargoInstalls;
 use crate::internal::config::up::UpConfigGithubReleases;
 use crate::internal::config::up::UpConfigGoInstalls;
 use crate::internal::config::up::UpConfigHomebrew;
+use crate::internal::config::up::UpConfigMise;
 use crate::internal::config::up::UpConfigTool;
 use crate::internal::config::up::UpError;
 use crate::internal::config::up::UpOptions;
@@ -306,7 +306,7 @@ impl UpConfig {
         let mut cleanups = vec![];
 
         // Call cleanup on the different operation types
-        if let Some(cleanup) = UpConfigAsdfBase::cleanup(&progress_handler)? {
+        if let Some(cleanup) = UpConfigMise::cleanup(&progress_handler)? {
             cleanups.push(cleanup);
         }
         if let Some(cleanup) = UpConfigHomebrew::cleanup(&progress_handler)? {

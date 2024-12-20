@@ -102,7 +102,7 @@ omni_setup() {
   # Setup the fake binaries
   add_fakebin "${HOME}/bin/brew"
   add_fakebin "${HOME}/bin/nix"
-  add_fakebin "${HOME}/.local/share/omni/asdf/bin/asdf"
+  add_fakebin "${HOME}/.local/share/omni/mise/bin/mise"
 
   # Switch current directory to that new temp one
   cd "${HOME}"

@@ -2,7 +2,7 @@
 description: Configuration of the `cargo_install` parameter
 ---
 
-# `asdf`
+# `cargo_install`
 
 ## Parameters
 

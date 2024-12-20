@@ -1,7 +1,7 @@
--- Insert or update the asdf plugin versions
+-- Insert or update the mise plugin versions
 -- :param ?1 - plugin name
 -- :param ?2 - JSON array of plugin versions
-INSERT INTO asdf_plugins (
+INSERT INTO mise_plugins (
     plugin,
     updated_at,
     versions,

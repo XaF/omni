@@ -1,7 +1,7 @@
 #!/usr/bin/env bats
 
 load 'helpers/utils'
-load 'helpers/asdf'
+load 'helpers/mise'
 
 setup() {
   # Setup the environment for the test; this should override $HOME too
@@ -21,11 +21,11 @@ teardown() {
 }
 
 add_brew_golang_calls() {
-  add_asdf_tool_brew_calls golang
+  add_mise_tool_brew_calls go
 }
 
-add_asdf_golang_calls() {
-  add_asdf_tool_calls tool="golang" "$@"
+add_mise_golang_calls() {
+  add_mise_tool_calls tool="go" "$@"
 }
 
 go_install_success() {
@@ -49,10 +49,10 @@ up:
     - github.com/test/tool
 EOF
 
-  go_version=$(asdf_tool_latest_version golang)
-  add_fakebin "$(asdf_tool_path golang "$go_version")/go/bin/go"
+  go_version=$(mise_tool_latest_version go)
+  add_fakebin "$(mise_tool_path go "$go_version")/bin/go"
   add_brew_golang_calls
-  add_asdf_golang_calls version="$go_version"
+  add_mise_golang_calls version="$go_version"
 
   add_command go list -m -versions -json github.com/test/tool \
     <<< '{"Version":"v0.0.0","Versions":["v1.0.0","v1.1.0","v2.0.0"]}'
@@ -72,10 +72,10 @@ up:
     - github.com/my/super/test/tool
 EOF
 
-  go_version=$(asdf_tool_latest_version golang)
-  add_fakebin "$(asdf_tool_path golang "$go_version")/go/bin/go"
+  go_version=$(mise_tool_latest_version go)
+  add_fakebin "$(mise_tool_path go "$go_version")/bin/go"
   add_brew_golang_calls
-  add_asdf_golang_calls version="$go_version"
+  add_mise_golang_calls version="$go_version"
 
   add_command go list -m -versions -json github.com/my/super/test/tool exit=1
   add_command go list -m -versions -json github.com/my/super/test exit=1
@@ -99,10 +99,10 @@ up:
       version: v1.1.0
 EOF
 
-  go_version=$(asdf_tool_latest_version golang)
-  add_fakebin "$(asdf_tool_path golang "$go_version")/go/bin/go"
+  go_version=$(mise_tool_latest_version go)
+  add_fakebin "$(mise_tool_path go "$go_version")/bin/go"
   add_brew_golang_calls
-  add_asdf_golang_calls version="$go_version"
+  add_mise_golang_calls version="$go_version"
 
   add_command go list -m -versions -json github.com/test/tool \
     <<< '{"Version":"v0.0.0","Versions":["v1.0.0","v1.1.0","v2.0.0"]}'
@@ -123,10 +123,10 @@ up:
       prerelease: true
 EOF
 
-  go_version=$(asdf_tool_latest_version golang)
-  add_fakebin "$(asdf_tool_path golang "$go_version")/go/bin/go"
+  go_version=$(mise_tool_latest_version go)
+  add_fakebin "$(mise_tool_path go "$go_version")/bin/go"
   add_brew_golang_calls
-  add_asdf_golang_calls version="$go_version"
+  add_mise_golang_calls version="$go_version"
 
   add_command go list -m -versions -json github.com/test/tool \
     <<< '{"Version":"v0.0.0","Versions":["v1.0.0","v1.1.0","v2.0.0-beta"]}'
@@ -147,10 +147,10 @@ up:
       build: true
 EOF
 
-  go_version=$(asdf_tool_latest_version golang)
-  add_fakebin "$(asdf_tool_path golang "$go_version")/go/bin/go"
+  go_version=$(mise_tool_latest_version go)
+  add_fakebin "$(mise_tool_path go "$go_version")/bin/go"
   add_brew_golang_calls
-  add_asdf_golang_calls version="$go_version"
+  add_mise_golang_calls version="$go_version"
 
   add_command go list -m -versions -json github.com/test/tool \
     <<< '{"Version":"v0.0.0","Versions":["v1.0.0","v1.1.0","v2.0.0+build"]}'
@@ -172,10 +172,10 @@ up:
       exact: true
 EOF
 
-  go_version=$(asdf_tool_latest_version golang)
-  add_fakebin "$(asdf_tool_path golang "$go_version")/go/bin/go"
+  go_version=$(mise_tool_latest_version go)
+  add_fakebin "$(mise_tool_path go "$go_version")/bin/go"
   add_brew_golang_calls
-  add_asdf_golang_calls version="$go_version"
+  add_mise_golang_calls version="$go_version"
 
   add_command go install -v github.com/test/tool@v1.0.0 <<< "$(go_install_success)"
 
@@ -195,10 +195,10 @@ up:
       exact: true
 EOF
 
-  go_version=$(asdf_tool_latest_version golang)
-  add_fakebin "$(asdf_tool_path golang "$go_version")/go/bin/go"
+  go_version=$(mise_tool_latest_version go)
+  add_fakebin "$(mise_tool_path go "$go_version")/bin/go"
   add_brew_golang_calls
-  add_asdf_golang_calls version="$go_version"
+  add_mise_golang_calls version="$go_version"
 
   add_command go install -v github.com/test/tool@v0.0.0-20210101000000-abcdef123456 <<< "$(go_install_success)"
 
@@ -217,10 +217,10 @@ up:
     - github.com/test/tool2
 EOF
 
-  go_version=$(asdf_tool_latest_version golang)
-  add_fakebin "$(asdf_tool_path golang "$go_version")/go/bin/go"
+  go_version=$(mise_tool_latest_version go)
+  add_fakebin "$(mise_tool_path go "$go_version")/bin/go"
   add_brew_golang_calls
-  add_asdf_golang_calls version="$go_version"
+  add_mise_golang_calls version="$go_version"
 
   add_command go list -m -versions -json github.com/test/tool1 \
     <<< '{"Version":"v0.0.0","Versions":["v1.0.0","v1.1.0","v2.0.0"]}'
@@ -248,10 +248,10 @@ up:
     - github.com/test/tool4:
 EOF
 
-  go_version=$(asdf_tool_latest_version golang)
-  add_fakebin "$(asdf_tool_path golang "$go_version")/go/bin/go"
+  go_version=$(mise_tool_latest_version go)
+  add_fakebin "$(mise_tool_path go "$go_version")/bin/go"
   add_brew_golang_calls
-  add_asdf_golang_calls version="$go_version"
+  add_mise_golang_calls version="$go_version"
 
   add_command go install -v github.com/test/tool1@v2.0.0 <<< "$(go_install_success)"
 
@@ -281,10 +281,10 @@ up:
     - "@invalid/path"
 EOF
 
-  go_version=$(asdf_tool_latest_version golang)
-  add_fakebin "$(asdf_tool_path golang "$go_version")/go/bin/go"
+  go_version=$(mise_tool_latest_version go)
+  add_fakebin "$(mise_tool_path go "$go_version")/bin/go"
   add_brew_golang_calls
-  add_asdf_golang_calls version="$go_version"
+  add_mise_golang_calls version="$go_version"
 
   run omni up --trust 3>&-
   echo "STATUS: $status"

@@ -2,7 +2,7 @@
 description: Configuration of the `go_install` parameter
 ---
 
-# `asdf`
+# `go_install`
 
 ## Parameters
 

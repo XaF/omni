@@ -12,7 +12,8 @@ use crate::internal::cache::up_environments::UpEnvironment;
 use crate::internal::cache::UpEnvironmentsCache;
 use crate::internal::config;
 use crate::internal::config::parser::EnvOperationEnum;
-use crate::internal::config::up::asdf_tool_path;
+use crate::internal::config::up::mise::mise_path;
+use crate::internal::config::up::mise_tool_path;
 use crate::internal::config::up::utils::get_config_mod_times;
 use crate::internal::env::shims_dir;
 use crate::internal::env::user_home;
@@ -517,7 +518,7 @@ impl DynamicEnv {
                 let tool_real_name = toolversion.tool_real_name.clone().unwrap_or(tool.clone());
                 let version = toolversion.version.clone();
                 let version_minor = version.split('.').take(2).join(".");
-                let tool_prefix = asdf_tool_path(&tool, &version);
+                let tool_prefix = mise_tool_path(&tool, &version);
 
                 self.features
                     .push(format!("{}:{}", tool_real_name, version));
@@ -564,11 +565,12 @@ impl DynamicEnv {
                         envsetter.prepend_to_list("PATH", &format!("{}/bin", tool_prefix));
                     }
                     "rust" => {
-                        envsetter.set_value("RUSTUP_HOME", &tool_prefix);
-                        envsetter.set_value("CARGO_HOME", &tool_prefix);
-                        envsetter.prepend_to_list("PATH", &format!("{}/bin", tool_prefix));
+                        envsetter.set_value("RUSTUP_HOME", &format!("{}/rustup", mise_path()));
+                        envsetter.set_value("CARGO_HOME", &format!("{}/cargo", mise_path()));
+                        envsetter.set_value("RUSTUP_TOOLCHAIN", &version);
+                        envsetter.prepend_to_list("PATH", &tool_prefix);
                     }
-                    "golang" => {
+                    "go" => {
                         if let Some(goroot) = std::env::var_os("GOROOT") {
                             envsetter.remove_from_list(
                                 "PATH",
@@ -587,10 +589,10 @@ impl DynamicEnv {
                             envsetter.set_value("GOMODCACHE", &format!("{}/pkg/mod", gopath));
                         }
 
-                        envsetter.set_value("GOROOT", &format!("{}/go", tool_prefix));
+                        envsetter.set_value("GOROOT", &tool_prefix);
                         envsetter.set_value("GOVERSION", &version);
 
-                        let gorootbin = format!("{}/go/bin", tool_prefix);
+                        let gorootbin = format!("{}/bin", tool_prefix);
                         envsetter.set_value("GOBIN", &gorootbin);
                         envsetter.prepend_to_list("PATH", &gorootbin);
 

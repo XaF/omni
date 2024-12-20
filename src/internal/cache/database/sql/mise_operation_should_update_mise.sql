@@ -1,10 +1,10 @@
--- Check if asdf should be updated
+-- Check if mise should be updated
 -- :param ?1 - validity of the update in seconds
--- :return - boolean, 1 if asdf should be updated, 0 otherwise
+-- :return - boolean, 1 if mise should be updated, 0 otherwise
 WITH updated_at AS (
   SELECT value as timestamp
   FROM metadata
-  WHERE key = 'asdf.updated_at'
+  WHERE key = 'mise.updated_at'
 ),
 is_expired AS (
   SELECT
