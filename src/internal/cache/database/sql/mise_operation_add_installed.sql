@@ -2,7 +2,7 @@
 -- :param1: tool - the name of the tool
 -- :param2: tool_real_name - the real name of the tool
 -- :param3: version - the version of the tool
-INSERT INTO asdf_installed (
+INSERT INTO mise_installed (
     tool,
     tool_real_name,
     version,

@@ -1,6 +1,3 @@
-pub(crate) mod asdf_operation;
-pub(crate) use asdf_operation::AsdfOperationCache;
-
 pub(crate) mod cargo_install;
 pub(crate) use cargo_install::CargoInstallOperationCache;
 pub(crate) use cargo_install::CargoInstallVersions;
@@ -20,6 +17,9 @@ pub(crate) use go_install::GoInstallVersions;
 
 pub(crate) mod homebrew_operation;
 pub(crate) use homebrew_operation::HomebrewOperationCache;
+
+pub(crate) mod mise_operation;
+pub(crate) use mise_operation::MiseOperationCache;
 
 pub(crate) mod offsetdatetime_hashmap;
 

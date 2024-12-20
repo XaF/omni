@@ -10,8 +10,6 @@ use crate::internal::cache::up_environments::UpEnvironment;
 use crate::internal::config::global_config;
 use crate::internal::config::up::utils::UpProgressHandler;
 use crate::internal::config::up::UpConfig;
-use crate::internal::config::up::UpConfigAsdfBase;
-use crate::internal::config::up::UpConfigAsdfBaseParams;
 use crate::internal::config::up::UpConfigBundler;
 use crate::internal::config::up::UpConfigCargoInstalls;
 use crate::internal::config::up::UpConfigCustom;
@@ -19,6 +17,8 @@ use crate::internal::config::up::UpConfigGithubReleases;
 use crate::internal::config::up::UpConfigGoInstalls;
 use crate::internal::config::up::UpConfigGolang;
 use crate::internal::config::up::UpConfigHomebrew;
+use crate::internal::config::up::UpConfigMise;
+use crate::internal::config::up::UpConfigMiseParams;
 use crate::internal::config::up::UpConfigNix;
 use crate::internal::config::up::UpConfigNodejs;
 use crate::internal::config::up::UpConfigPython;
@@ -42,13 +42,9 @@ pub enum UpConfigTool {
     /// or all have been tried.
     Any(Vec<UpConfigTool>),
 
-    /// Asdf represents any generic asdf tool that is not specifically
-    /// defined in the other types for special handling.
-    Asdf(UpConfigAsdfBase),
-
     // TODO: Apt(UpConfigApt),
     /// Bash represents the bash tool.
-    Bash(UpConfigAsdfBase),
+    Bash(UpConfigMise),
 
     /// Bundler represents the bundler tool.
     Bundler(UpConfigBundler),
@@ -76,8 +72,12 @@ pub enum UpConfigTool {
     /// Homebrew represents the homebrew tool.
     Homebrew(UpConfigHomebrew),
 
-    // TODO: Java(UpConfigAsdfBase), // JAVA_HOME
-    // TODO: Kotlin(UpConfigAsdfBase), // KOTLIN_HOME
+    // TODO: Java(UpConfigMise), // JAVA_HOME
+    // TODO: Kotlin(UpConfigMise), // KOTLIN_HOME
+    /// Mise represents any generic mise tool that is not specifically
+    /// defined in the other types for special handling.
+    Mise(UpConfigMise),
+
     /// Nix represents the nix tool, which can be used to install
     /// packages from the nix package manager.
     Nix(UpConfigNix),
@@ -112,9 +112,6 @@ impl Serialize for UpConfigTool {
         match self {
             UpConfigTool::And(configs) => create_hashmap("and", configs).serialize(serializer),
             UpConfigTool::Any(configs) => create_hashmap("any", configs).serialize(serializer),
-            UpConfigTool::Asdf(config) => {
-                create_hashmap(&config.name(), config).serialize(serializer)
-            }
             UpConfigTool::Bash(config) => create_hashmap("bash", config).serialize(serializer),
             UpConfigTool::Bundler(config) => {
                 create_hashmap("bundler", config).serialize(serializer)
@@ -132,6 +129,9 @@ impl Serialize for UpConfigTool {
             }
             UpConfigTool::Homebrew(config) => {
                 create_hashmap("homebrew", config).serialize(serializer)
+            }
+            UpConfigTool::Mise(config) => {
+                create_hashmap(&config.name(), config).serialize(serializer)
             }
             UpConfigTool::Nix(config) => create_hashmap("nix", config).serialize(serializer),
             UpConfigTool::Nodejs(config) => create_hashmap("nodejs", config).serialize(serializer),
@@ -162,10 +162,10 @@ impl UpConfigTool {
                 }
             }
             "bash" => Some(UpConfigTool::Bash(
-                UpConfigAsdfBase::from_config_value_with_params(
+                UpConfigMise::from_config_value_with_params(
                     "bash",
                     config_value,
-                    UpConfigAsdfBaseParams {
+                    UpConfigMiseParams {
                         tool_url: Some("https://github.com/xaf/asdf-bash".into()),
                     },
                 ),
@@ -203,7 +203,7 @@ impl UpConfigTool {
             "python" => Some(UpConfigTool::Python(UpConfigPython::from_config_value(
                 config_value,
             ))),
-            _ => Some(UpConfigTool::Asdf(UpConfigAsdfBase::from_config_value(
+            _ => Some(UpConfigTool::Mise(UpConfigMise::from_config_value(
                 up_name,
                 config_value,
             ))),
@@ -244,7 +244,6 @@ impl UpConfigTool {
                 }
                 result
             }
-            UpConfigTool::Asdf(config) => config.up(options, environment, progress_handler),
             UpConfigTool::Bash(config) => config.up(options, environment, progress_handler),
             UpConfigTool::Bundler(config) => config.up(options, environment, progress_handler),
             UpConfigTool::CargoInstall(config) => config.up(options, environment, progress_handler),
@@ -255,6 +254,7 @@ impl UpConfigTool {
             UpConfigTool::Go(config) => config.up(options, environment, progress_handler),
             UpConfigTool::GoInstall(config) => config.up(options, environment, progress_handler),
             UpConfigTool::Homebrew(config) => config.up(options, environment, progress_handler),
+            UpConfigTool::Mise(config) => config.up(options, environment, progress_handler),
             UpConfigTool::Nix(config) => config.up(options, environment, progress_handler),
             UpConfigTool::Nodejs(config) => config.up(options, environment, progress_handler),
             UpConfigTool::Or(configs) => {
@@ -279,11 +279,6 @@ impl UpConfigTool {
         match self {
             UpConfigTool::And(configs) | UpConfigTool::Any(configs) | UpConfigTool::Or(configs) => {
                 for config in configs {
-                    config.commit(options, env_version_id)?;
-                }
-            }
-            UpConfigTool::Asdf(config) => {
-                if config.was_upped() {
                     config.commit(options, env_version_id)?;
                 }
             }
@@ -319,15 +314,20 @@ impl UpConfigTool {
                     config.commit(options, env_version_id)?;
                 }
             }
+            UpConfigTool::Mise(config) => {
+                if config.was_upped() {
+                    config.commit(options, env_version_id)?;
+                }
+            }
             UpConfigTool::Nix(_config) => {}
             UpConfigTool::Nodejs(config) => {
-                if config.asdf_base.was_upped() {
-                    config.asdf_base.commit(options, env_version_id)?;
+                if config.backend.was_upped() {
+                    config.backend.commit(options, env_version_id)?;
                 }
             }
             UpConfigTool::Python(config) => {
-                if config.asdf_base.was_upped() {
-                    config.asdf_base.commit(options, env_version_id)?;
+                if config.backend.was_upped() {
+                    config.backend.commit(options, env_version_id)?;
                 }
             }
         }
@@ -343,7 +343,6 @@ impl UpConfigTool {
                 }
                 Ok(())
             }
-            UpConfigTool::Asdf(config) => config.down(progress_handler),
             UpConfigTool::Bash(config) => config.down(progress_handler),
             UpConfigTool::Bundler(config) => config.down(progress_handler),
             UpConfigTool::CargoInstall(config) => config.down(progress_handler),
@@ -352,6 +351,7 @@ impl UpConfigTool {
             UpConfigTool::Go(config) => config.down(progress_handler),
             UpConfigTool::GoInstall(config) => config.down(progress_handler),
             UpConfigTool::Homebrew(config) => config.down(progress_handler),
+            UpConfigTool::Mise(config) => config.down(progress_handler),
             UpConfigTool::Nix(config) => config.down(progress_handler),
             UpConfigTool::Nodejs(config) => config.down(progress_handler),
             UpConfigTool::Python(config) => config.down(progress_handler),
@@ -381,7 +381,6 @@ impl UpConfigTool {
             UpConfigTool::And(configs) | UpConfigTool::Any(configs) | UpConfigTool::Or(configs) => {
                 any(configs, |config| config.was_upped())
             }
-            UpConfigTool::Asdf(config) => config.was_upped(),
             UpConfigTool::Bash(config) => config.was_upped(),
             // UpConfigTool::Bundler(config) => config.was_upped(),
             UpConfigTool::CargoInstall(config) => config.was_upped(),
@@ -390,9 +389,10 @@ impl UpConfigTool {
             UpConfigTool::Go(config) => config.was_upped(),
             UpConfigTool::GoInstall(config) => config.was_upped(),
             // UpConfigTool::Homebrew(config) => config.was_upped(),
+            UpConfigTool::Mise(config) => config.was_upped(),
             UpConfigTool::Nix(config) => config.was_upped(),
-            UpConfigTool::Nodejs(config) => config.asdf_base.was_upped(),
-            UpConfigTool::Python(config) => config.asdf_base.was_upped(),
+            UpConfigTool::Nodejs(config) => config.backend.was_upped(),
+            UpConfigTool::Python(config) => config.backend.was_upped(),
             _ => false,
         }
     }
@@ -412,7 +412,6 @@ impl UpConfigTool {
                     None => vec![],
                 }
             }
-            UpConfigTool::Asdf(config) => config.data_paths(),
             UpConfigTool::Bash(config) => config.data_paths(),
             // UpConfigTool::Bundler(config) => config.data_paths(),
             // UpConfigTool::CargoInstall(config) => config.data_paths(),
@@ -421,9 +420,10 @@ impl UpConfigTool {
             UpConfigTool::Go(config) => config.data_paths(),
             // UpConfigTool::GoInstall(config) => config.data_paths(),
             // UpConfigTool::Homebrew(config) => config.data_paths(),
+            UpConfigTool::Mise(config) => config.data_paths(),
             UpConfigTool::Nix(config) => config.data_paths(),
-            UpConfigTool::Nodejs(config) => config.asdf_base.data_paths(),
-            UpConfigTool::Python(config) => config.asdf_base.data_paths(),
+            UpConfigTool::Nodejs(config) => config.backend.data_paths(),
+            UpConfigTool::Python(config) => config.backend.data_paths(),
             _ => vec![],
         }
     }
@@ -432,7 +432,6 @@ impl UpConfigTool {
         match self {
             UpConfigTool::And(_) => "and".into(),
             UpConfigTool::Any(_) => "any".into(),
-            UpConfigTool::Asdf(config) => config.name(),
             UpConfigTool::Or(_) => "or".into(),
             UpConfigTool::Bash(_) => "bash".into(),
             UpConfigTool::Bundler(_) => "bundler".into(),
@@ -442,6 +441,7 @@ impl UpConfigTool {
             UpConfigTool::Go(_) => "go".into(),
             UpConfigTool::GoInstall(_) => "go-install".into(),
             UpConfigTool::Homebrew(_) => "homebrew".into(),
+            UpConfigTool::Mise(config) => config.name(),
             UpConfigTool::Nix(_) => "nix".into(),
             UpConfigTool::Nodejs(_) => "nodejs".into(),
             UpConfigTool::Python(_) => "python".into(),

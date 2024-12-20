@@ -16,5 +16,8 @@ pub(crate) use go_install::GoInstallCacheConfig;
 mod homebrew;
 pub(crate) use homebrew::HomebrewCacheConfig;
 
+mod mise;
+pub(crate) use mise::MiseCacheConfig;
+
 mod up_environment;
 pub(crate) use up_environment::UpEnvironmentCacheConfig;

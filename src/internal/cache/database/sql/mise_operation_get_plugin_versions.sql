@@ -4,5 +4,5 @@
 SELECT
     versions,
     versions_fetched_at
-FROM asdf_plugins
+FROM mise_plugins
 WHERE plugin = ?1;

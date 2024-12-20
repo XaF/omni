@@ -5,6 +5,7 @@ up:
   - bats: 1
   - github-releases:
       quarylabs/sqruff: 0.21.0
+      jdx/mise: latest
 
 commands:
   create-tag:

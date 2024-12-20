@@ -14,75 +14,75 @@ use crate::internal::config::up::utils::VersionMatcher;
 use crate::internal::env::now as omni_now;
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct AsdfOperationCache {}
+pub struct MiseOperationCache {}
 
-impl AsdfOperationCache {
+impl MiseOperationCache {
     pub fn get() -> Self {
         Self {}
     }
 
     #[allow(dead_code)]
-    pub fn updated_asdf(&self) -> Result<bool, CacheManagerError> {
+    pub fn updated_mise(&self) -> Result<bool, CacheManagerError> {
         let db = CacheManager::get();
         let updated = db.execute(
-            include_str!("database/sql/asdf_operation_updated_asdf.sql"),
+            include_str!("database/sql/mise_operation_updated_mise.sql"),
             &[],
         )?;
         Ok(updated > 0)
     }
 
-    pub fn updated_asdf_plugin(&self, plugin: &str) -> Result<bool, CacheManagerError> {
+    pub fn updated_mise_plugin(&self, plugin: &str) -> Result<bool, CacheManagerError> {
         let db = CacheManager::get();
         let updated = db.execute(
-            include_str!("database/sql/asdf_operation_updated_plugin.sql"),
+            include_str!("database/sql/mise_operation_updated_plugin.sql"),
             params![plugin],
         )?;
         Ok(updated > 0)
     }
 
-    pub fn set_asdf_plugin_versions(
+    pub fn set_mise_plugin_versions(
         &self,
         plugin: &str,
-        versions: AsdfPluginVersions,
+        versions: MisePluginVersions,
     ) -> Result<bool, CacheManagerError> {
         let db = CacheManager::get();
         let updated = db.execute(
-            include_str!("database/sql/asdf_operation_updated_plugin_versions.sql"),
+            include_str!("database/sql/mise_operation_updated_plugin_versions.sql"),
             params![plugin, serde_json::to_string(&versions.versions)?],
         )?;
         Ok(updated > 0)
     }
 
     #[allow(dead_code)]
-    pub fn should_update_asdf(&self) -> bool {
+    pub fn should_update_mise(&self) -> bool {
         let db = CacheManager::get();
         let should_update: bool = db
             .query_row(
-                include_str!("database/sql/asdf_operation_should_update_asdf.sql"),
-                params![global_config().cache.asdf.update_expire],
+                include_str!("database/sql/mise_operation_should_update_mise.sql"),
+                params![global_config().cache.mise.update_expire],
                 |row| row.get(0),
             )
             .unwrap_or(true);
         should_update
     }
 
-    pub fn should_update_asdf_plugin(&self, plugin: &str) -> bool {
+    pub fn should_update_mise_plugin(&self, plugin: &str) -> bool {
         let db = CacheManager::get();
         let should_update: bool = db
             .query_row(
-                include_str!("database/sql/asdf_operation_should_update_plugin.sql"),
-                params![plugin, global_config().cache.asdf.plugin_update_expire,],
+                include_str!("database/sql/mise_operation_should_update_plugin.sql"),
+                params![plugin, global_config().cache.mise.plugin_update_expire,],
                 |row| row.get(0),
             )
             .unwrap_or(true);
         should_update
     }
 
-    pub fn get_asdf_plugin_versions(&self, plugin: &str) -> Option<AsdfPluginVersions> {
+    pub fn get_mise_plugin_versions(&self, plugin: &str) -> Option<MisePluginVersions> {
         let db = CacheManager::get();
-        let versions: Option<AsdfPluginVersions> = db
+        let versions: Option<MisePluginVersions> = db
             .query_one(
-                include_str!("database/sql/asdf_operation_get_plugin_versions.sql"),
+                include_str!("database/sql/mise_operation_get_plugin_versions.sql"),
                 params![plugin],
             )
             .unwrap_or_default();
@@ -97,7 +97,7 @@ impl AsdfOperationCache {
     ) -> Result<bool, CacheManagerError> {
         let db = CacheManager::get();
         let inserted = db.execute(
-            include_str!("database/sql/asdf_operation_add_installed.sql"),
+            include_str!("database/sql/mise_operation_add_installed.sql"),
             params![tool, tool_real_name, version],
         )?;
         Ok(inserted > 0)
@@ -111,7 +111,7 @@ impl AsdfOperationCache {
     ) -> Result<bool, CacheManagerError> {
         let db = CacheManager::get();
         let inserted = db.execute(
-            include_str!("database/sql/asdf_operation_add_required_by.sql"),
+            include_str!("database/sql/mise_operation_add_required_by.sql"),
             params![tool, version, env_version_id],
         )?;
         Ok(inserted > 0)
@@ -124,12 +124,12 @@ impl AsdfOperationCache {
         let mut db = CacheManager::get();
 
         let config = global_config();
-        let grace_period = config.cache.asdf.cleanup_after;
+        let grace_period = config.cache.mise.cleanup_after;
 
         db.transaction(|tx| {
             // Get the list of tools and versions that can be deleted
-            let deletable_tools: Vec<DeletableAsdfTool> = tx.query_as(
-                include_str!("database/sql/asdf_operation_list_removable.sql"),
+            let deletable_tools: Vec<DeletableMiseTool> = tx.query_as(
+                include_str!("database/sql/mise_operation_list_removable.sql"),
                 params![&grace_period],
             )?;
 
@@ -139,7 +139,7 @@ impl AsdfOperationCache {
 
                 // Add the deletion of that tool and version to the transaction
                 tx.execute(
-                    include_str!("database/sql/asdf_operation_remove.sql"),
+                    include_str!("database/sql/mise_operation_remove.sql"),
                     params![tool.tool, tool.version],
                 )?;
             }
@@ -152,12 +152,12 @@ impl AsdfOperationCache {
 }
 
 #[derive(Debug)]
-struct DeletableAsdfTool {
+struct DeletableMiseTool {
     tool: String,
     version: String,
 }
 
-impl FromRow for DeletableAsdfTool {
+impl FromRow for DeletableMiseTool {
     fn from_row(row: &rusqlite::Row) -> Result<Self, CacheManagerError> {
         let tool: String = row.get(0)?;
         let version: String = row.get(1)?;
@@ -166,7 +166,7 @@ impl FromRow for DeletableAsdfTool {
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct AsdfPluginVersions {
+pub struct MisePluginVersions {
     #[serde(default = "Vec::new", skip_serializing_if = "Vec::is_empty")]
     pub versions: Vec<String>,
     #[serde(
@@ -177,7 +177,7 @@ pub struct AsdfPluginVersions {
     pub fetched_at: OffsetDateTime,
 }
 
-impl FromRow for AsdfPluginVersions {
+impl FromRow for MisePluginVersions {
     fn from_row(row: &rusqlite::Row) -> Result<Self, CacheManagerError> {
         let versions_json: String = row.get(0)?;
         let versions: Vec<String> = serde_json::from_str(&versions_json)?;
@@ -192,7 +192,7 @@ impl FromRow for AsdfPluginVersions {
     }
 }
 
-impl AsdfPluginVersions {
+impl MisePluginVersions {
     pub fn new(versions: Vec<String>) -> Self {
         Self {
             versions,
@@ -225,55 +225,55 @@ mod tests {
     use crate::internal::cache::database::get_conn;
     use crate::internal::testutils::run_with_env;
 
-    mod asdf_operation_cache {
+    mod mise_operation_cache {
         use super::*;
 
         #[test]
-        fn test_should_update_asdf() {
+        fn test_should_update_mise() {
             run_with_env(&[], || {
-                let cache = AsdfOperationCache::get();
+                let cache = MiseOperationCache::get();
 
                 // First time should return true as no data exists
-                assert!(cache.should_update_asdf());
+                assert!(cache.should_update_mise());
 
-                // Update asdf
-                cache.updated_asdf().expect("Failed to update asdf");
+                // Update mise
+                cache.updated_mise().expect("Failed to update mise");
 
                 // Should now return false as we just updated
-                assert!(!cache.should_update_asdf());
+                assert!(!cache.should_update_mise());
             });
         }
 
         #[test]
-        fn test_should_update_asdf_plugin() {
+        fn test_should_update_mise_plugin() {
             run_with_env(&[], || {
-                let cache = AsdfOperationCache::get();
+                let cache = MiseOperationCache::get();
                 let plugin = "test-plugin";
 
                 // First time should return true as no data exists
-                assert!(cache.should_update_asdf_plugin(plugin));
+                assert!(cache.should_update_mise_plugin(plugin));
 
                 // Update plugin
                 cache
-                    .updated_asdf_plugin(plugin)
+                    .updated_mise_plugin(plugin)
                     .expect("Failed to update plugin");
 
                 // Should now return false as we just updated
-                assert!(!cache.should_update_asdf_plugin(plugin));
+                assert!(!cache.should_update_mise_plugin(plugin));
             });
         }
 
         #[test]
         fn test_set_and_get_plugin_versions() {
             run_with_env(&[], || {
-                let cache = AsdfOperationCache::get();
+                let cache = MiseOperationCache::get();
                 let plugin = "test-plugin";
 
                 // Initially should return None
-                assert!(cache.get_asdf_plugin_versions(plugin).is_none());
+                assert!(cache.get_mise_plugin_versions(plugin).is_none());
 
                 // Create test versions
-                let versions = AsdfPluginVersions::new(vec![
+                let versions = MisePluginVersions::new(vec![
                     "1.0.0".to_string(),
                     "1.1.0".to_string(),
                     "2.0.0".to_string(),
@@ -281,12 +281,12 @@ mod tests {
 
                 // Set versions
                 cache
-                    .set_asdf_plugin_versions(plugin, versions.clone())
+                    .set_mise_plugin_versions(plugin, versions.clone())
                     .expect("Failed to set plugin versions");
 
                 // Get versions and verify
                 let retrieved = cache
-                    .get_asdf_plugin_versions(plugin)
+                    .get_mise_plugin_versions(plugin)
                     .expect("Failed to get plugin versions");
 
                 assert_eq!(retrieved.versions, versions.versions);
@@ -297,7 +297,7 @@ mod tests {
         #[test]
         fn test_add_installed_and_required_by() {
             run_with_env(&[], || {
-                let cache = AsdfOperationCache::get();
+                let cache = MiseOperationCache::get();
 
                 let tool = "test-tool";
                 let version = "1.0.0";
@@ -332,7 +332,7 @@ mod tests {
                 let conn = get_conn();
 
                 let mut installed_stmt = conn
-                    .prepare("INSERT INTO asdf_installed (tool, version, tool_real_name, last_required_at) VALUES (?, ?, ?, ?)")
+                    .prepare("INSERT INTO mise_installed (tool, version, tool_real_name, last_required_at) VALUES (?, ?, ?, ?)")
                     .expect("Failed to prepare statement");
 
                 installed_stmt
@@ -367,14 +367,14 @@ mod tests {
                 .expect("Failed to add environment version");
 
                 let mut required_by_stmt = conn
-                    .prepare("INSERT INTO asdf_installed_required_by (tool, version, env_version_id) VALUES (?, ?, ?)")
+                    .prepare("INSERT INTO mise_installed_required_by (tool, version, env_version_id) VALUES (?, ?, ?)")
                     .expect("Failed to prepare statement");
 
                 required_by_stmt
                     .execute(params!["test-tool", "1.1.0", "test-env"])
                     .expect("Failed to insert required_by relationship");
 
-                let cache = AsdfOperationCache::get();
+                let cache = MiseOperationCache::get();
 
                 // Mock deletion function
                 let mut deleted_tools = Vec::new();
@@ -396,7 +396,7 @@ mod tests {
                 // Verify that the tool has been removed from the database
                 let tool_in_db = conn
                     .query_row(
-                        "SELECT COUNT(*) FROM asdf_installed WHERE tool = ? AND version = ?",
+                        "SELECT COUNT(*) FROM mise_installed WHERE tool = ? AND version = ?",
                         params![deleted_tools[0].0, deleted_tools[0].1],
                         |row| row.get::<_, i64>(0),
                     )
@@ -406,7 +406,7 @@ mod tests {
         }
     }
 
-    mod asdf_plugin_versions {
+    mod mise_plugin_versions {
         use super::*;
 
         #[test]
@@ -416,7 +416,7 @@ mod tests {
                 "1.1.0".to_string(),
                 "2.0.0".to_string(),
             ];
-            let plugin_versions = AsdfPluginVersions::new(versions.clone());
+            let plugin_versions = MisePluginVersions::new(versions.clone());
 
             assert_eq!(plugin_versions.versions, versions);
             assert!(plugin_versions.fetched_at <= OffsetDateTime::now_utc());
@@ -425,7 +425,7 @@ mod tests {
         #[test]
         fn test_freshness() {
             let versions = vec!["1.0.0".to_string()];
-            let plugin_versions = AsdfPluginVersions::new(versions);
+            let plugin_versions = MisePluginVersions::new(versions);
 
             // Test is_fresh
             assert!(plugin_versions.is_fresh());

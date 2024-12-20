@@ -8,15 +8,15 @@ use tokio::process::Command as TokioCommand;
 
 use crate::internal::cache::up_environments::UpEnvironment;
 use crate::internal::commands::utils::abs_path;
-use crate::internal::config::up::asdf_base::PostInstallFuncArgs;
-use crate::internal::config::up::asdf_tool_path;
+use crate::internal::config::up::mise::PostInstallFuncArgs;
+use crate::internal::config::up::mise_tool_path;
 use crate::internal::config::up::utils::data_path_dir_hash;
 use crate::internal::config::up::utils::run_progress;
 use crate::internal::config::up::utils::ProgressHandler;
 use crate::internal::config::up::utils::RunConfig;
 use crate::internal::config::up::utils::UpProgressHandler;
-use crate::internal::config::up::AsdfToolUpVersion;
-use crate::internal::config::up::UpConfigAsdfBase;
+use crate::internal::config::up::MiseToolUpVersion;
+use crate::internal::config::up::UpConfigMise;
 use crate::internal::config::up::UpError;
 use crate::internal::config::up::UpOptions;
 use crate::internal::dynenv::update_dynamic_env_for_command_from_env;
@@ -66,7 +66,7 @@ impl UpConfigPythonParams {
 #[derive(Debug, Deserialize, Clone)]
 pub struct UpConfigPython {
     #[serde(skip)]
-    pub asdf_base: UpConfigAsdfBase,
+    pub backend: UpConfigMise,
     #[serde(skip)]
     pub params: UpConfigPythonParams,
 }
@@ -77,7 +77,7 @@ impl Serialize for UpConfigPython {
         S: ::serde::ser::Serializer,
     {
         // Serialize object into serde_json::Value
-        let mut asdf_base = serde_json::to_value(&self.asdf_base).unwrap();
+        let mut backend = serde_json::to_value(&self.backend).unwrap();
 
         // Serialize the params object
         let mut params = serde_json::to_value(&self.params).unwrap();
@@ -88,25 +88,25 @@ impl Serialize for UpConfigPython {
         }
 
         // Merge the params object into the base object
-        asdf_base
+        backend
             .as_object_mut()
             .unwrap()
             .extend(params.as_object().unwrap().clone());
 
         // Serialize the object
-        asdf_base.serialize(serializer)
+        backend.serialize(serializer)
     }
 }
 
 impl UpConfigPython {
     pub fn from_config_value(config_value: Option<&ConfigValue>) -> Self {
-        let mut asdf_base = UpConfigAsdfBase::from_config_value("python", config_value);
-        asdf_base.add_post_install_func(setup_python_venv);
-        asdf_base.add_post_install_func(setup_python_pip);
+        let mut backend = UpConfigMise::from_config_value("python", config_value);
+        backend.add_post_install_func(setup_python_venv);
+        backend.add_post_install_func(setup_python_pip);
 
         let params = UpConfigPythonParams::from_config_value(config_value);
 
-        Self { asdf_base, params }
+        Self { backend, params }
     }
 
     pub fn up(
@@ -115,11 +115,11 @@ impl UpConfigPython {
         environment: &mut UpEnvironment,
         progress_handler: &UpProgressHandler,
     ) -> Result<(), UpError> {
-        self.asdf_base.up(options, environment, progress_handler)
+        self.backend.up(options, environment, progress_handler)
     }
 
     pub fn down(&self, progress_handler: &UpProgressHandler) -> Result<(), UpError> {
-        self.asdf_base.down(progress_handler)
+        self.backend.down(progress_handler)
     }
 }
 
@@ -152,7 +152,7 @@ fn setup_python_venv_per_version(
     environment: &mut UpEnvironment,
     progress_handler: &dyn ProgressHandler,
     tool: &str,
-    version: AsdfToolUpVersion,
+    version: MiseToolUpVersion,
 ) -> Result<(), UpError> {
     // Check if we care about that version
     match Version::parse(&version.version) {
@@ -238,7 +238,7 @@ fn setup_python_venv_per_dir(
 
     // Only create the new venv if it doesn't exist
     if !already_setup {
-        let python_version_path = asdf_tool_path(tool, &version);
+        let python_version_path = mise_tool_path(tool, &version);
         let python_bin = PathBuf::from(python_version_path)
             .join("bin")
             .join("python");

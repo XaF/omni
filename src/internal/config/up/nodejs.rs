@@ -10,14 +10,14 @@ use tokio::process::Command as TokioCommand;
 
 use crate::internal::cache::up_environments::UpEnvironment;
 use crate::internal::cache::utils as cache_utils;
-use crate::internal::config::up::asdf_base::PostInstallFuncArgs;
+use crate::internal::config::up::mise::PostInstallFuncArgs;
 use crate::internal::config::up::utils::data_path_dir_hash;
 use crate::internal::config::up::utils::run_progress;
 use crate::internal::config::up::utils::ProgressHandler;
 use crate::internal::config::up::utils::RunConfig;
 use crate::internal::config::up::utils::UpProgressHandler;
-use crate::internal::config::up::AsdfToolUpVersion;
-use crate::internal::config::up::UpConfigAsdfBase;
+use crate::internal::config::up::MiseToolUpVersion;
+use crate::internal::config::up::UpConfigMise;
 use crate::internal::config::up::UpError;
 use crate::internal::config::up::UpOptions;
 use crate::internal::dynenv::update_dynamic_env_for_command_from_env;
@@ -72,7 +72,7 @@ impl UpConfigNodejsParams {
 #[derive(Debug, Deserialize, Clone)]
 pub struct UpConfigNodejs {
     #[serde(skip)]
-    pub asdf_base: UpConfigAsdfBase,
+    pub backend: UpConfigMise,
     #[serde(skip)]
     pub params: UpConfigNodejsParams,
 }
@@ -83,7 +83,7 @@ impl Serialize for UpConfigNodejs {
         S: ::serde::ser::Serializer,
     {
         // Serialize object into serde_json::Value
-        let mut nodejs_base = serde_json::to_value(&self.asdf_base).unwrap();
+        let mut nodejs_base = serde_json::to_value(&self.backend).unwrap();
 
         // Serialize the params object
         let nodejs_params = serde_json::to_value(&self.params).unwrap();
@@ -101,14 +101,14 @@ impl Serialize for UpConfigNodejs {
 
 impl UpConfigNodejs {
     pub fn from_config_value(config_value: Option<&ConfigValue>) -> Self {
-        let mut asdf_base = UpConfigAsdfBase::from_config_value("nodejs", config_value);
-        asdf_base.add_detect_version_func(detect_version_from_package_json);
-        asdf_base.add_detect_version_func(detect_version_from_nvmrc);
-        asdf_base.add_post_install_func(setup_individual_npm_prefix);
+        let mut backend = UpConfigMise::from_config_value("nodejs", config_value);
+        backend.add_detect_version_func(detect_version_from_package_json);
+        backend.add_detect_version_func(detect_version_from_nvmrc);
+        backend.add_post_install_func(setup_individual_npm_prefix);
 
         let params = UpConfigNodejsParams::from_config_value(config_value);
 
-        Self { asdf_base, params }
+        Self { backend, params }
     }
 
     pub fn up(
@@ -117,11 +117,11 @@ impl UpConfigNodejs {
         environment: &mut UpEnvironment,
         progress_handler: &UpProgressHandler,
     ) -> Result<(), UpError> {
-        self.asdf_base.up(options, environment, progress_handler)
+        self.backend.up(options, environment, progress_handler)
     }
 
     pub fn down(&self, progress_handler: &UpProgressHandler) -> Result<(), UpError> {
-        self.asdf_base.down(progress_handler)
+        self.backend.down(progress_handler)
     }
 }
 
@@ -207,7 +207,7 @@ fn setup_individual_npm_prefix(
     };
 
     // Handle each version individually
-    let per_version_per_dir_data_path = |version: &AsdfToolUpVersion, dir: &String| {
+    let per_version_per_dir_data_path = |version: &MiseToolUpVersion, dir: &String| {
         let npm_prefix_dir = data_path_dir_hash(dir);
 
         let npm_prefix = data_path

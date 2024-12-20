@@ -205,7 +205,6 @@ impl UpConfigHomebrew {
         let mut uninstalled = vec![];
 
         progress_handler.init("homebrew:".light_blue());
-        progress_handler.progress("checking for unused homebrew dependencies".to_string());
 
         let cache = HomebrewOperationCache::get();
         cache

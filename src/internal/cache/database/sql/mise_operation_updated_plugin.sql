@@ -1,6 +1,6 @@
--- Insert or update the asdf plugin last updated timestamp
+-- Insert or update the mise plugin last updated timestamp
 -- :param ?1 - plugin name
-INSERT INTO asdf_plugins (
+INSERT INTO mise_plugins (
     plugin,
     updated_at
 )

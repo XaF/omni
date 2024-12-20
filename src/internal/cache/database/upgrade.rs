@@ -11,7 +11,7 @@ pub fn upgrade_database(conn: &Connection) -> Result<(), CacheManagerError> {
 
     // Set up for getting to version 1 and migrating
     // from the JSON files
-    if current_version == 0 {
+    if current_version < 1 {
         // Make sure that we have the latest version of the JSON cache
         convert_cache()?;
 
@@ -29,9 +29,9 @@ pub fn upgrade_database(conn: &Connection) -> Result<(), CacheManagerError> {
         }
     }
 
-    // Run the migration SQL, which should handle any migrations
-    // of schemas from any version of the db to the latest
-    // self.conn.execute_batch(MIGRATE_SQL)?;
+    if current_version < 2 {
+        conn.execute_batch(include_str!("sql/upgrade_v1_to_v2.sql"))?;
+    }
 
     Ok(())
 }

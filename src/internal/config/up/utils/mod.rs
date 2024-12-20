@@ -2,6 +2,9 @@ pub(crate) mod askpass;
 pub(crate) use askpass::AskPassListener;
 pub(crate) use askpass::AskPassRequest;
 
+mod command_ext;
+pub(crate) use command_ext::CommandExt;
+
 pub(crate) mod directory;
 pub(crate) use directory::cleanup_path;
 pub(crate) use directory::data_path_dir_hash;

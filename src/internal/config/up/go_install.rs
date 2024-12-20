@@ -18,7 +18,7 @@ use crate::internal::cache::GoInstallOperationCache;
 use crate::internal::cache::GoInstallVersions;
 use crate::internal::config::config;
 use crate::internal::config::global_config;
-use crate::internal::config::up::asdf_tool_path;
+use crate::internal::config::up::mise_tool_path;
 use crate::internal::config::up::utils::cleanup_path;
 use crate::internal::config::up::utils::get_command_output;
 use crate::internal::config::up::utils::progress_handler::ProgressHandler;
@@ -181,7 +181,9 @@ impl UpConfigGoInstalls {
                 })?;
         }
 
-        progress_handler.success_with_message(self.get_up_message());
+        if self.tools.len() != 1 {
+            progress_handler.success_with_message(self.get_up_message());
+        }
 
         Ok(())
     }
@@ -209,8 +211,8 @@ impl UpConfigGoInstalls {
         };
 
         let installed_version = go.version()?;
-        let install_path = PathBuf::from(asdf_tool_path("golang", &installed_version));
-        let go_bin = install_path.join("go").join("bin").join("go");
+        let install_path = PathBuf::from(mise_tool_path("go", &installed_version));
+        let go_bin = install_path.join("bin").join("go");
 
         Ok(go_bin)
     }
@@ -309,7 +311,6 @@ impl UpConfigGoInstalls {
 
     pub fn cleanup(progress_handler: &UpProgressHandler) -> Result<Option<String>, UpError> {
         progress_handler.init("go install:".light_blue());
-        progress_handler.progress("checking for unused go-installed tools".to_string());
 
         let cache = GoInstallOperationCache::get();
 
