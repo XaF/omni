@@ -1,10 +1,10 @@
--- Check if asdf should be updated
+-- Check if mise should be updated
 -- :param ?1 - plugin name
 -- :param ?2 - validity of the update in seconds
--- :return - boolean, 1 if asdf should be updated, 0 otherwise
+-- :return - boolean, 1 if mise should be updated, 0 otherwise
 WITH plugin_update AS (
   SELECT updated_at as timestamp
-  FROM asdf_plugins
+  FROM mise_plugins
   WHERE plugin = ?1
 ),
 is_expired AS (

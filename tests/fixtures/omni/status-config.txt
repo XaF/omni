@@ -3,11 +3,6 @@ askpass:
   enabled: true
   prefer_gui: false
 cache:
-  asdf:
-    cleanup_after: 604800
-    plugin_update_expire: 86400
-    plugin_versions_expire: 3600
-    update_expire: 86400
   cargo_install:
     cleanup_after: 604800
     versions_expire: 86400
@@ -27,6 +22,11 @@ cache:
     install_check_expire: 43200
     install_update_expire: 86400
     tap_update_expire: 86400
+    update_expire: 86400
+  mise:
+    cleanup_after: 604800
+    plugin_update_expire: 86400
+    plugin_versions_expire: 3600
     update_expire: 86400
   path: <BATS_TEST_TMPDIR>/.cache/omni
 cd:

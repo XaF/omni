@@ -1,6 +1,6 @@
 -- Check if the omnipath should be updated
 -- :param ?1 - validity of the update in seconds
--- :return - boolean, 1 if asdf should be updated, 0 otherwise
+-- :return - boolean, 1 if should be updated, 0 otherwise
 WITH updated_at AS (
   SELECT value as timestamp
   FROM metadata

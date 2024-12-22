@@ -16,7 +16,7 @@ use crate::internal::cache::CargoInstallOperationCache;
 use crate::internal::cache::CargoInstallVersions;
 use crate::internal::config::config;
 use crate::internal::config::global_config;
-use crate::internal::config::up::asdf_tool_path;
+use crate::internal::config::up::mise_tool_path;
 use crate::internal::config::up::utils::cleanup_path;
 use crate::internal::config::up::utils::progress_handler::ProgressHandler;
 use crate::internal::config::up::utils::run_progress;
@@ -24,7 +24,7 @@ use crate::internal::config::up::utils::RunConfig;
 use crate::internal::config::up::utils::UpProgressHandler;
 use crate::internal::config::up::utils::VersionMatcher;
 use crate::internal::config::up::utils::VersionParser;
-use crate::internal::config::up::UpConfigAsdfBase;
+use crate::internal::config::up::UpConfigMise;
 use crate::internal::config::up::UpConfigTool;
 use crate::internal::config::up::UpError;
 use crate::internal::config::up::UpOptions;
@@ -175,7 +175,9 @@ impl UpConfigCargoInstalls {
                 })?;
         }
 
-        progress_handler.success_with_message(self.get_up_message());
+        if self.crates.len() != 1 {
+            progress_handler.success_with_message(self.get_up_message());
+        }
 
         Ok(())
     }
@@ -186,7 +188,7 @@ impl UpConfigCargoInstalls {
         progress_handler: &UpProgressHandler,
     ) -> Result<PathBuf, UpError> {
         progress_handler.progress("install dependencies".to_string());
-        let rust_tool = UpConfigTool::Asdf(UpConfigAsdfBase::new_any_version("rust"));
+        let rust_tool = UpConfigTool::Mise(UpConfigMise::new_any_version("rust"));
 
         // We create a fake environment since we do not want to add this
         // rust version as part of it, but we want to be able to use `cargo`
@@ -197,14 +199,14 @@ impl UpConfigCargoInstalls {
         rust_tool.up(options, &mut fake_env, &subhandler)?;
 
         // Grab the tool from inside go_tool
-        let asdf = match rust_tool {
-            UpConfigTool::Asdf(asdf) => asdf,
-            _ => unreachable!("rust_tool is not an asdf tool"),
+        let mise = match rust_tool {
+            UpConfigTool::Mise(mise) => mise,
+            _ => unreachable!("rust_tool is not a mise tool"),
         };
 
-        let installed_version = asdf.version()?;
-        let install_path = PathBuf::from(asdf_tool_path("rust", &installed_version));
-        let cargo_bin = install_path.join("bin").join("cargo");
+        let installed_version = mise.version()?;
+        let install_path = PathBuf::from(mise_tool_path("rust", &installed_version));
+        let cargo_bin = install_path.join("cargo");
 
         Ok(cargo_bin)
     }
@@ -303,7 +305,6 @@ impl UpConfigCargoInstalls {
 
     pub fn cleanup(progress_handler: &UpProgressHandler) -> Result<Option<String>, UpError> {
         progress_handler.init("cargo install:".light_blue());
-        progress_handler.progress("checking for unused cargo-installed crates".to_string());
 
         let cache = CargoInstallOperationCache::get();
 

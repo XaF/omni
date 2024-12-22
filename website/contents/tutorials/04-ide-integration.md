@@ -122,10 +122,10 @@ eval "$(omni hook init --shims)"
 This includes all JetBrains IDEs, such as [IntelliJ IDEA](https://www.jetbrains.com/idea), [PyCharm](https://www.jetbrains.com/pycharm), [WebStorm](https://www.jetbrains.com/webstorm), [GoLand](https://www.jetbrains.com/goland), [RubyMine](https://www.jetbrains.com/rubymine), [RustRover](https://www.jetbrains.com/rustrover), etc. as they share the same interface and behavior.
 :::
 
-JetBrains IDEs require you to select the SDK you want to use for your project. They support an `asdf` integration, which is the backend omni uses for a number of tools. If you are not otherwise using `asdf` yourself, you can create a symlink from omni's `asdf` directory to the `asdf` directory in your home directory:
+JetBrains IDEs require you to select the SDK you want to use for your project. They support an `asdf` integration, which is compatible with the backend omni uses for a number of tools. If you are not otherwise using `asdf` yourself, you can create a symlink from omni's `mise` directory to the `asdf` directory in your home directory:
 
 ```bash
-ln -s ~/.local/share/omni/asdf ~/.asdf
+ln -s ~/.local/share/omni/mise ~/.asdf
 ```
 
 Then, you can select the SDK you want to use for your project by selecting the `asdf` SDK of the expected version in `Project Settings` > `Project` > `SDK`.

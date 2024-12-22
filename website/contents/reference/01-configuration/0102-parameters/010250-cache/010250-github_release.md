@@ -2,7 +2,7 @@
 description: Configuration of the `github_release` parameter
 ---
 
-# `asdf`
+# `github_release`
 
 ## Parameters
 

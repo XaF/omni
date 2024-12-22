@@ -5,14 +5,14 @@ use crate::internal::config::utils::parse_duration_or_default;
 use crate::internal::config::ConfigValue;
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct AsdfCacheConfig {
+pub struct MiseCacheConfig {
     pub update_expire: u64,
     pub plugin_update_expire: u64,
     pub plugin_versions_expire: u64,
     pub cleanup_after: u64,
 }
 
-impl Default for AsdfCacheConfig {
+impl Default for MiseCacheConfig {
     fn default() -> Self {
         Self {
             update_expire: Self::DEFAULT_UPDATE_EXPIRE,
@@ -23,7 +23,7 @@ impl Default for AsdfCacheConfig {
     }
 }
 
-impl AsdfCacheConfig {
+impl MiseCacheConfig {
     const DEFAULT_UPDATE_EXPIRE: u64 = 86400; // 1 day
     const DEFAULT_PLUGIN_UPDATE_EXPIRE: u64 = 86400; // 1 day
     const DEFAULT_PLUGIN_VERSIONS_EXPIRE: u64 = 3600; // 1 hour

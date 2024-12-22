@@ -13,11 +13,11 @@ use serde::Serialize;
 use crate::internal::cache::up_environments::UpEnvironment;
 use crate::internal::cache::utils as cache_utils;
 use crate::internal::commands::utils::abs_path;
-use crate::internal::config::up::asdf_base::PostInstallFuncArgs;
+use crate::internal::config::up::mise::PostInstallFuncArgs;
 use crate::internal::config::up::utils::data_path_dir_hash;
 use crate::internal::config::up::utils::ProgressHandler;
 use crate::internal::config::up::utils::UpProgressHandler;
-use crate::internal::config::up::UpConfigAsdfBase;
+use crate::internal::config::up::UpConfigMise;
 use crate::internal::config::up::UpError;
 use crate::internal::config::up::UpOptions;
 use crate::internal::env::current_dir;
@@ -43,7 +43,7 @@ pub struct UpConfigGolang {
     pub upgrade: bool,
     pub dirs: BTreeSet<String>,
     #[serde(skip)]
-    pub asdf_base: OnceCell<UpConfigAsdfBase>,
+    pub backend: OnceCell<UpConfigMise>,
 }
 
 impl Serialize for UpConfigGolang {
@@ -72,7 +72,7 @@ impl Default for UpConfigGolang {
             version: None,
             version_file: None,
             upgrade: false,
-            asdf_base: OnceCell::new(),
+            backend: OnceCell::new(),
             dirs: BTreeSet::new(),
         }
     }
@@ -133,7 +133,7 @@ impl UpConfigGolang {
         }
 
         Self {
-            asdf_base: OnceCell::new(),
+            backend: OnceCell::new(),
             version,
             version_file,
             upgrade,
@@ -147,29 +147,28 @@ impl UpConfigGolang {
         environment: &mut UpEnvironment,
         progress_handler: &UpProgressHandler,
     ) -> Result<(), UpError> {
-        self.asdf_base()?.up(options, environment, progress_handler)
+        self.backend()?.up(options, environment, progress_handler)
     }
 
     pub fn commit(&self, options: &UpOptions, env_version_id: &str) -> Result<(), UpError> {
-        self.asdf_base()?.commit(options, env_version_id)
+        self.backend()?.commit(options, env_version_id)
     }
 
     pub fn down(&self, progress_handler: &UpProgressHandler) -> Result<(), UpError> {
-        self.asdf_base()?.down(progress_handler)
+        self.backend()?.down(progress_handler)
     }
 
     pub fn was_upped(&self) -> bool {
-        self.asdf_base()
-            .map_or(false, |asdf_base| asdf_base.was_upped())
+        self.backend().map_or(false, |backend| backend.was_upped())
     }
 
     pub fn data_paths(&self) -> Vec<PathBuf> {
-        self.asdf_base()
-            .map_or(vec![], |asdf_base| asdf_base.data_paths())
+        self.backend()
+            .map_or(vec![], |backend| backend.data_paths())
     }
 
-    pub fn asdf_base(&self) -> Result<&UpConfigAsdfBase, UpError> {
-        self.asdf_base.get_or_try_init(|| {
+    pub fn backend(&self) -> Result<&UpConfigMise, UpError> {
+        self.backend.get_or_try_init(|| {
             let version = if let Some(version) = &self.version {
                 version.clone()
             } else if let Some(version) = self.extract_version_from_gomod()? {
@@ -178,17 +177,17 @@ impl UpConfigGolang {
                 "latest".to_string()
             };
 
-            let mut asdf_base =
-                UpConfigAsdfBase::new("golang", version.as_ref(), self.dirs.clone(), self.upgrade);
-            asdf_base.add_detect_version_func(detect_version_from_gomod);
-            asdf_base.add_post_install_func(setup_individual_gopath);
+            let mut backend =
+                UpConfigMise::new("go", version.as_ref(), self.dirs.clone(), self.upgrade);
+            backend.add_detect_version_func(detect_version_from_gomod);
+            backend.add_post_install_func(setup_individual_gopath);
 
-            Ok(asdf_base)
+            Ok(backend)
         })
     }
 
     pub fn version(&self) -> Result<String, UpError> {
-        self.asdf_base()?.version()
+        self.backend()?.version()
     }
 
     fn extract_version_from_gomod(&self) -> Result<Option<String>, UpError> {
@@ -229,7 +228,8 @@ fn extract_version_from_gomod_file(
     let reader = BufReader::new(file);
 
     // Prepare the regex to extract the version
-    let goversion = regex::Regex::new(r"(?m)^go (?<version>\d+\.\d+(?:\.\d+)?)$").unwrap();
+    let goversion = regex::Regex::new(r"(?m)^go (?<version>\d+\.\d+(?:\.\d+)?)$")
+        .expect("failed to compile regex");
 
     for line in reader.lines() {
         if line.is_err() {
@@ -264,7 +264,7 @@ fn setup_individual_gopath(
     _progress_handler: &dyn ProgressHandler,
     args: &PostInstallFuncArgs,
 ) -> Result<(), UpError> {
-    if args.tool_real_name != "golang" {
+    if args.tool_real_name != "go" {
         panic!(
             "setup_individual_gopath called with wrong tool: {}",
             args.tool

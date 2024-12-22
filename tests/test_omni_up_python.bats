@@ -1,7 +1,7 @@
 #!/usr/bin/env bats
 
 load 'helpers/utils'
-load 'helpers/asdf'
+load 'helpers/mise'
 
 setup() {
   # Setup the environment for the test; this should override $HOME too
@@ -20,12 +20,12 @@ teardown() {
   check_commands
 }
 
-add_asdf_python_calls() {
-  add_asdf_tool_calls tool=python venv=true "$@"
+add_mise_python_calls() {
+  add_mise_tool_calls tool=python venv=true "$@"
 }
 
 add_brew_python_calls() {
-  add_asdf_tool_brew_calls python
+  add_mise_tool_brew_calls python
 }
 
 add_nix_python_calls() {
@@ -65,28 +65,37 @@ up:
 EOF
 
   add_brew_python_calls
-  add_asdf_python_calls
+  add_mise_python_calls
 
   run omni up --trust 3>&-
   echo "STATUS: $status"
   echo "OUTPUT: $output"
   [ "$status" -eq 0 ]
+
+  # Check that the right version was installed
+  [[ "${output}" == *"installing python 3.12.3"* ]]
+  [[ "${output}" == *"python 3.12.3 installed"* ]]
 }
 
 # bats test_tags=omni:up,omni:up:python,omni:up:python:brew
 @test "omni up python operation (latest) using brew for dependencies (other versions installed)" {
   cat > .omni.yaml <<EOF
 up:
-  - python
+  - python:
+      upgrade: true
 EOF
 
   add_brew_python_calls
-  add_asdf_python_calls others_installed="3.11.6,3.11.8"
+  add_mise_python_calls others_installed="3.11.6,3.11.8" upgrade=true
 
   run omni up --trust 3>&-
   echo "STATUS: $status"
   echo "OUTPUT: $output"
   [ "$status" -eq 0 ]
+
+  # Check that the right version was installed
+  [[ "${output}" == *"installing python 3.12.3"* ]]
+  [[ "${output}" == *"python 3.12.3 installed"* ]]
 }
 
 # bats test_tags=omni:up,omni:up:python,omni:up:python:brew
@@ -98,7 +107,7 @@ up:
 EOF
 
   add_brew_python_calls
-  add_asdf_python_calls
+  add_mise_python_calls
 
   touch requirements.txt
   add_fakebin "${HOME}/bin/pip"
@@ -108,6 +117,11 @@ EOF
   echo "STATUS: $status"
   echo "OUTPUT: $output"
   [ "$status" -eq 0 ]
+
+  # Check that the right version was installed
+  [[ "${output}" == *"installing python 3.12.3"* ]]
+  [[ "${output}" == *"installing dependencies from requirements.txt"* ]]
+  [[ "${output}" == *"python 3.12.3 installed"* ]]
 }
 
 # bats test_tags=omni:up,omni:up:python,omni:up:python:brew
@@ -121,7 +135,7 @@ up:
 EOF
 
   add_brew_python_calls
-  add_asdf_python_calls
+  add_mise_python_calls
 
   touch requirements.txt
   touch requirements2.txt
@@ -133,6 +147,12 @@ EOF
   echo "STATUS: $status"
   echo "OUTPUT: $output"
   [ "$status" -eq 0 ]
+
+  # Check that the right version was installed
+  [[ "${output}" == *"installing python 3.12.3"* ]]
+  [[ "${output}" == *"installing dependencies from requirements.txt"* ]]
+  [[ "${output}" == *"installing dependencies from requirements2.txt"* ]]
+  [[ "${output}" == *"python 3.12.3 installed"* ]]
 }
 
 # bats test_tags=omni:up,omni:up:python,omni:up:python:brew
@@ -143,12 +163,16 @@ up:
 EOF
 
   add_brew_python_calls
-  add_asdf_python_calls installed=true
+  add_mise_python_calls installed=true
 
   run omni up --trust 3>&-
   echo "STATUS: $status"
   echo "OUTPUT: $output"
   [ "$status" -eq 0 ]
+
+  # Check that the right version was installed
+  [[ "${output}" == *"using python 3.12.3"* ]]
+  [[ "${output}" == *"python 3.12.3 already installed"* ]]
 }
 
 # bats test_tags=omni:up,omni:up:python,omni:up:python:brew
@@ -159,44 +183,81 @@ up:
 EOF
 
   add_brew_python_calls
-  add_asdf_python_calls installed=true others_installed="3.11.6,3.11.8"
+  add_mise_python_calls installed=true others_installed="3.11.6,3.11.8"
 
   run omni up --trust 3>&-
   echo "STATUS: $status"
   echo "OUTPUT: $output"
   [ "$status" -eq 0 ]
+
+  # Check that the right version was installed
+  [[ "${output}" == *"using python 3.12.3"* ]]
+  [[ "${output}" == *"python 3.12.3 already installed"* ]]
 }
 
 # bats test_tags=omni:up,omni:up:python,omni:up:python:brew
 @test "omni up python operation (latest) using brew for dependencies (plugin already installed)" {
   cat > .omni.yaml <<EOF
 up:
-  - python
+  - python:
+      url: https://example.com/fake/plugin
 EOF
 
   add_brew_python_calls
-  add_asdf_python_calls plugin_list=installed
+  add_mise_python_calls plugin_name=python-7d945a08 plugin_list=installed
 
   run omni up --trust 3>&-
   echo "STATUS: $status"
   echo "OUTPUT: $output"
   [ "$status" -eq 0 ]
+
+  # Check that the right version was installed
+  [[ "${output}" == *"installing python 3.12.3"* ]]
+  [[ "${output}" == *"python 3.12.3 installed"* ]]
 }
 
 # bats test_tags=omni:up,omni:up:python,omni:up:python:brew
 @test "omni up python operation (latest) using brew for dependencies (install fail fallback to matching installed version)" {
   cat > .omni.yaml <<EOF
 up:
-  - python
+  - python:
+      version: 3.11
+      upgrade: true
 EOF
 
   add_brew_python_calls
-  add_asdf_python_calls installed=fail others_installed="3.11.6,3.11.8" fallback_version=3.11.8
+  add_mise_python_calls installed=fail version=3.11.9 upgrade=true others_installed="3.11.6,3.11.8" fallback_version=3.11.8
 
   run omni up --trust 3>&-
   echo "STATUS: $status"
   echo "OUTPUT: $output"
   [ "$status" -eq 0 ]
+
+  # Check that the right version was installed
+  [[ "${output}" == *"installing python 3.11.9"* ]]
+  [[ "${output}" == *"falling back to installed version 3.11.8"* ]]
+  [[ "${output}" == *"python 3.11.8 already installed"* ]]
+}
+
+# bats test_tags=omni:up,omni:up:python,omni:up:python:brew
+@test "omni up python operation (latest) using brew for dependencies (cache versions expired but plugin update fail)" {
+  cat > .omni.yaml <<EOF
+up:
+  - python:
+      url: https://example.com/fake/plugin
+EOF
+
+  add_brew_python_calls
+  add_mise_python_calls plugin_name=python-7d945a08 plugin_list=installed cache_versions=expired list_versions=fail-update
+
+  run omni up --trust 3>&-
+  echo "STATUS: $status"
+  echo "OUTPUT: $output"
+  [ "$status" -eq 0 ]
+
+  # Check that the right version was installed
+  [[ "${output}" == *"installing python 3.12.3"* ]]
+  [[ "${output}" == *"python 3.12.3 installed"* ]]
 }
 
 # bats test_tags=omni:up,omni:up:python,omni:up:python:brew
@@ -207,7 +268,7 @@ up:
 EOF
 
   add_brew_python_calls
-  add_asdf_python_calls cache_versions=true list_versions=false
+  add_mise_python_calls cache_versions=true list_versions=false
 
   run omni up --trust 3>&-
   echo "STATUS: $status"
@@ -223,7 +284,7 @@ up:
 EOF
 
   add_brew_python_calls
-  add_asdf_python_calls cache_versions=expired
+  add_mise_python_calls cache_versions=expired
 
   run omni up --trust 3>&-
   echo "STATUS: $status"
@@ -239,23 +300,7 @@ up:
 EOF
 
   add_brew_python_calls
-  add_asdf_python_calls cache_versions=expired list_versions=fail
-
-  run omni up --trust 3>&-
-  echo "STATUS: $status"
-  echo "OUTPUT: $output"
-  [ "$status" -eq 0 ]
-}
-
-# bats test_tags=omni:up,omni:up:python,omni:up:python:brew
-@test "omni up python operation (latest) using brew for dependencies (cache versions expired but plugin update fail)" {
-  cat > .omni.yaml <<EOF
-up:
-  - python
-EOF
-
-  add_brew_python_calls
-  add_asdf_python_calls cache_versions=expired list_versions=fail-update
+  add_mise_python_calls cache_versions=expired list_versions=fail
 
   run omni up --trust 3>&-
   echo "STATUS: $status"
@@ -272,12 +317,16 @@ up:
 EOF
 
   add_brew_python_calls
-  add_asdf_python_calls upgrade=true
+  add_mise_python_calls upgrade=true others_installed="3.11.6,3.11.8"
 
   run omni up --trust 3>&-
   echo "STATUS: $status"
   echo "OUTPUT: $output"
   [ "$status" -eq 0 ]
+
+  # Check that the right version was installed
+  [[ "${output}" == *"installing python 3.12.3"* ]]
+  [[ "${output}" == *"python 3.12.3 installed"* ]]
 }
 
 # bats test_tags=omni:up,omni:up:python,omni:up:python:brew
@@ -291,12 +340,16 @@ up_command:
 EOF
 
   add_brew_python_calls
-  add_asdf_python_calls upgrade=true
+  add_mise_python_calls upgrade=true others_installed="3.11.6,3.11.8"
 
   run omni up --trust 3>&-
   echo "STATUS: $status"
   echo "OUTPUT: $output"
   [ "$status" -eq 0 ]
+
+  # Check that the right version was installed
+  [[ "${output}" == *"installing python 3.12.3"* ]]
+  [[ "${output}" == *"python 3.12.3 installed"* ]]
 }
 
 # bats test_tags=omni:up,omni:up:python,omni:up:python:brew
@@ -307,12 +360,16 @@ up:
 EOF
 
   add_brew_python_calls
-  add_asdf_python_calls upgrade=true
+  add_mise_python_calls upgrade=true others_installed="3.11.6,3.11.8"
 
   run omni up --trust --upgrade 3>&-
   echo "STATUS: $status"
   echo "OUTPUT: $output"
   [ "$status" -eq 0 ]
+
+  # Check that the right version was installed
+  [[ "${output}" == *"installing python 3.12.3"* ]]
+  [[ "${output}" == *"python 3.12.3 installed"* ]]
 }
 
 # bats test_tags=omni:up,omni:up:python,omni:up:python:brew
@@ -324,12 +381,16 @@ EOF
 
   add_brew_python_calls
   # Expect that it won't match latest since older major, and install is required
-  add_asdf_python_calls no_upgrade_installed="2.7.18"
+  add_mise_python_calls others_installed="2.7.18"
 
   run omni up --trust 3>&-
   echo "STATUS: $status"
   echo "OUTPUT: $output"
   [ "$status" -eq 0 ]
+
+  # Check that the right version was installed
+  [[ "${output}" == *"installing python 3.12.3"* ]]
+  [[ "${output}" == *"python 3.12.3 installed"* ]]
 }
 
 # bats test_tags=omni:up,omni:up:python,omni:up:python:brew
@@ -340,12 +401,16 @@ up:
 EOF
 
   add_brew_python_calls
-  add_asdf_python_calls installed=true list_versions=false version="2.7.9" no_upgrade_installed="2.7.9" venv=false
+  add_mise_python_calls installed=true list_versions=false version="2.7.9" others_installed="2.7.9" venv=false
 
   run omni up --trust 3>&-
   echo "STATUS: $status"
   echo "OUTPUT: $output"
   [ "$status" -eq 0 ]
+
+  # Check that the right version was installed
+  [[ "${output}" == *"using python 2.7.9"* ]]
+  [[ "${output}" == *"python 2.7.9 already installed"* ]]
 }
 
 # bats test_tags=omni:up,omni:up:python,omni:up:python:brew
@@ -356,12 +421,16 @@ up:
 EOF
 
   add_brew_python_calls
-  add_asdf_python_calls installed=true version="3.7.1" no_upgrade_installed="3.7.1"
+  add_mise_python_calls installed=true version="3.7.1" others_installed="3.7.1"
 
   run omni up --trust 3>&-
   echo "STATUS: $status"
   echo "OUTPUT: $output"
   [ "$status" -eq 0 ]
+
+  # Check that the right version was installed
+  [[ "${output}" == *"using python 3.7.1"* ]]
+  [[ "${output}" == *"python 3.7.1 already installed"* ]]
 }
 
 # bats test_tags=omni:up,omni:up:python,omni:up:python:brew
@@ -372,12 +441,16 @@ up:
 EOF
 
   add_brew_python_calls
-  add_asdf_python_calls installed=true list_versions=false version="3.7.1" no_upgrade_installed="3.7.1"
+  add_mise_python_calls installed=true list_versions=false version="3.7.1" others_installed="3.7.1"
 
   run omni up --trust 3>&-
   echo "STATUS: $status"
   echo "OUTPUT: $output"
   [ "$status" -eq 0 ]
+
+  # Check that the right version was installed
+  [[ "${output}" == *"using python 3.7.1"* ]]
+  [[ "${output}" == *"python 3.7.1 already installed"* ]]
 }
 
 # bats test_tags=omni:up,omni:up:python,omni:up:python:brew
@@ -388,12 +461,16 @@ up:
 EOF
 
   add_brew_python_calls
-  add_asdf_python_calls
+  add_mise_python_calls
 
   run omni up --trust 3>&-
   echo "STATUS: $status"
   echo "OUTPUT: $output"
   [ "$status" -eq 0 ]
+
+  # Check that the right version was installed
+  [[ "${output}" == *"installing python 3.12.3"* ]]
+  [[ "${output}" == *"python 3.12.3 installed"* ]]
 }
 
 # bats test_tags=omni:up,omni:up:python,omni:up:python:brew
@@ -404,12 +481,16 @@ up:
 EOF
 
   add_brew_python_calls
-  add_asdf_python_calls version=3.11.6
+  add_mise_python_calls version=3.11.6
 
   run omni up --trust 3>&-
   echo "STATUS: $status"
   echo "OUTPUT: $output"
   [ "$status" -eq 0 ]
+
+  # Check that the right version was installed
+  [[ "${output}" == *"installing python 3.11.6"* ]]
+  [[ "${output}" == *"python 3.11.6 installed"* ]]
 }
 
 # bats test_tags=omni:up,omni:up:python,omni:up:python:brew
@@ -420,12 +501,16 @@ up:
 EOF
 
   add_brew_python_calls
-  add_asdf_python_calls version=3.10.14
+  add_mise_python_calls version=3.10.14
 
   run omni up --trust 3>&-
   echo "STATUS: $status"
   echo "OUTPUT: $output"
   [ "$status" -eq 0 ]
+
+  # Check that the right version was installed
+  [[ "${output}" == *"installing python 3.10.14"* ]]
+  [[ "${output}" == *"python 3.10.14 installed"* ]]
 }
 
 # bats test_tags=omni:up,omni:up:python,omni:up:python:brew
@@ -436,12 +521,16 @@ up:
 EOF
 
   add_brew_python_calls
-  add_asdf_python_calls version=3.11.2
+  add_mise_python_calls version=3.11.2
 
   run omni up --trust 3>&-
   echo "STATUS: $status"
   echo "OUTPUT: $output"
   [ "$status" -eq 0 ]
+
+  # Check that the right version was installed
+  [[ "${output}" == *"installing python 3.11.2"* ]]
+  [[ "${output}" == *"python 3.11.2 installed"* ]]
 }
 
 # bats test_tags=omni:up,omni:up:python,omni:up:python:brew
@@ -452,12 +541,16 @@ EOF
 EOF
 
   add_brew_python_calls
-  add_asdf_python_calls version=3.11.9
+  add_mise_python_calls version=3.11.9
 
   run omni up --trust 3>&-
   echo "STATUS: $status"
   echo "OUTPUT: $output"
   [ "$status" -eq 0 ]
+
+  # Check that the right version was installed
+  [[ "${output}" == *"installing python 3.11.9"* ]]
+  [[ "${output}" == *"python 3.11.9 installed"* ]]
 }
 
 # bats test_tags=omni:up,omni:up:python,omni:up:python:brew
@@ -468,12 +561,16 @@ up:
 EOF
 
   add_brew_python_calls
-  add_asdf_python_calls version=3.11.9
+  add_mise_python_calls version=3.11.9
 
   run omni up --trust 3>&-
   echo "STATUS: $status"
   echo "OUTPUT: $output"
   [ "$status" -eq 0 ]
+
+  # Check that the right version was installed
+  [[ "${output}" == *"installing python 3.11.9"* ]]
+  [[ "${output}" == *"python 3.11.9 installed"* ]]
 }
 
 # bats test_tags=omni:up,omni:up:python,omni:up:python:brew
@@ -484,12 +581,16 @@ up:
 EOF
 
   add_brew_python_calls
-  add_asdf_python_calls version=3.11.9
+  add_mise_python_calls version=3.11.9
 
   run omni up --trust 3>&-
   echo "STATUS: $status"
   echo "OUTPUT: $output"
   [ "$status" -eq 0 ]
+
+  # Check that the right version was installed
+  [[ "${output}" == *"installing python 3.11.9"* ]]
+  [[ "${output}" == *"python 3.11.9 installed"* ]]
 }
 
 # bats test_tags=omni:up,omni:up:python,omni:up:python:brew
@@ -500,12 +601,16 @@ up:
 EOF
 
   add_brew_python_calls
-  add_asdf_python_calls version=2.7.18 venv=false installed=fail others_installed="3.11.6,3.11.8"
+  add_mise_python_calls version=2.7.18 venv=false installed=fail others_installed="3.11.6,3.11.8"
 
   run omni up --trust 3>&-
   echo "STATUS: $status"
   echo "OUTPUT: $output"
   [ "$status" -eq 1 ]
+
+  # Check that the right version was installed
+  [[ "${output}" == *"installing python 2.7.18"* ]]
+  [[ "${output}" == *"execution error: process exited with status 1"* ]]
 }
 
 # bats test_tags=omni:up,omni:up:python,omni:up:python:brew
@@ -516,12 +621,16 @@ up:
 EOF
 
   add_brew_python_calls
-  add_asdf_python_calls version=2.7.18 venv=false
+  add_mise_python_calls version=2.7.18 venv=false
 
   run omni up --trust 3>&-
   echo "STATUS: $status"
   echo "OUTPUT: $output"
   [ "$status" -eq 0 ]
+
+  # Check that the right version was installed
+  [[ "${output}" == *"installing python 2.7.18"* ]]
+  [[ "${output}" == *"python 2.7.18 installed"* ]]
 }
 
 # bats test_tags=omni:up,omni:up:python,omni:up:python:brew
@@ -532,12 +641,16 @@ up:
 EOF
 
   add_brew_python_calls
-  add_asdf_python_calls version=2.7.18 venv=false
+  add_mise_python_calls version=2.7.18 venv=false
 
   run omni up --trust 3>&-
   echo "STATUS: $status"
   echo "OUTPUT: $output"
   [ "$status" -eq 0 ]
+
+  # Check that the right version was installed
+  [[ "${output}" == *"installing python 2.7.18"* ]]
+  [[ "${output}" == *"python 2.7.18 installed"* ]]
 }
 
 # bats test_tags=omni:up,omni:up:python,omni:up:python:nix
@@ -554,7 +667,7 @@ up:
 EOF
 
   add_nix_python_calls
-  add_asdf_python_calls
+  add_mise_python_calls
 
   run omni up --trust 3>&-
   echo "STATUS: $status"
@@ -572,12 +685,16 @@ EOF
   echo "3.11.9" > .python-version
 
   add_brew_python_calls
-  add_asdf_python_calls version=3.11.9
+  add_mise_python_calls version=3.11.9
 
   run omni up --trust 3>&-
   echo "STATUS: $status"
   echo "OUTPUT: $output"
   [ "$status" -eq 0 ]
+
+  # Check that the right version was installed
+  [[ "${output}" == *"installing python 3.11.9"* ]]
+  [[ "${output}" == *"python 3.11.9 installed"* ]]
 }
 
 # bats test_tags=omni:up,omni:up:python
@@ -591,12 +708,16 @@ EOF
   echo "3.11.9" > subdir/.python-version
 
   add_brew_python_calls
-  add_asdf_python_calls version=3.11.9 subdir=true
+  add_mise_python_calls version=3.11.9 subdir=true
 
   run omni up --trust 3>&-
   echo "STATUS: $status"
   echo "OUTPUT: $output"
   [ "$status" -eq 0 ]
+
+  # Check that the right version was installed
+  [[ "${output}" == *"installing python 3.11.9"* ]]
+  [[ "${output}" == *"python 3.11.9 installed"* ]]
 }
 
 # bats test_tags=omni:up,omni:up:python
@@ -613,12 +734,18 @@ EOF
   echo "python 3.11.9" > subdir2/.tool-versions
 
   add_brew_python_calls
-  add_asdf_python_calls version=3.11.7 subdir=true
-  add_asdf_python_calls version=3.11.9 subdir=true list_versions=false asdf_update=false plugin_list=skip
-  add_asdf_python_calls version=3.12.0 list_versions=false asdf_update=false plugin_list=skip
+  add_mise_python_calls version=3.11.7 subdir=true auto=true
+  add_mise_python_calls version=3.11.9 subdir=true list_versions=false mise_update=false plugin_list=skip
+  add_mise_python_calls version=3.12.0 list_versions=false mise_update=false plugin_list=skip
 
   run omni up --trust 3>&-
   echo "STATUS: $status"
   echo "OUTPUT: $output"
   [ "$status" -eq 0 ]
+
+  # Check that the right version was installed
+  [[ "${output}" == *"installing python 3.11.7"* ]]
+  [[ "${output}" == *"installing python 3.11.9"* ]]
+  [[ "${output}" == *"installing python 3.12.0"* ]]
+  [[ "${output}" == *"python 3.11.7, 3.11.9, 3.12.0 installed"* ]]
 }

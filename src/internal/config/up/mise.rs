@@ -1,10 +1,12 @@
 use std::collections::BTreeMap;
 use std::collections::BTreeSet;
-use std::os::unix::fs::PermissionsExt;
+use std::os::unix::fs::symlink;
+use std::path::Path;
 use std::path::PathBuf;
+use std::process::Command as StdCommand;
 
-use lazy_static::lazy_static;
 use normalize_path::NormalizePath;
+use once_cell::sync::Lazy;
 use once_cell::sync::OnceCell;
 use serde::Deserialize;
 use serde::Serialize;
@@ -13,37 +15,41 @@ use sha2::Sha256;
 use tokio::process::Command as TokioCommand;
 use walkdir::WalkDir;
 
-use crate::internal::cache::asdf_operation::AsdfPluginVersions;
+use crate::internal::cache::mise_operation::MisePluginVersions;
 use crate::internal::cache::up_environments::UpEnvironment;
 use crate::internal::cache::utils as cache_utils;
-use crate::internal::cache::AsdfOperationCache;
 use crate::internal::cache::CacheManagerError;
+use crate::internal::cache::MiseOperationCache;
 use crate::internal::config;
 use crate::internal::config::global_config;
 use crate::internal::config::up::homebrew::HomebrewInstall;
 use crate::internal::config::up::utils::data_path_dir_hash;
+use crate::internal::config::up::utils::force_remove_dir_all;
 use crate::internal::config::up::utils::run_progress;
+use crate::internal::config::up::utils::CommandExt;
 use crate::internal::config::up::utils::ProgressHandler;
 use crate::internal::config::up::utils::RunConfig;
 use crate::internal::config::up::utils::UpProgressHandler;
 use crate::internal::config::up::utils::VersionMatcher;
 use crate::internal::config::up::utils::VersionParser;
+use crate::internal::config::up::UpConfigGithubRelease;
 use crate::internal::config::up::UpConfigHomebrew;
 use crate::internal::config::up::UpConfigNix;
 use crate::internal::config::up::UpConfigTool;
 use crate::internal::config::up::UpError;
 use crate::internal::config::up::UpOptions;
+use crate::internal::config::utils::is_executable;
 use crate::internal::config::ConfigValue;
 use crate::internal::dynenv::update_dynamic_env_for_command_from_env;
+use crate::internal::env::cache_home;
 use crate::internal::env::data_home;
 use crate::internal::user_interface::StringColor;
 use crate::internal::workdir;
 use crate::omni_warning;
 
-lazy_static! {
-    static ref ASDF_PATH: String = format!("{}/asdf", data_home());
-    static ref ASDF_BIN: String = format!("{}/bin/asdf", *ASDF_PATH);
-}
+static MISE_PATH: Lazy<String> = Lazy::new(|| format!("{}/mise", data_home()));
+static MISE_BIN: Lazy<String> = Lazy::new(|| format!("{}/bin/mise", *MISE_PATH));
+static MISE_CACHE_PATH: Lazy<String> = Lazy::new(|| format!("{}/mise", cache_home()));
 
 type DetectVersionFunc = fn(tool_real_name: String, path: PathBuf) -> Option<String>;
 type PostInstallFunc = fn(
@@ -60,109 +66,419 @@ pub struct PostInstallFuncArgs {
     pub tool: String,
     pub tool_real_name: String,
     pub requested_version: String,
-    pub versions: Vec<AsdfToolUpVersion>,
+    pub versions: Vec<MiseToolUpVersion>,
 }
 
-pub fn asdf_path() -> String {
-    (*ASDF_PATH).clone()
+pub fn mise_path() -> String {
+    (*MISE_PATH).clone()
 }
 
-fn asdf_bin() -> &'static str {
-    ASDF_BIN.as_str()
+pub fn mise_cache_path() -> String {
+    (*MISE_CACHE_PATH).clone()
 }
 
-fn asdf_async_command() -> TokioCommand {
-    let mut asdf = TokioCommand::new(asdf_bin());
-    asdf.env("ASDF_DIR", asdf_path());
-    asdf.env("ASDF_DATA_DIR", asdf_path());
-    asdf.env_remove("INSTALL_PREFIX");
-    asdf.env_remove("DESTDIR");
-    asdf.stdout(std::process::Stdio::piped());
-    asdf.stderr(std::process::Stdio::piped());
-    asdf
+fn mise_bin() -> &'static str {
+    MISE_BIN.as_str()
 }
 
-fn asdf_sync_command() -> std::process::Command {
-    let mut asdf = std::process::Command::new(asdf_bin());
-    asdf.env("ASDF_DIR", asdf_path());
-    asdf.env("ASDF_DATA_DIR", asdf_path());
-    asdf.env_remove("INSTALL_PREFIX");
-    asdf.env_remove("DESTDIR");
-    asdf.stdout(std::process::Stdio::piped());
-    asdf.stderr(std::process::Stdio::piped());
-    asdf
+fn configure_mise_command<T>(command: &mut T) -> &mut T
+where
+    T: CommandExt,
+{
+    command.env_remove_prefix("MISE_");
+    command.env_remove("INSTALL_PREFIX");
+    command.env_remove("DESTDIR");
+    command.env("MISE_CONFIG_DIR", mise_path());
+    command.env("MISE_DATA_DIR", mise_path());
+    command.env("MISE_CACHE_DIR", mise_cache_path());
+    command.env("MISE_LIBGIT2", "false");
+    command.env("MISE_RUSTUP_HOME", format!("{}/rustup", mise_path()));
+    command.env("MISE_CARGO_HOME", format!("{}/cargo", mise_path()));
+    command.stdout(std::process::Stdio::piped());
+    command.stderr(std::process::Stdio::piped());
+    command.current_dir("/tmp");
+    command
 }
 
-pub fn asdf_tool_path(tool: &str, version: &str) -> String {
-    format!("{}/installs/{}/{}", asdf_path(), tool, version)
+fn mise_async_command() -> TokioCommand {
+    let mut command = TokioCommand::new(mise_bin());
+    configure_mise_command(&mut command);
+    command
 }
 
-fn is_asdf_installed() -> bool {
-    let bin_path = std::path::Path::new(asdf_bin());
-    bin_path.is_file() && bin_path.metadata().unwrap().permissions().mode() & 0o111 != 0
+fn mise_sync_command() -> StdCommand {
+    let mut command = StdCommand::new(mise_bin());
+    configure_mise_command(&mut command);
+    command
 }
 
-fn install_asdf(progress_handler: &dyn ProgressHandler) -> Result<(), UpError> {
-    // Add asdf to PATH if not there yet, as some of the asdf plugins depend on it being
-    // in the PATH. We will want it to be at the beginning of the PATH, so that it takes
-    // precedence over any other asdf installation.
-    let bin_path = PathBuf::from(format!("{}/bin", asdf_path()));
-    let path_env = std::env::var("PATH").unwrap();
-    let paths: Vec<PathBuf> = std::env::split_paths(&path_env).collect();
-    let mut new_paths: Vec<PathBuf> = paths.into_iter().filter(|p| *p != bin_path).collect();
-    new_paths.insert(0, bin_path);
-    let new_path_env = std::env::join_paths(new_paths).expect("Failed to join paths");
-    std::env::set_var("PATH", new_path_env);
+pub fn mise_tool_path(tool: &str, version: &str) -> String {
+    format!("{}/installs/{}/{}", mise_path(), tool, version)
+}
 
-    if !is_asdf_installed() {
-        progress_handler.progress("installing asdf".to_string());
+fn is_mise_installed() -> bool {
+    is_executable(Path::new(mise_bin()))
+}
 
-        let mut git_clone = TokioCommand::new("git");
-        git_clone.arg("clone");
-        git_clone.arg("https://github.com/asdf-vm/asdf.git");
-        git_clone.arg(asdf_path());
-        git_clone.arg("--branch");
-        // We hardcode the version we get, and 0.14.1 is the latest version compatible with
-        // the current use of asdf by omni; this needs a rewrite since asdf 0.15.0 is now
-        // rewritten in golang entirely
-        git_clone.arg("v0.14.1");
-        git_clone.stdout(std::process::Stdio::piped());
-        git_clone.stderr(std::process::Stdio::piped());
+fn install_mise(options: &UpOptions, progress_handler: &UpProgressHandler) -> Result<(), UpError> {
+    let cache = MiseOperationCache::get();
 
-        run_progress(&mut git_clone, Some(progress_handler), RunConfig::default())?;
+    let (fail_on_error, migrate_from_asdf) = if !is_mise_installed() {
+        progress_handler.progress("installing mise".to_string());
+
+        // Check if we need to perform any migration, which is true if the `data_home()/asdf`
+        // directory exists and the `mise_path()` directory does not exist
+        let should_migrate =
+            !Path::new(&mise_path()).exists() && Path::new(&data_home()).join("asdf").exists();
+
+        (true, should_migrate)
+    } else if cache.should_update_mise() {
+        // Run `mise --version` to check if mise has an update available
+        let mut command = mise_sync_command();
+        command.arg("--version");
+        let output = command
+            .output()
+            .map_err(|err| UpError::Exec(format!("failed to check mise version: {}", err)))?;
+
+        // If stderr contains `mise self-update`, this means we need to update mise
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        if stderr.contains("mise self-update") {
+            progress_handler.progress("updating mise".to_string());
+
+            (false, false)
+        } else {
+            if let Err(err) = cache.updated_mise() {
+                progress_handler.progress(format!(
+                    "failed to update cache for last mise update check: {}",
+                    err
+                ));
+            }
+
+            return Ok(());
+        }
+    } else {
+        return Ok(());
+    };
+
+    let gh_release = UpConfigGithubRelease::new_latest_version("jdx/mise");
+
+    // We create a fake environment since we do not want to add this
+    // github release to the environment, we just want a mise binary
+    // to install other tools
+    let mut fake_env = UpEnvironment::new();
+
+    let subhandler = progress_handler.subhandler(&"mise: ".light_black());
+    gh_release.up(options, &mut fake_env, &subhandler)?;
+
+    // Check that the mise binary is installed
+    let install_path = gh_release.install_path()?;
+    let install_bin = install_path.join("mise");
+    if !install_bin.exists() || !is_executable(&install_bin) {
+        let errmsg = "failed to install mise: binary not found".to_string();
+        if fail_on_error {
+            return Err(UpError::Exec(errmsg));
+        } else {
+            progress_handler.progress(errmsg);
+            return Ok(());
+        }
+    }
+
+    // Create the directory for the mise binary
+    let mise_bin_dest = Path::new(mise_bin());
+    if let Err(err) = std::fs::create_dir_all(
+        mise_bin_dest
+            .parent()
+            .expect("failed to get parent of mise binary"),
+    ) {
+        let errmsg = format!("failed to create mise binary directory: {}", err);
+        if fail_on_error {
+            return Err(UpError::Exec(format!(
+                "failed to create mise binary directory: {}",
+                err
+            )));
+        } else {
+            progress_handler.progress(errmsg);
+            return Ok(());
+        }
+    }
+
+    // Now copy the mise binary to the correct location
+    if let Err(err) = std::fs::copy(&install_bin, mise_bin_dest) {
+        let errmsg = format!("failed to copy mise binary: {}", err);
+        if fail_on_error {
+            return Err(UpError::Exec(errmsg));
+        } else {
+            progress_handler.progress(errmsg);
+            return Ok(());
+        }
+    }
+
+    if let Err(err) = cache.updated_mise() {
+        progress_handler.progress(format!(
+            "failed to update cache for last mise update: {}",
+            err
+        ));
+    }
+
+    if migrate_from_asdf {
+        if let Err(err) = migrate_asdf_to_mise() {
+            progress_handler.progress(format!("failed to migrate from asdf to mise: {}", err));
+        }
     }
 
     Ok(())
 }
 
-fn is_asdf_tool_version_installed(tool: &str, version: &str) -> bool {
-    let mut asdf_list = asdf_sync_command();
-    asdf_list.arg("list");
-    asdf_list.arg(tool);
-    asdf_list.arg(version);
-    asdf_list.stdout(std::process::Stdio::piped());
-    asdf_list.stderr(std::process::Stdio::null());
+fn migrate_asdf_to_mise() -> Result<(), UpError> {
+    let asdf_path = Path::new(&data_home()).join("asdf");
 
-    if let Ok(output) = asdf_list.output() {
-        if output.status.success() {
-            // The output is listing all available versions, one per line,
-            // so we want to go over that output and check that a version
-            // _exactly_ matches the required version
-            let stdout = String::from_utf8(output.stdout).unwrap();
-            return stdout.lines().any(|line| line.trim() == version);
+    let mise_path = mise_path();
+    let mise_path = Path::new(&mise_path);
+
+    // Migrating from asdf to mise involves:
+    // - move asdf/installs contents to mise/installs
+    // - for go installs:
+    //   - asdf 'golang' becomes mise 'go' (asdf/installs/golang => mise/installs/go)
+    //   - need to move the contents of asdf/installs/go/<version>/go to mise/installs/go/<version>
+    //   - need to add a `go` symlink in mise/installs/go/<version>/go => mise/installs/go/<version>
+    // - for all file in asdf/shims, create a symlink in mise/shims that targets mise/bin/mise
+
+    // First, move the asdf installs to mise
+    let asdf_installs = asdf_path.join("installs");
+    let mise_installs = mise_path.join("installs");
+    if let Err(err) = std::fs::rename(&asdf_installs, &mise_installs) {
+        return Err(UpError::Exec(format!(
+            "failed to move asdf installs to mise: {}",
+            err
+        )));
+    }
+
+    // Create a symlink to from the asdf installs to the mise installs; use a relative path
+    // for the symlink to make sure it works when the data directory is moved
+    if let Err(err) = symlink(PathBuf::from("../mise/installs"), &asdf_installs) {
+        return Err(UpError::Exec(format!("failed to create symlink: {}", err)));
+    }
+
+    // Now, move the go installs to the correct location
+    let go_asdf_path = mise_installs.join("golang");
+    let go_mise_path = mise_installs.join("go");
+    if let Err(err) = std::fs::rename(&go_asdf_path, &go_mise_path) {
+        return Err(UpError::Exec(format!(
+            "failed to rename 'golang' to 'go': {}",
+            err
+        )));
+    }
+
+    // Now, move the contents of the go installs to the correct location
+    // and create the symlink; we just need to list all installed versions
+    let tmpdir = go_mise_path.join("TMP");
+    if let Ok(entries) = glob::glob(&go_mise_path.join("*").to_string_lossy()) {
+        for entry in entries.flatten().filter(|entry| entry.is_dir()) {
+            let inner_go = entry.join("go");
+
+            // Move the inner 'go' directory
+            if let Err(err) = std::fs::rename(&inner_go, &tmpdir) {
+                return Err(UpError::Exec(format!(
+                    "failed to move 'go' directory: {}",
+                    err
+                )));
+            }
+
+            // Remove the outer directory
+            if let Err(err) = force_remove_dir_all(&entry) {
+                return Err(UpError::Exec(format!(
+                    "failed to remove outer directory: {}",
+                    err
+                )));
+            }
+
+            // Move the inner 'go' directory back, but as the outer directory
+            if let Err(err) = std::fs::rename(&tmpdir, &entry) {
+                return Err(UpError::Exec(format!(
+                    "failed to move 'go' directory back: {}",
+                    err
+                )));
+            }
+
+            // Now create an inner 'go' symlink to the outer directory
+            if let Err(err) = symlink("./", &inner_go) {
+                return Err(UpError::Exec(format!("failed to create symlink: {}", err)));
+            }
         }
     }
 
-    false
+    // Finally, create the shims
+    let asdf_shims = asdf_path.join("shims");
+    let mise_shims = mise_path.join("shims");
+    let mise_bin = Path::new(mise_bin());
+
+    if !mise_shims.exists() {
+        if let Err(err) = std::fs::create_dir_all(&mise_shims) {
+            return Err(UpError::Exec(format!(
+                "failed to create mise shims directory: {}",
+                err
+            )));
+        }
+    }
+
+    if let Ok(entries) = glob::glob(&asdf_shims.join("*").to_string_lossy()) {
+        for entry in entries.flatten().filter(|entry| entry.is_file()) {
+            let filename = match entry.file_name() {
+                Some(filename) => filename.to_string_lossy().to_string(),
+                None => continue,
+            };
+
+            let shim = mise_shims.join(&filename);
+            if shim.exists() {
+                continue;
+            }
+
+            if let Err(err) = symlink(mise_bin, &shim) {
+                return Err(UpError::Exec(format!("failed to create symlink: {}", err)));
+            }
+        }
+    }
+
+    Ok(())
+}
+
+fn list_mise_tool_versions(
+    tool: &str,
+    list_type: &str,
+    path: Option<PathBuf>,
+) -> Result<MiseLsOutput, UpError> {
+    let mut mise_list = mise_sync_command();
+    mise_list.arg("ls");
+    if list_type == "installed" {
+        mise_list.arg("--installed");
+    } else if list_type == "current" {
+        mise_list.arg("--current");
+    } else {
+        return Err(UpError::Exec(format!("unknown list type: {}", list_type)));
+    }
+    mise_list.arg("--offline");
+    mise_list.arg("--json");
+    mise_list.arg("--quiet");
+    mise_list.arg(tool);
+
+    mise_list.stdout(std::process::Stdio::piped());
+    mise_list.stderr(std::process::Stdio::null());
+
+    if let Some(path) = path {
+        mise_list.env(
+            "MISE_TRUSTED_CONFIG_PATHS",
+            path.to_string_lossy().to_string(),
+        );
+        mise_list.current_dir(path);
+    }
+
+    let output = mise_list.output().map_err(|err| {
+        UpError::Exec(format!(
+            "failed to list installed versions for {}: {}",
+            tool, err
+        ))
+    })?;
+
+    if !output.status.success() {
+        return Err(UpError::Exec(format!(
+            "failed to list installed versions for {} ({}): {}",
+            tool,
+            output.status,
+            String::from_utf8_lossy(&output.stderr),
+        )));
+    }
+
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    let versions: MiseLsOutput = match serde_json::from_str(&stdout) {
+        Ok(versions) => versions,
+        Err(err) => {
+            return Err(UpError::Exec(format!(
+                "failed to parse mise ls output: {}",
+                err
+            )));
+        }
+    };
+
+    Ok(versions)
+}
+
+fn list_mise_installed_versions(tool: &str) -> Result<MiseLsOutput, UpError> {
+    list_mise_tool_versions(tool, "installed", None)
+}
+
+fn list_mise_current_versions(tool: &str, path: PathBuf) -> Result<MiseLsOutput, UpError> {
+    list_mise_tool_versions(tool, "current", Some(path))
+}
+
+fn is_mise_tool_version_installed(tool: &str, version: &str) -> bool {
+    match list_mise_installed_versions(tool) {
+        Ok(versions) => versions.has_version(version),
+        Err(_err) => false,
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(transparent)]
+struct MiseLsOutput {
+    versions: Vec<MiseLsVersion>,
+}
+
+impl MiseLsOutput {
+    fn versions(&self) -> Vec<String> {
+        self.versions
+            .iter()
+            .filter_map(|v| match v.version.as_str() {
+                "system" => None,
+                _ => Some(v.version.clone()),
+            })
+            .collect()
+    }
+
+    fn requested_versions(&self, path: &PathBuf) -> Vec<String> {
+        self.versions
+            .iter()
+            .filter(|v| match v.source {
+                Some(ref source) => match source.path.parent() {
+                    Some(ref parent) => parent == path,
+                    None => false,
+                },
+                None => false,
+            })
+            .filter_map(|v| match v.requested_version {
+                Some(ref version) if version != "system" => Some(version.clone()),
+                _ => None,
+            })
+            .collect()
+    }
+
+    fn has_version(&self, version: &str) -> bool {
+        self.versions.iter().any(|v| v.version == version)
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+struct MiseLsVersion {
+    version: String,
+    requested_version: Option<String>,
+    source: Option<MiseLsVersionSource>,
+    // install_path: String,
+    // symlinked_to: Option<String>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+struct MiseLsVersionSource {
+    #[serde(rename = "type")]
+    version_type: String,
+    path: PathBuf,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, Default)]
-pub struct UpConfigAsdfBaseParams {
+pub struct UpConfigMiseParams {
     pub tool_url: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, Default)]
-pub struct UpConfigAsdfBase {
+pub struct UpConfigMise {
     /// The name of the tool to install.
     #[serde(skip)]
     pub tool: String,
@@ -213,7 +529,7 @@ pub struct UpConfigAsdfBase {
     /// The functions will be called with the following parameters:
     /// - progress_handler: a progress handler to use to report progress
     /// - tool: the name of the tool
-    /// - versions: AsdfToolUpVersion objects describing the versions that were
+    /// - versions: MiseToolUpVersion objects describing the versions that were
     ///             up-ed, with the following fields:
     ///     - version: the version of the tool that was installed
     ///     - installed: whether the tool was installed or already installed
@@ -239,12 +555,12 @@ pub struct UpConfigAsdfBase {
     #[serde(skip)]
     up_succeeded: OnceCell<bool>,
 
-    /// The tool object representing the dependencies for this asdf tool.
+    /// The tool object representing the dependencies for this mise tool.
     #[serde(skip)]
     deps: OnceCell<Box<UpConfigTool>>,
 }
 
-impl UpConfigAsdfBase {
+impl UpConfigMise {
     pub fn new_any_version(tool: &str) -> Self {
         Self {
             tool: tool.to_string(),
@@ -272,23 +588,23 @@ impl UpConfigAsdfBase {
     }
 
     fn new_from_auto(&self, version: &str, dirs: BTreeSet<String>) -> Self {
-        UpConfigAsdfBase {
+        UpConfigMise {
             tool: self.tool.clone(),
             tool_url: self.tool_url.clone(),
             version: version.to_string(),
             dirs: dirs.clone(),
-            ..UpConfigAsdfBase::default()
+            ..UpConfigMise::default()
         }
     }
 
     pub fn from_config_value(tool: &str, config_value: Option<&ConfigValue>) -> Self {
-        Self::from_config_value_with_params(tool, config_value, UpConfigAsdfBaseParams::default())
+        Self::from_config_value_with_params(tool, config_value, UpConfigMiseParams::default())
     }
 
     pub fn from_config_value_with_params(
         tool: &str,
         config_value: Option<&ConfigValue>,
-        params: UpConfigAsdfBaseParams,
+        params: UpConfigMiseParams,
     ) -> Self {
         let mut version = "latest".to_string();
         let mut upgrade = false;
@@ -361,7 +677,7 @@ impl UpConfigAsdfBase {
             None => (tool.to_string(), None, params.tool_url.clone()),
         };
 
-        UpConfigAsdfBase {
+        UpConfigMise {
             tool,
             tool_real_name,
             tool_url,
@@ -370,7 +686,7 @@ impl UpConfigAsdfBase {
             upgrade,
             dirs,
             config_value: config_value.cloned(),
-            ..UpConfigAsdfBase::default()
+            ..UpConfigMise::default()
         }
     }
 
@@ -393,7 +709,7 @@ impl UpConfigAsdfBase {
 
         progress_handler.progress("updating cache".to_string());
 
-        let cache = AsdfOperationCache::get();
+        let cache = MiseOperationCache::get();
         if let Err(err) = cache.add_installed(&self.tool, &version, self.tool_real_name.as_deref())
         {
             progress_handler.progress(format!("failed to update tool cache: {}", err));
@@ -443,7 +759,7 @@ impl UpConfigAsdfBase {
             return Err(UpError::Exec("failed to get version".to_string()));
         };
 
-        let cache = AsdfOperationCache::get();
+        let cache = MiseOperationCache::get();
         for version in versions.iter() {
             if let Err(err) = cache.add_required_by(env_version_id, &self.tool, version) {
                 return Err(UpError::Cache(err.to_string()));
@@ -470,7 +786,7 @@ impl UpConfigAsdfBase {
         self.deps().up(options, environment, &subhandler)?;
         update_dynamic_env_for_command_from_env(".", environment);
 
-        if let Err(err) = install_asdf(progress_handler) {
+        if let Err(err) = install_mise(options, progress_handler) {
             progress_handler.error();
             return Err(err);
         }
@@ -491,7 +807,7 @@ impl UpConfigAsdfBase {
                 self.update_cache(environment, progress_handler);
 
                 if !self.post_install_funcs.is_empty() {
-                    let post_install_versions = vec![AsdfToolUpVersion {
+                    let post_install_versions = vec![MiseToolUpVersion {
                         version: version.clone(),
                         dirs: if self.dirs.is_empty() {
                             vec!["".to_string()].into_iter().collect()
@@ -557,6 +873,7 @@ impl UpConfigAsdfBase {
         }
 
         let mut detect_version_funcs = self.detect_version_funcs.clone();
+        detect_version_funcs.push(detect_version_from_mise);
         detect_version_funcs.push(detect_version_from_asdf_version_file);
         detect_version_funcs.push(detect_version_from_tool_version_file);
 
@@ -645,8 +962,8 @@ impl UpConfigAsdfBase {
         let mut all_versions = BTreeMap::new();
 
         for (version, dirs) in detected_versions.iter() {
-            let asdf_base = self.new_from_auto(version, dirs.clone());
-            let installed = match asdf_base.resolve_and_install_version(options, progress_handler) {
+            let mise = self.new_from_auto(version, dirs.clone());
+            let installed = match mise.resolve_and_install_version(options, progress_handler) {
                 Ok(installed) => installed,
                 Err(err) => {
                     progress_handler.error_with_message(format!("error: {}", err));
@@ -654,7 +971,7 @@ impl UpConfigAsdfBase {
                 }
             };
 
-            let version = asdf_base.version().expect("failed to get version");
+            let version = mise.version().expect("failed to get version");
             all_versions.insert(version.clone(), dirs.clone());
             if installed {
                 installed_versions.push(version.clone());
@@ -662,7 +979,7 @@ impl UpConfigAsdfBase {
                 already_installed_versions.push(version.clone());
             }
 
-            asdf_base.update_cache(environment, progress_handler);
+            mise.update_cache(environment, progress_handler);
         }
 
         self.actual_versions
@@ -672,12 +989,12 @@ impl UpConfigAsdfBase {
         if !self.post_install_funcs.is_empty() {
             let post_install_versions = all_versions
                 .iter()
-                .map(|(version, dirs)| AsdfToolUpVersion {
+                .map(|(version, dirs)| MiseToolUpVersion {
                     version: version.clone(),
                     dirs: dirs.clone(),
                     installed: installed_versions.contains(version),
                 })
-                .collect::<Vec<AsdfToolUpVersion>>();
+                .collect::<Vec<MiseToolUpVersion>>();
 
             let post_install_func_args = PostInstallFuncArgs {
                 config_value: self.config_value.clone(),
@@ -745,13 +1062,13 @@ impl UpConfigAsdfBase {
         &self,
         options: &UpOptions,
         progress_handler: &UpProgressHandler,
-    ) -> Result<AsdfPluginVersions, UpError> {
-        let cache = AsdfOperationCache::get();
+    ) -> Result<MisePluginVersions, UpError> {
+        let cache = MiseOperationCache::get();
         let cached_versions = if options.read_cache {
-            if let Some(versions) = cache.get_asdf_plugin_versions(&self.tool) {
+            if let Some(versions) = cache.get_mise_plugin_versions(&self.tool) {
                 let versions = versions.clone();
                 let config = global_config();
-                let expire = config.cache.asdf.plugin_versions_expire;
+                let expire = config.cache.mise.plugin_versions_expire;
                 if !versions.is_stale(expire) {
                     progress_handler.progress("using cached version list".light_black());
                     return Ok(versions);
@@ -769,7 +1086,7 @@ impl UpConfigAsdfBase {
             Ok(versions) => {
                 if options.write_cache {
                     progress_handler.progress("updating cache with version list".to_string());
-                    if let Err(err) = cache.set_asdf_plugin_versions(&self.tool, versions.clone()) {
+                    if let Err(err) = cache.set_mise_plugin_versions(&self.tool, versions.clone()) {
                         progress_handler.progress(format!("failed to update cache: {}", err));
                     }
                 }
@@ -794,17 +1111,16 @@ impl UpConfigAsdfBase {
     fn list_versions_from_plugin(
         &self,
         progress_handler: &dyn ProgressHandler,
-    ) -> Result<AsdfPluginVersions, UpError> {
+    ) -> Result<MisePluginVersions, UpError> {
         self.update_plugin(progress_handler)?;
 
-        progress_handler.progress("listing available versions for plugin".to_string());
+        progress_handler.progress(format!("listing available versions for {}", self.name()));
 
-        let mut asdf_list_all = asdf_sync_command();
-        asdf_list_all.arg("list");
-        asdf_list_all.arg("all");
-        asdf_list_all.arg(self.tool.clone());
+        let mut mise_list_all = mise_sync_command();
+        mise_list_all.arg("ls-remote");
+        mise_list_all.arg(self.tool.clone());
 
-        let output = asdf_list_all.output().map_err(|err| {
+        let output = mise_list_all.output().map_err(|err| {
             UpError::Exec(format!(
                 "failed to list versions for {}: {}",
                 self.name(),
@@ -828,54 +1144,22 @@ impl UpConfigAsdfBase {
             .filter(|line| !line.is_empty())
             .collect::<Vec<String>>();
 
-        Ok(AsdfPluginVersions::new(versions))
+        Ok(MisePluginVersions::new(versions))
     }
 
     fn list_installed_versions_from_plugin(
         &self,
         _progress_handler: &dyn ProgressHandler,
-    ) -> Result<AsdfPluginVersions, UpError> {
-        let mut asdf_list = asdf_sync_command();
-        asdf_list.arg("list");
-        asdf_list.arg(&self.tool);
-        asdf_list.stdout(std::process::Stdio::piped());
-        asdf_list.stderr(std::process::Stdio::null());
-
-        let output = asdf_list.output().map_err(|err| {
-            UpError::Exec(format!(
-                "failed to list installed versions for {}: {}",
-                self.name(),
-                err
-            ))
-        })?;
-
-        if !output.status.success() {
-            return Err(UpError::Exec(format!(
-                "failed to list installed versions for {} ({}): {}",
-                self.name(),
-                output.status,
-                String::from_utf8_lossy(&output.stderr),
-            )));
-        }
-
-        // The output is listing all available versions, one per line,
-        // so we want to go over that output and check that a version
-        // _exactly_ matches the required version
-        let stdout = String::from_utf8(output.stdout).unwrap();
-        let versions = stdout
-            .lines()
-            .map(|line| line.trim().to_string())
-            .filter(|line| !line.is_empty())
-            .collect::<Vec<String>>();
-
-        Ok(AsdfPluginVersions::new(versions))
+    ) -> Result<MisePluginVersions, UpError> {
+        let versions = list_mise_installed_versions(&self.tool)?;
+        Ok(MisePluginVersions::new(versions.versions()))
     }
 
-    fn resolve_version(&self, versions: &AsdfPluginVersions) -> Result<String, UpError> {
+    fn resolve_version(&self, versions: &MisePluginVersions) -> Result<String, UpError> {
         self.resolve_version_from_str(&self.version, versions)
     }
 
-    fn latest_version(&self, versions: &AsdfPluginVersions) -> Result<String, UpError> {
+    fn latest_version(&self, versions: &MisePluginVersions) -> Result<String, UpError> {
         let version_str = self.resolve_version_from_str("latest", versions)?;
         Ok(VersionParser::parse(&version_str)
             .expect("failed to parse version string")
@@ -886,7 +1170,7 @@ impl UpConfigAsdfBase {
     fn resolve_version_from_str(
         &self,
         match_version: &str,
-        versions: &AsdfPluginVersions,
+        versions: &MisePluginVersions,
     ) -> Result<String, UpError> {
         let matcher = VersionMatcher::new(match_version);
 
@@ -909,12 +1193,12 @@ impl UpConfigAsdfBase {
     }
 
     fn is_plugin_installed(&self) -> bool {
-        let mut asdf_plugin_list = asdf_sync_command();
-        asdf_plugin_list.arg("plugin");
-        asdf_plugin_list.arg("list");
-        asdf_plugin_list.stderr(std::process::Stdio::null());
+        let mut mise_plugin_list = mise_sync_command();
+        mise_plugin_list.arg("plugins");
+        mise_plugin_list.arg("ls");
+        mise_plugin_list.stderr(std::process::Stdio::null());
 
-        if let Ok(output) = asdf_plugin_list.output() {
+        if let Ok(output) = mise_plugin_list.output() {
             if output.status.success() {
                 let stdout = String::from_utf8(output.stdout).unwrap();
                 return stdout.lines().any(|line| line.trim() == self.tool);
@@ -925,48 +1209,60 @@ impl UpConfigAsdfBase {
     }
 
     fn install_plugin(&self, progress_handler: &dyn ProgressHandler) -> Result<(), UpError> {
+        if self.tool_url.is_none() {
+            // No need to install default plugins with mise, we only install
+            // custom plugins that have a provided url
+            return Ok(());
+        }
+
         if self.is_plugin_installed() {
             return Ok(());
         }
 
         progress_handler.progress(format!("installing {} plugin", self.tool));
 
-        let mut asdf_plugin_add = asdf_async_command();
-        asdf_plugin_add.arg("plugin");
-        asdf_plugin_add.arg("add");
-        asdf_plugin_add.arg(self.tool.clone());
+        let mut mise_plugin_add = mise_async_command();
+        mise_plugin_add.arg("plugins");
+        mise_plugin_add.arg("install");
+        mise_plugin_add.arg(self.tool.clone());
         if let Some(tool_url) = &self.tool_url {
-            asdf_plugin_add.arg(tool_url.clone());
+            mise_plugin_add.arg(tool_url.clone());
         }
 
         run_progress(
-            &mut asdf_plugin_add,
+            &mut mise_plugin_add,
             Some(progress_handler),
             RunConfig::default(),
         )
     }
 
     fn update_plugin(&self, progress_handler: &dyn ProgressHandler) -> Result<(), UpError> {
-        if !AsdfOperationCache::get().should_update_asdf_plugin(&self.tool) {
+        if self.tool_url.is_none() {
+            // No need to update default plugins with mise, we only update
+            // custom plugins that have a provided url
+            return Ok(());
+        }
+
+        if !MiseOperationCache::get().should_update_mise_plugin(&self.tool) {
             return Ok(());
         }
 
         progress_handler.progress(format!("updating {} plugin", self.tool));
 
-        let mut asdf_plugin_update = asdf_async_command();
-        asdf_plugin_update.arg("plugin");
-        asdf_plugin_update.arg("update");
-        asdf_plugin_update.arg(self.tool.clone());
+        let mut mise_plugin_update = mise_async_command();
+        mise_plugin_update.arg("plugins");
+        mise_plugin_update.arg("update");
+        mise_plugin_update.arg(self.tool.clone());
 
         run_progress(
-            &mut asdf_plugin_update,
+            &mut mise_plugin_update,
             Some(progress_handler),
             RunConfig::default(),
         )?;
 
         // Update the cache
-        let cache = AsdfOperationCache::get();
-        if let Err(err) = cache.updated_asdf_plugin(&self.tool) {
+        let cache = MiseOperationCache::get();
+        if let Err(err) = cache.updated_mise_plugin(&self.tool) {
             return Err(UpError::Cache(err.to_string()));
         }
 
@@ -974,7 +1270,7 @@ impl UpConfigAsdfBase {
     }
 
     fn is_version_installed(&self, version: &str) -> bool {
-        is_asdf_tool_version_installed(&self.tool, version)
+        is_mise_tool_version_installed(&self.tool, version)
     }
 
     fn upgrade_version(&self, options: &UpOptions) -> bool {
@@ -1091,13 +1387,12 @@ impl UpConfigAsdfBase {
                 version.light_yellow()
             ));
 
-            let mut asdf_install = asdf_async_command();
-            asdf_install.arg("install");
-            asdf_install.arg(self.tool.clone());
-            asdf_install.arg(version);
+            let mut mise_install = mise_async_command();
+            mise_install.arg("install");
+            mise_install.arg(format!("{}@{}", self.tool, version));
 
             run_progress(
-                &mut asdf_install,
+                &mut mise_install,
                 Some(progress_handler),
                 RunConfig::default(),
             )?;
@@ -1158,19 +1453,18 @@ impl UpConfigAsdfBase {
     pub fn cleanup(progress_handler: &dyn ProgressHandler) -> Result<Option<String>, UpError> {
         let mut uninstalled = Vec::new();
 
-        let cache = AsdfOperationCache::get();
+        let cache = MiseOperationCache::get();
         cache
             .cleanup(|tool, version| {
-                if is_asdf_tool_version_installed(tool, version) {
+                if is_mise_tool_version_installed(tool, version) {
                     progress_handler.progress(format!("uninstalling {} {}", tool, version));
 
-                    let mut asdf_uninstall = asdf_async_command();
-                    asdf_uninstall.arg("uninstall");
-                    asdf_uninstall.arg(tool);
-                    asdf_uninstall.arg(version);
+                    let mut mise_uninstall = mise_async_command();
+                    mise_uninstall.arg("uninstall");
+                    mise_uninstall.arg(format!("{}@{}", tool, version));
 
                     if let Err(err) = run_progress(
-                        &mut asdf_uninstall,
+                        &mut mise_uninstall,
                         Some(progress_handler),
                         RunConfig::default(),
                     ) {
@@ -1278,6 +1572,41 @@ impl UpConfigAsdfBase {
     }
 }
 
+fn detect_version_from_mise(tool_name: String, path: PathBuf) -> Option<String> {
+    // Check that there is at least one of the known mise configuration files
+    // in the directory
+    static MISE_CONFIG_FILES: [&str; 7] = [
+        "mise.toml",
+        ".mise.toml",
+        "mise/config.toml",
+        ".mise/config.toml",
+        "config/mise.toml",
+        ".config/mise.toml",
+        ".tool-versions",
+    ];
+
+    // Skip if none of the known configuration files are present
+    if !MISE_CONFIG_FILES
+        .iter()
+        .any(|file| path.join(file).exists())
+    {
+        return None;
+    }
+
+    match list_mise_current_versions(&tool_name, path.clone()) {
+        Ok(v) => {
+            let versions = v.requested_versions(&path);
+            if versions.is_empty() {
+                return None;
+            }
+
+            let version = versions[0].clone();
+            Some(version)
+        }
+        Err(_err) => None,
+    }
+}
+
 fn detect_version_from_asdf_version_file(tool_name: String, path: PathBuf) -> Option<String> {
     let version_file_path = path.join(".tool-versions");
     if !version_file_path.exists() || version_file_path.is_dir() {
@@ -1353,7 +1682,7 @@ fn detect_version_from_tool_version_file(tool_name: String, path: PathBuf) -> Op
 }
 
 #[derive(Debug, Clone)]
-pub struct AsdfToolUpVersion {
+pub struct MiseToolUpVersion {
     pub version: String,
     pub dirs: BTreeSet<String>,
 
