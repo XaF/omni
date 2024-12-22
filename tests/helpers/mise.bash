@@ -214,8 +214,7 @@ EOF
 
   if [ "$upgrade" = "false" ]; then
     # list_installed_versions_from_plugin - to refresh the installed versions
-    echo "$installed_versions" | \
-      add_command mise ls --installed --offline --json --quiet ${plugin_name}
+    add_command mise ls --installed --offline --json --quiet ${plugin_name} <<< "${installed_versions}"
   fi
 
   # If the plugin is a url-specified plugin, we expect an update
@@ -237,8 +236,7 @@ EOF
   fi
 
   # is_mise_tool_version_installed - to check if the version is installed
-  echo "$installed_versions" | \
-    add_command mise ls --installed --offline --json --quiet ${plugin_name}
+  add_command mise ls --installed --offline --json --quiet ${plugin_name} <<< "${installed_versions}"
 
   # Installing the requested version
   if [ "$installed" = "false" ]; then
@@ -249,16 +247,14 @@ stderr:Error installing ${tool} ${version}
 EOF
 
     # list_installed_versions_from_plugin - to find the fallback version
-    echo "$installed_versions" | \
-      add_command mise ls --installed --offline --json --quiet ${plugin_name}
+    add_command mise ls --installed --offline --json --quiet ${plugin_name} <<< "${installed_versions}"
 
     if [ -n "${fallback_version}" ]; then
       # Replace version by the fallback version here!
       version="${fallback_version}"
 
       # is_mise_tool_version_installed - to check if the fallback version is installed
-      echo "$installed_versions" | \
-        add_command mise ls --installed --offline --json --quiet ${plugin_name}
+      add_command mise ls --installed --offline --json --quiet ${plugin_name} <<< "${installed_versions}"
     fi
   fi
 
