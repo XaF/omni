@@ -332,6 +332,35 @@ fn compute_shims_dir() -> PathBuf {
     PathBuf::from(data_home()).join("shims")
 }
 
+fn compute_xdg_state_home() -> String {
+    match std::env::var("XDG_STATE_HOME") {
+        Ok(xdg_state_home) if !xdg_state_home.is_empty() && xdg_state_home.starts_with('/') => {
+            xdg_state_home
+        }
+        _ => {
+            format!("{}/.local/state", user_home())
+        }
+    }
+}
+
+fn compute_state_home() -> String {
+    match std::env::var("OMNI_STATE_HOME") {
+        Ok(state_home)
+            if !state_home.is_empty()
+                && (state_home.starts_with('/') || state_home.starts_with("~/")) =>
+        {
+            if let Some(path_in_home) = state_home.strip_prefix("~/") {
+                format!("{}/{}", user_home(), path_in_home)
+            } else {
+                state_home
+            }
+        }
+        _ => {
+            format!("{}/omni", xdg_state_home())
+        }
+    }
+}
+
 fn compute_xdg_cache_home() -> String {
     match std::env::var("XDG_CACHE_HOME") {
         Ok(xdg_cache_home) if !xdg_cache_home.is_empty() && xdg_cache_home.starts_with('/') => {
@@ -446,6 +475,14 @@ cfg_if::cfg_if! {
             compute_shims_dir()
         }
 
+        pub fn xdg_state_home() -> String {
+            compute_xdg_state_home()
+        }
+
+        pub fn state_home() -> String {
+            compute_state_home()
+        }
+
         pub fn xdg_cache_home() -> String {
             compute_xdg_cache_home()
         }
@@ -494,6 +531,12 @@ cfg_if::cfg_if! {
             static ref SHIMS_DIR: PathBuf = compute_shims_dir();
 
             #[derive(Debug)]
+            static ref XDG_STATE_HOME: String = compute_xdg_state_home();
+
+            #[derive(Debug)]
+            static ref STATE_HOME: String = compute_state_home();
+
+            #[derive(Debug)]
             static ref XDG_CACHE_HOME: String = compute_xdg_cache_home();
 
             #[derive(Debug)]
@@ -537,6 +580,14 @@ cfg_if::cfg_if! {
 
         pub fn shims_dir() -> PathBuf {
             (*SHIMS_DIR).clone()
+        }
+
+        pub fn xdg_state_home() -> String {
+            (*XDG_STATE_HOME).to_string()
+        }
+
+        pub fn state_home() -> String {
+            (*STATE_HOME).to_string()
         }
 
         pub fn xdg_cache_home() -> String {

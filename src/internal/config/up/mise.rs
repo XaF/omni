@@ -43,6 +43,7 @@ use crate::internal::config::ConfigValue;
 use crate::internal::dynenv::update_dynamic_env_for_command_from_env;
 use crate::internal::env::cache_home;
 use crate::internal::env::data_home;
+use crate::internal::env::state_home;
 use crate::internal::user_interface::StringColor;
 use crate::internal::workdir;
 use crate::omni_warning;
@@ -91,6 +92,7 @@ where
     command.env("MISE_CONFIG_DIR", mise_path());
     command.env("MISE_DATA_DIR", mise_path());
     command.env("MISE_CACHE_DIR", mise_cache_path());
+    command.env("MISE_STATE_DIR", format!("{}/mise", state_home()));
     command.env("MISE_LIBGIT2", "false");
     command.env("MISE_RUSTUP_HOME", format!("{}/rustup", mise_path()));
     command.env("MISE_CARGO_HOME", format!("{}/cargo", mise_path()));
