@@ -43,7 +43,6 @@ add_mise_tool_calls() {
   local cache_versions=false
   local list_versions=true
   local upgrade=false
-  local no_upgrade_installed=false
   local subdir=false
   local mise_update=true
   local auto=false
@@ -96,10 +95,6 @@ add_mise_tool_calls() {
         ;;
       upgrade=*)
         upgrade="${arg#upgrade=}"
-        shift
-        ;;
-      no_upgrade_installed=*)
-        no_upgrade_installed="${arg#no_upgrade_installed=}"
         shift
         ;;
       subdir=*)
@@ -266,77 +261,6 @@ EOF
         add_command mise ls --installed --offline --json --quiet ${plugin_name}
     fi
   fi
-
-  # if [ "$plugin_list" = "skip" ]; then
-    # : # Do nothing
-  # elif [ "$plugin_list" = "not-installed" ]; then
-    # add_command mise plugins ls
-    # add_command mise plugins add ${tool}
-  # else
-    # add_command mise plugins ls <<EOF
-# ${tool}
-# EOF
-  # fi
-
-  # if [ "$upgrade" = "false" ]; then
-    # if [ "$no_upgrade_installed" = "false" ]; then
-      # echo '[]' | add_command mise ls --installed --offline --json --quiet ${tool}
-    # else
-      # add_command mise ls --installed --offline --json --quiet ${tool} <<EOF
-# $(for v in $(echo "${no_upgrade_installed}" | perl -pe 's/,+/,/g' | sort -u); do echo "  ${v}"; done)
-# EOF
-    # fi
-  # fi
-
-  # if [ "$list_versions" = "true" ]; then
-    # add_command mise plugins update ${tool}
-    # add_command mise ls-remote ${tool} <"${PROJECT_DIR}/tests/fixtures/${tool}-versions.txt"
-  # elif [ "$list_versions" = "fail-update" ]; then
-    # add_command mise plugins update ${tool} exit=1
-  # elif [ "$list_versions" = "fail" ]; then
-    # add_command mise plugins update ${tool}
-    # add_command mise ls-remote ${tool} exit=1
-  # fi
-
-  # if [ "$installed" = "true" ]; then
-    # installed_versions=$(echo "${others_installed},${no_upgrade_installed},${version}" | \
-      # perl -pe 's/(^|,)false(?=,|$)/,/g' | \
-      # perl -pe 's/,+/\n/g' | \
-      # perl -pe '/^$/d' | \
-      # sort -u)
-    # add_command mise list ${tool} "${version}" exit=0 <<EOF
-# $(for v in ${installed_versions}; do echo "  ${v}"; done)
-# EOF
-
-  # else
-    # if [ "$others_installed" = "false" ]; then
-      # installed_versions=""
-      # add_command mise list ${tool} "${version}" exit=1
-    # else
-      # installed_versions=$(echo "${others_installed}" | tr ',' '\n' | sort -u)
-      # add_command mise list ${tool} "${version}" exit=0 <<EOF
-# $(for v in ${installed_versions}; do echo "  ${v}"; done)
-# EOF
-    # fi
-    # if [ "$installed" = "fail" ]; then
-      # add_command mise install ${tool} "${version}" exit=1 <<EOF
-# stderr:Error installing ${tool} ${version}
-# EOF
-      # add_command mise list ${tool} <<EOF
-# $(for v in ${installed_versions}; do echo "  ${v}"; done)
-# EOF
-
-      # if [ -n "${fallback_version}" ]; then
-        # # Replace version by the fallback version here!
-        # version="${fallback_version}"
-        # add_command mise list ${tool} "${version}" exit=0 <<EOF
-  # ${version}
-# EOF
-      # fi
-    # else
-      # add_command mise install ${tool} "${version}"
-    # fi
-  # fi
 
   if [ "$venv" = "true" ]; then
     add_fakebin "${HOME}/.local/share/omni/mise/installs/${plugin_name}/${version}/bin/${tool}"

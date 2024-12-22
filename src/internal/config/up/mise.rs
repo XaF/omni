@@ -1114,7 +1114,7 @@ impl UpConfigMise {
     ) -> Result<MisePluginVersions, UpError> {
         self.update_plugin(progress_handler)?;
 
-        progress_handler.progress("listing available versions for plugin".to_string());
+        progress_handler.progress(format!("listing available versions for {}", self.name()));
 
         let mut mise_list_all = mise_sync_command();
         mise_list_all.arg("ls-remote");

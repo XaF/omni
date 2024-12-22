@@ -381,7 +381,7 @@ EOF
 
   add_brew_python_calls
   # Expect that it won't match latest since older major, and install is required
-  add_mise_python_calls no_upgrade_installed="2.7.18"
+  add_mise_python_calls others_installed="2.7.18"
 
   run omni up --trust 3>&-
   echo "STATUS: $status"
@@ -401,7 +401,7 @@ up:
 EOF
 
   add_brew_python_calls
-  add_mise_python_calls installed=true list_versions=false version="2.7.9" no_upgrade_installed="2.7.9" venv=false
+  add_mise_python_calls installed=true list_versions=false version="2.7.9" others_installed="2.7.9" venv=false
 
   run omni up --trust 3>&-
   echo "STATUS: $status"
@@ -421,7 +421,7 @@ up:
 EOF
 
   add_brew_python_calls
-  add_mise_python_calls installed=true version="3.7.1" no_upgrade_installed="3.7.1"
+  add_mise_python_calls installed=true version="3.7.1" others_installed="3.7.1"
 
   run omni up --trust 3>&-
   echo "STATUS: $status"
@@ -441,7 +441,7 @@ up:
 EOF
 
   add_brew_python_calls
-  add_mise_python_calls installed=true list_versions=false version="3.7.1" no_upgrade_installed="3.7.1"
+  add_mise_python_calls installed=true list_versions=false version="3.7.1" others_installed="3.7.1"
 
   run omni up --trust 3>&-
   echo "STATUS: $status"
