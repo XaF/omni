@@ -178,7 +178,23 @@ EOF
 }
 
 add_fakebin() {
-  local target="${PROJECT_DIR}/tests/fixtures/bin/generic.sh"
+  local target="${HOME}/.fakebin"
+  if ! [ -f "${target}" ]; then
+    # Get the generic binary
+    local generic="${PROJECT_DIR}/tests/fixtures/bin/generic.sh"
+    # Copy the generic binary to the target while replacing the shebang
+    echo "#!$(which bash || echo "/bin/bash")" > "${target}"
+    echo "BASENAME=$(which basename || echo "/usr/bin/basename")" >> "${target}"
+    echo "CAT=$(which cat || echo "/bin/cat")" >> "${target}"
+    echo "HEAD=$(which head || echo "/usr/bin/head")" >> "${target}"
+    echo "MKDIR=$(which mkdir || echo "/bin/mkdir")" >> "${target}"
+    echo "RM=$(which rm || echo "/bin/rm")" >> "${target}"
+    echo "SEQ=$(which seq || echo "/usr/bin/seq")" >> "${target}"
+    echo "TAIL=$(which tail || echo "/usr/bin/tail")" >> "${target}"
+    tail -n +2 "${generic}" >> "${target}"
+    chmod +x "${target}"
+  fi
+
   echo "fakebin target: ${target}" >&2
   ls -l "${target}" >&2
 

@@ -191,6 +191,14 @@ add_mise_tool_calls() {
     --compact-output \
     'sort_by(.version | split(".") | map(tonumber))')
 
+  # Checking the mise registry to check the available plugins
+  # and their fully qualified plugin name for each of the mise
+  # backends they are available in
+  # TODO: add output
+  add_command mise registry <<EOF
+${tool}  core:${tool}
+EOF
+
   if [ "$mise_update" = "true" ]; then
     # Checking the version of mise, which allows to decide if mise
     # should be updated or not
@@ -257,6 +265,19 @@ EOF
       add_command mise ls --installed --offline --json --quiet ${plugin_name} <<< "${installed_versions}"
     fi
   fi
+
+  # Identify the location of the binaries for the tool
+  add_command mise env --json ${plugin_name}@${version} <<EOF
+{
+  "PATH": "${HOME}/.local/share/omni/mise/installs/${plugin_name}/${version}/bin:"
+}
+EOF
+
+  # Identify the normalized path for the tool, this call does not
+  # use the version as we just try to resolve the tool path
+  # add_command mise where ${plugin_name} latest <<EOF
+# ${HOME}/.local/share/omni/mise/installs/${plugin_name}/7.8.9
+# EOF
 
   if [ "$venv" = "true" ]; then
     add_fakebin "${HOME}/.local/share/omni/mise/installs/${plugin_name}/${version}/bin/${tool}"

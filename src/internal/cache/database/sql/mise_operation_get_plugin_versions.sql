@@ -5,4 +5,4 @@ SELECT
     versions,
     versions_fetched_at
 FROM mise_plugins
-WHERE plugin = ?1;
+WHERE plugin_name = ?1;

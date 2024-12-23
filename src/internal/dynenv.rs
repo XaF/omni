@@ -515,15 +515,15 @@ impl DynamicEnv {
             let dir = workdir.reldir(&path).unwrap_or("".to_string());
             for toolversion in up_env.versions_for_dir(&dir).iter() {
                 let tool = toolversion.tool.clone();
-                let tool_real_name = toolversion.tool_real_name.clone().unwrap_or(tool.clone());
+                let normalized_name = toolversion.normalized_name.clone();
                 let version = toolversion.version.clone();
                 let version_minor = version.split('.').take(2).join(".");
-                let tool_prefix = mise_tool_path(&tool, &version);
+                let tool_prefix = mise_tool_path(&normalized_name, &version);
+                let bin_path = toolversion.bin_path.clone();
 
-                self.features
-                    .push(format!("{}:{}", tool_real_name, version));
+                self.features.push(format!("{}:{}", tool, version));
 
-                match tool_real_name.as_str() {
+                match tool.as_str() {
                     "ruby" => {
                         envsetter.remove_from_list_by_fn("PATH", || {
                             let mut values_to_remove = Vec::new();
@@ -614,11 +614,11 @@ impl DynamicEnv {
                         };
 
                         envsetter.unset_value("PYTHONHOME");
-                        envsetter.prepend_to_list("PATH", &format!("{}/bin", tool_prefix));
+                        envsetter.prepend_to_list("PATH", &format!("{}/{}", tool_prefix, bin_path));
                     }
                     "nodejs" => {
                         envsetter.set_value("NODE_VERSION", &version);
-                        envsetter.prepend_to_list("PATH", &format!("{}/bin", tool_prefix));
+                        envsetter.prepend_to_list("PATH", &format!("{}/{}", tool_prefix, bin_path));
 
                         // Handle the isolated NPM prefix
                         if let Some(data_path) = &toolversion.data_path {
@@ -627,7 +627,7 @@ impl DynamicEnv {
                         };
                     }
                     _ => {
-                        envsetter.prepend_to_list("PATH", &format!("{}/bin", tool_prefix));
+                        envsetter.prepend_to_list("PATH", &format!("{}/{}", tool_prefix, bin_path));
                     }
                 }
             }

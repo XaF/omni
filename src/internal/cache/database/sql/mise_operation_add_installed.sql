@@ -1,19 +1,25 @@
 -- Add a new installed tool to the database
 -- :param1: tool - the name of the tool
--- :param2: tool_real_name - the real name of the tool
--- :param3: version - the version of the tool
+-- :param2: plugin_name - the full name of the plugin
+-- :param3: normalized_name - the normalized name for that install
+-- :param4: version - the installed version
+-- :param5: bin_paths - the paths to the bin directories
 INSERT INTO mise_installed (
     tool,
-    tool_real_name,
+    plugin_name,
+    normalized_name,
     version,
+    bin_paths,
     last_required_at
 )
 VALUES (
     ?1,
     ?2,
     ?3,
+    ?4,
+    ?5,
     strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
 )
-ON CONFLICT (tool, version) DO UPDATE
+ON CONFLICT (normalized_name, version) DO UPDATE
 SET last_required_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
-WHERE tool = ?1 AND version = ?3;
+WHERE normalized_name = ?3 AND version = ?4;

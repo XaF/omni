@@ -2,4 +2,4 @@
 -- :param1: the name of the tool to remove
 -- :param2: the version of the tool to remove
 DELETE FROM mise_installed
-WHERE tool = ?1 AND version = ?2
+WHERE normalized_name = ?1 AND version = ?2

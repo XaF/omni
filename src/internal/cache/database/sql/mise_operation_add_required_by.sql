@@ -1,9 +1,9 @@
 -- Add a new installed tool to the database
--- :param1: tool - the name of the tool
+-- :param1: normalized_name - the name of the tool
 -- :param2: version - the version of the tool
 -- :param3: env_version_id - the id of the environment version that is requiring the tool
 INSERT INTO mise_installed_required_by (
-    tool,
+    normalized_name,
     version,
     env_version_id
 )
@@ -12,4 +12,4 @@ VALUES (
     ?2,
     ?3
 )
-ON CONFLICT (tool, version, env_version_id) DO NOTHING;
+ON CONFLICT (normalized_name, version, env_version_id) DO NOTHING;

@@ -2,7 +2,7 @@
 -- :param ?1 - plugin name
 -- :param ?2 - JSON array of plugin versions
 INSERT INTO mise_plugins (
-    plugin,
+    plugin_name,
     updated_at,
     versions,
     versions_fetched_at
@@ -13,7 +13,7 @@ VALUES (
     ?2,
     strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
 )
-ON CONFLICT(plugin) DO UPDATE SET
+ON CONFLICT(plugin_name) DO UPDATE SET
     versions = ?2,
     versions_fetched_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
-WHERE plugin = ?1;
+WHERE plugin_name = ?1;

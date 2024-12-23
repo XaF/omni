@@ -1,6 +1,6 @@
 -- Get the required_by list for a tool
--- :param1: tool - the name of the tool
+-- :param1: normalized_name - the name of the plugin
 -- :param2: version - the version of the tool
 SELECT required_by
 FROM mise_installed
-WHERE tool = ?1 AND version = ?2;
+WHERE normalized_name = ?1 AND version = ?2;

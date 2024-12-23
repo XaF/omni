@@ -51,8 +51,10 @@ use crate::omni_warning;
 static MISE_PATH: Lazy<String> = Lazy::new(|| format!("{}/mise", data_home()));
 static MISE_BIN: Lazy<String> = Lazy::new(|| format!("{}/bin/mise", *MISE_PATH));
 static MISE_CACHE_PATH: Lazy<String> = Lazy::new(|| format!("{}/mise", cache_home()));
+static MISE_REGISTRY: Lazy<MiseRegistry> =
+    Lazy::new(|| MiseRegistry::new().expect("failed to load mise registry"));
 
-type DetectVersionFunc = fn(tool_real_name: String, path: PathBuf) -> Option<String>;
+type DetectVersionFunc = fn(tool: String, path: PathBuf) -> Option<String>;
 type PostInstallFunc = fn(
     options: &UpOptions,
     environment: &mut UpEnvironment,
@@ -62,10 +64,9 @@ type PostInstallFunc = fn(
 
 /// A struct representing the arguments that will be passed to the post-install
 /// functions as they are being called.
-pub struct PostInstallFuncArgs {
+pub struct PostInstallFuncArgs<'a> {
     pub config_value: Option<ConfigValue>,
-    pub tool: String,
-    pub tool_real_name: String,
+    pub fqtn: &'a FullyQualifiedToolName,
     pub requested_version: String,
     pub versions: Vec<MiseToolUpVersion>,
 }
@@ -243,6 +244,7 @@ fn migrate_asdf_to_mise() -> Result<(), UpError> {
     //   - asdf 'golang' becomes mise 'go' (asdf/installs/golang => mise/installs/go)
     //   - need to move the contents of asdf/installs/go/<version>/go to mise/installs/go/<version>
     //   - need to add a `go` symlink in mise/installs/go/<version>/go => mise/installs/go/<version>
+    //   - need to move the contents of asdf/installs/nodejs to mise/installs/node
     // - for all file in asdf/shims, create a symlink in mise/shims that targets mise/bin/mise
 
     // First, move the asdf installs to mise
@@ -261,7 +263,7 @@ fn migrate_asdf_to_mise() -> Result<(), UpError> {
         return Err(UpError::Exec(format!("failed to create symlink: {}", err)));
     }
 
-    // Now, move the go installs to the correct location
+    // Move the go installs to the correct location
     let go_asdf_path = mise_installs.join("golang");
     let go_mise_path = mise_installs.join("go");
     if let Err(err) = std::fs::rename(&go_asdf_path, &go_mise_path) {
@@ -307,6 +309,16 @@ fn migrate_asdf_to_mise() -> Result<(), UpError> {
                 return Err(UpError::Exec(format!("failed to create symlink: {}", err)));
             }
         }
+    }
+
+    // Move the node installs to the correct location
+    let node_asdf_path = mise_installs.join("nodejs");
+    let node_mise_path = mise_installs.join("node");
+    if let Err(err) = std::fs::rename(&node_asdf_path, &node_mise_path) {
+        return Err(UpError::Exec(format!(
+            "failed to rename 'nodejs' to 'node': {}",
+            err
+        )));
     }
 
     // Finally, create the shims
@@ -474,22 +486,484 @@ struct MiseLsVersionSource {
     path: PathBuf,
 }
 
+pub fn mise_where(tool: &str, version: &str) -> Result<String, UpError> {
+    let mut command = mise_sync_command();
+    command.arg("where");
+    command.arg(tool);
+    command.arg(version);
+
+    let output = command.output().map_err(|err| {
+        UpError::Exec(format!(
+            "failed to run mise where for {} {}: {}",
+            tool, version, err
+        ))
+    })?;
+
+    if !output.status.success() {
+        return Err(UpError::Exec(format!(
+            "failed to run mise where for {} {}: {}",
+            tool,
+            version,
+            String::from_utf8_lossy(&output.stderr)
+        )));
+    }
+
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    let location_str = stdout.trim();
+    let location = Path::new(location_str);
+
+    // Remove mise_path from the location; error if the location
+    // does not start with mise_path
+    let installs_prefix = PathBuf::from(mise_path()).join("installs");
+    let location = location.strip_prefix(installs_prefix).map_err(|_| {
+        UpError::Exec(format!(
+            "mise where for {} {} returned invalid location: {}",
+            tool, version, location_str
+        ))
+    })?;
+
+    // Remove the version from the location
+    let location = location.parent().ok_or_else(|| {
+        UpError::Exec(format!(
+            "mise where for {} {} does not contain tool name: {}",
+            tool, version, location_str
+        ))
+    })?;
+
+    // If we get here, return the tool name, which should be the only
+    // remaining part of the location, as a string
+    Ok(location.to_string_lossy().to_string())
+}
+
+pub fn mise_env(tool: &str, version: &str) -> Result<(String, String), UpError> {
+    let mut command = mise_sync_command();
+    command.env("PATH", "");
+    command.arg("env");
+    command.arg("--json");
+    command.arg(format!("{}@{}", tool, version));
+
+    let output = command.output().map_err(|err| {
+        UpError::Exec(format!(
+            "failed to run mise env for {} {}: {}",
+            tool, version, err
+        ))
+    })?;
+
+    if !output.status.success() {
+        return Err(UpError::Exec(format!(
+            "failed to run mise env for {} {}: {}",
+            tool,
+            version,
+            String::from_utf8_lossy(&output.stderr)
+        )));
+    }
+
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    let env: MiseEnvOutput = match serde_json::from_str(&stdout) {
+        Ok(env) => env,
+        Err(err) => {
+            return Err(UpError::Exec(format!(
+                "failed to parse mise ls output: {}",
+                err
+            )));
+        }
+    };
+
+    let env_path = env.path();
+    if env_path.is_empty() {
+        return Err(UpError::Exec(format!(
+            "mise env for {} {} returned empty path",
+            tool, version
+        )));
+    }
+
+    // Let's use only the first item
+    let location = env_path[0].clone();
+    let location_str = location.to_string_lossy();
+
+    // Remove mise_path from the location; error if the location
+    // does not start with mise_path
+    let installs_prefix = PathBuf::from(mise_path()).join("installs");
+    let location = location.strip_prefix(installs_prefix).map_err(|_| {
+        UpError::Exec(format!(
+            "mise where for {} {} returned invalid location: {}",
+            tool, version, location_str,
+        ))
+    })?;
+
+    // Consider the next item is the tool name
+    let mut components = location.components();
+    let tool_name = components.next().ok_or_else(|| {
+        UpError::Exec(format!(
+            "mise env for {} {} does not contain tool name: {}",
+            tool, version, location_str,
+        ))
+    })?;
+
+    // Remove the version from the location and confirm that the
+    // version matches the expected version
+    let tool_version = components.next().ok_or_else(|| {
+        UpError::Exec(format!(
+            "mise env for {} {} does not contain tool version: {}",
+            tool, version, location_str,
+        ))
+    })?;
+    if tool_version.as_os_str() != version {
+        return Err(UpError::Exec(format!(
+            "mise env for {} {} returned invalid version: {}",
+            tool, version, location_str,
+        )));
+    }
+
+    // The rest of the components should be the path to find the
+    // binaries provided by the tool
+    let path = components.collect::<PathBuf>();
+
+    // If we get here, return the tool name, which should be the only
+    // remaining part of the location, as a string
+    Ok((
+        tool_name.as_os_str().to_string_lossy().into_owned(),
+        path.to_string_lossy().into_owned(),
+    ))
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+struct MiseEnvOutput {
+    #[serde(rename = "PATH")]
+    path: String,
+}
+
+impl MiseEnvOutput {
+    pub fn path(&self) -> Vec<PathBuf> {
+        self.path
+            .split(':')
+            .filter(|p| !p.is_empty())
+            .map(|p| PathBuf::from(p))
+            .filter(|p| p.exists())
+            .collect()
+    }
+}
+
+struct MiseRegistry {
+    entries: Vec<MiseRegistryEntry>,
+}
+
+impl MiseRegistry {
+    fn new() -> Result<Self, UpError> {
+        let mut command = mise_sync_command();
+        command.arg("registry");
+
+        let output = command.output().unwrap();
+        if !output.status.success() {
+            return Err(UpError::Exec(format!(
+                "failed to run mise registry: {}",
+                String::from_utf8_lossy(&output.stderr)
+            )));
+        }
+
+        let stdout = String::from_utf8(output.stdout).unwrap();
+        Self::parse_output(&stdout)
+    }
+
+    fn parse_output(stdout: &str) -> Result<Self, UpError> {
+        let mut entries = vec![];
+
+        for line in stdout.lines() {
+            entries.extend(Self::parse_line(line)?);
+        }
+
+        Ok(Self { entries })
+    }
+
+    fn parse_line(line: &str) -> Result<Vec<MiseRegistryEntry>, UpError> {
+        let mut entries = vec![];
+
+        let parts: Vec<&str> = line.split_whitespace().collect();
+        if parts.len() < 2 {
+            return Err(UpError::Exec(format!(
+                "invalid mise registry line: {}",
+                line
+            )));
+        }
+
+        // The short name is the first part, then we go over the
+        // other parts as individual full names to which we need
+        // to extract the backend and potential other information
+        let short_name = parts[0];
+
+        for full_name in parts.iter().skip(1) {
+            let (clean_name, backend, repository) = Self::parse_full_name(full_name)?;
+
+            entries.push(MiseRegistryEntry {
+                short_name: short_name.to_string(),
+                full_name: full_name.to_string(),
+                clean_name,
+                backend,
+                repository,
+            });
+        }
+
+        Ok(entries)
+    }
+
+    /// This parses a full name as provided by the mise registry, and
+    /// extracts the backend from it, as well as the target repository
+    /// for the operation if available (depending on the backend)
+    ///
+    /// A full name can be in the shape:
+    /// - <backend>:<name>[<conditions>]
+    /// - <backend>:<name>
+    ///
+    /// And the <name> will generally be indicative of the repository
+    /// location depending on the <backend>.
+    fn parse_full_name(full_name: &str) -> Result<(String, String, Option<String>), UpError> {
+        let parts: Vec<&str> = full_name.splitn(2, ':').collect();
+        if parts.len() != 2 {
+            return Err(UpError::Exec(format!(
+                "invalid mise registry full name: {}",
+                full_name
+            )));
+        }
+
+        // Extract the backend from the first part
+        let backend = parts[0];
+
+        // Extract the name and condition
+        let rest = parts[1];
+        let (name, _cond) = match (rest.find('['), rest.find(']')) {
+            (Some(start), Some(end)) => {
+                let name = rest[..start].to_string();
+                let cond = rest[start + 1..end].to_string();
+                (name, Some(cond))
+            }
+            (Some(_), None) | (None, Some(_)) => {
+                return Err(UpError::Exec(format!(
+                    "invalid mise registry full name: {}",
+                    full_name
+                )));
+            }
+            (None, None) => (rest.to_string(), None),
+        };
+
+        // Now try to resolve the repository from the backend and name
+        let repository = match backend {
+            "asdf" => {
+                // Name can be `owner/repo` for a github repository, or a full
+                // http://-url-path for a custom repository
+                match url::Url::parse(&name) {
+                    Ok(_url) => Some(name.clone()),
+                    Err(_err) => Some(format!("https://github.com/{}", name)),
+                }
+            }
+            "go" => {
+                // full address used to `go install` the tool, without `https://`
+                // which is automatically added by go
+                Some(format!("https://{}", name))
+            }
+            "ubi" | "vfox" => {
+                // Name is `owner/repo` for a github repository
+                Some(format!("https://github.com/{}", name))
+            }
+            _ => None,
+        };
+
+        Ok((name.to_string(), backend.to_string(), repository))
+    }
+
+    fn find_entry(&self, name: &str, backend: Option<&str>) -> Option<&MiseRegistryEntry> {
+        // TODO: handle allow/deny list of backends
+        self.entries.iter().find(|entry| {
+            (backend.is_none() || backend.unwrap() == entry.backend)
+                && (name == entry.short_name
+                    || name == entry.clean_name
+                    || name == entry.full_name
+                    || name == format!("{}:{}", entry.backend, entry.clean_name))
+        })
+    }
+}
+
+#[derive(Debug)]
+struct MiseRegistryEntry {
+    short_name: String,
+    full_name: String,
+    clean_name: String,
+    backend: String,
+    repository: Option<String>,
+}
+
 #[derive(Debug, Serialize, Deserialize, Clone, Default)]
 pub struct UpConfigMiseParams {
     pub tool_url: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, Default)]
+pub struct FullyQualifiedToolName {
+    /// The name of the tool to install. e.g. python, rust, etc.
+    tool: String,
+
+    /// The plugin name without any backend prefix
+    plugin_name: String,
+
+    /// The backend information
+    backend: Option<String>,
+
+    /// The fully qualified plugin name to use to install the tool;
+    /// if using a core plugin of mise, this will be `core:python`,
+    /// but could also be e.g. `aqua:hashicorp/terraform` or
+    /// `asdf:asdf-community/asdf-hashicorp` when installing terraform.
+    fully_qualified_plugin_name: String,
+
+    /// Indicates if we need to manage the plugin installation/removal
+    requires_plugin_management: bool,
+
+    /// Store the bin path for that plugin
+    #[serde(skip)]
+    bin_path: OnceCell<String>,
+
+    /// Store the normalized plugin name
+    #[serde(skip)]
+    normalized_plugin_name: OnceCell<String>,
+}
+
+impl FullyQualifiedToolName {
+    pub fn new(tool: &str, url: Option<String>, backend: Option<String>) -> Result<Self, UpError> {
+        // If an URL is provided, we will generate a plugin name using the URL,
+        // which means we won't need to go farther in the plugin resolution
+        if let Some(url) = url {
+            // TODO: handle URL checks for https://github.com/XaF/omni/issues/600
+
+            // Error out if a backend was specified
+            if backend.is_some() {
+                return Err(UpError::Exec(format!(
+                    "cannot specify a backend when using a custom URL for tool {}",
+                    tool
+                )));
+            }
+
+            // Error out if the tool name contains any special character, since
+            // this shouldn't happen when a URL is passed
+            if tool
+                .chars()
+                .any(|c| !c.is_alphanumeric() && c != '-' && c != '_')
+            {
+                return Err(UpError::Exec(format!("invalid tool name: {}", tool)));
+            }
+
+            // Hash the URL into sha256
+            let mut hasher = Sha256::new();
+            hasher.update(url.as_bytes());
+            let hash = format!("{:x}", hasher.finalize());
+            let short_hash = &hash[0..8];
+
+            // The plugin name will be the tool name with the hash appended
+            let plugin_name = format!("{}-{}", tool, short_hash);
+
+            let bin_path = OnceCell::new();
+            let _ = bin_path.set("bin".to_string());
+
+            let normalized_plugin_name = OnceCell::new();
+            let _ = normalized_plugin_name.set(plugin_name.clone());
+
+            return Ok(Self {
+                tool: tool.to_string(),
+                plugin_name: plugin_name.clone(),
+                backend: None,
+                fully_qualified_plugin_name: plugin_name,
+                requires_plugin_management: true,
+                bin_path,
+                normalized_plugin_name,
+            });
+        }
+
+        // If we get here, we want to resolve the actual plugin name
+        let registry_entry = MISE_REGISTRY
+            .find_entry(tool, backend.as_deref())
+            .ok_or_else(|| UpError::Exec(format!("unable to resolve tool: {}", tool)))?;
+
+        // If the backend is 'core', remove `core:` from the
+        // fully qualified plugin name
+        let fqpn = match registry_entry.backend.as_str() {
+            "core" => registry_entry
+                .full_name
+                .strip_prefix("core:")
+                .unwrap_or(&registry_entry.full_name),
+            _ => &registry_entry.full_name,
+        };
+
+        Ok(Self {
+            tool: registry_entry.short_name.clone(),
+            plugin_name: registry_entry.clean_name.clone(),
+            backend: Some(registry_entry.backend.clone()),
+            fully_qualified_plugin_name: fqpn.to_string(),
+            requires_plugin_management: false,
+            bin_path: OnceCell::new(),
+            normalized_plugin_name: OnceCell::new(),
+        })
+    }
+
+    pub fn tool(&self) -> &str {
+        &self.tool
+    }
+
+    pub fn plugin_name(&self) -> &str {
+        &self.plugin_name
+    }
+
+    pub fn backend(&self) -> Option<String> {
+        self.backend.clone()
+    }
+
+    pub fn fully_qualified_plugin_name(&self) -> &str {
+        &self.fully_qualified_plugin_name
+    }
+
+    pub fn requires_plugin_management(&self) -> bool {
+        self.requires_plugin_management
+    }
+
+    pub fn bin_path(&self, version: &str) -> Result<String, UpError> {
+        self.bin_path
+            .get_or_try_init(|| {
+                if self.tool() == "rust" {
+                    return Ok("".to_string());
+                }
+
+                let (normalized_name, bin_path) =
+                    mise_env(&self.fully_qualified_plugin_name(), &version)?;
+
+                // Set the normalized_plugin_name if it is not yet set; ignore
+                // if there is an error since it would mean we already set it
+                let _ = self.normalized_plugin_name.set(normalized_name);
+
+                // Return the bin path
+                Ok(bin_path)
+            })
+            .cloned()
+    }
+
+    pub fn normalized_plugin_name(&self) -> Result<String, UpError> {
+        self.normalized_plugin_name
+            .get_or_try_init(|| {
+                let normalized_name = mise_where(&self.fully_qualified_plugin_name(), "latest")?;
+                Ok(normalized_name)
+            })
+            .cloned()
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone, Default)]
 pub struct UpConfigMise {
     /// The name of the tool to install.
     #[serde(skip)]
-    pub tool: String,
+    requested_tool: String,
 
-    /// The real name of the tool, if different than tool
+    /// The fully qualified name of the tool to install
     #[serde(skip)]
-    pub tool_real_name: Option<String>,
+    resolved_tool: OnceCell<FullyQualifiedToolName>,
 
-    /// The URL to use to install the tool.
+    /// The URL to use to install the tool; will be set automatically
+    /// if needed, either from the override tool url provided by the
+    /// caller, or as a param to default to for the tool
     #[serde(skip)]
     pub tool_url: Option<String>,
 
@@ -502,6 +976,10 @@ pub struct UpConfigMise {
 
     /// The version of the tool to install, as specified in the config file.
     pub version: String,
+
+    /// The backend to use to install the tool with mise
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub backend: Option<String>,
 
     /// Whether to always upgrade the tool or use the latest matching
     /// already installed version.
@@ -564,17 +1042,23 @@ pub struct UpConfigMise {
 
 impl UpConfigMise {
     pub fn new_any_version(tool: &str) -> Self {
+        let (requested_tool, backend, _version_in_name) = parse_mise_name(tool);
+
         Self {
-            tool: tool.to_string(),
+            requested_tool,
             version: "*".to_string(),
+            backend,
             ..Default::default()
         }
     }
 
     pub fn new(tool: &str, version: &str, dirs: BTreeSet<String>, upgrade: bool) -> Self {
+        let (requested_tool, backend, _version_in_name) = parse_mise_name(tool);
+
         Self {
-            tool: tool.to_string(),
+            requested_tool,
             version: version.to_string(),
+            backend,
             upgrade,
             dirs: dirs.clone(),
             ..Default::default()
@@ -591,9 +1075,11 @@ impl UpConfigMise {
 
     fn new_from_auto(&self, version: &str, dirs: BTreeSet<String>) -> Self {
         UpConfigMise {
-            tool: self.tool.clone(),
+            requested_tool: self.requested_tool.clone(),
+            resolved_tool: self.resolved_tool.clone(),
             tool_url: self.tool_url.clone(),
             version: version.to_string(),
+            backend: self.backend.clone(),
             dirs: dirs.clone(),
             ..UpConfigMise::default()
         }
@@ -609,9 +1095,18 @@ impl UpConfigMise {
         params: UpConfigMiseParams,
     ) -> Self {
         let mut version = "latest".to_string();
+        let mut backend = None;
         let mut upgrade = false;
         let mut dirs = BTreeSet::new();
         let mut override_tool_url = None;
+
+        let (tool, backend_in_name, version_in_name) = parse_mise_name(tool);
+        if let Some(backend_in_name) = backend_in_name {
+            backend = Some(backend_in_name);
+        }
+        if let Some(version_in_name) = version_in_name {
+            version = version_in_name;
+        }
 
         if let Some(config_value) = config_value {
             if let Some(value) = config_value.as_str() {
@@ -623,6 +1118,10 @@ impl UpConfigMise {
             } else {
                 if let Some(value) = config_value.get_as_str_forced("version") {
                     version = value.to_string();
+                }
+
+                if let Some(value) = config_value.get_as_str_forced("backend") {
+                    backend = Some(value.to_string());
                 }
 
                 if let Some(value) = config_value.get_as_str("dir") {
@@ -661,30 +1160,17 @@ impl UpConfigMise {
             }
         }
 
-        let (tool, tool_real_name, tool_url) = match &override_tool_url {
-            Some(url) => {
-                let tool_real_name = Some(tool.to_string());
-
-                // Hash the URL into sha256
-                let mut hasher = Sha256::new();
-                hasher.update(url.as_bytes());
-                let hash = format!("{:x}", hasher.finalize());
-                let short_hash = &hash[0..8];
-
-                let tool = format!("{}-{}", tool, short_hash);
-                let tool_url = Some(url.to_string());
-
-                (tool, tool_real_name, tool_url)
-            }
-            None => (tool.to_string(), None, params.tool_url.clone()),
+        let tool_url = match &override_tool_url {
+            Some(url) => Some(url.to_string()),
+            None => params.tool_url.clone(),
         };
 
         UpConfigMise {
-            tool,
-            tool_real_name,
+            requested_tool: tool.to_string(),
             tool_url,
             override_tool_url,
             version,
+            backend,
             upgrade,
             dirs,
             config_value: config_value.cloned(),
@@ -692,11 +1178,39 @@ impl UpConfigMise {
         }
     }
 
+    fn fully_qualified_tool_name(&self) -> Result<&FullyQualifiedToolName, UpError> {
+        self.resolved_tool.get_or_try_init(|| {
+            FullyQualifiedToolName::new(
+                &self.requested_tool,
+                self.tool_url.clone(),
+                self.backend.clone(),
+            )
+            .map_err(|err| {
+                UpError::Exec(format!(
+                    "failed to resolve tool '{}': {:?}",
+                    self.requested_tool, err,
+                ))
+            })
+        })
+    }
+
+    fn tool(&self) -> Result<String, UpError> {
+        let fqtn = self.fully_qualified_tool_name()?;
+        Ok(fqtn.tool().to_string())
+    }
+
+    fn fully_qualified_plugin_name(&self) -> Result<String, UpError> {
+        let fqtn = self.fully_qualified_tool_name()?;
+        Ok(fqtn.fully_qualified_plugin_name().to_string())
+    }
+
+    fn normalized_plugin_name(&self) -> Result<String, UpError> {
+        let fqtn = self.fully_qualified_tool_name()?;
+        Ok(fqtn.normalized_plugin_name()?.to_string())
+    }
+
     pub fn name(&self) -> String {
-        match &self.tool_real_name {
-            Some(tool) => tool.to_string(),
-            None => self.tool.clone(),
-        }
+        self.requested_tool.clone()
     }
 
     fn update_cache(
@@ -711,9 +1225,46 @@ impl UpConfigMise {
 
         progress_handler.progress("updating cache".to_string());
 
+        let fqtn = match self.fully_qualified_tool_name() {
+            Ok(fqtn) => fqtn,
+            Err(err) => {
+                progress_handler.progress(format!("failed to resolve tool name: {}", err,));
+                return;
+            }
+        };
+
+        let bin_path = match fqtn.bin_path(&version) {
+            Ok(bin_path) => bin_path,
+            Err(err) => {
+                progress_handler.progress(format!(
+                    "failed to locate bin path for {}: {}",
+                    fqtn.plugin_name(),
+                    err,
+                ));
+                return;
+            }
+        };
+
+        let normalized_name = match fqtn.normalized_plugin_name() {
+            Ok(name) => name,
+            Err(err) => {
+                progress_handler.progress(format!(
+                    "failed to locate installation of {}: {}",
+                    fqtn.plugin_name(),
+                    err,
+                ));
+                return;
+            }
+        };
+
         let cache = MiseOperationCache::get();
-        if let Err(err) = cache.add_installed(&self.tool, &version, self.tool_real_name.as_deref())
-        {
+        if let Err(err) = cache.add_installed(
+            &fqtn.tool(),
+            &fqtn.plugin_name(),
+            &normalized_name,
+            &version,
+            &bin_path,
+        ) {
             progress_handler.progress(format!("failed to update tool cache: {}", err));
             return;
         }
@@ -725,9 +1276,11 @@ impl UpConfigMise {
         }
 
         environment.add_version(
-            &self.tool,
-            self.tool_real_name.as_deref(),
+            &fqtn.tool(),
+            &fqtn.plugin_name(),
+            &normalized_name,
             &version,
+            &bin_path,
             dirs.clone(),
         );
 
@@ -763,7 +1316,9 @@ impl UpConfigMise {
 
         let cache = MiseOperationCache::get();
         for version in versions.iter() {
-            if let Err(err) = cache.add_required_by(env_version_id, &self.tool, version) {
+            if let Err(err) =
+                cache.add_required_by(env_version_id, &self.normalized_plugin_name()?, version)
+            {
                 return Err(UpError::Cache(err.to_string()));
             }
         }
@@ -781,7 +1336,9 @@ impl UpConfigMise {
         environment: &mut UpEnvironment,
         progress_handler: &UpProgressHandler,
     ) -> Result<(), UpError> {
-        progress_handler.init(format!("{} ({}):", self.name(), self.version).light_blue());
+        let fqtn = self.fully_qualified_tool_name()?;
+
+        progress_handler.init(format!("{} ({}):", fqtn.tool(), self.version).light_blue());
 
         // Make sure that dependencies are installed
         let subhandler = progress_handler.subhandler(&"deps: ".light_black());
@@ -821,8 +1378,7 @@ impl UpConfigMise {
 
                     let post_install_func_args = PostInstallFuncArgs {
                         config_value: self.config_value.clone(),
-                        tool: self.tool.clone(),
-                        tool_real_name: self.name(),
+                        fqtn: &fqtn,
                         requested_version: self.version.clone(),
                         versions: post_install_versions,
                     };
@@ -841,9 +1397,9 @@ impl UpConfigMise {
                 }
 
                 let msg = if installed {
-                    format!("{} {} installed", self.name(), version).green()
+                    format!("{} {} installed", self.tool()?, version).green()
                 } else {
-                    format!("{} {} already installed", self.name(), version).light_black()
+                    format!("{} {} already installed", self.tool()?, version).light_black()
                 };
                 progress_handler.success_with_message(msg);
 
@@ -873,6 +1429,8 @@ impl UpConfigMise {
         if search_dirs.is_empty() {
             search_dirs.insert("".to_string());
         }
+
+        let fqtn = self.fully_qualified_tool_name()?;
 
         let mut detect_version_funcs = self.detect_version_funcs.clone();
         detect_version_funcs.push(detect_version_from_mise);
@@ -915,7 +1473,7 @@ impl UpConfigMise {
             {
                 for detect_version_func in detect_version_funcs.iter() {
                     if let Some(detected_version) =
-                        detect_version_func(self.tool.clone(), entry.path().to_path_buf())
+                        detect_version_func(fqtn.tool().to_string(), entry.path().to_path_buf())
                     {
                         let mut dir = entry
                             .path()
@@ -1000,8 +1558,7 @@ impl UpConfigMise {
 
             let post_install_func_args = PostInstallFuncArgs {
                 config_value: self.config_value.clone(),
-                tool: self.tool.clone(),
-                tool_real_name: self.name(),
+                fqtn: &fqtn,
                 requested_version: self.version.clone(),
                 versions: post_install_versions,
             };
@@ -1025,7 +1582,7 @@ impl UpConfigMise {
             msgs.push(
                 format!(
                     "{} {} installed",
-                    self.name(),
+                    fqtn.tool(),
                     installed_versions
                         .iter()
                         .map(|version| version.to_string())
@@ -1040,7 +1597,7 @@ impl UpConfigMise {
             msgs.push(
                 format!(
                     "{} {} already installed",
-                    self.name(),
+                    fqtn.tool(),
                     already_installed_versions
                         .iter()
                         .map(|version| version.to_string())
@@ -1067,7 +1624,9 @@ impl UpConfigMise {
     ) -> Result<MisePluginVersions, UpError> {
         let cache = MiseOperationCache::get();
         let cached_versions = if options.read_cache {
-            if let Some(versions) = cache.get_mise_plugin_versions(&self.tool) {
+            if let Some(versions) =
+                cache.get_mise_plugin_versions(&self.fully_qualified_plugin_name()?)
+            {
                 let versions = versions.clone();
                 let config = global_config();
                 let expire = config.cache.mise.plugin_versions_expire;
@@ -1088,7 +1647,10 @@ impl UpConfigMise {
             Ok(versions) => {
                 if options.write_cache {
                     progress_handler.progress("updating cache with version list".to_string());
-                    if let Err(err) = cache.set_mise_plugin_versions(&self.tool, versions.clone()) {
+                    if let Err(err) = cache.set_mise_plugin_versions(
+                        &self.fully_qualified_plugin_name()?,
+                        versions.clone(),
+                    ) {
                         progress_handler.progress(format!("failed to update cache: {}", err));
                     }
                 }
@@ -1116,24 +1678,22 @@ impl UpConfigMise {
     ) -> Result<MisePluginVersions, UpError> {
         self.update_plugin(progress_handler)?;
 
-        progress_handler.progress(format!("listing available versions for {}", self.name()));
+        let tool = self.tool()?;
+
+        progress_handler.progress(format!("listing available versions for {}", tool));
 
         let mut mise_list_all = mise_sync_command();
         mise_list_all.arg("ls-remote");
-        mise_list_all.arg(self.tool.clone());
+        mise_list_all.arg(self.fully_qualified_plugin_name()?);
 
         let output = mise_list_all.output().map_err(|err| {
-            UpError::Exec(format!(
-                "failed to list versions for {}: {}",
-                self.name(),
-                err
-            ))
+            UpError::Exec(format!("failed to list versions for {}: {}", tool, err))
         })?;
 
         if !output.status.success() {
             return Err(UpError::Exec(format!(
                 "failed to list versions for {} (exit: {}): {}",
-                self.name(),
+                tool,
                 output.status,
                 String::from_utf8_lossy(&output.stderr),
             )));
@@ -1153,7 +1713,7 @@ impl UpConfigMise {
         &self,
         _progress_handler: &dyn ProgressHandler,
     ) -> Result<MisePluginVersions, UpError> {
-        let versions = list_mise_installed_versions(&self.tool)?;
+        let versions = list_mise_installed_versions(&self.fully_qualified_plugin_name()?)?;
         Ok(MisePluginVersions::new(versions.versions()))
     }
 
@@ -1175,12 +1735,12 @@ impl UpConfigMise {
         versions: &MisePluginVersions,
     ) -> Result<String, UpError> {
         let matcher = VersionMatcher::new(match_version);
+        let tool = self.tool()?;
 
         let version = versions.get(&matcher).ok_or_else(|| {
             UpError::Exec(format!(
                 "no {} version found matching {}",
-                self.name(),
-                match_version,
+                tool, match_version,
             ))
         })?;
 
@@ -1195,6 +1755,17 @@ impl UpConfigMise {
     }
 
     fn is_plugin_installed(&self) -> bool {
+        let fqtn = match self.fully_qualified_tool_name() {
+            Ok(fqtn) => fqtn,
+            Err(_err) => return false,
+        };
+
+        if !fqtn.requires_plugin_management() {
+            unreachable!("we shouldn't be checking if the plugin is installed");
+        }
+
+        let plugin_name = fqtn.plugin_name();
+
         let mut mise_plugin_list = mise_sync_command();
         mise_plugin_list.arg("plugins");
         mise_plugin_list.arg("ls");
@@ -1203,7 +1774,7 @@ impl UpConfigMise {
         if let Ok(output) = mise_plugin_list.output() {
             if output.status.success() {
                 let stdout = String::from_utf8(output.stdout).unwrap();
-                return stdout.lines().any(|line| line.trim() == self.tool);
+                return stdout.lines().any(|line| line.trim() == plugin_name);
             }
         }
 
@@ -1211,9 +1782,8 @@ impl UpConfigMise {
     }
 
     fn install_plugin(&self, progress_handler: &dyn ProgressHandler) -> Result<(), UpError> {
-        if self.tool_url.is_none() {
-            // No need to install default plugins with mise, we only install
-            // custom plugins that have a provided url
+        let fqtn = self.fully_qualified_tool_name()?;
+        if !fqtn.requires_plugin_management() {
             return Ok(());
         }
 
@@ -1221,12 +1791,14 @@ impl UpConfigMise {
             return Ok(());
         }
 
-        progress_handler.progress(format!("installing {} plugin", self.tool));
+        let plugin_name = self.fully_qualified_plugin_name()?;
+
+        progress_handler.progress(format!("installing {} plugin", &plugin_name));
 
         let mut mise_plugin_add = mise_async_command();
         mise_plugin_add.arg("plugins");
         mise_plugin_add.arg("install");
-        mise_plugin_add.arg(self.tool.clone());
+        mise_plugin_add.arg(plugin_name);
         if let Some(tool_url) = &self.tool_url {
             mise_plugin_add.arg(tool_url.clone());
         }
@@ -1239,22 +1811,22 @@ impl UpConfigMise {
     }
 
     fn update_plugin(&self, progress_handler: &dyn ProgressHandler) -> Result<(), UpError> {
-        if self.tool_url.is_none() {
-            // No need to update default plugins with mise, we only update
-            // custom plugins that have a provided url
+        let fqtn = self.fully_qualified_tool_name()?;
+        if !fqtn.requires_plugin_management {
             return Ok(());
         }
 
-        if !MiseOperationCache::get().should_update_mise_plugin(&self.tool) {
+        let plugin_name = fqtn.fully_qualified_plugin_name();
+        if !MiseOperationCache::get().should_update_mise_plugin(&plugin_name) {
             return Ok(());
         }
 
-        progress_handler.progress(format!("updating {} plugin", self.tool));
+        progress_handler.progress(format!("updating {} plugin", &plugin_name));
 
         let mut mise_plugin_update = mise_async_command();
         mise_plugin_update.arg("plugins");
         mise_plugin_update.arg("update");
-        mise_plugin_update.arg(self.tool.clone());
+        mise_plugin_update.arg(plugin_name);
 
         run_progress(
             &mut mise_plugin_update,
@@ -1264,7 +1836,7 @@ impl UpConfigMise {
 
         // Update the cache
         let cache = MiseOperationCache::get();
-        if let Err(err) = cache.updated_mise_plugin(&self.tool) {
+        if let Err(err) = cache.updated_mise_plugin(&plugin_name) {
             return Err(UpError::Cache(err.to_string()));
         }
 
@@ -1272,7 +1844,12 @@ impl UpConfigMise {
     }
 
     fn is_version_installed(&self, version: &str) -> bool {
-        is_mise_tool_version_installed(&self.tool, version)
+        let fqpn = match self.fully_qualified_plugin_name() {
+            Ok(fqpn) => fqpn,
+            Err(_err) => return false,
+        };
+
+        is_mise_tool_version_installed(&fqpn, version)
     }
 
     fn upgrade_version(&self, options: &UpOptions) -> bool {
@@ -1378,20 +1955,22 @@ impl UpConfigMise {
         _options: &UpOptions,
         progress_handler: &dyn ProgressHandler,
     ) -> Result<bool, UpError> {
+        let tool = self.tool()?;
+
         let installed = if self.is_version_installed(version) {
-            progress_handler.progress(format!("using {} {}", self.name(), version.light_yellow()));
+            progress_handler.progress(format!("using {} {}", tool, version.light_yellow()));
 
             false
         } else {
-            progress_handler.progress(format!(
-                "installing {} {}",
-                self.name(),
-                version.light_yellow()
-            ));
+            progress_handler.progress(format!("installing {} {}", tool, version.light_yellow()));
 
             let mut mise_install = mise_async_command();
             mise_install.arg("install");
-            mise_install.arg(format!("{}@{}", self.tool, version));
+            mise_install.arg(format!(
+                "{}@{}",
+                self.fully_qualified_plugin_name()?,
+                version
+            ));
 
             run_progress(
                 &mut mise_install,
@@ -1435,8 +2014,13 @@ impl UpConfigMise {
             }
         }
 
+        let plugin_name = match self.normalized_plugin_name() {
+            Ok(plugin_name) => plugin_name,
+            Err(_err) => return vec![],
+        };
+
         let mut data_paths = BTreeSet::new();
-        let tool_data_path = wd_data_path.join(&self.tool);
+        let tool_data_path = wd_data_path.join(&plugin_name);
         for (version, dirs) in dirs_per_version.iter() {
             let version_data_path = tool_data_path.join(version);
 
@@ -1519,23 +2103,25 @@ impl UpConfigMise {
             // HomebrewInstall::new_formula("unixodbc"),
         ];
 
-        match self.name().as_str() {
-            "python" => {
-                homebrew_install.extend(vec![
-                    HomebrewInstall::new_formula("pkg-config"),
-                    // HomebrewInstall::new_formula("sqlite"),
-                    // HomebrewInstall::new_formula("xz"),
-                ]);
+        if let Ok(tool) = self.tool() {
+            match tool.as_str() {
+                "python" => {
+                    homebrew_install.extend(vec![
+                        HomebrewInstall::new_formula("pkg-config"),
+                        // HomebrewInstall::new_formula("sqlite"),
+                        // HomebrewInstall::new_formula("xz"),
+                    ]);
+                }
+                "rust" => {
+                    homebrew_install.extend(vec![
+                        HomebrewInstall::new_formula("libgit2"),
+                        HomebrewInstall::new_formula("libssh2"),
+                        HomebrewInstall::new_formula("llvm"),
+                        HomebrewInstall::new_formula("pkg-config"),
+                    ]);
+                }
+                _ => {}
             }
-            "rust" => {
-                homebrew_install.extend(vec![
-                    HomebrewInstall::new_formula("libgit2"),
-                    HomebrewInstall::new_formula("libssh2"),
-                    HomebrewInstall::new_formula("llvm"),
-                    HomebrewInstall::new_formula("pkg-config"),
-                ]);
-            }
-            _ => {}
         }
 
         UpConfigTool::Homebrew(UpConfigHomebrew {
@@ -1547,25 +2133,27 @@ impl UpConfigMise {
     fn deps_using_nix(&self) -> UpConfigTool {
         let mut nix_packages = vec!["gawk", "gnused", "openssl", "readline"];
 
-        match self.tool.as_str() {
-            "python" => {
-                nix_packages.extend(vec![
-                    "bzip2",
-                    "gcc",
-                    "gdbm",
-                    "gnumake",
-                    "libffi",
-                    "ncurses",
-                    "pkg-config",
-                    "sqlite",
-                    "xz",
-                    "zlib",
-                ]);
+        if let Ok(tool) = self.tool() {
+            match tool.as_str() {
+                "python" => {
+                    nix_packages.extend(vec![
+                        "bzip2",
+                        "gcc",
+                        "gdbm",
+                        "gnumake",
+                        "libffi",
+                        "ncurses",
+                        "pkg-config",
+                        "sqlite",
+                        "xz",
+                        "zlib",
+                    ]);
+                }
+                "ruby" => {
+                    nix_packages.extend(vec!["libyaml"]);
+                }
+                _ => {}
             }
-            "ruby" => {
-                nix_packages.extend(vec!["libyaml"]);
-            }
-            _ => {}
         }
 
         UpConfigTool::Nix(UpConfigNix::new_from_packages(
@@ -1607,6 +2195,29 @@ fn detect_version_from_mise(tool_name: String, path: PathBuf) -> Option<String> 
         }
         Err(_err) => None,
     }
+}
+
+/// Parse the provided name which can be in the format:
+/// - <tool>
+/// - <tool>@<version>
+/// - <backend>:<tool>
+/// - <backend>:<tool>@<version>
+/// And returns:
+/// - the tool name
+/// - the backend, if provided
+/// - the version, if provided
+fn parse_mise_name(name: &str) -> (String, Option<String>, Option<String>) {
+    let mut parts = name.splitn(2, '@');
+    let tool = parts.next().unwrap();
+    let version = parts.next().map(|v| v.to_string());
+
+    let mut parts = tool.splitn(2, ':');
+    let (backend, tool) = match (parts.next(), parts.next()) {
+        (Some(b), Some(t)) => (Some(b.to_string()), t.to_string()),
+        _ => (None, tool.to_string()),
+    };
+
+    (tool.to_string(), backend, version)
 }
 
 fn detect_version_from_asdf_version_file(tool_name: String, path: PathBuf) -> Option<String> {
@@ -1656,8 +2267,8 @@ fn detect_version_from_asdf_version_file(tool_name: String, path: PathBuf) -> Op
 fn detect_version_from_tool_version_file(tool_name: String, path: PathBuf) -> Option<String> {
     let tool_name = tool_name.to_lowercase();
     let version_file_prefixes = match tool_name.as_str() {
-        "golang" => vec!["go", "golang"],
-        "nodejs" => vec!["node", "nodejs"],
+        "go" => vec!["go", "golang"],
+        "node" => vec!["node", "nodejs"],
         _ => vec![tool_name.as_str()],
     };
 

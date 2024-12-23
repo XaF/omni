@@ -53,7 +53,6 @@ impl MiseOperationCache {
         Ok(updated > 0)
     }
 
-    #[allow(dead_code)]
     pub fn should_update_mise(&self) -> bool {
         let db = CacheManager::get();
         let should_update: bool = db
@@ -92,13 +91,21 @@ impl MiseOperationCache {
     pub fn add_installed(
         &self,
         tool: &str,
+        plugin_name: &str,
+        normalized_name: &str,
         version: &str,
-        tool_real_name: Option<&str>,
+        bin_path: &str,
     ) -> Result<bool, CacheManagerError> {
         let db = CacheManager::get();
         let inserted = db.execute(
             include_str!("database/sql/mise_operation_add_installed.sql"),
-            params![tool, tool_real_name, version],
+            params![
+                tool,
+                plugin_name,
+                normalized_name,
+                version,
+                serde_json::to_string(&vec![bin_path])?
+            ],
         )?;
         Ok(inserted > 0)
     }
@@ -106,13 +113,13 @@ impl MiseOperationCache {
     pub fn add_required_by(
         &self,
         env_version_id: &str,
-        tool: &str,
+        normalized_name: &str,
         version: &str,
     ) -> Result<bool, CacheManagerError> {
         let db = CacheManager::get();
         let inserted = db.execute(
             include_str!("database/sql/mise_operation_add_required_by.sql"),
-            params![tool, version, env_version_id],
+            params![normalized_name, version, env_version_id],
         )?;
         Ok(inserted > 0)
     }
@@ -146,6 +153,11 @@ impl MiseOperationCache {
 
             Ok(())
         })?;
+
+        db.execute(
+            include_str!("database/sql/mise_operation_cleanup_versions.sql"),
+            params![&config.cache.mise.plugin_versions_retention],
+        )?;
 
         Ok(())
     }
@@ -300,13 +312,15 @@ mod tests {
                 let cache = MiseOperationCache::get();
 
                 let tool = "test-tool";
+                let plugin = "test-plugin";
+                let norm_plugin = "test-plugin-normalized";
                 let version = "1.0.0";
-                let tool_real_name = Some("real-name");
+                let bin_path = "bin/path/blah";
                 let env_version_id = "test-env";
 
                 // Add installed tool
                 assert!(cache
-                    .add_installed(tool, version, tool_real_name)
+                    .add_installed(tool, plugin, norm_plugin, version, bin_path)
                     .expect("Failed to add installed tool"));
 
                 // Before adding a required_by, we need to add the environment version
@@ -320,7 +334,7 @@ mod tests {
 
                 // Add required_by relationship
                 assert!(cache
-                    .add_required_by(env_version_id, tool, version)
+                    .add_required_by(env_version_id, norm_plugin, version)
                     .expect("Failed to add required_by relationship"));
             });
         }
@@ -332,30 +346,33 @@ mod tests {
                 let conn = get_conn();
 
                 let mut installed_stmt = conn
-                    .prepare("INSERT INTO mise_installed (tool, version, tool_real_name, last_required_at) VALUES (?, ?, ?, ?)")
+                    .prepare("INSERT INTO mise_installed (tool, plugin_name, normalized_name, version, bin_paths, last_required_at) VALUES (?, ?, ?, ?, '[]', ?)")
                     .expect("Failed to prepare statement");
 
                 installed_stmt
                     .execute(params![
                         "test-tool",
+                        "test-plugin",
+                        "test-plugin-normalized",
                         "1.0.0",
-                        "real-name",
                         "1970-01-01T00:00:00Z"
                     ])
                     .expect("Failed to insert test tool to remove");
                 installed_stmt
                     .execute(params![
                         "test-tool",
+                        "test-plugin",
+                        "test-plugin-normalized",
                         "1.1.0",
-                        "real-name",
                         "1970-01-01T00:00:00Z"
                     ])
                     .expect("Failed to insert test tool to keep because of requirement");
                 installed_stmt
                     .execute(params![
                         "test-tool",
+                        "test-plugin",
+                        "test-plugin-normalized",
                         "1.2.0",
-                        "real-name",
                         omni_now().format(&Rfc3339).expect("Failed to format date"),
                     ])
                     .expect("Failed to insert test tool to keep because of date");
@@ -367,11 +384,11 @@ mod tests {
                 .expect("Failed to add environment version");
 
                 let mut required_by_stmt = conn
-                    .prepare("INSERT INTO mise_installed_required_by (tool, version, env_version_id) VALUES (?, ?, ?)")
+                    .prepare("INSERT INTO mise_installed_required_by (normalized_name, version, env_version_id) VALUES (?, ?, ?)")
                     .expect("Failed to prepare statement");
 
                 required_by_stmt
-                    .execute(params!["test-tool", "1.1.0", "test-env"])
+                    .execute(params!["test-plugin-normalized", "1.1.0", "test-env"])
                     .expect("Failed to insert required_by relationship");
 
                 let cache = MiseOperationCache::get();
@@ -390,7 +407,7 @@ mod tests {
                 assert_eq!(deleted_tools.len(), 1);
                 assert_eq!(
                     deleted_tools[0],
-                    ("test-tool".to_string(), "1.0.0".to_string())
+                    ("test-plugin-normalized".to_string(), "1.0.0".to_string())
                 );
 
                 // Verify that the tool has been removed from the database

@@ -1,11 +1,11 @@
--- Check if mise should be updated
+-- Check if a mise plugin should be updated
 -- :param ?1 - plugin name
 -- :param ?2 - validity of the update in seconds
 -- :return - boolean, 1 if mise should be updated, 0 otherwise
 WITH plugin_update AS (
   SELECT updated_at as timestamp
   FROM mise_plugins
-  WHERE plugin = ?1
+  WHERE plugin_name = ?1
 ),
 is_expired AS (
   SELECT
