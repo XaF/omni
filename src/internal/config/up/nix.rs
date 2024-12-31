@@ -826,17 +826,14 @@ impl NixProfile {
 #[serde(untagged)]
 enum NixProfileVariable {
     Var {
-        #[allow(dead_code)]
-        r#type: String,
+        // r#type: String,
         value: String,
     },
     Array {
-        #[allow(dead_code)]
-        r#type: String,
+        // r#type: String,
         value: Vec<String>,
     },
     Unknown {
-        #[allow(dead_code)]
-        r#type: String,
+        // r#type: String,
     },
 }

@@ -428,7 +428,6 @@ impl ConfigValue {
         None
     }
 
-    #[allow(dead_code)]
     pub fn as_str_mut(&mut self) -> Option<&mut String> {
         if let Some(ConfigData::Value(serde_yaml::Value::String(value))) =
             self.value.as_mut().map(|data| data.as_mut())
@@ -438,7 +437,6 @@ impl ConfigValue {
         None
     }
 
-    #[allow(dead_code)]
     pub fn is_bool(&self) -> bool {
         self.as_bool().is_some()
     }
@@ -477,7 +475,6 @@ impl ConfigValue {
         None
     }
 
-    #[allow(dead_code)]
     pub fn is_float(&self) -> bool {
         self.as_float().is_some()
     }
@@ -491,7 +488,6 @@ impl ConfigValue {
         None
     }
 
-    #[allow(dead_code)]
     pub fn is_integer(&self) -> bool {
         self.as_integer().is_some()
     }
@@ -638,7 +634,6 @@ impl ConfigValue {
         None
     }
 
-    #[allow(dead_code)]
     pub fn get_as_integer(&self, key: &str) -> Option<i64> {
         if let Some(value) = self.get(key) {
             return value.as_integer();
@@ -660,7 +655,6 @@ impl ConfigValue {
         None
     }
 
-    #[allow(dead_code)]
     pub fn get_as_array_mut(&mut self, key: &str) -> Option<&mut Vec<ConfigValue>> {
         if let Some(&mut ref mut value) = self.get_mut(key) {
             return value.as_array_mut();
@@ -1040,7 +1034,6 @@ impl ConfigValue {
         serde_yaml::to_string(&serde_yaml).unwrap()
     }
 
-    #[allow(dead_code)]
     pub fn set_value(&mut self, value: Option<Box<ConfigData>>) {
         self.value = value;
     }

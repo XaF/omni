@@ -192,13 +192,6 @@ impl CommandLoader {
         false
     }
 
-    #[allow(dead_code)]
-    pub fn sorted(&self) -> Vec<&Command> {
-        let mut commands = self.commands.iter().collect::<Vec<&Command>>();
-        commands.sort_by(|a, b| a.cmp_help(b));
-        commands
-    }
-
     pub fn complete(
         &self,
         comp_cword: usize,

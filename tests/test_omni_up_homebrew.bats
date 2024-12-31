@@ -20,7 +20,7 @@ teardown() {
 }
 
 # bats test_tags=omni:up,omni:up:homebrew,omni:up:homebrew:install
-@test "omni up homebrew operation calls to install formula" {
+@test "[omni_up_homebrew=01] omni up homebrew operation calls to install formula" {
   cat > .omni.yaml <<EOF
 up:
   - homebrew:
@@ -40,7 +40,7 @@ EOF
 }
 
 # bats test_tags=omni:up,omni:up:homebrew,omni:up:homebrew:install
-@test "omni up homebrew operation calls to upgrade formula when upgrade is passed on the command line" {
+@test "[omni_up_homebrew=02] omni up homebrew operation calls to upgrade formula when upgrade is passed on the command line" {
   cat > .omni.yaml <<EOF
 up:
   - homebrew:
@@ -60,7 +60,7 @@ EOF
 }
 
 # bats test_tags=omni:up,omni:up:homebrew,omni:up:homebrew:install
-@test "omni up homebrew operation calls to upgrade formula when upgrade is configured at the work directory level" {
+@test "[omni_up_homebrew=03] omni up homebrew operation calls to upgrade formula when upgrade is configured at the work directory level" {
   cat > .omni.yaml <<EOF
 up:
   - homebrew:
@@ -83,7 +83,7 @@ EOF
 }
 
 # bats test_tags=omni:up,omni:up:homebrew,omni:up:homebrew:install
-@test "omni up homebrew operation calls to upgrade formula when upgrade is configured for the formula" {
+@test "[omni_up_homebrew=04] omni up homebrew operation calls to upgrade formula when upgrade is configured for the formula" {
   cat > .omni.yaml <<EOF
 up:
   - homebrew:
@@ -104,7 +104,7 @@ EOF
 }
 
 # bats test_tags=omni:up,omni:up:homebrew,omni:up:homebrew:install
-@test "omni up homebrew operation does not upgrade formula if it is already installed and upgrade is not configured" {
+@test "[omni_up_homebrew=05] omni up homebrew operation does not upgrade formula if it is already installed and upgrade is not configured" {
   cat > .omni.yaml <<EOF
 up:
   - homebrew:
@@ -123,7 +123,7 @@ EOF
 }
 
 # bats test_tags=omni:up,omni:up:homebrew,omni:up:homebrew:install
-@test "omni up homebrew operation calls to install cask" {
+@test "[omni_up_homebrew=06] omni up homebrew operation calls to install cask" {
   cat > .omni.yaml <<EOF
 up:
   - homebrew:
@@ -142,7 +142,7 @@ EOF
 }
 
 # bats test_tags=omni:up,omni:up:homebrew,omni:up:homebrew:install
-@test "omni up homebrew operation calls to upgrade cask when upgrade is passed on the command line" {
+@test "[omni_up_homebrew=07] omni up homebrew operation calls to upgrade cask when upgrade is passed on the command line" {
   cat > .omni.yaml <<EOF
 up:
   - homebrew:
@@ -161,7 +161,7 @@ EOF
 }
 
 # bats test_tags=omni:up,omni:up:homebrew,omni:up:homebrew:install
-@test "omni up homebrew operation calls to upgrade cask when upgrade is configured at the work directory level" {
+@test "[omni_up_homebrew=08] omni up homebrew operation calls to upgrade cask when upgrade is configured at the work directory level" {
   cat > .omni.yaml <<EOF
 up:
   - homebrew:
@@ -183,7 +183,7 @@ EOF
 }
 
 # bats test_tags=omni:up,omni:up:homebrew,omni:up:homebrew:install
-@test "omni up homebrew operation calls to upgrade cask when upgrade is configured for the cask" {
+@test "[omni_up_homebrew=09] omni up homebrew operation calls to upgrade cask when upgrade is configured for the cask" {
   cat > .omni.yaml <<EOF
 up:
   - homebrew:
@@ -203,7 +203,7 @@ EOF
 }
 
 # bats test_tags=omni:up,omni:up:homebrew,omni:up:homebrew:install
-@test "omni up homebrew operation does not upgrade cask if it is already installed and upgrade is not configured" {
+@test "[omni_up_homebrew=10] omni up homebrew operation does not upgrade cask if it is already installed and upgrade is not configured" {
   cat > .omni.yaml <<EOF
 up:
   - homebrew:
@@ -221,7 +221,7 @@ EOF
 }
 
 # bats test_tags=omni:up,omni:up:homebrew,omni:up:homebrew:install
-@test "omni up homebrew operation calls to install formula with full tap path" {
+@test "[omni_up_homebrew=11] omni up homebrew operation calls to install formula with full tap path" {
   cat > .omni.yaml <<EOF
 up:
   - homebrew:
@@ -243,7 +243,7 @@ EOF
 }
 
 # bats test_tags=omni:up,omni:up:homebrew,omni:up:homebrew:tap
-@test "omni up homebrew operation calls to tap repository" {
+@test "[omni_up_homebrew=12] omni up homebrew operation calls to tap repository" {
   cat > .omni.yaml <<EOF
 up:
   - homebrew:

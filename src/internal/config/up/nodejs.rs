@@ -186,10 +186,10 @@ fn setup_individual_npm_prefix(
     progress_handler: &dyn ProgressHandler,
     args: &PostInstallFuncArgs,
 ) -> Result<(), UpError> {
-    if args.tool_real_name != "nodejs" {
+    if args.fqtn.tool() != "node" {
         panic!(
             "setup_individual_npm_prefix called with wrong tool: {}",
-            args.tool
+            args.fqtn.tool()
         );
     }
 
@@ -207,11 +207,12 @@ fn setup_individual_npm_prefix(
     };
 
     // Handle each version individually
+    let normalized_name = args.fqtn.normalized_plugin_name()?;
     let per_version_per_dir_data_path = |version: &MiseToolUpVersion, dir: &String| {
         let npm_prefix_dir = data_path_dir_hash(dir);
 
         let npm_prefix = data_path
-            .join(&args.tool)
+            .join(&normalized_name)
             .join(&version.version)
             .join(npm_prefix_dir);
 
@@ -222,7 +223,12 @@ fn setup_individual_npm_prefix(
         for dir in &version.dirs {
             let npm_prefix = per_version_per_dir_data_path(version, dir);
 
-            environment.add_version_data_path(&args.tool, &version.version, dir, &npm_prefix);
+            environment.add_version_data_path(
+                args.fqtn.fully_qualified_plugin_name(),
+                &version.version,
+                dir,
+                &npm_prefix,
+            );
         }
     }
 

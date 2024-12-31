@@ -31,7 +31,7 @@
 set -o pipefail
 
 # Get the binary name
-binary=$(basename "$0")
+binary=$("${BASENAME:-basename}" "$0")
 
 # If the binary name is this file name, exit on error
 if [ "$binary" = "generic.sh" ]; then
@@ -48,17 +48,17 @@ call_dump="${binary} $(for arg in "${actual_args[@]}"; do echo -n "\"$arg\" "; d
 echo "$call_dump" >> "${commands}/called.log"
 
 # Make sure the commands directory exists
-mkdir -p "${commands}"
+"${MKDIR:-mkdir}" -p "${commands}"
 
 # Get the current position
 position_file="${commands}/${binary}_position"
-position=$(cat "$position_file" 2>/dev/null)
+position=$("${CAT:-cat}" "$position_file" 2>/dev/null)
 if [ -z "$position" ]; then
     position=0
 fi
 
 # Get the expected command definition
-expected=$(cat ${commands}/${binary}_${position} 2>/dev/null)
+expected=$("${CAT:-cat}" ${commands}/${binary}_${position} 2>/dev/null)
 if [ -z "$expected" ]; then
     echo "${binary}: command: $@" >&2
     echo "${binary}: no more commands expected" >&2
@@ -67,7 +67,7 @@ if [ -z "$expected" ]; then
 fi
 
 # Get the expected args, doing shell parsing to allow for
-expected_args_raw=$(echo "$expected" | head -n 1)
+expected_args_raw=$(echo "$expected" | "${HEAD:-head}" -n 1)
 if [ -z "$expected_args_raw" ]; then
     # Allow for empty arguments
     expected_args=()
@@ -77,7 +77,7 @@ else
 fi
 
 # Get the expected exit code
-exit_code=$(echo "$expected" | head -n 2 | tail -n 1)
+exit_code=$(echo "$expected" | "${HEAD:-head}" -n 2 | "${TAIL:-tail}" -n 1)
 if [ -z "$exit_code" ]; then
     echo "${binary}: command: $@" >&2
     echo "${binary} (#${position}): no exit code defined" >&2
@@ -95,7 +95,7 @@ fi
 response=()
 while IFS= read -r line; do
     response+=("$line")
-done < <(echo "$expected" | tail -n +4)
+done < <(echo "$expected" | "${TAIL:-tail}" -n +4)
 
 # If the first line of the response is '#omni-test-bash-function', then
 # we want to eval the response as a bash function, and then check that
@@ -120,7 +120,7 @@ if [ "${#actual_args[@]}" -ne "${#expected_args[@]}" ]; then
     exit 127
 fi
 
-for i in $(seq 0 $((${#expected_args[@]} - 1))); do
+for i in $("${SEQ:-seq}" 0 $((${#expected_args[@]} - 1))); do
     current_expected="${expected_args[$i]}"
     current_actual="${actual_args[$i]}"
 
@@ -147,9 +147,9 @@ done
 # If we get here, the arguments match, so we can decrement the required file
 required_file="${commands}/${binary}_${position}_required"
 if [[ -f "$required_file" ]]; then
-    required=$(($(cat "$required_file") - 1))
+    required=$(($("${CAT:-cat}" "$required_file") - 1))
     if [ "$required" -eq 0 ]; then
-	rm "$required_file"
+	"${RM:-rm}" "$required_file"
     else
 	echo $required > "$required_file"
     fi

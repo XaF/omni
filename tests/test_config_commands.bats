@@ -25,7 +25,7 @@ setup() {
 }
 
 # bats test_tags=config:commands
-@test "omni config commands not found" {
+@test "[config_commands=01] omni config commands not found" {
   run omni doesnotexist 3>&-
   echo "STATUS: $status"
   echo "OUTPUT: $output"
@@ -34,7 +34,7 @@ setup() {
 }
 
 # bats test_tags=config:commands
-@test "omni config commands" {
+@test "[config_commands=02] omni config commands" {
   cat > .omni.yaml <<EOF
 commands:
   customcommand:
@@ -51,7 +51,7 @@ EOF
 }
 
 # bats test_tags=config:commands
-@test "omni config commands with arguments" {
+@test "[config_commands=03] omni config commands with arguments" {
   cat > .omni.yaml <<EOF
 commands:
   customcommand:
@@ -68,7 +68,7 @@ EOF
 }
 
 # bats test_tags=config:commands,config:commands:argparser
-@test "omni config commands argparser without syntax" {
+@test "[config_commands=04] omni config commands argparser without syntax" {
   cat > .omni.yaml <<EOF
 commands:
   customcommand:
@@ -86,7 +86,7 @@ EOF
 }
 
 # bats test_tags=config:commands,config:commands:argparser
-@test "omni config commands argparser with syntax" {
+@test "[config_commands=05] omni config commands argparser with syntax" {
   cat > .omni.yaml <<EOF
 commands:
   customcommand:
@@ -121,7 +121,7 @@ EOF
 }
 
 # bats test_tags=config:commands,config:commands:argparser
-@test "omni config commands argparser with int value" {
+@test "[config_commands=06] omni config commands argparser with int value" {
   cat > .omni.yaml <<EOF
 commands:
   customcommand:
@@ -163,7 +163,7 @@ EOF
 }
 
 # bats test_tags=config:commands,config:commands:argparser
-@test "omni config commands argparser with float value" {
+@test "[config_commands=07] omni config commands argparser with float value" {
   cat > .omni.yaml <<EOF
 commands:
   customcommand:
@@ -211,7 +211,7 @@ EOF
 }
 
 # bats test_tags=config:commands,config:commands:argparser
-@test "omni config commands argparser with bool value" {
+@test "[config_commands=08] omni config commands argparser with bool value" {
   cat > .omni.yaml <<EOF
 commands:
   customcommand:
@@ -265,7 +265,7 @@ EOF
 }
 
 # bats test_tags=config:commands,config:commands:argparser
-@test "omni config commands argparser with flag value" {
+@test "[config_commands=09] omni config commands argparser with flag value" {
   cat > .omni.yaml <<EOF
 commands:
   customcommand:
@@ -310,7 +310,7 @@ EOF
 }
 
 # bats test_tags=config:commands,config:commands:argparser
-@test "omni config commands argparser with enum value" {
+@test "[config_commands=10] omni config commands argparser with enum value" {
   cat > .omni.yaml <<EOF
 commands:
   customcommand:
@@ -368,7 +368,7 @@ EOF
 }
 
 # bats test_tags=config:commands,config:commands:argparser
-@test "omni config commands argparser with multiple values" {
+@test "[config_commands=11] omni config commands argparser with multiple values" {
   cat > .omni.yaml <<EOF
 commands:
   customcommand:
@@ -426,7 +426,7 @@ EOF
 }
 
 # bats test_tags=config:commands,config:commands:argparser
-@test "omni config commands argparser with default values" {
+@test "[config_commands=12] omni config commands argparser with default values" {
   cat > .omni.yaml <<EOF
 commands:
   customcommand:

@@ -264,10 +264,10 @@ fn setup_individual_gopath(
     _progress_handler: &dyn ProgressHandler,
     args: &PostInstallFuncArgs,
 ) -> Result<(), UpError> {
-    if args.tool_real_name != "go" {
+    if args.fqtn.tool() != "go" {
         panic!(
             "setup_individual_gopath called with wrong tool: {}",
-            args.tool
+            args.fqtn.tool()
         );
     }
 
@@ -290,12 +290,12 @@ fn setup_individual_gopath(
             let gopath_dir = data_path_dir_hash(dir);
 
             let gopath = data_path
-                .join(&args.tool)
+                .join(args.fqtn.normalized_plugin_name()?)
                 .join(&version.version)
                 .join(&gopath_dir);
 
             environment.add_version_data_path(
-                &args.tool,
+                args.fqtn.fully_qualified_plugin_name(),
                 &version.version,
                 dir,
                 &gopath.to_string_lossy(),

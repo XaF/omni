@@ -42,7 +42,7 @@ EOF
 }
 
 # bats test_tags=omni:up,omni:up:go-install
-@test "omni up go-install operation installs a new tool" {
+@test "[omni_up_go_install=01] omni up go-install operation installs a new tool" {
   cat > .omni.yaml <<EOF
 up:
   - go-install:
@@ -65,7 +65,7 @@ EOF
 }
 
 # bats test_tags=omni:up,omni:up:go-install
-@test "omni up go-install operation fallbacks to parents to list versions" {
+@test "[omni_up_go_install=02] omni up go-install operation fallbacks to parents to list versions" {
   cat > .omni.yaml <<EOF
 up:
   - go-install:
@@ -91,7 +91,7 @@ EOF
 }
 
 # bats test_tags=omni:up,omni:up:go-install
-@test "omni up go-install operation uses specified version" {
+@test "[omni_up_go_install=03] omni up go-install operation uses specified version" {
   cat > .omni.yaml <<EOF
 up:
   - go-install:
@@ -115,7 +115,7 @@ EOF
 }
 
 # bats test_tags=omni:up,omni:up:go-install
-@test "omni up go-install operation handles prerelease versions when specified" {
+@test "[omni_up_go_install=04] omni up go-install operation handles prerelease versions when specified" {
   cat > .omni.yaml <<EOF
 up:
   - go-install:
@@ -139,7 +139,7 @@ EOF
 }
 
 # bats test_tags=omni:up,omni:up:go-install
-@test "omni up go-install operation handles build versions when specified" {
+@test "[omni_up_go_install=05] omni up go-install operation handles build versions when specified" {
   cat > .omni.yaml <<EOF
 up:
   - go-install:
@@ -163,7 +163,7 @@ EOF
 }
 
 # bats test_tags=omni:up,omni:up:go-install
-@test "omni up go-install operation uses exact version when specified" {
+@test "[omni_up_go_install=06] omni up go-install operation uses exact version when specified" {
   cat > .omni.yaml <<EOF
 up:
   - go-install:
@@ -186,7 +186,7 @@ EOF
 }
 
 # bats test_tags=omni:up,omni:up:go-install
-@test "omni up go-install operation uses exact version using pseudo-version" {
+@test "[omni_up_go_install=07] omni up go-install operation uses exact version using pseudo-version" {
   cat > .omni.yaml <<EOF
 up:
   - go-install:
@@ -209,7 +209,7 @@ EOF
 }
 
 # bats test_tags=omni:up,omni:up:go-install
-@test "omni up go-install operation handles multiple tools" {
+@test "[omni_up_go_install=08] omni up go-install operation handles multiple tools" {
   cat > .omni.yaml <<EOF
 up:
   - go-install:
@@ -237,7 +237,7 @@ EOF
 }
 
 # bats test_tags=omni:up,omni:up:go-install
-@test "omni up go-install operation handles mixed ways to declare tools" {
+@test "[omni_up_go_install=09] omni up go-install operation handles mixed ways to declare tools" {
   cat > .omni.yaml <<EOF
 up:
   - go-install:
@@ -274,7 +274,7 @@ EOF
 }
 
 # bats test_tags=omni:up,omni:up:go-install
-@test "omni up go-install operation fails on invalid import path" {
+@test "[omni_up_go_install=10] omni up go-install operation fails on invalid import path" {
   cat > .omni.yaml <<EOF
 up:
   - go-install:
@@ -293,7 +293,7 @@ EOF
 }
 
 # bats test_tags=omni:up,omni:up:go-install
-@test "omni up go-install operation fails when no tools specified" {
+@test "[omni_up_go_install=11] omni up go-install operation fails when no tools specified" {
   cat > .omni.yaml <<EOF
 up:
   - go-install:

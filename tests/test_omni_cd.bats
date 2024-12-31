@@ -107,67 +107,67 @@ test_cd_locate() {
 }
 
 # bats test_tags=omni:cd
-@test "omni cd finds directories, pattern=repo, location=expected, org=no, fast_search=true" {
+@test "[omni_cd=01] omni cd finds directories, pattern=repo, location=expected, org=no, fast_search=true" {
   setup_omni_config
   test_cd "%{repo}" "%{host}/%{org}/%{repo}"
 }
 
 # bats test_tags=omni:cd
-@test "omni cd finds directories, pattern=org/repo, location=expected, org=no, fast_search=true" {
+@test "[omni_cd=02] omni cd finds directories, pattern=org/repo, location=expected, org=no, fast_search=true" {
   setup_omni_config
   test_cd "%{org}/%{repo}" "%{host}/%{org}/%{repo}"
 }
 
 # bats test_tags=omni:cd
-@test "omni cd finds directories, pattern=host/org/repo, location=expected, org=no, fast_search=true" {
+@test "[omni_cd=03] omni cd finds directories, pattern=host/org/repo, location=expected, org=no, fast_search=true" {
   setup_omni_config
   test_cd "%{host}/%{org}/%{repo}" "%{host}/%{org}/%{repo}"
 }
 
 # bats test_tags=omni:cd,omni:cd:locate
-@test "omni cd --locate works, pattern=repo, location=expected, org=no, fast_search=true" {
+@test "[omni_cd=04] omni cd --locate works, pattern=repo, location=expected, org=no, fast_search=true" {
   setup_omni_config
   test_cd_locate "%{repo}" "%{host}/%{org}/%{repo}"
 }
 
 # bats test_tags=omni:cd,omni:cd:locate
-@test "omni cd --locate works, pattern=org/repo, location=expected, org=no, fast_search=true" {
+@test "[omni_cd=05] omni cd --locate works, pattern=org/repo, location=expected, org=no, fast_search=true" {
   setup_omni_config
   test_cd_locate "%{org}/%{repo}" "%{host}/%{org}/%{repo}"
 }
 
 # bats test_tags=omni:cd,omni:cd:locate
-@test "omni cd --locate works, pattern=host/org/repo, location=expected, org=no, fast_search=true" {
+@test "[omni_cd=06] omni cd --locate works, pattern=host/org/repo, location=expected, org=no, fast_search=true" {
   setup_omni_config
   test_cd_locate "%{host}/%{org}/%{repo}" "%{host}/%{org}/%{repo}"
 }
 
 # bats test_tags=omni:cd
-@test "omni cd finds directories, pattern=repo, location=expected, org=no, fast_search=false" {
+@test "[omni_cd=07] omni cd finds directories, pattern=repo, location=expected, org=no, fast_search=false" {
   setup_omni_config no_fast_search
   test_cd "%{repo}" "%{host}/%{org}/%{repo}"
 }
 
 # bats test_tags=omni:cd
-@test "omni cd finds directories, pattern=repo, location=expected, org=yes, fast_search=true" {
+@test "[omni_cd=08] omni cd finds directories, pattern=repo, location=expected, org=yes, fast_search=true" {
   setup_omni_config with_org
   test_cd "%{repo}" "%{host}/%{org}/%{repo}"
 }
 
 # bats test_tags=omni:cd
-@test "omni cd finds directories, pattern=org/repo, location=expected, org=yes, fast_search=true" {
+@test "[omni_cd=09] omni cd finds directories, pattern=org/repo, location=expected, org=yes, fast_search=true" {
   setup_omni_config with_org
   test_cd "%{org}/%{repo}" "%{host}/%{org}/%{repo}"
 }
 
 # bats test_tags=omni:cd
-@test "omni cd finds directories, pattern=host/org/repo, location=expected, org=yes, fast_search=true" {
+@test "[omni_cd=10] omni cd finds directories, pattern=host/org/repo, location=expected, org=yes, fast_search=true" {
   setup_omni_config with_org
   test_cd "%{host}/%{org}/%{repo}" "%{host}/%{org}/%{repo}"
 }
 
 # bats test_tags=omni:cd
-@test "omni cd allows to switch directories using a relative path" {
+@test "[omni_cd=11] omni cd allows to switch directories using a relative path" {
   setup_omni_config
 
   # Make a new directory
@@ -195,7 +195,7 @@ test_cd_locate() {
 }
 
 # bats test_tags=omni:cd
-@test "omni cd allows to switch directories using an absolute path" {
+@test "[omni_cd=12] omni cd allows to switch directories using an absolute path" {
   setup_omni_config
 
   # Prepare tmp dir without any trailing slash
@@ -227,7 +227,7 @@ test_cd_locate() {
 }
 
 # bats test_tags=omni:cd
-@test "omni cd allows to switch directories using ~" {
+@test "[omni_cd=13] omni cd allows to switch directories using ~" {
   setup_omni_config
 
   # Make a new directory
@@ -255,7 +255,7 @@ test_cd_locate() {
 }
 
 # bats test_tags=omni:cd
-@test "omni cd allows to go to the repository root using ..." {
+@test "[omni_cd=14] omni cd allows to go to the repository root using ..." {
   setup_omni_config
 
   # Check that the current directory is home

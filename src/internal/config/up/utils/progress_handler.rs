@@ -16,7 +16,6 @@ use crate::internal::user_interface::StringColor;
 use crate::omni_warning;
 
 pub trait ProgressHandler {
-    #[allow(dead_code)]
     fn println(&self, message: String);
     fn progress(&self, message: String);
     fn success(&self);

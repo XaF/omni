@@ -223,7 +223,14 @@ impl Hash for UpEnvironment {
 impl FromRow for UpEnvironment {
     fn from_row(row: &Row) -> Result<Self, CacheManagerError> {
         let versions_json: String = row.get(0)?;
-        let versions: Vec<UpVersion> = serde_json::from_str(&versions_json)?;
+
+        let versions: Vec<UpVersion> = match serde_json::from_str(&versions_json) {
+            Ok(versions) => versions,
+            Err(_err) => {
+                let old_versions: Vec<OldUpVersion> = serde_json::from_str(&versions_json)?;
+                old_versions.iter().map(|v| v.to_owned().into()).collect()
+            }
+        };
 
         let paths_json: String = row.get(1)?;
         let paths: Vec<PathBuf> = serde_json::from_str(&paths_json)?;
@@ -349,14 +356,16 @@ impl UpEnvironment {
     pub fn add_version(
         &mut self,
         tool: &str,
-        tool_real_name: Option<&str>,
+        plugin_name: &str,
+        normalized_name: &str,
         version: &str,
+        bin_path: &str,
         dirs: BTreeSet<String>,
     ) -> bool {
         let mut dirs = dirs;
 
         for exists in self.versions.iter() {
-            if exists.tool == tool && exists.version == version {
+            if exists.normalized_name == normalized_name && exists.version == version {
                 dirs.remove(&exists.dir);
                 if dirs.is_empty() {
                     break;
@@ -369,8 +378,14 @@ impl UpEnvironment {
         }
 
         for dir in dirs {
-            self.versions
-                .push(UpVersion::new(tool, tool_real_name, version, &dir));
+            self.versions.push(UpVersion::new(
+                tool,
+                plugin_name,
+                normalized_name,
+                version,
+                bin_path,
+                &dir,
+            ));
         }
 
         true
@@ -378,13 +393,16 @@ impl UpEnvironment {
 
     pub fn add_version_data_path(
         &mut self,
-        tool: &str,
+        normalized_name: &str,
         version: &str,
         dir: &str,
         data_path: &str,
     ) -> bool {
         for exists in self.versions.iter_mut() {
-            if exists.tool == tool && exists.version == version && exists.dir == dir {
+            if exists.normalized_name == normalized_name
+                && exists.version == version
+                && exists.dir == dir
+            {
                 exists.data_path = Some(data_path.to_string());
                 return true;
             }
@@ -394,8 +412,9 @@ impl UpEnvironment {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone, Hash)]
-pub struct UpVersion {
+// TODO: deprecated, remove after leaving time to migrate to the new UpVersion
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct OldUpVersion {
     pub tool: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub tool_real_name: Option<String>,
@@ -406,12 +425,49 @@ pub struct UpVersion {
     pub data_path: Option<String>,
 }
 
+#[derive(Debug, Serialize, Deserialize, Clone, Hash)]
+pub struct UpVersion {
+    pub tool: String,
+    pub plugin_name: String,
+    pub normalized_name: String,
+    pub version: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub bin_path: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub dir: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub data_path: Option<String>,
+}
+
+impl From<OldUpVersion> for UpVersion {
+    fn from(args: OldUpVersion) -> Self {
+        Self {
+            tool: args.tool_real_name.unwrap_or(args.tool.clone()),
+            plugin_name: args.tool.clone(),
+            normalized_name: args.tool,
+            version: args.version,
+            bin_path: "bin".to_string(),
+            dir: args.dir,
+            data_path: args.data_path,
+        }
+    }
+}
+
 impl UpVersion {
-    pub fn new(tool: &str, tool_real_name: Option<&str>, version: &str, dir: &str) -> Self {
+    pub fn new(
+        tool: &str,
+        plugin_name: &str,
+        normalized_name: &str,
+        version: &str,
+        bin_path: &str,
+        dir: &str,
+    ) -> Self {
         Self {
             tool: tool.to_string(),
-            tool_real_name: tool_real_name.map(|s| s.to_string()),
+            plugin_name: plugin_name.to_string(),
+            normalized_name: normalized_name.to_string(),
             version: version.to_string(),
+            bin_path: bin_path.to_string(),
             dir: dir.to_string(),
             data_path: None,
         }
@@ -864,14 +920,30 @@ mod tests {
             let mut env = UpEnvironment::new();
 
             // Add versions for different directories
-            env.add_version("tool1", None, "1.0.0", BTreeSet::from(["dir1".to_string()]));
+            env.add_version(
+                "tool1",
+                "plugin1",
+                "plugin-1",
+                "1.0.0",
+                "bin/path/1",
+                BTreeSet::from(["dir1".to_string()]),
+            );
             env.add_version(
                 "tool2",
-                None,
+                "plugin2",
+                "plugin-2",
                 "2.0.0",
+                "bin/path/2",
                 BTreeSet::from(["dir1/subdir".to_string()]),
             );
-            env.add_version("tool3", None, "3.0.0", BTreeSet::from(["dir2".to_string()]));
+            env.add_version(
+                "tool3",
+                "plugin3",
+                "plugin-3",
+                "3.0.0",
+                "bin/path/3",
+                BTreeSet::from(["dir2".to_string()]),
+            );
 
             // Test dir1 versions
             let dir1_versions = env.versions_for_dir("dir1");
@@ -881,6 +953,8 @@ mod tests {
             // Test dir1/subdir versions
             let subdir_versions = env.versions_for_dir("dir1/subdir");
             assert_eq!(subdir_versions.len(), 2);
+            assert_eq!(subdir_versions[0].tool, "tool1");
+            assert_eq!(subdir_versions[1].tool, "tool2");
 
             // Test dir2 versions
             let dir2_versions = env.versions_for_dir("dir2");
@@ -938,8 +1012,10 @@ mod tests {
             // Test adding version
             assert!(env.add_version(
                 "tool1",
-                Some("real-name"),
+                "plugin1",
+                "plugin-1",
                 "1.0.0",
+                "bin/path/1",
                 BTreeSet::from(["dir1".to_string()])
             ));
             assert_eq!(env.versions.len(), 1);
@@ -947,14 +1023,16 @@ mod tests {
             // Test adding same version doesn't duplicate
             assert!(!env.add_version(
                 "tool1",
-                Some("real-name"),
+                "plugin1",
+                "plugin-1",
                 "1.0.0",
+                "bin/path/1",
                 BTreeSet::from(["dir1".to_string()])
             ));
             assert_eq!(env.versions.len(), 1);
 
             // Test adding data path
-            assert!(env.add_version_data_path("tool1", "1.0.0", "dir1", "/data/path"));
+            assert!(env.add_version_data_path("plugin-1", "1.0.0", "dir1", "/data/path"));
             assert_eq!(env.versions[0].data_path, Some("/data/path".to_string()));
         }
     }
@@ -964,10 +1042,19 @@ mod tests {
 
         #[test]
         fn test_new() {
-            let version = UpVersion::new("tool1", Some("real-name"), "1.0.0", "dir1");
+            let version = UpVersion::new(
+                "tool1",
+                "plugin1",
+                "plugin-1",
+                "1.0.0",
+                "bin/path/1",
+                "dir1",
+            );
             assert_eq!(version.tool, "tool1");
-            assert_eq!(version.tool_real_name, Some("real-name".to_string()));
+            assert_eq!(version.plugin_name, "plugin1");
+            assert_eq!(version.normalized_name, "plugin-1");
             assert_eq!(version.version, "1.0.0");
+            assert_eq!(version.bin_path, "bin/path/1");
             assert_eq!(version.dir, "dir1");
             assert!(version.data_path.is_none());
         }

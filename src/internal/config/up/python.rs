@@ -8,6 +8,7 @@ use tokio::process::Command as TokioCommand;
 
 use crate::internal::cache::up_environments::UpEnvironment;
 use crate::internal::commands::utils::abs_path;
+use crate::internal::config::up::mise::FullyQualifiedToolName;
 use crate::internal::config::up::mise::PostInstallFuncArgs;
 use crate::internal::config::up::mise_tool_path;
 use crate::internal::config::up::utils::data_path_dir_hash;
@@ -129,8 +130,11 @@ fn setup_python_venv(
     progress_handler: &dyn ProgressHandler,
     args: &PostInstallFuncArgs,
 ) -> Result<(), UpError> {
-    if args.tool_real_name != "python" {
-        panic!("setup_python_venv called with wrong tool: {}", args.tool);
+    if args.fqtn.tool() != "python" {
+        panic!(
+            "setup_python_venv called with wrong tool: {}",
+            args.fqtn.tool()
+        );
     }
 
     // Handle each version individually
@@ -139,7 +143,7 @@ fn setup_python_venv(
             options,
             environment,
             progress_handler,
-            &args.tool,
+            args.fqtn,
             version.clone(),
         )?;
     }
@@ -151,7 +155,7 @@ fn setup_python_venv_per_version(
     options: &UpOptions,
     environment: &mut UpEnvironment,
     progress_handler: &dyn ProgressHandler,
-    tool: &str,
+    fqtn: &FullyQualifiedToolName,
     version: MiseToolUpVersion,
 ) -> Result<(), UpError> {
     // Check if we care about that version
@@ -179,7 +183,7 @@ fn setup_python_venv_per_version(
             options,
             environment,
             progress_handler,
-            tool,
+            fqtn,
             version.version.clone(),
             dir,
         )?;
@@ -192,7 +196,7 @@ fn setup_python_venv_per_dir(
     _options: &UpOptions,
     environment: &mut UpEnvironment,
     progress_handler: &dyn ProgressHandler,
-    tool: &str,
+    fqtn: &FullyQualifiedToolName,
     version: String,
     dir: String,
 ) -> Result<(), UpError> {
@@ -212,7 +216,7 @@ fn setup_python_venv_per_dir(
     let venv_dir = data_path_dir_hash(&dir);
 
     let venv_path = data_path
-        .join(tool)
+        .join(fqtn.normalized_plugin_name()?)
         .join(version.clone())
         .join(venv_dir.clone());
 
@@ -238,7 +242,7 @@ fn setup_python_venv_per_dir(
 
     // Only create the new venv if it doesn't exist
     if !already_setup {
-        let python_version_path = mise_tool_path(tool, &version);
+        let python_version_path = mise_tool_path(&fqtn.normalized_plugin_name()?, &version);
         let python_bin = PathBuf::from(python_version_path)
             .join("bin")
             .join("python");
@@ -271,7 +275,12 @@ fn setup_python_venv_per_dir(
     }
 
     // Update the cache
-    environment.add_version_data_path(tool, &version, &dir, &venv_path.to_string_lossy());
+    environment.add_version_data_path(
+        fqtn.fully_qualified_plugin_name(),
+        &version,
+        &dir,
+        &venv_path.to_string_lossy(),
+    );
 
     Ok(())
 }
