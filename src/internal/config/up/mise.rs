@@ -788,6 +788,7 @@ struct MiseRegistryEntry {
     full_name: String,
     clean_name: String,
     backend: String,
+    #[allow(dead_code)]
     repository: Option<String>,
 }
 
@@ -909,6 +910,7 @@ impl FullyQualifiedToolName {
         &self.plugin_name
     }
 
+    #[allow(dead_code)]
     pub fn backend(&self) -> Option<String> {
         self.backend.clone()
     }

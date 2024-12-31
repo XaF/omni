@@ -58,7 +58,7 @@ EOF
 }
 
 # bats test_tags=omni:up,omni:up:python,omni:up:python:brew
-@test "omni up python operation (latest) using brew for dependencies" {
+@test "[omni_up_python=01] omni up python operation (latest) using brew for dependencies" {
   cat > .omni.yaml <<EOF
 up:
   - python
@@ -78,7 +78,7 @@ EOF
 }
 
 # bats test_tags=omni:up,omni:up:python,omni:up:python:brew
-@test "omni up python operation (latest) using brew for dependencies (other versions installed)" {
+@test "[omni_up_python=02] omni up python operation (latest) using brew for dependencies (other versions installed)" {
   cat > .omni.yaml <<EOF
 up:
   - python:
@@ -99,7 +99,7 @@ EOF
 }
 
 # bats test_tags=omni:up,omni:up:python,omni:up:python:brew
-@test "omni up python operation (latest) using brew for dependencies and call pip (single requirements file)" {
+@test "[omni_up_python=03] omni up python operation (latest) using brew for dependencies and call pip (single requirements file)" {
   cat > .omni.yaml <<EOF
 up:
   - python:
@@ -125,7 +125,7 @@ EOF
 }
 
 # bats test_tags=omni:up,omni:up:python,omni:up:python:brew
-@test "omni up python operation (latest) using brew for dependencies and call pip (multiple requirements file)" {
+@test "[omni_up_python=04] omni up python operation (latest) using brew for dependencies and call pip (multiple requirements file)" {
   cat > .omni.yaml <<EOF
 up:
   - python:
@@ -156,7 +156,7 @@ EOF
 }
 
 # bats test_tags=omni:up,omni:up:python,omni:up:python:brew
-@test "omni up python operation (latest) using brew for dependencies (already installed)" {
+@test "[omni_up_python=05] omni up python operation (latest) using brew for dependencies (already installed)" {
   cat > .omni.yaml <<EOF
 up:
   - python
@@ -176,7 +176,7 @@ EOF
 }
 
 # bats test_tags=omni:up,omni:up:python,omni:up:python:brew
-@test "omni up python operation (latest) using brew for dependencies (already installed + other versions)" {
+@test "[omni_up_python=06] omni up python operation (latest) using brew for dependencies (already installed + other versions)" {
   cat > .omni.yaml <<EOF
 up:
   - python
@@ -196,7 +196,7 @@ EOF
 }
 
 # bats test_tags=omni:up,omni:up:python,omni:up:python:brew
-@test "omni up python operation (latest) using brew for dependencies (plugin already installed)" {
+@test "[omni_up_python=07] omni up python operation (latest) using brew for dependencies (plugin already installed)" {
   cat > .omni.yaml <<EOF
 up:
   - python:
@@ -204,7 +204,7 @@ up:
 EOF
 
   add_brew_python_calls
-  add_mise_python_calls plugin_name=python-7d945a08 plugin_list=installed
+  add_mise_python_calls plugin_name=python-7d945a08 plugin_list=installed mise_registry=false mise_env=false
 
   run omni up --trust 3>&-
   echo "STATUS: $status"
@@ -217,7 +217,7 @@ EOF
 }
 
 # bats test_tags=omni:up,omni:up:python,omni:up:python:brew
-@test "omni up python operation (latest) using brew for dependencies (install fail fallback to matching installed version)" {
+@test "[omni_up_python=08] omni up python operation (latest) using brew for dependencies (install fail fallback to matching installed version)" {
   cat > .omni.yaml <<EOF
 up:
   - python:
@@ -240,7 +240,7 @@ EOF
 }
 
 # bats test_tags=omni:up,omni:up:python,omni:up:python:brew
-@test "omni up python operation (latest) using brew for dependencies (cache versions expired but plugin update fail)" {
+@test "[omni_up_python=09] omni up python operation (latest) using brew for dependencies (cache versions expired but plugin update fail)" {
   cat > .omni.yaml <<EOF
 up:
   - python:
@@ -248,7 +248,7 @@ up:
 EOF
 
   add_brew_python_calls
-  add_mise_python_calls plugin_name=python-7d945a08 plugin_list=installed cache_versions=expired list_versions=fail-update
+  add_mise_python_calls plugin_name=python-7d945a08 plugin_list=installed cache_versions=expired list_versions=fail-update mise_registry=false mise_env=false
 
   run omni up --trust 3>&-
   echo "STATUS: $status"
@@ -261,7 +261,7 @@ EOF
 }
 
 # bats test_tags=omni:up,omni:up:python,omni:up:python:brew
-@test "omni up python operation (latest) using brew for dependencies (cache versions hit)" {
+@test "[omni_up_python=10] omni up python operation (latest) using brew for dependencies (cache versions hit)" {
   cat > .omni.yaml <<EOF
 up:
   - python
@@ -277,7 +277,7 @@ EOF
 }
 
 # bats test_tags=omni:up,omni:up:python,omni:up:python:brew
-@test "omni up python operation (latest) using brew for dependencies (cache versions expired)" {
+@test "[omni_up_python=11] omni up python operation (latest) using brew for dependencies (cache versions expired)" {
   cat > .omni.yaml <<EOF
 up:
   - python
@@ -293,7 +293,7 @@ EOF
 }
 
 # bats test_tags=omni:up,omni:up:python,omni:up:python:brew
-@test "omni up python operation (latest) using brew for dependencies (cache versions expired but list versions fail)" {
+@test "[omni_up_python=12] omni up python operation (latest) using brew for dependencies (cache versions expired but list versions fail)" {
   cat > .omni.yaml <<EOF
 up:
   - python
@@ -309,7 +309,7 @@ EOF
 }
 
 # bats test_tags=omni:up,omni:up:python,omni:up:python:brew
-@test "omni up python operation (latest) with upgrade configured for the python version" {
+@test "[omni_up_python=13] omni up python operation (latest) with upgrade configured for the python version" {
   cat > .omni.yaml <<EOF
 up:
   - python:
@@ -330,7 +330,7 @@ EOF
 }
 
 # bats test_tags=omni:up,omni:up:python,omni:up:python:brew
-@test "omni up python operation (latest) with upgrade configured at the work directory level" {
+@test "[omni_up_python=14] omni up python operation (latest) with upgrade configured at the work directory level" {
   cat > .omni.yaml <<EOF
 up:
   - python
@@ -353,7 +353,7 @@ EOF
 }
 
 # bats test_tags=omni:up,omni:up:python,omni:up:python:brew
-@test "omni up python operation (latest) with upgrade configured as a command-line parameter" {
+@test "[omni_up_python=15] omni up python operation (latest) with upgrade configured as a command-line parameter" {
   cat > .omni.yaml <<EOF
 up:
   - python
@@ -373,7 +373,7 @@ EOF
 }
 
 # bats test_tags=omni:up,omni:up:python,omni:up:python:brew
-@test "omni up python operation (latest) with upgrade disabled and only an older major installed" {
+@test "[omni_up_python=16] omni up python operation (latest) with upgrade disabled and only an older major installed" {
   cat > .omni.yaml <<EOF
 up:
   - python
@@ -394,7 +394,7 @@ EOF
 }
 
 # bats test_tags=omni:up,omni:up:python,omni:up:python:brew
-@test "omni up python operation (2) with upgrade disabled and a version 2 installed" {
+@test "[omni_up_python=17] omni up python operation (2) with upgrade disabled and a version 2 installed" {
   cat > .omni.yaml <<EOF
 up:
   - python: 2
@@ -414,7 +414,7 @@ EOF
 }
 
 # bats test_tags=omni:up,omni:up:python,omni:up:python:brew
-@test "omni up python operation (latest) with upgrade disabled and the current major installed" {
+@test "[omni_up_python=18] omni up python operation (latest) with upgrade disabled and the current major installed" {
   cat > .omni.yaml <<EOF
 up:
   - python
@@ -434,7 +434,7 @@ EOF
 }
 
 # bats test_tags=omni:up,omni:up:python,omni:up:python:brew
-@test "omni up python operation (3) with upgrade disabled and a version 3 installed" {
+@test "[omni_up_python=19] omni up python operation (3) with upgrade disabled and a version 3 installed" {
   cat > .omni.yaml <<EOF
 up:
   - python: 3
@@ -454,7 +454,7 @@ EOF
 }
 
 # bats test_tags=omni:up,omni:up:python,omni:up:python:brew
-@test "omni up python operation (*) using brew for dependencies" {
+@test "[omni_up_python=20] omni up python operation (*) using brew for dependencies" {
   cat > .omni.yaml <<EOF
 up:
   - python: "*"
@@ -474,7 +474,7 @@ EOF
 }
 
 # bats test_tags=omni:up,omni:up:python,omni:up:python:brew
-@test "omni up python operation (3.11.6) using brew for dependencies" {
+@test "[omni_up_python=21] omni up python operation (3.11.6) using brew for dependencies" {
   cat > .omni.yaml <<EOF
 up:
   - python: 3.11.6
@@ -494,7 +494,7 @@ EOF
 }
 
 # bats test_tags=omni:up,omni:up:python,omni:up:python:brew
-@test "omni up python operation (>=3.10, <3.11) using brew for dependencies" {
+@test "[omni_up_python=22] omni up python operation (>=3.10, <3.11) using brew for dependencies" {
   cat > .omni.yaml <<EOF
 up:
   - python: ">=3.10, <3.11"
@@ -514,7 +514,7 @@ EOF
 }
 
 # bats test_tags=omni:up,omni:up:python,omni:up:python:brew
-@test "omni up python operation (2.6.x || >3.10.12 <=3.11.2) using brew for dependencies" {
+@test "[omni_up_python=23] omni up python operation (2.6.x || >3.10.12 <=3.11.2) using brew for dependencies" {
   cat > .omni.yaml <<EOF
 up:
   - python: "2.6.x || >3.10.12 <=3.11.2"
@@ -534,7 +534,7 @@ EOF
 }
 
 # bats test_tags=omni:up,omni:up:python,omni:up:python:brew
-@test "omni up python operation (~3.11.6) using brew for dependencies" {
+@test "[omni_up_python=24] omni up python operation (~3.11.6) using brew for dependencies" {
   cat > .omni.yaml <<EOF
     up:
     - python: "~3.11.6"
@@ -554,7 +554,7 @@ EOF
 }
 
 # bats test_tags=omni:up,omni:up:python,omni:up:python:brew
-@test "omni up python operation (3.11.x) using brew for dependencies" {
+@test "[omni_up_python=25] omni up python operation (3.11.x) using brew for dependencies" {
   cat > .omni.yaml <<EOF
 up:
   - python: 3.11.x
@@ -574,7 +574,7 @@ EOF
 }
 
 # bats test_tags=omni:up,omni:up:python,omni:up:python:brew
-@test "omni up python operation (3.11) using brew for dependencies" {
+@test "[omni_up_python=26] omni up python operation (3.11) using brew for dependencies" {
   cat > .omni.yaml <<EOF
 up:
   - python: 3.11
@@ -594,14 +594,14 @@ EOF
 }
 
 # bats test_tags=omni:up,omni:up:python,omni:up:python:brew
-@test "omni up python operation (2) using brew for dependencies (install fail does not fallback when no matching version installed)" {
+@test "[omni_up_python=27] omni up python operation (2) using brew for dependencies (install fail does not fallback when no matching version installed)" {
   cat > .omni.yaml <<EOF
 up:
   - python: 2
 EOF
 
   add_brew_python_calls
-  add_mise_python_calls version=2.7.18 venv=false installed=fail others_installed="3.11.6,3.11.8"
+  add_mise_python_calls version=2.7.18 venv=false installed=fail others_installed="3.11.6,3.11.8" mise_env=false
 
   run omni up --trust 3>&-
   echo "STATUS: $status"
@@ -614,7 +614,7 @@ EOF
 }
 
 # bats test_tags=omni:up,omni:up:python,omni:up:python:brew
-@test "omni up python operation (2) using brew for dependencies" {
+@test "[omni_up_python=28] omni up python operation (2) using brew for dependencies" {
   cat > .omni.yaml <<EOF
 up:
   - python: 2
@@ -634,7 +634,7 @@ EOF
 }
 
 # bats test_tags=omni:up,omni:up:python,omni:up:python:brew
-@test "omni up python operation (^2.5.2) using brew for dependencies" {
+@test "[omni_up_python=29] omni up python operation (^2.5.2) using brew for dependencies" {
   cat > .omni.yaml <<EOF
 up:
   - python: "^2.5.2"
@@ -654,7 +654,7 @@ EOF
 }
 
 # bats test_tags=omni:up,omni:up:python,omni:up:python:nix
-@test "omni up python operation (latest) using nix for dependencies" {
+@test "[omni_up_python=30] omni up python operation (latest) using nix for dependencies" {
   cat >> ~/.config/omni/config.yaml <<EOF
 up_command:
   preferred_tools:
@@ -676,7 +676,7 @@ EOF
 }
 
 # bats test_tags=omni:up,omni:up:python
-@test "omni up python operation (auto) with only the root directory" {
+@test "[omni_up_python=31] omni up python operation (auto) with only the root directory" {
   cat > .omni.yaml <<EOF
 up:
   - python: auto
@@ -685,7 +685,7 @@ EOF
   echo "3.11.9" > .python-version
 
   add_brew_python_calls
-  add_mise_python_calls version=3.11.9
+  add_mise_python_calls version=3.11.9 mise_where=true
 
   run omni up --trust 3>&-
   echo "STATUS: $status"
@@ -698,7 +698,7 @@ EOF
 }
 
 # bats test_tags=omni:up,omni:up:python
-@test "omni up python operation (auto) with only a subdirectory" {
+@test "[omni_up_python=32] omni up python operation (auto) with only a subdirectory" {
   cat > .omni.yaml <<EOF
 up:
   - python: auto
@@ -708,7 +708,7 @@ EOF
   echo "3.11.9" > subdir/.python-version
 
   add_brew_python_calls
-  add_mise_python_calls version=3.11.9 subdir=true
+  add_mise_python_calls version=3.11.9 subdir=true mise_where=true
 
   run omni up --trust 3>&-
   echo "STATUS: $status"
@@ -721,7 +721,7 @@ EOF
 }
 
 # bats test_tags=omni:up,omni:up:python
-@test "omni up python operation (auto) with multiple directories" {
+@test "[omni_up_python=33] omni up python operation (auto) with multiple directories" {
   cat > .omni.yaml <<EOF
 up:
   - python: auto
@@ -735,8 +735,8 @@ EOF
 
   add_brew_python_calls
   add_mise_python_calls version=3.11.7 subdir=true auto=true
-  add_mise_python_calls version=3.11.9 subdir=true list_versions=false mise_update=false plugin_list=skip
-  add_mise_python_calls version=3.12.0 list_versions=false mise_update=false plugin_list=skip
+  add_mise_python_calls version=3.11.9 subdir=true list_versions=false mise_update=false mise_registry=false plugin_list=false
+  add_mise_python_calls version=3.12.0 list_versions=false mise_update=false mise_registry=false plugin_list=false mise_where=true
 
   run omni up --trust 3>&-
   echo "STATUS: $status"

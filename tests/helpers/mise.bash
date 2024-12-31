@@ -45,6 +45,9 @@ add_mise_tool_calls() {
   local upgrade=false
   local subdir=false
   local mise_update=true
+  local mise_registry=true
+  local mise_env=true
+  local mise_where=false
   local auto=false
 
   for arg in "$@"; do
@@ -105,6 +108,18 @@ add_mise_tool_calls() {
         mise_update="${arg#mise_update=}"
         shift
         ;;
+      mise_registry=*)
+        mise_registry="${arg#mise_registry=}"
+        shift
+        ;;
+      mise_env=*)
+        mise_env="${arg#mise_env=}"
+        shift
+        ;;
+      mise_where=*)
+        mise_where="${arg#mise_where=}"
+        shift
+        ;;
       auto=*)
         auto="${arg#auto=}"
         shift
@@ -163,7 +178,7 @@ add_mise_tool_calls() {
       jq --raw-input | \
       jq --slurp --compact-output)
     sqlite3 "$cache_db" \
-      "INSERT INTO mise_plugins (plugin, updated_at, versions, versions_fetched_at)
+      "INSERT INTO mise_plugins (plugin_name, updated_at, versions, versions_fetched_at)
        VALUES ('${plugin_name}', '${date}', '${cached_versions}', '${date}')"
     cp "$cache_db" "/tmp/debug.db"
   fi
@@ -191,13 +206,15 @@ add_mise_tool_calls() {
     --compact-output \
     'sort_by(.version | split(".") | map(tonumber))')
 
-  # Checking the mise registry to check the available plugins
-  # and their fully qualified plugin name for each of the mise
-  # backends they are available in
-  # TODO: add output
-  add_command mise registry <<EOF
+
+  if [ "$mise_registry" = "true" ]; then
+    # Checking the mise registry to check the available plugins
+    # and their fully qualified plugin name for each of the mise
+    # backends they are available in
+    add_command mise registry <<EOF
 ${tool}  core:${tool}
 EOF
+  fi
 
   if [ "$mise_update" = "true" ]; then
     # Checking the version of mise, which allows to decide if mise
@@ -214,7 +231,7 @@ EOF
   if [ "$plugin_list" = "true" ]; then
     add_command mise plugins ls
     add_command mise plugins install "${plugin_name}" "regex:https?://.*"
-  elif [ "$plugin_list" == "installed" ]; then
+  elif [ "$plugin_list" = "installed" ]; then
     add_command mise plugins ls <<EOF
 ${plugin_name}
 EOF
@@ -266,21 +283,27 @@ EOF
     fi
   fi
 
-  # Identify the location of the binaries for the tool
-  add_command mise env --json ${plugin_name}@${version} <<EOF
+  local bin_path="${HOME}/.local/share/omni/mise/installs/${plugin_name}/${version}/bin"
+  if [ "$mise_env" = "true" ]; then
+    mkdir -p "${bin_path}"
+    # Identify the location of the binaries for the tool
+    add_command mise env --json "${plugin_name}@${version}" <<EOF
 {
-  "PATH": "${HOME}/.local/share/omni/mise/installs/${plugin_name}/${version}/bin:"
+  "PATH": "${bin_path}:"
 }
 EOF
+  fi
 
-  # Identify the normalized path for the tool, this call does not
-  # use the version as we just try to resolve the tool path
-  # add_command mise where ${plugin_name} latest <<EOF
-# ${HOME}/.local/share/omni/mise/installs/${plugin_name}/7.8.9
-# EOF
+  if [ "$mise_where" = "true" ]; then
+    # Identify the normalized path for the tool, this call does not
+    # use the version as we just try to resolve the tool path
+    add_command mise where ${plugin_name} latest <<EOF
+${HOME}/.local/share/omni/mise/installs/${plugin_name}/7.8.9
+EOF
+  fi
 
   if [ "$venv" = "true" ]; then
-    add_fakebin "${HOME}/.local/share/omni/mise/installs/${plugin_name}/${version}/bin/${tool}"
+    add_fakebin "${bin_path}/${tool}"
     sub=root
     if [ "$subdir" = "true" ]; then
       sub="[^ /]+"

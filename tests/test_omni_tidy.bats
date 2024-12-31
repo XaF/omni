@@ -7,7 +7,7 @@ setup() {
 }
 
 # bats test_tags=omni:tidy
-@test "omni tidy moves repositories in their expected locations (host/org/repo)" {
+@test "[omni_tidy=1] omni tidy moves repositories in their expected locations (host/org/repo)" {
   # Add two repositories
   setup_git_dir "git/test1" "git@github.com:test1org/test1repo.git"
   setup_git_dir "git/test2" "https://github.com/test2org/test2repo.git"
@@ -31,7 +31,7 @@ setup() {
 }
 
 # bats test_tags=omni:tidy
-@test "omni tidy moves repositories in their expected locations (org/repo)" {
+@test "[omni_tidy=2] omni tidy moves repositories in their expected locations (org/repo)" {
   # Add two repositories
   setup_git_dir "git/test1" "git@github.com:test1org/test1repo.git"
   setup_git_dir "git/test2" "https://github.com/test2org/test2repo.git"
@@ -55,7 +55,7 @@ setup() {
 }
 
 # bats test_tags=omni:tidy
-@test "omni tidy moves repositories in their expected locations (repo)" {
+@test "[omni_tidy=3] omni tidy moves repositories in their expected locations (repo)" {
   # Add two repositories
   setup_git_dir "git/test1" "git@github.com:test1org/test1repo.git"
   setup_git_dir "git/test2" "https://github.com/test2org/test2repo.git"
@@ -79,7 +79,7 @@ setup() {
 }
 
 # bats test_tags=omni:tidy
-@test "omni tidy moves repositories in their expected locations (one/host/two/org/three/repo/four)" {
+@test "[omni_tidy=4] omni tidy moves repositories in their expected locations (one/host/two/org/three/repo/four)" {
   # Add two repositories
   setup_git_dir "git/test1" "git@github.com:test1org/test1repo.git"
   setup_git_dir "git/test2" "https://github.com/test2org/test2repo.git"

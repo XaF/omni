@@ -30,7 +30,7 @@ reload_dynenv() {
 }
 
 # bats test_tags=omni:up,omni:up:custom
-@test "omni up custom operation" {
+@test "[omni_up_custom=01] omni up custom operation" {
   cat > .omni.yaml <<EOF
 up:
   - custom:
@@ -48,7 +48,7 @@ EOF
 }
 
 # bats test_tags=omni:up,omni:up:custom
-@test "omni up custom operation fails if command fails" {
+@test "[omni_up_custom=02] omni up custom operation fails if command fails" {
   cat > .omni.yaml <<EOF
 up:
   - custom:
@@ -66,7 +66,7 @@ EOF
 }
 
 # bats test_tags=omni:up,omni:up:custom
-@test "omni up custom only executes first command if failing" {
+@test "[omni_up_custom=03] omni up custom only executes first command if failing" {
   cat > .omni.yaml <<EOF
 up:
   - custom:
@@ -87,7 +87,7 @@ EOF
 }
 
 # bats test_tags=omni:up,omni:up:custom
-@test "omni up custom operation should not run if 'met' condition is true" {
+@test "[omni_up_custom=04] omni up custom operation should not run if 'met' condition is true" {
   cat > .omni.yaml <<EOF
 up:
   - custom:
@@ -106,7 +106,7 @@ EOF
 }
 
 # bats test_tags=omni:up,omni:up:custom
-@test "omni up custom operation should run if 'met' condition is false" {
+@test "[omni_up_custom=05] omni up custom operation should run if 'met' condition is false" {
   cat > .omni.yaml <<EOF
 up:
   - custom:
@@ -126,7 +126,7 @@ EOF
 }
 
 # bats test_tags=omni:up,omni:up:custom
-@test "omni up custom operation should allow to set environment variables" {
+@test "[omni_up_custom=06] omni up custom operation should allow to set environment variables" {
   cat > .omni.yaml <<'EOF'
 up:
   - custom:
@@ -394,57 +394,57 @@ EOF
 }
 
 # bats test_tags=omni:up,omni:up:custom,omni:up:custom:multiline
-@test "omni up custom operation should allow to set a multiline environment variables using > (1/5)" {
+@test "[omni_up_custom=07] omni up custom operation should allow to set a multiline environment variables using > (1/5)" {
   custom_operation_multiline_single_arrow
 }
 
 # bats test_tags=omni:up,omni:up:custom,omni:up:custom:multiline
-@test "omni up custom operation should allow to set a multiline environment variables using > (2/5)" {
+@test "[omni_up_custom=08] omni up custom operation should allow to set a multiline environment variables using > (2/5)" {
   custom_operation_multiline_single_arrow
 }
 
 # bats test_tags=omni:up,omni:up:custom,omni:up:custom:multiline
-@test "omni up custom operation should allow to set a multiline environment variables using > (3/5)" {
+@test "[omni_up_custom=09] omni up custom operation should allow to set a multiline environment variables using > (3/5)" {
   custom_operation_multiline_single_arrow
 }
 
 # bats test_tags=omni:up,omni:up:custom,omni:up:custom:multiline
-@test "omni up custom operation should allow to set a multiline environment variables using > (4/5)" {
+@test "[omni_up_custom=10] omni up custom operation should allow to set a multiline environment variables using > (4/5)" {
   custom_operation_multiline_single_arrow
 }
 
 # bats test_tags=omni:up,omni:up:custom,omni:up:custom:multiline
-@test "omni up custom operation should allow to set a multiline environment variables using > (5/5)" {
+@test "[omni_up_custom=11] omni up custom operation should allow to set a multiline environment variables using > (5/5)" {
   custom_operation_multiline_single_arrow
 }
 
 # bats test_tags=omni:up,omni:up:custom,omni:up:custom:multiline
-@test "omni up custom operation should allow to set a multiline environment variables using >> (1/5)" {
+@test "[omni_up_custom=12] omni up custom operation should allow to set a multiline environment variables using >> (1/5)" {
   custom_operation_multiline_double_arrow
 }
 
 # bats test_tags=omni:up,omni:up:custom,omni:up:custom:multiline
-@test "omni up custom operation should allow to set a multiline environment variables using >> (2/5)" {
+@test "[omni_up_custom=13] omni up custom operation should allow to set a multiline environment variables using >> (2/5)" {
   custom_operation_multiline_double_arrow
 }
 
 # bats test_tags=omni:up,omni:up:custom,omni:up:custom:multiline
-@test "omni up custom operation should allow to set a multiline environment variables using >> (3/5)" {
+@test "[omni_up_custom=14] omni up custom operation should allow to set a multiline environment variables using >> (3/5)" {
   custom_operation_multiline_double_arrow
 }
 
 # bats test_tags=omni:up,omni:up:custom,omni:up:custom:multiline
-@test "omni up custom operation should allow to set a multiline environment variables using >> (4/5)" {
+@test "[omni_up_custom=15] omni up custom operation should allow to set a multiline environment variables using >> (4/5)" {
   custom_operation_multiline_double_arrow
 }
 
 # bats test_tags=omni:up,omni:up:custom,omni:up:custom:multiline
-@test "omni up custom operation should allow to set a multiline environment variables using >> (5/5)" {
+@test "[omni_up_custom=16] omni up custom operation should allow to set a multiline environment variables using >> (5/5)" {
   custom_operation_multiline_double_arrow
 }
 
 # bats test_tags=omni:up,omni:up:custom
-@test "omni up custom operation should allow to unset environment variables" {
+@test "[omni_up_custom=17] omni up custom operation should allow to unset environment variables" {
   cat > .omni.yaml <<'EOF'
 up:
   - custom:
@@ -479,7 +479,7 @@ EOF
 }
 
 # bats test_tags=omni:up,omni:up:custom
-@test "omni up custom operation should allow to prefix environment variables" {
+@test "[omni_up_custom=18] omni up custom operation should allow to prefix environment variables" {
   cat > .omni.yaml <<'EOF'
 up:
   - custom:
@@ -510,7 +510,7 @@ EOF
 }
 
 # bats test_tags=omni:up,omni:up:custom
-@test "omni up custom operation should allow to suffix environment variables" {
+@test "[omni_up_custom=19] omni up custom operation should allow to suffix environment variables" {
   cat > .omni.yaml <<'EOF'
 up:
   - custom:
@@ -541,7 +541,7 @@ EOF
 }
 
 # bats test_tags=omni:up,omni:up:custom
-@test "omni up custom operation should allow to append to a path-like environment variables" {
+@test "[omni_up_custom=20] omni up custom operation should allow to append to a path-like environment variables" {
   cat > .omni.yaml <<'EOF'
 up:
   - custom:
@@ -570,7 +570,7 @@ EOF
 }
 
 # bats test_tags=omni:up,omni:up:custom
-@test "omni up custom operation should allow to prepend to a path-like environment variables" {
+@test "[omni_up_custom=21] omni up custom operation should allow to prepend to a path-like environment variables" {
   cat > .omni.yaml <<'EOF'
 up:
   - custom:
@@ -601,7 +601,7 @@ EOF
 }
 
 # bats test_tags=omni:up,omni:up:custom
-@test "omni up custom operation should allow to remove from a path-like environment variables" {
+@test "[omni_up_custom=22] omni up custom operation should allow to remove from a path-like environment variables" {
   cat > .omni.yaml <<'EOF'
 up:
   - custom:

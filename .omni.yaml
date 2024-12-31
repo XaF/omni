@@ -91,6 +91,31 @@ commands:
         run: |
           GENERATE_FIXTURES=true bats --filter-tags generate tests/
 
+      renumber:
+        desc: Renumber the bats tests
+        run: |
+          set -e
+          find tests/ -type f -name '*.bats' | while IFS= read -r file; do
+              basename=$(basename "$file" .bats)
+              prefix=${basename#test_}
+
+              # Count total number of tests
+              total_tests=$(grep -c '^@test "' "$file")
+              digits=${#total_tests}
+
+              awk -v prefix="$prefix" -v digits="$digits" '{
+                  if ($0 ~ /^@test "/) {
+                      # Remove any existing counter in square brackets
+                      sub(/^@test "(\[[^]]*\] )?/, "")
+                      # Add the new counter with zero-padding
+                      printf "@test \"[%s=%0*d] %s\n", prefix, digits, counter, $0
+                      counter++
+                  } else {
+                      print
+                  }
+              }' counter=1 "$file" > "${file}.tmp" && mv "${file}.tmp" "$file"
+          done
+
   fix:
     desc: Fixes the code
     run: |
