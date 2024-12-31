@@ -638,7 +638,7 @@ impl MiseEnvOutput {
         self.path
             .split(':')
             .filter(|p| !p.is_empty())
-            .map(|p| PathBuf::from(p))
+            .map(PathBuf::from)
             .filter(|p| p.exists())
             .collect()
     }
@@ -931,7 +931,7 @@ impl FullyQualifiedToolName {
                 }
 
                 let (normalized_name, bin_path) =
-                    mise_env(&self.fully_qualified_plugin_name(), &version)?;
+                    mise_env(self.fully_qualified_plugin_name(), version)?;
 
                 // Set the normalized_plugin_name if it is not yet set; ignore
                 // if there is an error since it would mean we already set it
@@ -946,7 +946,7 @@ impl FullyQualifiedToolName {
     pub fn normalized_plugin_name(&self) -> Result<String, UpError> {
         self.normalized_plugin_name
             .get_or_try_init(|| {
-                let normalized_name = mise_where(&self.fully_qualified_plugin_name(), "latest")?;
+                let normalized_name = mise_where(self.fully_qualified_plugin_name(), "latest")?;
                 Ok(normalized_name)
             })
             .cloned()
@@ -1261,8 +1261,8 @@ impl UpConfigMise {
 
         let cache = MiseOperationCache::get();
         if let Err(err) = cache.add_installed(
-            &fqtn.tool(),
-            &fqtn.plugin_name(),
+            fqtn.tool(),
+            fqtn.plugin_name(),
             &normalized_name,
             &version,
             &bin_path,
@@ -1278,8 +1278,8 @@ impl UpConfigMise {
         }
 
         environment.add_version(
-            &fqtn.tool(),
-            &fqtn.plugin_name(),
+            fqtn.tool(),
+            fqtn.plugin_name(),
             &normalized_name,
             &version,
             &bin_path,
@@ -1379,7 +1379,7 @@ impl UpConfigMise {
 
                     let post_install_func_args = PostInstallFuncArgs {
                         config_value: self.config_value.clone(),
-                        fqtn: &fqtn,
+                        fqtn,
                         requested_version: self.version.clone(),
                         versions: post_install_versions,
                     };
@@ -1558,7 +1558,7 @@ impl UpConfigMise {
 
             let post_install_func_args = PostInstallFuncArgs {
                 config_value: self.config_value.clone(),
-                fqtn: &fqtn,
+                fqtn,
                 requested_version: self.version.clone(),
                 versions: post_install_versions,
             };
@@ -1817,7 +1817,7 @@ impl UpConfigMise {
         }
 
         let plugin_name = fqtn.fully_qualified_plugin_name();
-        if !MiseOperationCache::get().should_update_mise_plugin(&plugin_name) {
+        if !MiseOperationCache::get().should_update_mise_plugin(plugin_name) {
             return Ok(());
         }
 
@@ -1836,7 +1836,7 @@ impl UpConfigMise {
 
         // Update the cache
         let cache = MiseOperationCache::get();
-        if let Err(err) = cache.updated_mise_plugin(&plugin_name) {
+        if let Err(err) = cache.updated_mise_plugin(plugin_name) {
             return Err(UpError::Cache(err.to_string()));
         }
 
@@ -2202,6 +2202,7 @@ fn detect_version_from_mise(tool_name: String, path: PathBuf) -> Option<String> 
 /// - <tool>@<version>
 /// - <backend>:<tool>
 /// - <backend>:<tool>@<version>
+///
 /// And returns:
 /// - the tool name
 /// - the backend, if provided

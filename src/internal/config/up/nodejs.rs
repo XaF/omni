@@ -224,7 +224,7 @@ fn setup_individual_npm_prefix(
             let npm_prefix = per_version_per_dir_data_path(version, dir);
 
             environment.add_version_data_path(
-                &args.fqtn.fully_qualified_plugin_name(),
+                args.fqtn.fully_qualified_plugin_name(),
                 &version.version,
                 dir,
                 &npm_prefix,
