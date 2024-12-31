@@ -27,6 +27,7 @@ cache:
     cleanup_after: 604800
     plugin_update_expire: 86400
     plugin_versions_expire: 3600
+    plugin_versions_retention: 7776000
     update_expire: 86400
   path: <BATS_TEST_TMPDIR>/.cache/omni
 cd:
