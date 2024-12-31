@@ -21,7 +21,6 @@ impl MiseOperationCache {
         Self {}
     }
 
-    #[allow(dead_code)]
     pub fn updated_mise(&self) -> Result<bool, CacheManagerError> {
         let db = CacheManager::get();
         let updated = db.execute(

@@ -743,7 +743,6 @@ impl DynamicEnvSetter {
             .push(DynamicEnvOperation::UnsetValue(key.to_string()));
     }
 
-    #[allow(dead_code)]
     fn prefix_value(&mut self, key: &str, value: &str) {
         self.operations.push(DynamicEnvOperation::PrefixValue(
             key.to_string(),
@@ -765,7 +764,6 @@ impl DynamicEnvSetter {
         ));
     }
 
-    #[allow(dead_code)]
     fn append_to_list(&mut self, key: &str, value: &str) {
         self.operations.push(DynamicEnvOperation::AppendToList(
             key.to_string(),

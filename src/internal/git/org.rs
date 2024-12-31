@@ -10,6 +10,7 @@ use itertools::Itertools;
 use lazy_static::lazy_static;
 use once_cell::sync::OnceCell;
 use strsim::normalized_damerau_levenshtein;
+use thiserror::Error;
 use url::Url;
 use walkdir::WalkDir;
 
@@ -795,9 +796,9 @@ impl<'a> From<&'a mut PathScore> for String {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Error, Debug, Clone)]
 pub enum OrgError {
-    #[allow(dead_code)]
+    #[error("invalid handle: {0}")]
     InvalidHandle(&'static str),
 }
 

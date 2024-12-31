@@ -1375,7 +1375,6 @@ impl UpConfigMise {
                         } else {
                             self.dirs.clone()
                         },
-                        installed,
                     }];
 
                     let post_install_func_args = PostInstallFuncArgs {
@@ -1554,7 +1553,6 @@ impl UpConfigMise {
                 .map(|(version, dirs)| MiseToolUpVersion {
                     version: version.clone(),
                     dirs: dirs.clone(),
-                    installed: installed_versions.contains(version),
                 })
                 .collect::<Vec<MiseToolUpVersion>>();
 
@@ -2300,7 +2298,4 @@ fn detect_version_from_tool_version_file(tool_name: String, path: PathBuf) -> Op
 pub struct MiseToolUpVersion {
     pub version: String,
     pub dirs: BTreeSet<String>,
-
-    #[allow(dead_code)]
-    pub installed: bool,
 }
