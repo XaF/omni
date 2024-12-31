@@ -66,6 +66,7 @@ path_repo_updates:
 repo_path_format: '%{host}/%{org}/%{repo}'
 up_command:
   auto_bootstrap: true
+  mise_version: latest
   notify_workdir_config_available: true
   notify_workdir_config_updated: true
   upgrade: false

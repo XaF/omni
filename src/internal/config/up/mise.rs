@@ -143,9 +143,18 @@ fn install_mise(options: &UpOptions, progress_handler: &UpProgressHandler) -> Re
             .output()
             .map_err(|err| UpError::Exec(format!("failed to check mise version: {}", err)))?;
 
+        // Get the current version of mise, which is the first word in stdout
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        let current_version = stdout.split_whitespace().next().unwrap_or_default();
+        let wanted_version = &global_config().up_command.mise_version;
+        let version_up_to_date = wanted_version != "latest"
+            && VersionMatcher::new(wanted_version)
+                .prefix(true)
+                .matches(current_version);
+
         // If stderr contains `mise self-update`, this means we need to update mise
         let stderr = String::from_utf8_lossy(&output.stderr);
-        if stderr.contains("mise self-update") {
+        if !version_up_to_date && stderr.contains("mise self-update") {
             progress_handler.progress("updating mise".to_string());
 
             (false, false)
@@ -163,7 +172,10 @@ fn install_mise(options: &UpOptions, progress_handler: &UpProgressHandler) -> Re
         return Ok(());
     };
 
-    let gh_release = UpConfigGithubRelease::new_latest_version("jdx/mise");
+    let gh_release = UpConfigGithubRelease::new_with_version(
+        "jdx/mise",
+        &global_config().up_command.mise_version,
+    );
 
     // We create a fake environment since we do not want to add this
     // github release to the environment, we just want a mise binary
