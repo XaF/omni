@@ -11,6 +11,7 @@ pub struct UpCommandConfig {
     pub notify_workdir_config_available: bool,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub preferred_tools: Vec<String>,
+    pub mise_version: String,
     pub upgrade: bool,
 }
 
@@ -21,6 +22,7 @@ impl Default for UpCommandConfig {
             notify_workdir_config_updated: Self::DEFAULT_NOTIFY_WORKDIR_CONFIG_UPDATED,
             notify_workdir_config_available: Self::DEFAULT_NOTIFY_WORKDIR_CONFIG_AVAILABLE,
             preferred_tools: Vec::new(),
+            mise_version: Self::DEFAULT_MISE_VERSION.to_string(),
             upgrade: Self::DEFAULT_UPGRADE,
         }
     }
@@ -30,6 +32,7 @@ impl UpCommandConfig {
     const DEFAULT_AUTO_BOOTSTRAP: bool = true;
     const DEFAULT_NOTIFY_WORKDIR_CONFIG_UPDATED: bool = true;
     const DEFAULT_NOTIFY_WORKDIR_CONFIG_AVAILABLE: bool = true;
+    const DEFAULT_MISE_VERSION: &str = "latest";
     const DEFAULT_UPGRADE: bool = false;
 
     pub(super) fn from_config_value(config_value: Option<ConfigValue>) -> Self {
@@ -68,6 +71,9 @@ impl UpCommandConfig {
                 .get_as_bool_forced("notify_workdir_config_available")
                 .unwrap_or(Self::DEFAULT_NOTIFY_WORKDIR_CONFIG_AVAILABLE),
             preferred_tools,
+            mise_version: config_value_global
+                .get_as_str_forced("mise_version")
+                .unwrap_or(Self::DEFAULT_MISE_VERSION.to_string()),
             // The upgrade option is fine to handle as a workdir option too
             upgrade: config_value
                 .get_as_bool_forced("upgrade")
