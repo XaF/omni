@@ -1357,6 +1357,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "itertools"
+version = "0.14.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2b192c782037fadd9cfa75548310488aabdbf3d2da73885b31bd0abd03351285"
+dependencies = [
+ "either",
+]
+
+[[package]]
 name = "itoa"
 version = "1.0.14"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1750,7 +1759,7 @@ dependencies = [
  "imara-diff",
  "indicatif",
  "is-terminal",
- "itertools",
+ "itertools 0.14.0",
  "lazy_static",
  "libz-sys",
  "machine-uid",
@@ -1983,7 +1992,7 @@ checksum = "9cd31dcfdbbd7431a807ef4df6edd6473228e94d5c805e8cf671227a21bad068"
 dependencies = [
  "anyhow",
  "clap",
- "itertools",
+ "itertools 0.13.0",
  "proc-macro2",
  "quote",
  "rand",
