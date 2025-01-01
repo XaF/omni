@@ -123,6 +123,17 @@ jobs:
           perl -i -pe 's/^version = "0\.0\.0-git"$/version = "${{ inputs.release_version }}"/' Cargo.toml
           perl -i -pe 's/^version = "0\.0\.0-git"$/version = "${{ inputs.release_version }}"/' Cargo.lock
 
+      - name: Run tests
+        uses: houseabsolute/actions-rust-cross@v1
+        env:
+          RUSTFLAGS: "-C prefer-dynamic=no"
+        with:
+          command: test
+          target: ${{ inputs.target }}
+          toolchain: stable
+          args: "--locked --release"
+          use-rust-cache: false  # We already have a cache step
+
       - name: Build binary
         uses: houseabsolute/actions-rust-cross@v1
         timeout-minutes: 30
@@ -135,20 +146,13 @@ jobs:
           toolchain: stable
           args: "--locked --release"
           strip: true
-
-      - name: Run tests
-        if: inputs.run_tests
-        uses: houseabsolute/actions-rust-cross@v1
-        with:
-          command: test
-          target: ${{ inputs.target }}
-          toolchain: stable
-          args: "--locked --release"
+          use-rust-cache: false  # We already have a cache step
 
       - name: Package as archive
         shell: bash
         run: |
           cd "target/${{ inputs.target }}/release" && \
+            ls -als && \
             tar czvf ../../../${{ env.BUILD_FILENAME }}.tar.gz omni && \
             cd -
 
