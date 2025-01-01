@@ -365,7 +365,7 @@ impl UrlPattern {
                     Err(err) => Err(err),
                 }
             }
-            Ok(url) => return Ok(url.into()),
+            Ok(url) => Ok(url.into()),
             Err(url::ParseError::RelativeUrlWithoutBase) => {
                 let prefixed_url = format!("https://{}", url_str);
                 match Self::parse(&prefixed_url) {
@@ -467,19 +467,19 @@ impl From<url::Url> for UrlPattern {
                 "" => None,
                 scheme => Some(scheme.to_string()),
             },
-            host: url.host_str().map(|h| h.to_string()).into(),
-            port: url.port().map(|p| p.to_string()).into(),
+            host: url.host_str().map(|h| h.to_string()),
+            port: url.port().map(|p| p.to_string()),
             username: match url.username() {
                 "" => None,
                 username => Some(username.to_string()),
             },
-            password: url.password().map(|p| p.to_string()).into(),
+            password: url.password().map(|p| p.to_string()),
             path: match url.path().strip_prefix('/').unwrap_or(url.path()) {
                 "" => None,
                 path => Some(path.to_string()),
             },
-            query: url.query().map(|q| q.to_string()).into(),
-            fragment: url.fragment().map(|f| f.to_string()).into(),
+            query: url.query().map(|q| q.to_string()),
+            fragment: url.fragment().map(|f| f.to_string()),
         }
     }
 }

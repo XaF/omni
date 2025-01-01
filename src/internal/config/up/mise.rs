@@ -788,7 +788,7 @@ impl MiseRegistry {
             (backend.is_none() || backend.unwrap() == entry.backend)
                 && config.is_mise_backend_allowed(&entry.backend)
                 && match entry.repository {
-                    Some(ref repo) => config.is_mise_source_allowed(&repo),
+                    Some(ref repo) => config.is_mise_source_allowed(repo),
                     None => true,
                 }
                 && (name == entry.short_name
