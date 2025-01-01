@@ -1194,6 +1194,20 @@ impl UpConfigMise {
             }
         }
 
+        let override_tool_url = match &override_tool_url {
+            Some(url) => Some(url.to_string()),
+            None => match global_config()
+                .up_command
+                .operations
+                .mise
+                .default_plugin_sources
+                .get(&tool)
+            {
+                Some(url) => Some(url.to_string()),
+                None => None,
+            },
+        };
+
         let tool_url = match &override_tool_url {
             Some(url) => Some(url.to_string()),
             None => params.tool_url.clone(),
