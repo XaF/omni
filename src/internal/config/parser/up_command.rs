@@ -13,7 +13,8 @@ pub struct UpCommandConfig {
     pub preferred_tools: Vec<String>,
     pub mise_version: String,
     pub upgrade: bool,
-    pub operations: Vec<UpCommandOperationConfig>,
+    #[serde(default, skip_serializing_if = "UpCommandOperationConfig::is_empty")]
+    pub operations: UpCommandOperationConfig,
 }
 
 impl Default for UpCommandConfig {
@@ -84,6 +85,7 @@ impl UpCommandConfig {
     }
 }
 
+#[derive(Debug, Serialize, Deserialize, Clone, Default)]
 struct UpCommandOperationConfig {
     pub allowed: Vec<String>,
     pub sources: Vec<String>,
@@ -91,6 +93,20 @@ struct UpCommandOperationConfig {
     // pub cargo_install: UpCommandOperationCargoConfig,
     // pub go_install: UpCommandOperationGoConfig,
     // pub github_release: UpCommandOperationGithubReleaseConfig,
+}
+
+impl UpCommandOperationConfig {
+    fn is_empty(&self) -> bool {
+        self.allowed.is_empty() && self.sources.is_empty()
+    }
+
+    fn is_operation_allowed(&self, operation: &str) -> bool {
+        check_allowed(operation, &self.allowed)
+    }
+
+    fn is_source_allowed(&self, source: &str) -> bool {
+        check_allowed(source, &self.sources)
+    }
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
