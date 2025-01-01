@@ -157,6 +157,16 @@ impl UpConfigGoInstalls {
             }
         }
 
+        if !global_config()
+            .up_command
+            .operations
+            .is_operation_allowed("go-install")
+        {
+            let errmsg = "go-install operation not allowed".to_string();
+            progress_handler.error_with_message(errmsg.clone());
+            return Err(UpError::Config(errmsg));
+        }
+
         let go_bin = self.get_go_bin(options, progress_handler)?;
 
         let num = self.tools.len();
@@ -705,6 +715,16 @@ impl UpConfigGoInstall {
         if self.path.is_empty() {
             progress_handler.error_with_message("path is required".to_string());
             return Err(UpError::Config("path is required".to_string()));
+        }
+
+        if !global_config()
+            .up_command
+            .operations
+            .is_go_install_source_allowed(&self.path)
+        {
+            let errmsg = format!("go-install source not allowed: {}", self.path);
+            progress_handler.error_with_message(errmsg.clone());
+            return Err(UpError::Config(errmsg));
         }
 
         let installed = self.resolve_and_install_version(go_bin, options, progress_handler)?;

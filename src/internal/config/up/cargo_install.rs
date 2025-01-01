@@ -151,6 +151,16 @@ impl UpConfigCargoInstalls {
             }
         }
 
+        if !global_config()
+            .up_command
+            .operations
+            .is_operation_allowed("cargo-install")
+        {
+            let errmsg = "cargo-install operation not allowed".to_string();
+            progress_handler.error_with_message(errmsg.clone());
+            return Err(UpError::Config(errmsg));
+        }
+
         let cargo_bin = self.get_cargo_bin(options, progress_handler)?;
 
         let num = self.crates.len();
@@ -704,6 +714,16 @@ impl UpConfigCargoInstall {
         if self.crate_name.is_empty() {
             progress_handler.error_with_message("crate_name is required".to_string());
             return Err(UpError::Config("crate_name is required".to_string()));
+        }
+
+        if !global_config()
+            .up_command
+            .operations
+            .is_cargo_install_crate_allowed(&self.crate_name)
+        {
+            let errmsg = format!("crate {} not allowed", self.crate_name);
+            progress_handler.error_with_message(errmsg.clone());
+            return Err(UpError::Config(errmsg));
         }
 
         let installed = self.resolve_and_install_version(cargo_bin, options, progress_handler)?;

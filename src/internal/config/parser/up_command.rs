@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use serde::Deserialize;
 use serde::Serialize;
 
@@ -26,6 +28,7 @@ impl Default for UpCommandConfig {
             preferred_tools: Vec::new(),
             mise_version: Self::DEFAULT_MISE_VERSION.to_string(),
             upgrade: Self::DEFAULT_UPGRADE,
+            operations: UpCommandOperationConfig::default(),
         }
     }
 }
@@ -80,19 +83,38 @@ impl UpCommandConfig {
             upgrade: config_value
                 .get_as_bool_forced("upgrade")
                 .unwrap_or(Self::DEFAULT_UPGRADE),
-            operations: UpCommandOperationConfig::from_config_value(config_value),
+            operations: UpCommandOperationConfig::from_config_value(config_value.get("operations")),
         }
     }
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, Default)]
-struct UpCommandOperationConfig {
+pub(crate) struct UpCommandOperationConfig {
     pub allowed: Vec<String>,
     pub sources: Vec<String>,
-    // pub mise: UpCommandOperationMiseConfig,
-    // pub cargo_install: UpCommandOperationCargoConfig,
-    // pub go_install: UpCommandOperationGoConfig,
-    // pub github_release: UpCommandOperationGithubReleaseConfig,
+    #[serde(
+        default,
+        skip_serializing_if = "UpCommandOperationMiseConfig::is_empty"
+    )]
+    pub mise: UpCommandOperationMiseConfig,
+    #[serde(
+        rename = "cargo-install",
+        default,
+        skip_serializing_if = "UpCommandOperationCargoInstallConfig::is_empty"
+    )]
+    pub cargo_install: UpCommandOperationCargoInstallConfig,
+    #[serde(
+        rename = "go-install",
+        default,
+        skip_serializing_if = "UpCommandOperationGoInstallConfig::is_empty"
+    )]
+    pub go_install: UpCommandOperationGoInstallConfig,
+    #[serde(
+        rename = "github-release",
+        default,
+        skip_serializing_if = "UpCommandOperationGithubReleaseConfig::is_empty"
+    )]
+    pub github_release: UpCommandOperationGithubReleaseConfig,
 }
 
 impl UpCommandOperationConfig {
@@ -100,12 +122,221 @@ impl UpCommandOperationConfig {
         self.allowed.is_empty() && self.sources.is_empty()
     }
 
-    fn is_operation_allowed(&self, operation: &str) -> bool {
+    pub fn is_operation_allowed(&self, operation: &str) -> bool {
         check_allowed(operation, &self.allowed)
     }
 
-    fn is_source_allowed(&self, source: &str) -> bool {
-        check_allowed(source, &self.sources)
+    pub fn is_mise_backend_allowed(&self, backend: &str) -> bool {
+        check_allowed(backend, &self.mise.backends)
+    }
+
+    pub fn is_mise_source_allowed(&self, source: &str) -> bool {
+        check_url_allowed(source, &self.sources) && check_url_allowed(source, &self.mise.sources)
+    }
+
+    pub fn is_go_install_source_allowed(&self, source: &str) -> bool {
+        check_url_allowed(source, &self.sources)
+            && check_url_allowed(source, &self.go_install.sources)
+    }
+
+    pub fn is_cargo_install_crate_allowed(&self, crate_name: &str) -> bool {
+        check_allowed(crate_name, &self.cargo_install.crates)
+    }
+
+    pub fn is_github_repository_allowed(&self, repository: &str) -> bool {
+        let url_from_repository = format!("https://github.com/{}", repository);
+        check_url_allowed(&url_from_repository, &self.sources)
+            && check_allowed(repository, &self.github_release.repositories)
+    }
+
+    fn from_config_value(config_value: Option<ConfigValue>) -> Self {
+        let config_value = match config_value {
+            Some(config_value) => config_value,
+            None => return Self::default(),
+        };
+
+        let config_value_global = config_value
+            .reject_scope(&ConfigScope::Workdir)
+            .unwrap_or_default();
+
+        let allowed = config_value_global
+            .get_as_array("allowed")
+            .unwrap_or_default()
+            .iter()
+            .filter_map(|value| value.as_str().map(|value| value.to_string()))
+            .collect();
+
+        let sources = config_value_global
+            .get_as_array("sources")
+            .unwrap_or_default()
+            .iter()
+            .filter_map(|value| value.as_str().map(|value| value.to_string()))
+            .collect();
+
+        Self {
+            allowed,
+            sources,
+            mise: UpCommandOperationMiseConfig::from_config_value(config_value.get("mise")),
+            cargo_install: UpCommandOperationCargoInstallConfig::from_config_value(
+                config_value.get("cargo-install"),
+            ),
+            go_install: UpCommandOperationGoInstallConfig::from_config_value(
+                config_value.get("go-install"),
+            ),
+            github_release: UpCommandOperationGithubReleaseConfig::from_config_value(
+                config_value.get("github-release"),
+            ),
+        }
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone, Default)]
+pub(crate) struct UpCommandOperationMiseConfig {
+    pub backends: Vec<String>,
+    pub sources: Vec<String>,
+    pub default_plugin_sources: HashMap<String, String>,
+}
+
+impl UpCommandOperationMiseConfig {
+    fn from_config_value(config_value: Option<ConfigValue>) -> Self {
+        let config_value = match config_value {
+            Some(config_value) => config_value,
+            None => return Self::default(),
+        };
+
+        let config_value_global = config_value
+            .reject_scope(&ConfigScope::Workdir)
+            .unwrap_or_default();
+
+        let backends = config_value_global
+            .get_as_array("backends")
+            .unwrap_or_default()
+            .iter()
+            .filter_map(|value| value.as_str().map(|value| value.to_string()))
+            .collect();
+
+        let sources = config_value_global
+            .get_as_array("sources")
+            .unwrap_or_default()
+            .iter()
+            .filter_map(|value| value.as_str().map(|value| value.to_string()))
+            .collect();
+
+        let default_plugin_sources = config_value_global
+            .get_as_table("default_plugin_sources")
+            .unwrap_or_default()
+            .iter()
+            .filter_map(|(key, value)| {
+                value
+                    .as_str()
+                    .map(|value| (key.to_string(), value.to_string()))
+            })
+            .collect();
+
+        Self {
+            backends,
+            sources,
+            default_plugin_sources,
+        }
+    }
+
+    fn is_empty(&self) -> bool {
+        self.backends.is_empty()
+            && self.sources.is_empty()
+            && self.default_plugin_sources.is_empty()
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone, Default)]
+pub(crate) struct UpCommandOperationCargoInstallConfig {
+    pub crates: Vec<String>,
+}
+
+impl UpCommandOperationCargoInstallConfig {
+    fn from_config_value(config_value: Option<ConfigValue>) -> Self {
+        let config_value = match config_value {
+            Some(config_value) => config_value,
+            None => return Self::default(),
+        };
+
+        let config_value_global = config_value
+            .reject_scope(&ConfigScope::Workdir)
+            .unwrap_or_default();
+
+        let crates = config_value_global
+            .get_as_array("crates")
+            .unwrap_or_default()
+            .iter()
+            .filter_map(|value| value.as_str().map(|value| value.to_string()))
+            .collect();
+
+        Self { crates }
+    }
+
+    fn is_empty(&self) -> bool {
+        self.crates.is_empty()
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone, Default)]
+pub struct UpCommandOperationGoInstallConfig {
+    pub sources: Vec<String>,
+}
+
+impl UpCommandOperationGoInstallConfig {
+    fn from_config_value(config_value: Option<ConfigValue>) -> Self {
+        let config_value = match config_value {
+            Some(config_value) => config_value,
+            None => return Self::default(),
+        };
+
+        let config_value_global = config_value
+            .reject_scope(&ConfigScope::Workdir)
+            .unwrap_or_default();
+
+        let sources = config_value_global
+            .get_as_array("sources")
+            .unwrap_or_default()
+            .iter()
+            .filter_map(|value| value.as_str().map(|value| value.to_string()))
+            .collect();
+
+        Self { sources }
+    }
+
+    fn is_empty(&self) -> bool {
+        self.sources.is_empty()
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone, Default)]
+pub struct UpCommandOperationGithubReleaseConfig {
+    pub repositories: Vec<String>,
+}
+
+impl UpCommandOperationGithubReleaseConfig {
+    fn from_config_value(config_value: Option<ConfigValue>) -> Self {
+        let config_value = match config_value {
+            Some(config_value) => config_value,
+            None => return Self::default(),
+        };
+
+        let config_value_global = config_value
+            .reject_scope(&ConfigScope::Workdir)
+            .unwrap_or_default();
+
+        let repositories = config_value_global
+            .get_as_array("repositories")
+            .unwrap_or_default()
+            .iter()
+            .filter_map(|value| value.as_str().map(|value| value.to_string()))
+            .collect();
+
+        Self { repositories }
+    }
+
+    fn is_empty(&self) -> bool {
+        self.repositories.is_empty()
     }
 }
 
@@ -254,6 +485,10 @@ impl From<url::Url> for UrlPattern {
 }
 
 fn check_url_allowed(url_str: &str, patterns: &[String]) -> bool {
+    if patterns.is_empty() {
+        return true; // No patterns means allow all
+    }
+
     let url = match UrlPattern::parse(url_str) {
         Ok(url) => url,
         Err(_) => return false, // Invalid URL
@@ -280,6 +515,10 @@ fn check_url_allowed(url_str: &str, patterns: &[String]) -> bool {
 }
 
 fn check_allowed(value: &str, patterns: &[String]) -> bool {
+    if patterns.is_empty() {
+        return true; // No patterns means allow all
+    }
+
     for pattern in patterns {
         let is_deny = pattern.starts_with('!');
         let pattern_str = if is_deny { &pattern[1..] } else { pattern };
