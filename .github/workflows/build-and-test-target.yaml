@@ -124,7 +124,7 @@ jobs:
           perl -i -pe 's/^version = "0\.0\.0-git"$/version = "${{ inputs.release_version }}"/' Cargo.lock
 
       - name: Build binary
-        uses: houseabsolute/actions-rust-cross@v1
+        uses: houseabsolute/actions-rust-cross@v0
         timeout-minutes: 30
         env:
           OMNI_RELEASE_VERSION: ${{ inputs.release_version }}
@@ -138,7 +138,7 @@ jobs:
 
       - name: Run tests
         if: inputs.run_tests
-        uses: houseabsolute/actions-rust-cross@v1
+        uses: houseabsolute/actions-rust-cross@v0
         with:
           command: test
           target: ${{ inputs.target }}
