@@ -136,6 +136,10 @@ jobs:
           args: "--locked --release"
           strip: true
 
+      - name: List files
+        run: |
+          ls -ltr "target/${{ inputs.target }}/release"
+
       - name: Run tests
         if: inputs.run_tests
         uses: houseabsolute/actions-rust-cross@v1
