@@ -63,7 +63,7 @@ r2d2 = "0.8.10"
 r2d2_sqlite = { version = "0.25.0", features = ["bundled"] }
 regex = "1.11.1"
 requestty = "0.5.0"
-reqwest = { version = "0.12.10", features = ["blocking"] }
+reqwest = { version = "0.12.12", features = ["blocking"] }
 rusqlite = { version = "0.32.1", features = ["bundled"] }
 self-replace = "1.5.0"
 semver = "1.0.24"
