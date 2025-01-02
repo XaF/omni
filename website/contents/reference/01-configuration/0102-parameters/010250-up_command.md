@@ -29,12 +29,14 @@ Configuration related to the `omni up` command.
 | `go-install` | `GoInstall` object | configuration of the `go-install` operations |
 | `github-release` | `GithubRelease` object | configuration of the `github-release` operations |
 
-::: tip
+:::info
+
 When using the allow/deny lists, the last entry will indicate the default behavior for all values that are not matched by any of the previous entries.
 
 For example, if the list is `['!a*', 'b*']`, all values starting with `a` will be denied, all values starting with `b` will be allowed, and all other values will be denied (opposite of the last entry, which is an allow).
 
 In contrast, if the list is `['b*', '!a*']`, all values starting with `b` will be allowed, and all values starting with `a` will be denied, then all other values will be allowed (opposite of the last entry, which is a deny).
+
 :::
 
 #### `Mise` object
