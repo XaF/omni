@@ -8,6 +8,7 @@ use tera::Context;
 use tera::Tera;
 
 use crate::internal::cache::utils::Empty;
+use crate::internal::config::parser::errors::ConfigErrorKind;
 use crate::internal::config::template::config_template_context;
 use crate::internal::config::template::render_config_template;
 use crate::internal::config::template::tera_render_error_message;
@@ -54,24 +55,39 @@ impl Serialize for SuggestCloneConfig {
 }
 
 impl SuggestCloneConfig {
-    pub(super) fn from_config_value(config_value: Option<ConfigValue>) -> Self {
+    pub(super) fn from_config_value(
+        config_value: Option<ConfigValue>,
+        error_key: &str,
+        errors: &mut Vec<ConfigErrorKind>,
+    ) -> Self {
         if let Some(config_value) = config_value {
             // We can filter by values provided by the repository, as this is only
             // a repository-scoped configuration
             if let Some(config_value) = config_value.select_scope(&ConfigScope::Workdir) {
-                return Self::parse_config_value(config_value);
+                return Self::parse_config_value(config_value, error_key, errors);
             }
         }
 
         Self::default()
     }
 
-    fn parse_config_value(config_value: ConfigValue) -> Self {
+    fn parse_config_value(
+        config_value: ConfigValue,
+        error_key: &str,
+        errors: &mut Vec<ConfigErrorKind>,
+    ) -> Self {
         if let Some(array) = config_value.as_array() {
             return Self {
                 repositories: array
                     .iter()
-                    .filter_map(SuggestCloneRepositoryConfig::from_config_value)
+                    .enumerate()
+                    .filter_map(|(idx, value)| {
+                        SuggestCloneRepositoryConfig::from_config_value(
+                            value,
+                            &format!("{}[{}]", error_key, idx),
+                            errors,
+                        )
+                    })
                     .collect(),
                 template: "".to_string(),
                 template_file: "".to_string(),
@@ -79,12 +95,19 @@ impl SuggestCloneConfig {
         }
 
         if let Some(table) = config_value.as_table() {
-            if let Some(array) = table.get("repositories") {
-                if let Some(array) = array.as_array() {
+            if let Some(repositories) = table.get("repositories") {
+                if let Some(array) = repositories.as_array() {
                     return Self {
                         repositories: array
                             .iter()
-                            .filter_map(SuggestCloneRepositoryConfig::from_config_value)
+                            .enumerate()
+                            .filter_map(|(idx, value)| {
+                                SuggestCloneRepositoryConfig::from_config_value(
+                                    value,
+                                    &format!("{}.repositories[{}]", error_key, idx),
+                                    errors,
+                                )
+                            })
                             .collect(),
                         template: "".to_string(),
                         template_file: "".to_string(),
@@ -99,6 +122,12 @@ impl SuggestCloneConfig {
                         template: value.to_string(),
                         template_file: "".to_string(),
                     };
+                } else {
+                    errors.push(ConfigErrorKind::ValueType {
+                        key: format!("{}.template", error_key),
+                        found: value.as_serde_yaml(),
+                        expected: "string".to_string(),
+                    });
                 }
             } else if let Some(value) = table.get("template_file") {
                 if let Some(filepath) = value.as_str_forced() {
@@ -107,6 +136,12 @@ impl SuggestCloneConfig {
                         template: "".to_string(),
                         template_file: filepath.to_string(),
                     };
+                } else {
+                    errors.push(ConfigErrorKind::ValueType {
+                        key: format!("{}.template_file", error_key),
+                        found: value.as_serde_yaml(),
+                        expected: "string".to_string(),
+                    });
                 }
             }
         }
@@ -173,7 +208,7 @@ impl SuggestCloneConfig {
                         }
                     };
                     // Parse the config value into an object of this type
-                    let suggest_clone = Self::parse_config_value(config_value);
+                    let suggest_clone = Self::parse_config_value(config_value, "", &mut vec![]);
                     // In case this is recursive for some reason...
                     return suggest_clone.repositories_with_context(template_context, quiet);
                 }
@@ -219,22 +254,35 @@ pub struct SuggestCloneRepositoryConfig {
 }
 
 impl SuggestCloneRepositoryConfig {
-    pub(super) fn from_config_value(config_value: &ConfigValue) -> Option<Self> {
+    pub(super) fn from_config_value(
+        config_value: &ConfigValue,
+        error_key: &str,
+        errors: &mut Vec<ConfigErrorKind>,
+    ) -> Option<Self> {
         if let Some(value) = config_value.as_str() {
-            return Some(Self {
+            Some(Self {
                 handle: value.to_string(),
                 args: vec![],
                 clone_type: SuggestCloneTypeEnum::Package,
-            });
+            })
         } else if let Some(table) = config_value.as_table() {
-            let mut handle = None;
-            if let Some(value) = table.get("handle") {
+            let handle = if let Some(value) = table.get("handle") {
                 if let Some(value) = value.as_str() {
-                    handle = Some(value.to_string());
+                    value.to_string()
+                } else {
+                    errors.push(ConfigErrorKind::ValueType {
+                        key: format!("{}.handle", error_key),
+                        found: value.as_serde_yaml(),
+                        expected: "string".to_string(),
+                    });
+                    return None;
                 }
-            }
-
-            handle.as_ref()?;
+            } else {
+                errors.push(ConfigErrorKind::MissingKey {
+                    key: format!("{}.handle", error_key),
+                });
+                return None;
+            };
 
             let mut args = Vec::new();
             if let Some(value) = table.get("args") {
@@ -242,6 +290,12 @@ impl SuggestCloneRepositoryConfig {
                     if let Ok(value) = shell_words::split(&value) {
                         args.extend(value);
                     }
+                } else {
+                    errors.push(ConfigErrorKind::ValueType {
+                        key: format!("{}.args", error_key),
+                        found: value.as_serde_yaml(),
+                        expected: "string".to_string(),
+                    });
                 }
             }
 
@@ -250,18 +304,36 @@ impl SuggestCloneRepositoryConfig {
                 if let Some(value) = value.as_str() {
                     if let Ok(value) = SuggestCloneTypeEnum::from_str(&value) {
                         clone_type = value;
+                    } else {
+                        errors.push(ConfigErrorKind::InvalidValue {
+                            key: format!("{}.clone_type", error_key),
+                            found: serde_yaml::Value::String(value.to_string()),
+                            expected: vec!["package".to_string(), "worktree".to_string()],
+                        });
                     }
+                } else {
+                    errors.push(ConfigErrorKind::ValueType {
+                        key: format!("{}.clone_type", error_key),
+                        found: value.as_serde_yaml(),
+                        expected: "string".to_string(),
+                    });
                 }
             }
 
-            return Some(Self {
-                handle: handle.unwrap(),
+            Some(Self {
+                handle,
                 args,
                 clone_type,
+            })
+        } else {
+            errors.push(ConfigErrorKind::ValueType {
+                key: error_key.to_string(),
+                found: config_value.as_serde_yaml(),
+                expected: "string or table".to_string(),
             });
-        }
 
-        None
+            None
+        }
     }
 
     pub fn clone_as_package(&self) -> bool {

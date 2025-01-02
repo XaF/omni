@@ -534,7 +534,9 @@ impl PathCommandFileDetails {
                         "dest" => dest = Some(value.to_string()),
                         "type" => arg_type = value.to_string(),
                         "num_values" => {
-                            if let Some(num) = SyntaxOptArgNumValues::from_str(value) {
+                            if let Some(num) =
+                                SyntaxOptArgNumValues::from_str(value, "", &mut vec![])
+                            {
                                 num_values = Some(num)
                             }
                         }
@@ -634,7 +636,8 @@ impl PathCommandFileDetails {
             placeholders,
             default,
             default_missing_value,
-            arg_type: SyntaxOptArgType::from_str(&arg_type).unwrap_or(SyntaxOptArgType::String),
+            arg_type: SyntaxOptArgType::from_str(&arg_type, "", &mut vec![])
+                .unwrap_or(SyntaxOptArgType::String),
             num_values,
             value_delimiter,
             last_arg_double_hyphen,

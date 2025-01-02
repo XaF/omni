@@ -614,6 +614,88 @@ impl ConfigValue {
         None
     }
 
+    pub fn get_as_str_or_none(
+        &self,
+        key: &str,
+        error_key: &str,
+        errors: &mut Vec<ConfigErrorKind>,
+    ) -> Option<String> {
+        if let Some(value) = self.get(key) {
+            match value.as_str_forced() {
+                Some(value) => Some(value),
+                None => {
+                    errors.push(ConfigErrorKind::ValueType {
+                        key: error_key.to_string(),
+                        expected: "string".to_string(),
+                        found: value.as_serde_yaml(),
+                    });
+                    None
+                }
+            }
+        } else {
+            None
+        }
+    }
+
+    pub fn get_as_str_or_default(
+        &self,
+        key: &str,
+        default: &str,
+        error_key: &str,
+        errors: &mut Vec<ConfigErrorKind>,
+    ) -> String {
+        if let Some(value) = self.get(key) {
+            match value.as_str_forced() {
+                Some(value) => value,
+                None => {
+                    errors.push(ConfigErrorKind::ValueType {
+                        key: error_key.to_string(),
+                        expected: "string".to_string(),
+                        found: value.as_serde_yaml(),
+                    });
+                    default.to_string()
+                }
+            }
+        } else {
+            default.to_string()
+        }
+    }
+
+    pub fn get_as_str_array(
+        &self,
+        key: &str,
+        error_key: &str,
+        errors: &mut Vec<ConfigErrorKind>,
+    ) -> Vec<String> {
+        let mut output = Vec::new();
+
+        if let Some(value) = self.get(key) {
+            if let Some(value) = value.as_str_forced() {
+                output.push(value.to_string());
+            } else if let Some(array) = value.as_array() {
+                for (idx, value) in array.iter().enumerate() {
+                    if let Some(value) = value.as_str_forced() {
+                        output.push(value.to_string());
+                    } else {
+                        errors.push(ConfigErrorKind::ValueType {
+                            key: format!("{}[{}]", error_key, idx),
+                            found: value.as_serde_yaml(),
+                            expected: "string".to_string(),
+                        });
+                    }
+                }
+            } else {
+                errors.push(ConfigErrorKind::ValueType {
+                    key: error_key.to_string(),
+                    found: value.as_serde_yaml(),
+                    expected: "string or array of strings".to_string(),
+                });
+            }
+        }
+
+        output
+    }
+
     pub fn get_as_bool(&self, key: &str) -> Option<bool> {
         if let Some(value) = self.get(key) {
             return value.as_bool();
@@ -659,6 +741,29 @@ impl ConfigValue {
         None
     }
 
+    pub fn get_as_float_or_none(
+        &self,
+        key: &str,
+        error_key: &str,
+        errors: &mut Vec<ConfigErrorKind>,
+    ) -> Option<f64> {
+        if let Some(value) = self.get(key) {
+            match value.as_float() {
+                Some(value) => Some(value),
+                None => {
+                    errors.push(ConfigErrorKind::ValueType {
+                        key: error_key.to_string(),
+                        expected: "float".to_string(),
+                        found: value.as_serde_yaml(),
+                    });
+                    None
+                }
+            }
+        } else {
+            None
+        }
+    }
+
     pub fn get_as_float_or_default(
         &self,
         key: &str,
@@ -688,6 +793,29 @@ impl ConfigValue {
             return value.as_integer();
         }
         None
+    }
+
+    pub fn get_as_integer_or_none(
+        &self,
+        key: &str,
+        error_key: &str,
+        errors: &mut Vec<ConfigErrorKind>,
+    ) -> Option<i64> {
+        if let Some(value) = self.get(key) {
+            match value.as_integer() {
+                Some(value) => Some(value),
+                None => {
+                    errors.push(ConfigErrorKind::ValueType {
+                        key: error_key.to_string(),
+                        expected: "integer".to_string(),
+                        found: value.as_serde_yaml(),
+                    });
+                    None
+                }
+            }
+        } else {
+            None
+        }
     }
 
     pub fn get_as_unsigned_integer(&self, key: &str) -> Option<u64> {

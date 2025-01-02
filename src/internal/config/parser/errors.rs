@@ -16,8 +16,14 @@ pub enum ConfigErrorKind {
         expected: Vec<String>,
         found: serde_yaml::Value,
     },
+    #[error("Value for key {key} should define a valid range, but found [{min}, {max}[ instead")]
+    InvalidRange { key: String, min: usize, max: usize },
+    #[error("Value for key {key} should be a valid package, but found {package}")]
+    InvalidPackage { key: String, package: String },
     #[error("Value for key {key} is missing")]
     MissingKey { key: String },
+    #[error("Value for key {key} is empty")]
+    EmptyKey { key: String },
     #[error(
         "Value for key {key} should be a table with a single key-value pair but found: {found:?}"
     )]

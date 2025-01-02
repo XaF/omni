@@ -102,7 +102,7 @@ impl OmniConfig {
                 for (key, value) in table {
                     commands_config.insert(
                         key.to_string(),
-                        CommandDefinition::from_config_value(&value),
+                        CommandDefinition::from_config_value(&value, "commands", &mut errors),
                     );
                 }
             } else {
@@ -155,51 +155,49 @@ impl OmniConfig {
         );
         let env = EnvConfig::from_config_value(config_value.get("env"), &mut errors);
         let github = GithubConfig::from_config_value(config_value.get("github"), &mut errors);
-        let makefile_commands =
-            MakefileCommandsConfig::from_config_value(config_value.get("makefile_commands"));
-        let path = PathConfig::from_config_value(config_value.get("path"));
-        let path_repo_updates = PathRepoUpdatesConfig::from_config_value(
-            config_value.get("path_repo_updates"),
+        let makefile_commands = MakefileCommandsConfig::from_config_value(
+            config_value.get("makefile_commands"),
+            "makefile_commands",
             &mut errors,
         );
-        let prompts = PromptsConfig::from_config_value(config_value.get("prompts"));
-        let repo_path_format = if let Some(value) = config_value.get("repo_path_format") {
-            if let Some(value) = value.as_str() {
-                value.to_string()
-            } else {
-                errors.push(ConfigErrorKind::ValueType {
-                    key: "repo_path_format".to_string(),
-                    expected: "string".to_string(),
-                    found: value.as_serde_yaml(),
-                });
-                Self::DEFAULT_REPO_PATH_FORMAT.to_string()
-            }
-        } else {
-            Self::DEFAULT_REPO_PATH_FORMAT.to_string()
-        };
-
-        let shell_aliases =
-            ShellAliasesConfig::from_config_value(config_value.get("shell_aliases"));
-        let suggest_clone =
-            SuggestCloneConfig::from_config_value(config_value.get("suggest_clone"));
-        let suggest_config = SuggestConfig::from_config_value(config_value.get("suggest_config"));
+        let path = PathConfig::from_config_value(config_value.get("path"), "path", &mut errors);
+        let path_repo_updates = PathRepoUpdatesConfig::from_config_value(
+            config_value.get("path_repo_updates"),
+            "path_repo_updates",
+            &mut errors,
+        );
+        let prompts =
+            PromptsConfig::from_config_value(config_value.get("prompts"), "prompts", &mut errors);
+        let repo_path_format = config_value.get_as_str_or_default(
+            "repo_path_format",
+            Self::DEFAULT_REPO_PATH_FORMAT,
+            "repo_path_format",
+            &mut errors,
+        );
+        let shell_aliases = ShellAliasesConfig::from_config_value(
+            config_value.get("shell_aliases"),
+            "shell_aliases",
+            &mut errors,
+        );
+        let suggest_clone = SuggestCloneConfig::from_config_value(
+            config_value.get("suggest_clone"),
+            "suggest_clone",
+            &mut errors,
+        );
+        let suggest_config = SuggestConfig::from_config_value(
+            config_value.get("suggest_config"),
+            "suggest_config",
+            &mut errors,
+        );
         let up = UpConfig::from_config_value(config_value.get("up"));
         let up_command = UpCommandConfig::from_config_value(config_value.get("up_command"));
 
-        let worktree = if let Some(value) = config_value.get("worktree") {
-            if let Some(value) = value.as_str() {
-                value.to_string()
-            } else {
-                errors.push(ConfigErrorKind::ValueType {
-                    key: "worktree".to_string(),
-                    expected: "string".to_string(),
-                    found: value.as_serde_yaml(),
-                });
-                (*DEFAULT_WORKTREE).to_string()
-            }
-        } else {
-            (*DEFAULT_WORKTREE).to_string()
-        };
+        let worktree = config_value.get_as_str_or_default(
+            "worktree",
+            &*DEFAULT_WORKTREE,
+            "worktree",
+            &mut errors,
+        );
 
         eprintln!("DEBUG: errors: {:?}", errors);
 

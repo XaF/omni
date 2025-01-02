@@ -2,6 +2,7 @@ use serde::Deserialize;
 use serde::Serialize;
 
 use crate::internal::cache::utils::Empty;
+use crate::internal::config::parser::errors::ConfigErrorKind;
 use crate::internal::config::ConfigValue;
 
 #[derive(Debug, Deserialize, Clone)]
@@ -26,15 +27,29 @@ impl Serialize for ShellAliasesConfig {
 }
 
 impl ShellAliasesConfig {
-    pub(super) fn from_config_value(config_value: Option<ConfigValue>) -> Self {
+    pub(super) fn from_config_value(
+        config_value: Option<ConfigValue>,
+        error_key: &str,
+        errors: &mut Vec<ConfigErrorKind>,
+    ) -> Self {
         let mut aliases = vec![];
         if let Some(config_value) = config_value {
             if let Some(array) = config_value.as_array() {
-                for value in array {
-                    if let Some(alias) = ShellAliasConfig::from_config_value(&value) {
+                for (idx, value) in array.iter().enumerate() {
+                    if let Some(alias) = ShellAliasConfig::from_config_value(
+                        &value,
+                        &format!("{}[{}]", error_key, idx),
+                        errors,
+                    ) {
                         aliases.push(alias);
                     }
                 }
+            } else {
+                errors.push(ConfigErrorKind::ValueType {
+                    key: error_key.to_string(),
+                    found: config_value.as_serde_yaml(),
+                    expected: "array".to_string(),
+                });
             }
         }
         Self { aliases }
@@ -50,35 +65,58 @@ pub struct ShellAliasConfig {
 }
 
 impl ShellAliasConfig {
-    pub(super) fn from_config_value(config_value: &ConfigValue) -> Option<Self> {
+    pub(super) fn from_config_value(
+        config_value: &ConfigValue,
+        error_key: &str,
+        errors: &mut Vec<ConfigErrorKind>,
+    ) -> Option<Self> {
         if let Some(value) = config_value.as_str() {
-            return Some(Self {
+            Some(Self {
                 alias: value.to_string(),
                 target: None,
-            });
+            })
         } else if let Some(table) = config_value.as_table() {
-            let mut alias = None;
-            if let Some(value) = table.get("alias") {
+            let alias = if let Some(value) = table.get("alias") {
                 if let Some(value) = value.as_str() {
-                    alias = Some(value.to_string());
+                    value.to_string()
+                } else {
+                    errors.push(ConfigErrorKind::ValueType {
+                        key: format!("{}.alias", error_key),
+                        found: value.as_serde_yaml(),
+                        expected: "string".to_string(),
+                    });
+                    return None;
                 }
-            }
-
-            alias.as_ref()?;
+            } else {
+                errors.push(ConfigErrorKind::MissingKey {
+                    key: format!("{}.alias", error_key),
+                });
+                return None;
+            };
 
             let mut target = None;
             if let Some(value) = table.get("target") {
                 if let Some(value) = value.as_str() {
                     target = Some(value.to_string());
+                } else {
+                    errors.push(ConfigErrorKind::ValueType {
+                        key: format!("{}.target", error_key),
+                        found: value.as_serde_yaml(),
+                        expected: "string".to_string(),
+                    });
+                    return None;
                 }
             }
 
-            return Some(Self {
-                alias: alias.unwrap(),
-                target,
+            Some(Self { alias, target })
+        } else {
+            errors.push(ConfigErrorKind::ValueType {
+                key: error_key.to_string(),
+                found: config_value.as_serde_yaml(),
+                expected: "string or table".to_string(),
             });
-        }
 
-        None
+            None
+        }
     }
 }

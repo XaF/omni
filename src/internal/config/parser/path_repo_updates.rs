@@ -55,6 +55,7 @@ impl PathRepoUpdatesConfig {
 
     pub(super) fn from_config_value(
         config_value: Option<ConfigValue>,
+        error_key: &str,
         errors: &mut Vec<ConfigErrorKind>,
     ) -> Self {
         let config_value = match config_value {
@@ -67,7 +68,11 @@ impl PathRepoUpdatesConfig {
             for (key, value) in value.as_table().unwrap() {
                 per_repo_config.insert(
                     key.to_string(),
-                    PathRepoUpdatesPerRepoConfig::from_config_value(&value),
+                    PathRepoUpdatesPerRepoConfig::from_config_value(
+                        &value,
+                        &format!("{}.per_repo_config.{}", error_key, key),
+                        errors,
+                    ),
                 );
             }
         };
@@ -75,19 +80,19 @@ impl PathRepoUpdatesConfig {
         let pre_auth_timeout = parse_duration_or_default(
             config_value.get("pre_auth_timeout").as_ref(),
             Self::DEFAULT_PRE_AUTH_TIMEOUT,
-            "path_repo_updates.pre_auth_timeout",
+            &format!("{}.pre_auth_timeout", error_key),
             errors,
         );
         let background_updates_timeout = parse_duration_or_default(
             config_value.get("background_updates_timeout").as_ref(),
             Self::DEFAULT_BACKGROUND_UPDATES_TIMEOUT,
-            "path_repo_updates.background_updates_timeout",
+            &format!("{}.background_updates_timeout", error_key),
             errors,
         );
         let interval = parse_duration_or_default(
             config_value.get("interval").as_ref(),
             Self::DEFAULT_INTERVAL,
-            "path_repo_updates.interval",
+            &format!("{}.interval", error_key),
             errors,
         );
 
@@ -101,7 +106,7 @@ impl PathRepoUpdatesConfig {
                 PathRepoUpdatesSelfUpdateEnum::from_int(value)
             } else {
                 errors.push(ConfigErrorKind::ValueType {
-                    key: "path_repo_updates.self_update".to_string(),
+                    key: format!("{}.self_update", error_key),
                     expected: "boolean, string, or integer".to_string(),
                     found: value.as_serde_yaml(),
                 });
@@ -121,7 +126,7 @@ impl PathRepoUpdatesConfig {
                 PathRepoUpdatesOnCommandNotFoundEnum::from_int(value)
             } else {
                 errors.push(ConfigErrorKind::ValueType {
-                    key: "path_repo_updates.on_command_not_found".to_string(),
+                    key: format!("{}.on_command_not_found", error_key),
                     expected: "boolean, string, or integer".to_string(),
                     found: value.as_serde_yaml(),
                 });
@@ -136,7 +141,7 @@ impl PathRepoUpdatesConfig {
                 value.to_string()
             } else {
                 errors.push(ConfigErrorKind::ValueType {
-                    key: "path_repo_updates.ref_type".to_string(),
+                    key: format!("{}.ref_type", error_key),
                     expected: "string".to_string(),
                     found: value.as_serde_yaml(),
                 });
@@ -151,7 +156,7 @@ impl PathRepoUpdatesConfig {
                 Some(value.to_string())
             } else {
                 errors.push(ConfigErrorKind::ValueType {
-                    key: "path_repo_updates.ref_match".to_string(),
+                    key: format!("{}.ref_match", error_key),
                     expected: "string".to_string(),
                     found: value.as_serde_yaml(),
                 });
@@ -165,7 +170,7 @@ impl PathRepoUpdatesConfig {
             enabled: config_value.get_as_bool_or_default(
                 "enabled",
                 Self::DEFAULT_ENABLED,
-                "path_repo_updates.enabled",
+                &format!("{}.enabled", error_key),
                 errors,
             ),
             self_update,
@@ -173,14 +178,14 @@ impl PathRepoUpdatesConfig {
             pre_auth: config_value.get_as_bool_or_default(
                 "pre_auth",
                 Self::DEFAULT_PRE_AUTH,
-                "path_repo_updates.pre_auth",
+                &format!("{}.pre_auth", error_key),
                 errors,
             ),
             pre_auth_timeout,
             background_updates: config_value.get_as_bool_or_default(
                 "background_updates",
                 Self::DEFAULT_BACKGROUND_UPDATES,
-                "path_repo_updates.background_updates",
+                &format!("{}.background_updates", error_key),
                 errors,
             ),
             background_updates_timeout,
@@ -335,19 +340,35 @@ pub struct PathRepoUpdatesPerRepoConfig {
 }
 
 impl PathRepoUpdatesPerRepoConfig {
-    pub(super) fn from_config_value(config_value: &ConfigValue) -> Self {
+    pub(super) fn from_config_value(
+        config_value: &ConfigValue,
+        error_key: &str,
+        errors: &mut Vec<ConfigErrorKind>,
+    ) -> Self {
+        let enabled = config_value.get_as_bool_or_default(
+            "enabled",
+            true,
+            &format!("{}.enabled", error_key),
+            errors,
+        );
+
+        let ref_type = config_value.get_as_str_or_default(
+            "ref_type",
+            "branch",
+            &format!("{}.ref_type", error_key),
+            errors,
+        );
+
+        let ref_match = config_value.get_as_str_or_none(
+            "ref_match",
+            &format!("{}.ref_match", error_key),
+            errors,
+        );
+
         Self {
-            enabled: match config_value.get("enabled") {
-                Some(value) => value.as_bool().unwrap(),
-                None => true,
-            },
-            ref_type: match config_value.get("ref_type") {
-                Some(value) => value.as_str().unwrap().to_string(),
-                None => "branch".to_string(),
-            },
-            ref_match: config_value
-                .get("ref_match")
-                .map(|value| value.as_str().unwrap().to_string()),
+            enabled,
+            ref_type,
+            ref_match,
         }
     }
 }

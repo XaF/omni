@@ -10,6 +10,7 @@ use serde::Serialize;
 use crate::internal::cache::utils as cache_utils;
 use crate::internal::commands::utils::str_to_bool;
 use crate::internal::commands::HelpCommand;
+use crate::internal::config::parser::ConfigErrorKind;
 use crate::internal::config::parser::ParseArgsErrorKind;
 use crate::internal::config::parser::ParseArgsValue;
 use crate::internal::config::ConfigScope;
@@ -41,70 +42,80 @@ pub struct CommandDefinition {
 }
 
 impl CommandDefinition {
-    pub(super) fn from_config_value(config_value: &ConfigValue) -> Self {
-        let syntax = match config_value.get("syntax") {
-            Some(value) => CommandSyntax::from_config_value(&value),
-            None => None,
-        };
+    pub(super) fn from_config_value(
+        config_value: &ConfigValue,
+        error_key: &str,
+        errors: &mut Vec<ConfigErrorKind>,
+    ) -> Self {
+        let desc = config_value.get_as_str_or_none("desc", &format!("{}.desc", error_key), errors);
 
-        let category = match config_value.get("category") {
+        let run = config_value.get_as_str_or_default(
+            "run",
+            "true",
+            &format!("{}.run", error_key),
+            errors,
+        );
+
+        let aliases =
+            config_value.get_as_str_array("aliases", &format!("{}.aliases", error_key), errors);
+
+        let syntax = match config_value.get("syntax") {
             Some(value) => {
-                let mut category = Vec::new();
-                if value.is_array() {
-                    for value in value.as_array().unwrap() {
-                        category.push(value.as_str().unwrap().to_string());
-                    }
-                } else {
-                    category.push(value.as_str().unwrap().to_string());
-                }
-                Some(category)
+                CommandSyntax::from_config_value(&value, &format!("{}.syntax", error_key), errors)
             }
             None => None,
         };
 
+        let category =
+            config_value.get_as_str_array("category", &format!("{}.category", error_key), errors);
+        let category = if category.is_empty() {
+            None
+        } else {
+            Some(category)
+        };
+
+        let dir = config_value.get_as_str_or_none("dir", &format!("{}.dir", error_key), errors);
+
         let subcommands = match config_value.get("subcommands") {
             Some(value) => {
                 let mut subcommands = HashMap::new();
-                for (key, value) in value.as_table().unwrap() {
-                    subcommands.insert(
-                        key.to_string(),
-                        CommandDefinition::from_config_value(&value),
-                    );
+                if let Some(table) = value.as_table() {
+                    for (key, value) in table {
+                        subcommands.insert(
+                            key.to_string(),
+                            CommandDefinition::from_config_value(
+                                &value,
+                                &format!("{}.{}", error_key, key),
+                                errors,
+                            ),
+                        );
+                    }
+                } else {
+                    errors.push(ConfigErrorKind::ValueType {
+                        key: format!("{}.subcommands", error_key),
+                        found: value.as_serde_yaml(),
+                        expected: "table".to_string(),
+                    });
                 }
                 Some(subcommands)
             }
             None => None,
         };
 
-        let aliases = if let Some(array) = config_value.get_as_array("aliases") {
-            array
-                .iter()
-                .filter_map(|value| value.as_str_forced())
-                .collect()
-        } else if let Some(string) = config_value.get_as_str_forced("aliases") {
-            vec![string]
-        } else {
-            vec![]
-        };
-
-        let argparser = config_value
-            .get_as_bool_forced("argparser")
-            .unwrap_or(false);
+        let argparser = config_value.get_as_bool_or_default(
+            "argparser",
+            false, // Disable argparser by default
+            &format!("{}.argparser", error_key),
+            errors,
+        );
 
         Self {
-            desc: config_value
-                .get("desc")
-                .map(|value| value.as_str().unwrap().to_string()),
-            run: config_value
-                .get_as_str("run")
-                .unwrap_or("true".to_string())
-                .to_string(),
+            desc,
+            run,
             aliases,
             syntax,
             category,
-            dir: config_value
-                .get_as_str("dir")
-                .map(|value| value.to_string()),
+            dir,
             subcommands,
             argparser,
             source: config_value.get_source().clone(),
@@ -136,24 +147,33 @@ impl CommandSyntax {
     {
         let value = serde_yaml::Value::deserialize(deserializer)?;
         let config_value = ConfigValue::from_value(ConfigSource::Null, ConfigScope::Null, value);
-        if let Some(command_syntax) = CommandSyntax::from_config_value(&config_value) {
+        if let Some(command_syntax) =
+            CommandSyntax::from_config_value(&config_value, "", &mut vec![])
+        {
             Ok(command_syntax)
         } else {
             Err(serde::de::Error::custom("invalid command syntax"))
         }
     }
 
-    pub(super) fn from_config_value(config_value: &ConfigValue) -> Option<Self> {
+    pub(super) fn from_config_value(
+        config_value: &ConfigValue,
+        error_key: &str,
+        errors: &mut Vec<ConfigErrorKind>,
+    ) -> Option<Self> {
         let mut usage = None;
         let mut parameters = vec![];
         let mut groups = vec![];
 
         if let Some(array) = config_value.as_array() {
-            parameters.extend(
-                array
-                    .iter()
-                    .filter_map(|value| SyntaxOptArg::from_config_value(value, None)),
-            );
+            parameters.extend(array.iter().enumerate().filter_map(|(idx, value)| {
+                SyntaxOptArg::from_config_value(
+                    value,
+                    None,
+                    &format!("{}[{}]", error_key, idx),
+                    errors,
+                )
+            }));
         } else if let Some(table) = config_value.as_table() {
             let keys = [
                 ("parameters", None),
@@ -169,26 +189,61 @@ impl CommandSyntax {
                     if let Some(value) = value.as_array() {
                         let arguments = value
                             .iter()
-                            .filter_map(|value| SyntaxOptArg::from_config_value(value, required))
+                            .enumerate()
+                            .filter_map(|(idx, value)| {
+                                SyntaxOptArg::from_config_value(
+                                    value,
+                                    required,
+                                    &format!("{}.{}[{}]", error_key, key, idx),
+                                    errors,
+                                )
+                            })
                             .collect::<Vec<SyntaxOptArg>>();
                         parameters.extend(arguments);
-                    } else if let Some(arg) = SyntaxOptArg::from_config_value(value, required) {
+                    } else if let Some(arg) = SyntaxOptArg::from_config_value(
+                        value,
+                        required,
+                        &format!("{}.{}", error_key, key),
+                        errors,
+                    ) {
                         parameters.push(arg);
+                    } else {
+                        errors.push(ConfigErrorKind::ValueType {
+                            key: format!("{}.{}", error_key, key),
+                            found: value.as_serde_yaml(),
+                            expected: "array or table".to_string(),
+                        });
                     }
                 }
             }
 
             if let Some(value) = table.get("groups") {
-                groups = SyntaxGroup::from_config_value_multi(value);
+                groups = SyntaxGroup::from_config_value_multi(
+                    value,
+                    &format!("{}.groups", error_key),
+                    errors,
+                );
             }
 
             if let Some(value) = table.get("usage") {
-                if let Some(value) = value.as_str() {
+                if let Some(value) = value.as_str_forced() {
                     usage = Some(value.to_string());
+                } else {
+                    errors.push(ConfigErrorKind::ValueType {
+                        key: format!("{}.usage", error_key),
+                        found: value.as_serde_yaml(),
+                        expected: "string".to_string(),
+                    });
                 }
             }
-        } else if let Some(value) = config_value.as_str() {
+        } else if let Some(value) = config_value.as_str_forced() {
             usage = Some(value.to_string());
+        } else {
+            errors.push(ConfigErrorKind::ValueType {
+                key: error_key.to_string(),
+                found: config_value.as_serde_yaml(),
+                expected: "string, array or table".to_string(),
+            });
         }
 
         if parameters.is_empty() && groups.is_empty() && usage.is_none() {
@@ -765,6 +820,8 @@ impl SyntaxOptArg {
     pub(super) fn from_config_value(
         config_value: &ConfigValue,
         required: Option<bool>,
+        error_key: &str,
+        errors: &mut Vec<ConfigErrorKind>,
     ) -> Option<Self> {
         let mut names;
         let mut arg_type;
@@ -797,6 +854,11 @@ impl SyntaxOptArg {
                     (names, arg_type, placeholders, leftovers) = parse_arg_name(&name_value);
                     value_for_details = Some(config_value.clone());
                 } else {
+                    errors.push(ConfigErrorKind::ValueType {
+                        key: format!("{}.name", error_key),
+                        found: name_value.as_serde_yaml(),
+                        expected: "string".to_string(),
+                    });
                     return None;
                 }
             } else if table.len() == 1 {
@@ -807,6 +869,9 @@ impl SyntaxOptArg {
                     return None;
                 }
             } else {
+                errors.push(ConfigErrorKind::MissingKey {
+                    key: format!("{}.name", error_key),
+                });
                 return None;
             }
 
@@ -814,142 +879,154 @@ impl SyntaxOptArg {
                 if let Some(value_str) = value_for_details.as_str() {
                     desc = Some(value_str.to_string());
                 } else if let Some(value_table) = value_for_details.as_table() {
-                    desc = value_table
-                        .get("desc")
-                        .and_then(|value| value.as_str_forced());
-                    dest = value_table
-                        .get("dest")
-                        .and_then(|value| value.as_str_forced());
+                    desc = value_for_details.get_as_str_or_none(
+                        "desc",
+                        &format!("{}.desc", error_key),
+                        errors,
+                    );
+                    dest = value_for_details.get_as_str_or_none(
+                        "dest",
+                        &format!("{}.dest", error_key),
+                        errors,
+                    );
 
                     if required.is_none() {
-                        required = value_table
-                            .get("required")
-                            .and_then(|value| value.as_bool_forced());
+                        required = Some(value_for_details.get_as_bool_or_default(
+                            "required",
+                            false,
+                            &format!("{}.required", error_key),
+                            errors,
+                        ));
                     }
 
                     // Try to load the placeholders from the placeholders key,
                     // if not found, try to load it from the placeholder key
-                    if let Some(ph) = value_table.get("placeholders") {
-                        if let Some(array) = ph.as_array() {
-                            placeholders = array
-                                .iter()
-                                .filter_map(|value| value.as_str())
-                                .map(|value| value.to_string())
-                                .collect();
-                        } else if let Some(value) = ph.as_str_forced() {
-                            placeholders = vec![value.to_string()];
-                        }
-                    } else if let Some(ph) = value_table.get("placeholder") {
-                        if let Some(array) = ph.as_array() {
-                            placeholders = array
-                                .iter()
-                                .filter_map(|value| value.as_str())
-                                .map(|value| value.to_string())
-                                .collect();
-                        } else if let Some(value) = ph.as_str_forced() {
-                            placeholders = vec![value.to_string()];
+                    for key in &["placeholders", "placeholder"] {
+                        let ph = value_for_details.get_as_str_array(
+                            key,
+                            &format!("{}.{}", error_key, key),
+                            errors,
+                        );
+                        if !ph.is_empty() {
+                            placeholders = ph;
+                            break;
                         }
                     }
 
-                    default = value_table
-                        .get("default")
-                        .and_then(|value| value.as_str_forced());
-                    default_missing_value = value_table
-                        .get("default_missing_value")
-                        .and_then(|value| value.as_str_forced());
-                    num_values =
-                        SyntaxOptArgNumValues::from_config_value(value_table.get("num_values"));
-                    value_delimiter = value_table
-                        .get("delimiter")
-                        .and_then(|value| value.as_str_forced())
-                        .and_then(|value| value.chars().next());
-                    last_arg_double_hyphen = value_table
-                        .get("last")
-                        .and_then(|value| value.as_bool_forced())
-                        .unwrap_or(false);
-                    leftovers = value_table
-                        .get("leftovers")
-                        .and_then(|value| value.as_bool_forced())
-                        .unwrap_or(false);
-                    allow_hyphen_values = value_table
-                        .get("allow_hyphen_values")
-                        .and_then(|value| value.as_bool_forced())
-                        .unwrap_or(false);
-                    allow_negative_numbers = value_table
-                        .get("allow_negative_numbers")
-                        .and_then(|value| value.as_bool_forced())
-                        .unwrap_or(false);
-                    group_occurrences = value_table
-                        .get("group_occurrences")
-                        .and_then(|value| value.as_bool_forced())
-                        .unwrap_or(false);
+                    default = value_for_details.get_as_str_or_none(
+                        "default",
+                        &format!("{}.default", error_key),
+                        errors,
+                    );
+                    default_missing_value = value_for_details.get_as_str_or_none(
+                        "default_missing_value",
+                        &format!("{}.default_missing_value", error_key),
+                        errors,
+                    );
+                    num_values = SyntaxOptArgNumValues::from_config_value(
+                        value_table.get("num_values"),
+                        &format!("{}.num_values", error_key),
+                        errors,
+                    );
+                    value_delimiter = value_for_details
+                        .get_as_str_or_none(
+                            "delimiter",
+                            &format!("{}.delimiter", error_key),
+                            errors,
+                        )
+                        .and_then(|value| {
+                            value.chars().next().or_else(|| {
+                                errors.push(ConfigErrorKind::ValueType {
+                                    key: format!("{}.delimiter", error_key),
+                                    found: serde_yaml::Value::String(value),
+                                    expected: "non-empty string".to_string(),
+                                });
+                                None
+                            })
+                        });
+                    last_arg_double_hyphen = value_for_details.get_as_bool_or_default(
+                        "last",
+                        false,
+                        &format!("{}.last", error_key),
+                        errors,
+                    );
+                    leftovers = value_for_details.get_as_bool_or_default(
+                        "leftovers",
+                        false,
+                        &format!("{}.leftovers", error_key),
+                        errors,
+                    );
+                    allow_hyphen_values = value_for_details.get_as_bool_or_default(
+                        "allow_hyphen_values",
+                        false,
+                        &format!("{}.allow_hyphen_values", error_key),
+                        errors,
+                    );
+                    allow_negative_numbers = value_for_details.get_as_bool_or_default(
+                        "allow_negative_numbers",
+                        false,
+                        &format!("{}.allow_negative_numbers", error_key),
+                        errors,
+                    );
+                    group_occurrences = value_for_details.get_as_bool_or_default(
+                        "group_occurrences",
+                        false,
+                        &format!("{}.group_occurrences", error_key),
+                        errors,
+                    );
 
                     arg_type = SyntaxOptArgType::from_config_value(
                         value_table.get("type"),
                         value_table.get("values"),
                         value_delimiter,
+                        &format!("{}.type", error_key),
+                        errors,
                     )
                     .unwrap_or(SyntaxOptArgType::String);
 
-                    // TODO: this happens a lot, should make a function in config_value to handle
-                    // that situation
-                    if let Some(requires_value) = value_table.get("requires") {
-                        if let Some(value) = requires_value.as_str_forced() {
-                            requires.push(value.to_string());
-                        } else if let Some(array) = requires_value.as_array() {
-                            for value in array {
-                                if let Some(value) = value.as_str_forced() {
-                                    requires.push(value.to_string());
-                                }
-                            }
-                        }
-                    }
+                    requires = value_for_details.get_as_str_array(
+                        "requires",
+                        &format!("{}.requires", error_key),
+                        errors,
+                    );
 
-                    if let Some(conflicts_with_value) = value_table.get("conflicts_with") {
-                        if let Some(value) = conflicts_with_value.as_str_forced() {
-                            conflicts_with.push(value.to_string());
-                        } else if let Some(array) = conflicts_with_value.as_array() {
-                            for value in array {
-                                if let Some(value) = value.as_str_forced() {
-                                    conflicts_with.push(value.to_string());
-                                }
-                            }
-                        }
-                    }
+                    conflicts_with = value_for_details.get_as_str_array(
+                        "conflicts_with",
+                        &format!("{}.conflicts_with", error_key),
+                        errors,
+                    );
 
-                    if let Some(required_without_value) = value_table.get("required_without") {
-                        if let Some(value) = required_without_value.as_str_forced() {
-                            required_without.push(value.to_string());
-                        } else if let Some(array) = required_without_value.as_array() {
-                            for value in array {
-                                if let Some(value) = value.as_str_forced() {
-                                    required_without.push(value.to_string());
-                                }
-                            }
-                        }
-                    }
+                    required_without = value_for_details.get_as_str_array(
+                        "required_without",
+                        &format!("{}.required_without", error_key),
+                        errors,
+                    );
 
-                    if let Some(required_without_all_value) =
-                        value_table.get("required_without_all")
-                    {
-                        if let Some(value) = required_without_all_value.as_str_forced() {
-                            required_without_all.push(value.to_string());
-                        } else if let Some(array) = required_without_all_value.as_array() {
-                            for value in array {
-                                if let Some(value) = value.as_str_forced() {
-                                    required_without_all.push(value.to_string());
-                                }
-                            }
-                        }
-                    }
+                    required_without_all = value_for_details.get_as_str_array(
+                        "required_without_all",
+                        &format!("{}.required_without_all", error_key),
+                        errors,
+                    );
 
                     if let Some(required_if_eq_value) = value_table.get("required_if_eq") {
                         if let Some(value) = required_if_eq_value.as_table() {
                             for (key, value) in value {
                                 if let Some(value) = value.as_str_forced() {
                                     required_if_eq.insert(key.to_string(), value.to_string());
+                                } else {
+                                    errors.push(ConfigErrorKind::ValueType {
+                                        key: format!("{}.required_if_eq.{}", error_key, key),
+                                        found: value.as_serde_yaml(),
+                                        expected: "string".to_string(),
+                                    });
                                 }
                             }
+                        } else {
+                            errors.push(ConfigErrorKind::ValueType {
+                                key: format!("{}.required_if_eq", error_key),
+                                found: required_if_eq_value.as_serde_yaml(),
+                                expected: "table".to_string(),
+                            });
                         }
                     }
 
@@ -958,27 +1035,39 @@ impl SyntaxOptArg {
                             for (key, value) in value {
                                 if let Some(value) = value.as_str_forced() {
                                     required_if_eq_all.insert(key.to_string(), value.to_string());
+                                } else {
+                                    errors.push(ConfigErrorKind::ValueType {
+                                        key: format!("{}.required_if_eq_all.{}", error_key, key),
+                                        found: value.as_serde_yaml(),
+                                        expected: "string".to_string(),
+                                    });
                                 }
                             }
+                        } else {
+                            errors.push(ConfigErrorKind::ValueType {
+                                key: format!("{}.required_if_eq_all", error_key),
+                                found: required_if_eq_all_value.as_serde_yaml(),
+                                expected: "table".to_string(),
+                            });
                         }
                     }
 
-                    if let Some(aliases_value) = value_table.get("aliases") {
-                        if let Some(value) = aliases_value.as_str_forced() {
-                            names.push(value.to_string());
-                        } else if let Some(array) = aliases_value.as_array() {
-                            for value in array {
-                                if let Some(value) = value.as_str_forced() {
-                                    names.push(value.to_string());
-                                }
-                            }
-                        }
-                    }
+                    let aliases = value_for_details.get_as_str_array(
+                        "aliases",
+                        &format!("{}.aliases", error_key),
+                        errors,
+                    );
+                    names.extend(aliases);
                 }
             }
         } else if let Some(value) = config_value.as_str() {
             (names, arg_type, placeholders, leftovers) = parse_arg_name(&value);
         } else {
+            errors.push(ConfigErrorKind::ValueType {
+                key: error_key.to_string(),
+                found: config_value.as_serde_yaml(),
+                expected: "string or table".to_string(),
+            });
             return None;
         }
 
@@ -1924,7 +2013,11 @@ impl From<usize> for SyntaxOptArgNumValues {
 }
 
 impl SyntaxOptArgNumValues {
-    pub fn from_str(value: &str) -> Option<Self> {
+    pub fn from_str(
+        value: &str,
+        error_key: &str,
+        errors: &mut Vec<ConfigErrorKind>,
+    ) -> Option<Self> {
         let value = value.trim();
 
         if value.contains("..") {
@@ -1938,52 +2031,110 @@ impl SyntaxOptArgNumValues {
                 (max, false)
             };
 
+            let max = match max {
+                "" => None,
+                value => match value.parse::<usize>() {
+                    Ok(value) => Some(value),
+                    Err(_) => {
+                        errors.push(ConfigErrorKind::ValueType {
+                            key: error_key.to_string(),
+                            found: serde_yaml::Value::String(value.to_string()),
+                            expected: "positive integer".to_string(),
+                        });
+                        return None;
+                    }
+                },
+            };
+
+            let min = match min {
+                "" => None,
+                value => match value.parse::<usize>() {
+                    Ok(value) => Some(value),
+                    Err(_) => {
+                        errors.push(ConfigErrorKind::ValueType {
+                            key: error_key.to_string(),
+                            found: serde_yaml::Value::String(value.to_string()),
+                            expected: "positive integer".to_string(),
+                        });
+                        return None;
+                    }
+                },
+            };
+
             match (min, max, max_inclusive) {
-                ("", "", _) => Some(Self::Any),
-                ("", max, true) => max.parse().ok().map(Self::AtMost),
-                ("", max, false) => {
-                    let max = max.parse::<usize>().ok()?;
+                (None, None, _) => Some(Self::Any),
+                (None, Some(max), true) => Some(Self::AtMost(max)),
+                (None, Some(max), false) => {
                     if max > 0 {
                         Some(Self::AtMost(max - 1))
                     } else {
+                        errors.push(ConfigErrorKind::InvalidRange {
+                            key: error_key.to_string(),
+                            min: 0,
+                            max: 0,
+                        });
                         None
                     }
                 }
-                (min, "", _) => min.parse().ok().map(Self::AtLeast),
-                (min, max, true) => {
-                    let min = min.parse().ok()?;
-                    let max = max.parse().ok()?;
-
+                (Some(min), None, _) => Some(Self::AtLeast(min)),
+                (Some(min), Some(max), true) => {
                     if min <= max {
                         Some(Self::Between(min, max))
                     } else {
+                        errors.push(ConfigErrorKind::InvalidRange {
+                            key: error_key.to_string(),
+                            min: min,
+                            max: max + 1,
+                        });
                         None
                     }
                 }
-                (min, max, false) => {
-                    let min = min.parse().ok()?;
-                    let max = max.parse().ok()?;
+                (Some(min), Some(max), false) => {
                     if min < max {
                         Some(Self::Between(min, max - 1))
                     } else {
+                        errors.push(ConfigErrorKind::InvalidRange {
+                            key: error_key.to_string(),
+                            min: min,
+                            max: max,
+                        });
                         None
                     }
                 }
             }
         } else {
-            let value = value.parse().ok()?;
+            let value = match value.parse::<usize>() {
+                Ok(value) => Some(value),
+                Err(_) => {
+                    errors.push(ConfigErrorKind::ValueType {
+                        key: error_key.to_string(),
+                        found: serde_yaml::Value::String(value.to_string()),
+                        expected: "positive integer".to_string(),
+                    });
+                    None
+                }
+            }?;
             Some(Self::Exactly(value))
         }
     }
 
-    fn from_config_value(config_value: Option<&ConfigValue>) -> Option<Self> {
+    fn from_config_value(
+        config_value: Option<&ConfigValue>,
+        error_key: &str,
+        errors: &mut Vec<ConfigErrorKind>,
+    ) -> Option<Self> {
         let config_value = config_value?;
 
         if let Some(value) = config_value.as_integer() {
             Some(Self::Exactly(value as usize))
         } else if let Some(value) = config_value.as_str_forced() {
-            Self::from_str(&value)
+            Self::from_str(&value, error_key, errors)
         } else {
+            errors.push(ConfigErrorKind::ValueType {
+                key: error_key.to_string(),
+                found: config_value.as_serde_yaml(),
+                expected: "string or integer".to_string(),
+            });
             None
         }
     }
@@ -2065,9 +2216,23 @@ impl SyntaxOptArgType {
         config_value_type: Option<&ConfigValue>,
         config_value_values: Option<&ConfigValue>,
         value_delimiter: Option<char>,
+        error_key: &str,
+        errors: &mut Vec<ConfigErrorKind>,
     ) -> Option<Self> {
         let config_value_type = config_value_type?;
-        let obj = Self::from_str(&config_value_type.as_str_forced()?)?;
+
+        let obj = Self::from_str(
+            &config_value_type.as_str_forced().or_else(|| {
+                errors.push(ConfigErrorKind::ValueType {
+                    key: error_key.to_string(),
+                    found: config_value_type.as_serde_yaml(),
+                    expected: "string".to_string(),
+                });
+                None
+            })?,
+            error_key,
+            errors,
+        )?;
 
         match obj {
             Self::Enum(values) if values.is_empty() => {
@@ -2097,7 +2262,11 @@ impl SyntaxOptArgType {
         None
     }
 
-    pub fn from_str(value: &str) -> Option<Self> {
+    pub fn from_str(
+        value: &str,
+        error_key: &str,
+        errors: &mut Vec<ConfigErrorKind>,
+    ) -> Option<Self> {
         let mut is_array = false;
 
         let normalized = value.trim().to_lowercase();
@@ -2141,6 +2310,21 @@ impl SyntaxOptArgType {
 
                     Self::Enum(values)
                 } else {
+                    errors.push(ConfigErrorKind::InvalidValue {
+                        key: error_key.to_string(),
+                        found: serde_yaml::Value::String(value.to_string()),
+                        expected: vec![
+                            "int".to_string(),
+                            "float".to_string(),
+                            "bool".to_string(),
+                            "flag".to_string(),
+                            "count".to_string(),
+                            "str".to_string(),
+                            "enum or enum(xx, yy, zz)".to_string(),
+                            "array/<type>".to_string(),
+                        ],
+                    });
+
                     return None;
                 }
             }
@@ -2239,23 +2423,43 @@ impl SyntaxGroup {
     /// ```
     ///
     /// The ConfigValue object received is the contents of the `groups` key in the config file.
-    pub(super) fn from_config_value_multi(config_value: &ConfigValue) -> Vec<Self> {
+    pub(super) fn from_config_value_multi(
+        config_value: &ConfigValue,
+        error_key: &str,
+        errors: &mut Vec<ConfigErrorKind>,
+    ) -> Vec<Self> {
         let mut groups = vec![];
 
         if let Some(array) = config_value.as_array() {
             // If this is an array, we can simply iterate over it and create the groups
-            for value in array {
-                if let Some(group) = Self::from_config_value(&value, None) {
+            for (idx, value) in array.iter().enumerate() {
+                if let Some(group) = Self::from_config_value(
+                    &value,
+                    None,
+                    &format!("{}[{}]", error_key, idx),
+                    errors,
+                ) {
                     groups.push(group);
                 }
             }
         } else if let Some(table) = config_value.as_table() {
             // If this is a table, we need to iterate over the keys and create the groups
             for (name, value) in table {
-                if let Some(group) = Self::from_config_value(&value, Some(name.to_string())) {
+                if let Some(group) = Self::from_config_value(
+                    &value,
+                    Some(name.to_string()),
+                    &format!("{}.{}", error_key, name),
+                    errors,
+                ) {
                     groups.push(group);
                 }
             }
+        } else {
+            errors.push(ConfigErrorKind::ValueType {
+                key: error_key.to_string(),
+                found: config_value.as_serde_yaml(),
+                expected: "array or table".to_string(),
+            });
         }
 
         groups
@@ -2264,17 +2468,33 @@ impl SyntaxGroup {
     pub(super) fn from_config_value(
         config_value: &ConfigValue,
         name: Option<String>,
+        error_key: &str,
+        errors: &mut Vec<ConfigErrorKind>,
     ) -> Option<Self> {
         // Exit early if the value is not a table
-        let mut table = match config_value.as_table() {
-            Some(table) => table,
-            None => return None,
+        let table = if let Some(table) = config_value.as_table() {
+            // Exit early if the table is empty
+            if table.is_empty() {
+                errors.push(ConfigErrorKind::MissingKey {
+                    key: format!("{}.name", error_key),
+                });
+                errors.push(ConfigErrorKind::MissingKey {
+                    key: format!("{}.parameters", error_key),
+                });
+                return None;
+            }
+            table
+        } else {
+            errors.push(ConfigErrorKind::ValueType {
+                key: error_key.to_string(),
+                found: config_value.as_serde_yaml(),
+                expected: "table".to_string(),
+            });
+            return None;
         };
 
-        // Exit early if the table is empty
-        if table.is_empty() {
-            return None;
-        }
+        let mut config_value = config_value;
+        let mut error_key = error_key.to_string();
 
         // Handle the group name
         let name = match name {
@@ -2283,78 +2503,80 @@ impl SyntaxGroup {
                 if table.len() == 1 {
                     // Extract the only key from the table, this will be the name of the group
                     let key = table.keys().next().unwrap().to_string();
-                    // Change the table to be the value of the key, this will be the group's config
-                    table = table.get(&key)?.as_table()?;
+
+                    // Change the config to be the value of the key, this will be the group's config
+                    config_value = table.get(&key)?;
+                    error_key = format!("{}.{}", error_key, key);
+
+                    // Exit early if the value is not a table
+                    if !config_value.is_table() {
+                        errors.push(ConfigErrorKind::ValueType {
+                            key: error_key,
+                            found: config_value.as_serde_yaml(),
+                            expected: "table".to_string(),
+                        });
+                        return None;
+                    }
+
                     // Return the key as the name of the group
                     key
+                } else if let Some(name) = config_value.get("name") {
+                    if let Some(name) = name.as_str_forced() {
+                        name.to_string()
+                    } else {
+                        errors.push(ConfigErrorKind::ValueType {
+                            key: format!("{}.name", error_key),
+                            found: name.as_serde_yaml(),
+                            expected: "string".to_string(),
+                        });
+                        return None;
+                    }
                 } else {
-                    table
-                        .get("name")
-                        .and_then(|value| value.as_str_forced())?
-                        .to_string()
+                    errors.push(ConfigErrorKind::MissingKey {
+                        key: format!("{}.name", error_key),
+                    });
+                    return None;
                 }
             }
         };
 
         // Handle the group parameters
-        let mut parameters = vec![];
-        if let Some(parameters_value) = table.get("parameters") {
-            if let Some(value) = parameters_value.as_str() {
-                parameters.push(value.to_string());
-            } else if let Some(array) = parameters_value.as_array() {
-                parameters.extend(
-                    array
-                        .iter()
-                        .filter_map(|value| value.as_str_forced().map(|value| value.to_string())),
-                );
-            }
-        }
+        let parameters = config_value.get_as_str_array(
+            "parameters",
+            &format!("{}.parameters", error_key),
+            errors,
+        );
         // No parameters, skip this group
         if parameters.is_empty() {
+            errors.push(ConfigErrorKind::MissingKey {
+                key: format!("{}.parameters", error_key),
+            });
             return None;
         }
 
         // Parse the rest of the group configuration
-        let mut multiple = false;
-        let mut required = false;
-        let mut requires = vec![];
-        let mut conflicts_with = vec![];
+        let multiple = config_value.get_as_bool_or_default(
+            "multiple",
+            false,
+            &format!("{}.multiple", error_key),
+            errors,
+        );
 
-        if let Some(multiple_value) = table.get("multiple") {
-            if let Some(multiple_value) = multiple_value.as_bool_forced() {
-                multiple = multiple_value;
-            }
-        }
+        let required = config_value.get_as_bool_or_default(
+            "required",
+            false,
+            &format!("{}.required", error_key),
+            errors,
+        );
 
-        if let Some(required_value) = table.get("required") {
-            if let Some(required_value) = required_value.as_bool_forced() {
-                required = required_value;
-            }
-        }
+        let requires =
+            config_value.get_as_str_array("requires", &format!("{}.requires", error_key), errors);
 
-        if let Some(requires_value) = table.get("requires") {
-            if let Some(value) = requires_value.as_str_forced() {
-                requires.push(value.to_string());
-            } else if let Some(array) = requires_value.as_array() {
-                for value in array {
-                    if let Some(value) = value.as_str_forced() {
-                        requires.push(value.to_string());
-                    }
-                }
-            }
-        }
-
-        if let Some(conflicts_with_value) = table.get("conflicts_with") {
-            if let Some(value) = conflicts_with_value.as_str_forced() {
-                conflicts_with.push(value.to_string());
-            } else if let Some(array) = conflicts_with_value.as_array() {
-                for value in array {
-                    if let Some(value) = value.as_str_forced() {
-                        conflicts_with.push(value.to_string());
-                    }
-                }
-            }
-        }
+        let conflicts_with = config_value.get_as_str_array(
+            "conflicts_with",
+            &format!("{}.conflicts_with", error_key),
+            errors,
+        );
 
         Some(Self {
             name,

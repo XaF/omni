@@ -6,6 +6,7 @@ use serde::Deserialize;
 use serde::Serialize;
 
 use crate::internal::config::config_value::ConfigData;
+use crate::internal::config::parser::errors::ConfigErrorKind;
 use crate::internal::config::ConfigScope;
 use crate::internal::config::ConfigSource;
 use crate::internal::config::ConfigValue;
@@ -21,26 +22,64 @@ pub struct PathConfig {
 }
 
 impl PathConfig {
-    pub(super) fn from_config_value(config_value: Option<ConfigValue>) -> Self {
+    pub(super) fn from_config_value(
+        config_value: Option<ConfigValue>,
+        error_key: &str,
+        errors: &mut Vec<ConfigErrorKind>,
+    ) -> Self {
         let config_value = match config_value {
             Some(config_value) => config_value,
             None => return Self::default(),
         };
 
-        let append = match config_value.get_as_array("append") {
-            Some(value) => value
-                .iter()
-                .map(PathEntryConfig::from_config_value)
-                .collect(),
-            None => vec![],
+        let append = if let Some(append) = config_value.get("append") {
+            if let Some(array) = append.as_array() {
+                array
+                    .iter()
+                    .enumerate()
+                    .filter_map(|(idx, value)| {
+                        PathEntryConfig::from_config_value(
+                            value,
+                            &format!("{}.append[{}]", error_key, idx),
+                            errors,
+                        )
+                    })
+                    .collect()
+            } else {
+                errors.push(ConfigErrorKind::ValueType {
+                    key: format!("{}.append", error_key),
+                    found: append.as_serde_yaml(),
+                    expected: "array".to_string(),
+                });
+                vec![]
+            }
+        } else {
+            vec![]
         };
 
-        let prepend = match config_value.get_as_array("prepend") {
-            Some(value) => value
-                .iter()
-                .map(PathEntryConfig::from_config_value)
-                .collect(),
-            None => vec![],
+        let prepend = if let Some(prepend) = config_value.get("prepend") {
+            if let Some(array) = prepend.as_array() {
+                array
+                    .iter()
+                    .enumerate()
+                    .filter_map(|(idx, value)| {
+                        PathEntryConfig::from_config_value(
+                            value,
+                            &format!("{}.prepend[{}]", error_key, idx),
+                            errors,
+                        )
+                    })
+                    .collect()
+            } else {
+                errors.push(ConfigErrorKind::ValueType {
+                    key: format!("{}.prepend", error_key),
+                    found: prepend.as_serde_yaml(),
+                    expected: "array".to_string(),
+                });
+                vec![]
+            }
+        } else {
+            vec![]
         };
 
         Self { append, prepend }
@@ -75,43 +114,71 @@ impl PathEntryConfig {
         }
     }
 
-    pub fn from_config_value(config_value: &ConfigValue) -> Self {
+    pub fn from_config_value(
+        config_value: &ConfigValue,
+        error_key: &str,
+        errors: &mut Vec<ConfigErrorKind>,
+    ) -> Option<Self> {
         if config_value.is_table() {
-            let path = config_value
-                .get_as_str("path")
-                .unwrap_or("".to_string())
-                .to_string();
+            let path = config_value.get_as_str_or_default(
+                "path",
+                "",
+                &format!("{}.path", error_key),
+                errors,
+            );
+            let package = config_value.get_as_str_or_none(
+                "package",
+                &format!("{}.package", error_key),
+                errors,
+            );
+            let absolute_path = path.starts_with('/');
 
-            if !path.starts_with('/') {
-                if let Some(package) = config_value.get("package") {
-                    let package = package.as_str().unwrap();
+            if let Some(package) = package {
+                if absolute_path {
+                    errors.push(ConfigErrorKind::UnsupportedValueInContext {
+                        key: format!("{}.package", error_key),
+                        found: config_value.get("package").unwrap().as_serde_yaml(),
+                    });
+                } else {
                     if let Some(package_path) = package_path_from_handle(&package) {
                         let mut full_path = package_path;
                         if !path.is_empty() {
                             full_path = full_path.join(path.clone());
                         }
 
-                        return Self {
+                        return Some(Self {
                             path: path.clone(),
                             package: Some(package.to_string()),
                             full_path: full_path.to_str().unwrap().to_string(),
-                        };
+                        });
+                    } else {
+                        errors.push(ConfigErrorKind::InvalidPackage {
+                            key: format!("{}.package", error_key),
+                            package: package.to_string(),
+                        });
+                        return None;
                     }
                 }
             }
 
-            Self {
+            Some(Self {
                 path: path.clone(),
                 package: None,
                 full_path: path,
-            }
+            })
+        } else if let Some(path) = config_value.as_str_forced() {
+            Some(Self {
+                path: path.clone(),
+                package: None,
+                full_path: path,
+            })
         } else {
-            let path = config_value.as_str().unwrap_or("".to_string()).to_string();
-            Self {
-                path: path.clone(),
-                package: None,
-                full_path: path,
-            }
+            errors.push(ConfigErrorKind::ValueType {
+                key: error_key.to_string(),
+                found: config_value.as_serde_yaml(),
+                expected: "string or table".to_string(),
+            });
+            None
         }
     }
 

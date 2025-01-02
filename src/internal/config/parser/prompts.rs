@@ -5,6 +5,7 @@ use tera::Tera;
 
 use crate::internal::cache::utils::Empty;
 use crate::internal::cache::PromptsCache;
+use crate::internal::config::parser::errors::ConfigErrorKind;
 use crate::internal::config::template::config_template_context;
 use crate::internal::config::template::render_config_template;
 use crate::internal::config::template::tera_render_error_message;
@@ -35,25 +36,32 @@ impl Serialize for PromptsConfig {
 }
 
 impl PromptsConfig {
-    pub fn from_config_value(config_value: Option<ConfigValue>) -> Self {
+    pub fn from_config_value(
+        config_value: Option<ConfigValue>,
+        error_key: &str,
+        errors: &mut Vec<ConfigErrorKind>,
+    ) -> Self {
         if let Some(config_value) = config_value {
             if let Some(array) = config_value.as_array() {
                 let prompts = array
                     .iter()
-                    // Convert into prompt config and print any errors
-                    .filter_map(|config_value| {
-                        match PromptConfig::from_config_value(config_value) {
-                            Ok(prompt_config) => Some(prompt_config),
-                            Err(err) => {
-                                omni_warning!(format!("failed to parse prompt: {}", err));
-                                None
-                            }
-                        }
+                    .enumerate()
+                    .filter_map(|(idx, config_value)| {
+                        PromptConfig::from_config_value(
+                            config_value,
+                            &format!("{}[{}]", error_key, idx),
+                            errors,
+                        )
                     })
-                    // .filter_map(|config_value| PromptConfig::from_config_value(config_value).ok())
                     .collect();
 
                 return Self { prompts };
+            } else {
+                errors.push(ConfigErrorKind::ValueType {
+                    key: error_key.to_string(),
+                    expected: "array".to_string(),
+                    found: config_value.as_serde_yaml(),
+                });
             }
         }
 
@@ -90,28 +98,54 @@ pub struct PromptConfig {
 }
 
 impl PromptConfig {
-    pub fn from_config_value(config_value: &ConfigValue) -> Result<Self, String> {
-        let id = match config_value.get_as_str_forced("id") {
-            Some(id) => id.trim().to_string(),
-            None => return Err("prompt id is required".to_string()),
-        };
-
-        let prompt = match config_value.get_as_str_forced("prompt") {
-            Some(prompt) => prompt.trim().to_string(),
-            None => return Err("prompt message is required".to_string()),
-        };
-
+    pub fn from_config_value(
+        config_value: &ConfigValue,
+        error_key: &str,
+        errors: &mut Vec<ConfigErrorKind>,
+    ) -> Option<Self> {
         // We need to have an id and a prompt:
         // - id is used to identify the answer to the prompt
         // - prompt is the message that will be displayed to the user
-        if id.is_empty() || prompt.is_empty() {
-            return Err("prompt id and prompt message are required".to_string());
-        }
 
-        let prompt_type = match PromptType::from_config_value(config_value) {
-            Ok(prompt_type) => prompt_type,
-            Err(err) => return Err(err),
-        };
+        let id = match config_value
+            .get_as_str_or_none("id", &format!("{}.id", error_key), errors)
+            .map(|id| id.trim().to_string())
+        {
+            Some(id) if id.is_empty() => {
+                errors.push(ConfigErrorKind::EmptyKey {
+                    key: format!("{}.id", error_key),
+                });
+                None
+            }
+            Some(id) => Some(id),
+            None => {
+                errors.push(ConfigErrorKind::MissingKey {
+                    key: format!("{}.id", error_key),
+                });
+                None
+            }
+        }?;
+
+        let prompt = match config_value
+            .get_as_str_or_none("prompt", &format!("{}.prompt", error_key), errors)
+            .map(|prompt| prompt.trim().to_string())
+        {
+            Some(prompt) if prompt.is_empty() => {
+                errors.push(ConfigErrorKind::EmptyKey {
+                    key: format!("{}.prompt", error_key),
+                });
+                None
+            }
+            Some(prompt) => Some(prompt),
+            None => {
+                errors.push(ConfigErrorKind::MissingKey {
+                    key: format!("{}.prompt", error_key),
+                });
+                None
+            }
+        }?;
+
+        let prompt_type = PromptType::from_config_value(config_value, error_key, errors)?;
 
         // if is used to conditionally prompt the user.
         let if_condition = config_value.get_as_str_forced("if");
@@ -133,9 +167,9 @@ impl PromptConfig {
         // an organization prompt, the repository prompt will take
         // precedence and be re-asked, but won't override the organization
         // answer.
-        let scope = PromptScope::from_config_value(config_value);
+        let scope = PromptScope::from_config_value(config_value, error_key, errors);
 
-        Ok(Self {
+        Some(Self {
             id,
             prompt,
             default,
@@ -188,12 +222,21 @@ impl PromptConfig {
                         ))
                     }
                 };
-                match Self::from_config_value(&config_value) {
-                    Ok(prompt) => Ok(prompt),
-                    Err(err) => Err(format!(
-                        "failed to parse prompt {} from rendered template: {}",
-                        &self.id, err
-                    )),
+
+                let mut errors = vec![];
+                match Self::from_config_value(&config_value, "", &mut errors) {
+                    Some(prompt) => Ok(prompt),
+                    None => {
+                        let err = errors
+                            .last()
+                            .map(|err| err.to_string())
+                            .unwrap_or("unknown".to_string());
+
+                        Err(format!(
+                            "failed to parse prompt {} from rendered template: {}",
+                            &self.id, err
+                        ))
+                    }
                 }
             }
             Err(err) => Err(tera_render_error_message(err)),
@@ -220,16 +263,29 @@ pub enum PromptScope {
 }
 
 impl PromptScope {
-    pub fn from_config_value(config_value: &ConfigValue) -> Self {
-        let scope = match config_value.get_as_str_forced("scope") {
-            Some(scope) => scope.trim().to_lowercase(),
-            None => return Self::default(),
-        };
+    pub fn from_config_value(
+        config_value: &ConfigValue,
+        error_key: &str,
+        errors: &mut Vec<ConfigErrorKind>,
+    ) -> Self {
+        let scope =
+            match config_value.get_as_str_or_none("scope", &format!("{}.scope", error_key), errors)
+            {
+                Some(scope) => scope.trim().to_lowercase(),
+                None => return Self::default(),
+            };
 
         match scope.as_str() {
             "repo" | "repository" => Self::Repository,
             "org" | "organization" => Self::Organization,
-            _ => Self::default(),
+            _ => {
+                errors.push(ConfigErrorKind::InvalidValue {
+                    key: format!("{}.scope", error_key),
+                    found: serde_yaml::Value::String(scope.to_string()),
+                    expected: vec!["repo".to_string(), "org".to_string()],
+                });
+                Self::default()
+            }
         }
     }
 
@@ -269,44 +325,96 @@ pub enum PromptType {
 }
 
 impl PromptType {
-    pub fn from_config_value(config_value: &ConfigValue) -> Result<Self, String> {
-        let prompt_type = match config_value.get_as_str_forced("type") {
-            Some(prompt_type) => prompt_type.trim().to_lowercase(),
-            None => return Ok(Self::default()),
+    pub fn from_config_value(
+        config_value: &ConfigValue,
+        error_key: &str,
+        errors: &mut Vec<ConfigErrorKind>,
+    ) -> Option<Self> {
+        let prompt_type = match config_value
+            .get_as_str_or_none("type", &format!("{}.type", error_key), errors)
+            .map(|s| s.trim().to_lowercase())
+        {
+            Some(prompt_type) if prompt_type.is_empty() => {
+                errors.push(ConfigErrorKind::EmptyKey {
+                    key: format!("{}.type", error_key),
+                });
+                return Some(Self::default());
+            }
+            Some(prompt_type) => prompt_type,
+            None => {
+                errors.push(ConfigErrorKind::MissingKey {
+                    key: format!("{}.type", error_key),
+                });
+                return Some(Self::default());
+            }
         };
 
         match prompt_type.as_str() {
-            "text" => Ok(Self::Text),
-            "password" => Ok(Self::Password),
-            "confirm" | "boolean" => Ok(Self::Confirm),
+            "text" => Some(Self::Text),
+            "password" => Some(Self::Password),
+            "confirm" | "boolean" => Some(Self::Confirm),
             "choice" | "select" | "choices" | "multichoice" | "multiselect" => {
                 if let Some(choices) = config_value.get("choices") {
-                    let choices = PromptChoicesConfig::from_config_value(&choices)?;
+                    let choices = PromptChoicesConfig::from_config_value(
+                        &choices,
+                        &format!("{}.choices", error_key),
+                        errors,
+                    )?;
 
                     return match prompt_type.as_str() {
-                        "choice" | "select" => Ok(Self::Choice { choices }),
+                        "choice" | "select" => Some(Self::Choice { choices }),
                         "choices" | "multichoice" | "multiselect" => {
-                            Ok(Self::MultiChoice { choices })
+                            Some(Self::MultiChoice { choices })
                         }
                         _ => unreachable!("invalid prompt type for choices"),
                     };
                 }
 
-                Err("choices is required for choice and multichoice prompts".to_string())
+                errors.push(ConfigErrorKind::MissingKey {
+                    key: format!("{}.choices", error_key),
+                });
+
+                None
             }
             "int" => {
-                let min = config_value.get_as_integer("min");
-                let max = config_value.get_as_integer("max");
+                let min = config_value.get_as_integer_or_none(
+                    "min",
+                    &format!("{}.min", error_key),
+                    errors,
+                );
+                let max = config_value.get_as_integer_or_none(
+                    "max",
+                    &format!("{}.max", error_key),
+                    errors,
+                );
 
-                Ok(Self::Int { min, max })
+                Some(Self::Int { min, max })
             }
             "float" => {
-                let min = config_value.get_as_float("min");
-                let max = config_value.get_as_float("max");
+                let min =
+                    config_value.get_as_float_or_none("min", &format!("{}.min", error_key), errors);
+                let max =
+                    config_value.get_as_float_or_none("max", &format!("{}.max", error_key), errors);
 
-                Ok(Self::Float { min, max })
+                Some(Self::Float { min, max })
             }
-            _ => Err(format!("invalid prompt type: {}", prompt_type)),
+            _ => {
+                errors.push(ConfigErrorKind::InvalidValue {
+                    key: format!("{}.type", error_key),
+                    found: serde_yaml::Value::String(prompt_type.to_string()),
+                    expected: vec![
+                        "text".to_string(),
+                        "password".to_string(),
+                        "confirm".to_string(),
+                        "choice".to_string(),
+                        "multichoice".to_string(),
+                        "int".to_string(),
+                        "float".to_string(),
+                    ],
+                });
+
+                None
+            }
         }
     }
 
@@ -665,22 +773,41 @@ pub enum PromptChoicesConfig {
 }
 
 impl PromptChoicesConfig {
-    pub fn from_config_value(config_value: &ConfigValue) -> Result<Self, String> {
+    pub fn from_config_value(
+        config_value: &ConfigValue,
+        error_key: &str,
+        errors: &mut Vec<ConfigErrorKind>,
+    ) -> Option<Self> {
         if let Some(array) = config_value.as_array() {
             let choices = array
                 .iter()
-                .filter_map(PromptChoiceConfig::from_config_value)
+                .enumerate()
+                .filter_map(|(idx, value)| {
+                    PromptChoiceConfig::from_config_value(
+                        value,
+                        &format!("{}[{}]", error_key, idx),
+                        errors,
+                    )
+                })
                 .collect::<Vec<PromptChoiceConfig>>();
 
             if choices.is_empty() {
-                Err("choices must be a non-empty array".to_string())
+                errors.push(ConfigErrorKind::EmptyKey {
+                    key: error_key.to_string(),
+                });
+                None
             } else {
-                Ok(Self::ChoicesAsArray(choices))
+                Some(Self::ChoicesAsArray(choices))
             }
         } else if let Some(string) = config_value.as_str_forced() {
-            Ok(Self::ChoicesAsString(string.to_string()))
+            Some(Self::ChoicesAsString(string.to_string()))
         } else {
-            Err("choices must be an array or a template of an array".to_string())
+            errors.push(ConfigErrorKind::ValueType {
+                key: error_key.to_string(),
+                expected: "array or template of array".to_string(),
+                found: config_value.as_serde_yaml(),
+            });
+            None
         }
     }
 
@@ -698,7 +825,9 @@ impl PromptChoicesConfig {
 
                     let choices = choices
                         .iter()
-                        .filter_map(PromptChoiceConfig::from_config_value)
+                        .filter_map(|value| {
+                            PromptChoiceConfig::from_config_value(value, "", &mut vec![])
+                        })
                         .collect::<Vec<PromptChoiceConfig>>();
 
                     if choices.is_empty() {
@@ -732,7 +861,11 @@ pub struct PromptChoiceConfig {
 }
 
 impl PromptChoiceConfig {
-    pub fn from_config_value(config_value: &ConfigValue) -> Option<Self> {
+    pub fn from_config_value(
+        config_value: &ConfigValue,
+        error_key: &str,
+        errors: &mut Vec<ConfigErrorKind>,
+    ) -> Option<Self> {
         if let Some(table) = config_value.as_table() {
             let id = table.get("id").and_then(|id| id.as_str());
             let choice = table.get("choice").and_then(|choice| choice.as_str());
@@ -747,13 +880,27 @@ impl PromptChoiceConfig {
                     id: choice.clone(),
                     choice,
                 }),
-                _ => None,
+                _ => {
+                    errors.push(ConfigErrorKind::MissingKey {
+                        key: format!("{}.id or {}.choice", error_key, error_key),
+                    });
+
+                    None
+                }
             }
-        } else {
-            config_value.as_str_forced().map(|choice| Self {
+        } else if let Some(choice) = config_value.as_str_forced() {
+            Some(Self {
                 id: choice.to_string(),
                 choice: choice.to_string(),
             })
+        } else {
+            errors.push(ConfigErrorKind::ValueType {
+                key: error_key.to_string(),
+                expected: "table or string".to_string(),
+                found: config_value.as_serde_yaml(),
+            });
+
+            None
         }
     }
 }
