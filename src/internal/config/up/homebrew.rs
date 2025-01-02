@@ -15,6 +15,7 @@ use crate::internal::cache::utils as cache_utils;
 use crate::internal::cache::CacheManagerError;
 use crate::internal::cache::HomebrewOperationCache;
 use crate::internal::config;
+use crate::internal::config::global_config;
 use crate::internal::config::up::utils::get_command_output;
 use crate::internal::config::up::utils::run_progress;
 use crate::internal::config::up::utils::ProgressHandler;
@@ -54,6 +55,17 @@ impl UpConfigHomebrew {
         progress_handler: &UpProgressHandler,
     ) -> Result<(), UpError> {
         progress_handler.init("homebrew:".light_blue());
+
+        if !global_config()
+            .up_command
+            .operations
+            .is_operation_allowed("homebrew")
+        {
+            let errmsg = "homebrew operation is not allowed".to_string();
+            progress_handler.error_with_message(errmsg.clone());
+            return Err(UpError::Config(errmsg));
+        }
+
         progress_handler.progress("installing homebrew dependencies".to_string());
 
         let num_taps = self.tap.len();
