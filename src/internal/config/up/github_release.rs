@@ -168,6 +168,16 @@ impl UpConfigGithubReleases {
             return Err(UpError::Config("at least one release required".to_string()));
         }
 
+        if !global_config()
+            .up_command
+            .operations
+            .is_operation_allowed("github-release")
+        {
+            let errmsg = "github-release operation is not allowed".to_string();
+            progress_handler.error_with_message(errmsg.clone());
+            return Err(UpError::Config(errmsg));
+        }
+
         progress_handler.progress("install dependencies".to_string());
 
         let num = self.releases.len();
@@ -723,6 +733,16 @@ impl UpConfigGithubRelease {
         if self.repository.is_empty() {
             progress_handler.error_with_message("repository is required".to_string());
             return Err(UpError::Config("repository is required".to_string()));
+        }
+
+        if !global_config()
+            .up_command
+            .operations
+            .is_github_repository_allowed(&self.repository)
+        {
+            let errmsg = format!("repository {} not allowed", self.repository);
+            progress_handler.error_with_message(errmsg.clone());
+            return Err(UpError::Config(errmsg));
         }
 
         let installed = self.resolve_and_download_release(options, progress_handler)?;

@@ -660,3 +660,30 @@ EOF
   [ "$MULTI_REPEAT_ENV_VAR" = "val1:val2" ]
 }
 
+# bats test_tags=omni:up,omni:up:custom,supply-chain
+@test "[omni_up_custom=23] omni up custom operation fails when custom is disabled through the supply chain" {
+  cat >> ~/.config/omni/config.yaml <<EOF
+up_command:
+  operations:
+    allowed:
+      - '!custom'
+EOF
+
+  cat > .omni.yaml <<EOF
+up:
+  - custom:
+      name: "Custom Operation"
+      meet: "customcmd run"
+EOF
+
+  add_fakebin "${HOME}/bin/customcmd"
+
+  run omni up --trust 3>&-
+  echo "STATUS: $status"
+  echo "OUTPUT: $output"
+  [ "$status" -eq 1 ]
+
+  # Check that the right error was emitted
+  [[ "${output}" == *"custom operation is not allowed"* ]]
+}
+

@@ -783,9 +783,14 @@ impl MiseRegistry {
     }
 
     fn find_entry(&self, name: &str, backend: Option<&str>) -> Option<&MiseRegistryEntry> {
-        // TODO: handle allow/deny list of backends
+        let config = global_config().up_command.operations;
         self.entries.iter().find(|entry| {
             (backend.is_none() || backend.unwrap() == entry.backend)
+                && config.is_mise_backend_allowed(&entry.backend)
+                && match entry.repository {
+                    Some(ref repo) => config.is_mise_source_allowed(repo),
+                    None => true,
+                }
                 && (name == entry.short_name
                     || name == entry.clean_name
                     || name == entry.full_name
@@ -800,7 +805,6 @@ struct MiseRegistryEntry {
     full_name: String,
     clean_name: String,
     backend: String,
-    #[allow(dead_code)]
     repository: Option<String>,
 }
 
@@ -839,18 +843,47 @@ pub struct FullyQualifiedToolName {
 }
 
 impl FullyQualifiedToolName {
-    pub fn new(tool: &str, url: Option<String>, backend: Option<String>) -> Result<Self, UpError> {
+    pub fn new(
+        tool: &str,
+        url: Option<String>,
+        override_url: Option<String>,
+        backend: Option<String>,
+    ) -> Result<Self, UpError> {
+        // Get the default URL for the tool if none is provided
+        let (suffix, url) = if let Some(url) = override_url {
+            (true, Some(url))
+        } else if let Some(url) = global_config()
+            .up_command
+            .operations
+            .mise
+            .default_plugin_sources
+            .get(tool)
+        {
+            (true, Some(url.clone()))
+        } else {
+            (false, url)
+        };
+
         // If an URL is provided, we will generate a plugin name using the URL,
         // which means we won't need to go farther in the plugin resolution
         if let Some(url) = url {
-            // TODO: handle URL checks for https://github.com/XaF/omni/issues/600
-
             // Error out if a backend was specified
             if backend.is_some() {
                 return Err(UpError::Exec(format!(
                     "cannot specify a backend when using a custom URL for tool {}",
                     tool
                 )));
+            }
+
+            // Error out if 'custom' is not authorized as a backend
+            if !global_config()
+                .up_command
+                .operations
+                .is_mise_backend_allowed("custom")
+            {
+                return Err(UpError::Exec(
+                    "cannot use custom URLs for tool installations".to_string(),
+                ));
             }
 
             // Error out if the tool name contains any special character, since
@@ -862,14 +895,30 @@ impl FullyQualifiedToolName {
                 return Err(UpError::Exec(format!("invalid tool name: {}", tool)));
             }
 
-            // Hash the URL into sha256
-            let mut hasher = Sha256::new();
-            hasher.update(url.as_bytes());
-            let hash = format!("{:x}", hasher.finalize());
-            let short_hash = &hash[0..8];
+            // Error out if the URL is not an allowed source
+            if !global_config()
+                .up_command
+                .operations
+                .is_mise_source_allowed(&url)
+            {
+                return Err(UpError::Exec(format!(
+                    "cannot use URL {} as a source for tool installations",
+                    url
+                )));
+            }
 
-            // The plugin name will be the tool name with the hash appended
-            let plugin_name = format!("{}-{}", tool, short_hash);
+            // Hash the URL into sha256
+            let plugin_name = if suffix {
+                let mut hasher = Sha256::new();
+                hasher.update(url.as_bytes());
+                let hash = format!("{:x}", hasher.finalize());
+                let short_hash = &hash[0..8];
+
+                // The plugin name will be the tool name with the hash appended
+                format!("{}-{}", tool, short_hash)
+            } else {
+                tool.to_string()
+            };
 
             let bin_path = OnceCell::new();
             let _ = bin_path.set("bin".to_string());
@@ -920,11 +969,6 @@ impl FullyQualifiedToolName {
 
     pub fn plugin_name(&self) -> &str {
         &self.plugin_name
-    }
-
-    #[allow(dead_code)]
-    pub fn backend(&self) -> Option<String> {
-        self.backend.clone()
     }
 
     pub fn fully_qualified_plugin_name(&self) -> &str {
@@ -1197,11 +1241,12 @@ impl UpConfigMise {
             FullyQualifiedToolName::new(
                 &self.requested_tool,
                 self.tool_url.clone(),
+                self.override_tool_url.clone(),
                 self.backend.clone(),
             )
             .map_err(|err| {
                 UpError::Exec(format!(
-                    "failed to resolve tool '{}': {:?}",
+                    "failed to resolve tool '{}': {}",
                     self.requested_tool, err,
                 ))
             })
@@ -1309,6 +1354,17 @@ impl UpConfigMise {
     ) -> Result<(), UpError> {
         if self.up_succeeded.get().is_some() {
             return Err(UpError::Exec("up operation already attempted".to_string()));
+        }
+
+        if !global_config()
+            .up_command
+            .operations
+            .is_operation_allowed("mise")
+        {
+            return Err(UpError::Exec(format!(
+                "mise operations ({}) are not allowed",
+                self.requested_tool,
+            )));
         }
 
         let result = self.run_up(options, environment, progress_handler);

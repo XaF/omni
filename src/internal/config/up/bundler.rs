@@ -6,6 +6,7 @@ use tokio::process::Command as TokioCommand;
 
 use crate::internal::cache::up_environments::UpEnvironment;
 use crate::internal::commands::utils::abs_path;
+use crate::internal::config::global_config;
 use crate::internal::config::up::utils::run_progress;
 use crate::internal::config::up::utils::ProgressHandler;
 use crate::internal::config::up::utils::RunConfig;
@@ -50,6 +51,17 @@ impl UpConfigBundler {
         progress_handler: &UpProgressHandler,
     ) -> Result<(), UpError> {
         progress_handler.init("bundler".light_blue());
+
+        if !global_config()
+            .up_command
+            .operations
+            .is_operation_allowed("bundler")
+        {
+            let errmsg = "bundler operation is not allowed".to_string();
+            progress_handler.error_with_message(errmsg.clone());
+            return Err(UpError::Config(errmsg));
+        }
+
         progress_handler.progress("install Gemfile dependencies".to_string());
 
         if let Some(path) = &self.path {

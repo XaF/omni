@@ -11,6 +11,7 @@ use tokio::process::Command as TokioCommand;
 
 use crate::internal::cache::up_environments::UpEnvironment;
 use crate::internal::commands::utils::abs_path;
+use crate::internal::config::global_config;
 use crate::internal::config::parser::EnvOperationEnum;
 use crate::internal::config::up::utils::get_command_output;
 use crate::internal::config::up::utils::run_progress;
@@ -159,6 +160,16 @@ impl UpConfigNix {
 
         // Prepare the progress handler
         progress_handler.init(format!("nix ({}):", nix_handler.nix_source.name()).light_blue());
+
+        if !global_config()
+            .up_command
+            .operations
+            .is_operation_allowed("nix")
+        {
+            let errmsg = "nix operation is not allowed".to_string();
+            progress_handler.error_with_message(errmsg.clone());
+            return Err(UpError::Config(errmsg));
+        }
 
         // If the profile already exists, we don't need to do anything
         if options.read_cache && nix_handler.exists()? {
