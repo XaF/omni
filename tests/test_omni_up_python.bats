@@ -204,7 +204,7 @@ up:
 EOF
 
   add_brew_python_calls
-  add_mise_python_calls plugin_name=python-7d945a08 plugin_list=installed mise_registry=false mise_env=false
+  add_mise_python_calls plugin_name=python-7d945a08 plugin_list=installed mise_registry=false mise_env=false plugin_update=true
 
   run omni up --trust 3>&-
   echo "STATUS: $status"
@@ -248,7 +248,7 @@ up:
 EOF
 
   add_brew_python_calls
-  add_mise_python_calls plugin_name=python-7d945a08 plugin_list=installed cache_versions=expired list_versions=fail-update mise_registry=false mise_env=false
+  add_mise_python_calls plugin_name=python-7d945a08 plugin_list=installed cache_versions=expired list_versions=fail-update mise_registry=false mise_env=false plugin_update=true
 
   run omni up --trust 3>&-
   echo "STATUS: $status"
@@ -767,5 +767,222 @@ EOF
   run omni up --trust 3>&-
   echo "STATUS: $status"
   echo "OUTPUT: $output"
+  [ "$status" -eq 1 ]
+
+  # Check that the right error was emitted
+  [[ "${output}" == *"mise operations (python) are not allowed"* ]]
+}
+
+# bats test_tags=omni:up,omni:up:python,supply-chain
+@test "[omni_up_python=35] omni up python operation fails when a specific url is disabled through the supply chain (global)" {
+  cat >> ~/.config/omni/config.yaml <<EOF
+up_command:
+  operations:
+    sources:
+      - '!https://example.com/fake/plugin'
+EOF
+
+  cat > .omni.yaml <<EOF
+up:
+  - python:
+      url: https://example.com/fake/plugin
+EOF
+
+  run omni up --trust 3>&-
+  echo "STATUS: $status"
+  echo "OUTPUT: $output"
+  [ "$status" -eq 1 ]
+
+  # Check that the right error was emitted
+  [[ "${output}" == *"cannot use URL https://example.com/fake/plugin as a source for tool installations"* ]]
+}
+
+# bats test_tags=omni:up,omni:up:python,supply-chain
+@test "[omni_up_python=36] omni up python operation fails when a specific url is disabled through the supply chain (global, wildcard)" {
+  cat >> ~/.config/omni/config.yaml <<EOF
+up_command:
+  operations:
+    sources:
+      - '!https://example.com/fake/*'
+EOF
+
+  cat > .omni.yaml <<EOF
+up:
+  - python:
+      url: https://example.com/fake/plugin
+EOF
+
+  run omni up --trust 3>&-
+  echo "STATUS: $status"
+  echo "OUTPUT: $output"
+  [ "$status" -eq 1 ]
+
+  # Check that the right error was emitted
+  [[ "${output}" == *"cannot use URL https://example.com/fake/plugin as a source for tool installations"* ]]
+}
+
+# bats test_tags=omni:up,omni:up:python,supply-chain
+@test "[omni_up_python=37] omni up python operation fails when a specific url is disabled through the supply chain (mise)" {
+  cat >> ~/.config/omni/config.yaml <<EOF
+up_command:
+  operations:
+    mise:
+      sources:
+        - '!https://example.com/fake/plugin'
+EOF
+
+  cat > .omni.yaml <<EOF
+up:
+  - python:
+      url: https://example.com/fake/plugin
+EOF
+
+  run omni up --trust 3>&-
+  echo "STATUS: $status"
+  echo "OUTPUT: $output"
+  [ "$status" -eq 1 ]
+
+  # Check that the right error was emitted
+  [[ "${output}" == *"cannot use URL https://example.com/fake/plugin as a source for tool installations"* ]]
+}
+
+# bats test_tags=omni:up,omni:up:python,supply-chain
+@test "[omni_up_python=38] omni up python operation fails when a specific backend is disabled through the supply chain (no alternative)" {
+  cat >> ~/.config/omni/config.yaml <<EOF
+up_command:
+  operations:
+    mise:
+      backends:
+        - '!core'
+EOF
+
+  cat > .omni.yaml <<EOF
+up:
+  - python
+EOF
+
+  # No alternate to the core plugin
+  add_command mise registry <<EOF
+python  core:python
+EOF
+
+  run omni up --trust 3>&-
+  echo "STATUS: $status"
+  echo "OUTPUT: $output"
+  [ "$status" -eq 1 ]
+
+  # Check that the right error was emitted
+  [[ "${output}" == *"unable to resolve tool: python"* ]]
+}
+
+# bats test_tags=omni:up,omni:up:python,supply-chain
+@test "[omni_up_python=39] omni up python operation succeeds when a specific backend is disabled through the supply chain (alternative)" {
+  cat >> ~/.config/omni/config.yaml <<EOF
+up_command:
+  operations:
+    mise:
+      backends:
+        - '!core'
+EOF
+
+  cat > .omni.yaml <<EOF
+up:
+  - python
+EOF
+
+  add_brew_python_calls
+  add_mise_python_calls mise_registry_alt="asdf:alt/python" plugin_name="asdf:alt/python"
+
+  run omni up --trust 3>&-
+  echo "STATUS: $status"
+  echo "OUTPUT: $output"
   [ "$status" -eq 0 ]
+
+  # Check that the right python version was installed
+  [[ "${output}" == *"python 3.12.3 installed"* ]]
+}
+
+# bats test_tags=omni:up,omni:up:python,supply-chain
+@test "[omni_up_python=40] omni up python operation fails when a specific backend is allow-listed through the supply chain (backend not available)" {
+  cat >> ~/.config/omni/config.yaml <<EOF
+up_command:
+  operations:
+    mise:
+      backends:
+        - asdf
+EOF
+
+  cat > .omni.yaml <<EOF
+up:
+  - python
+EOF
+
+  add_command mise registry <<EOF
+python  core:python
+EOF
+
+  run omni up --trust 3>&-
+  echo "STATUS: $status"
+  echo "OUTPUT: $output"
+  [ "$status" -eq 1 ]
+
+  # Check that the right error was emitted
+  [[ "${output}" == *"unable to resolve tool: python"* ]]
+}
+
+# bats test_tags=omni:up,omni:up:python,supply-chain
+@test "[omni_up_python=41] omni up python operation succeeds when a specific backend is allow-listed through the supply chain (backend available)" {
+  cat >> ~/.config/omni/config.yaml <<EOF
+up_command:
+  operations:
+    mise:
+      backends:
+        - asdf
+EOF
+
+  cat > .omni.yaml <<EOF
+up:
+  - python
+EOF
+
+  add_brew_python_calls
+  add_mise_python_calls mise_registry_alt="asdf:alt/python" plugin_name="asdf:alt/python"
+
+  run omni up --trust 3>&-
+  echo "STATUS: $status"
+  echo "OUTPUT: $output"
+  [ "$status" -eq 0 ]
+
+  # Check that the right python version was installed
+  [[ "${output}" == *"python 3.12.3 installed"* ]]
+}
+
+# bats test_tags=omni:up,omni:up:python,supply-chain
+@test "[omni_up_python=42] omni up python operation fails when a specific backend is allow-listed through the supply chain but the URL is deny-listed" {
+  cat >> ~/.config/omni/config.yaml <<EOF
+up_command:
+  operations:
+    sources:
+      - '!https://github.com/alt/python'
+    mise:
+      backends:
+        - asdf
+EOF
+
+  cat > .omni.yaml <<EOF
+up:
+  - python
+EOF
+
+  add_command mise registry <<EOF
+python  core:python asdf:alt/python
+EOF
+
+  run omni up --trust 3>&-
+  echo "STATUS: $status"
+  echo "OUTPUT: $output"
+  [ "$status" -eq 1 ]
+
+  # Check that the right error was emitted
+  [[ "${output}" == *"unable to resolve tool: python"* ]]
 }

@@ -431,7 +431,6 @@ impl UrlPattern {
     }
 
     fn matches(&self, other_url: &UrlPattern) -> bool {
-        eprintln!("\tpattern: {:?}", self);
         for param in &[
             (self.scheme.as_deref(), other_url.scheme.as_deref()),
             (self.host.as_deref(), other_url.host.as_deref()),
@@ -444,11 +443,9 @@ impl UrlPattern {
         ] {
             let (pattern, component) = param;
             if !Self::_matches_pattern(*component, *pattern) {
-                eprintln!("\t\tfailed on {:?}", param);
                 return false;
             }
         }
-        eprintln!("\t\tmatched");
         true
     }
 

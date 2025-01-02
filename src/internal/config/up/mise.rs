@@ -1246,7 +1246,7 @@ impl UpConfigMise {
             )
             .map_err(|err| {
                 UpError::Exec(format!(
-                    "failed to resolve tool '{}': {:?}",
+                    "failed to resolve tool '{}': {}",
                     self.requested_tool, err,
                 ))
             })
@@ -1361,7 +1361,10 @@ impl UpConfigMise {
             .operations
             .is_operation_allowed("mise")
         {
-            return Err(UpError::Exec("mise operations are not allowed".to_string()));
+            return Err(UpError::Exec(format!(
+                "mise operations ({}) are not allowed",
+                self.requested_tool,
+            )));
         }
 
         let result = self.run_up(options, environment, progress_handler);

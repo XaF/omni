@@ -37,6 +37,7 @@ add_mise_tool_calls() {
   local fallback_version=
   local plugin_list=false
   local plugin_name=
+  local plugin_update=false
   local installed=false
   local others_installed=false
   local venv=false
@@ -46,6 +47,7 @@ add_mise_tool_calls() {
   local subdir=false
   local mise_update=true
   local mise_registry=true
+  local mise_registry_alt=
   local mise_env=true
   local mise_where=false
   local auto=false
@@ -74,6 +76,10 @@ add_mise_tool_calls() {
         ;;
       plugin_list=*)
         plugin_list="${arg#plugin_list=}"
+        shift
+        ;;
+      plugin_update=*)
+        plugin_update="${arg#plugin_update=}"
         shift
         ;;
       installed=*)
@@ -112,6 +118,10 @@ add_mise_tool_calls() {
         mise_registry="${arg#mise_registry=}"
         shift
         ;;
+      mise_registry_alt=*)
+        mise_registry_alt="${arg#mise_registry_alt=}"
+        shift
+        ;;
       mise_env=*)
         mise_env="${arg#mise_env=}"
         shift
@@ -139,6 +149,8 @@ add_mise_tool_calls() {
   if [ -z "${plugin_name}" ]; then
     plugin_name="${tool}"
   fi
+
+  normalized_plugin_name=$(echo "${plugin_name}" | sed 's/[^a-zA-Z0-9_-]/_/g' | tr '[:upper:]' '[:lower:]')
 
   if [ "$version" = "latest" ] || [ "$version" = "*" ]; then
     if [[ -z "${latest_version}" ]]; then
@@ -212,7 +224,7 @@ add_mise_tool_calls() {
     # and their fully qualified plugin name for each of the mise
     # backends they are available in
     add_command mise registry <<EOF
-${tool}  core:${tool}
+${tool}  core:${tool}${mise_registry_alt:+ $mise_registry_alt}
 EOF
   fi
 
@@ -243,7 +255,7 @@ EOF
   fi
 
   # If the plugin is a url-specified plugin, we expect an update
-  if [ "${plugin_name}" != "${tool}" ]; then
+  if [ "${plugin_update}" = "true" ]; then
     if [ "$list_versions" = "fail-update" ]; then
       add_command mise plugins update ${plugin_name} exit=1
     else
@@ -283,7 +295,7 @@ EOF
     fi
   fi
 
-  local bin_path="${HOME}/.local/share/omni/mise/installs/${plugin_name}/${version}/bin"
+  local bin_path="${HOME}/.local/share/omni/mise/installs/${normalized_plugin_name}/${version}/bin"
   if [ "$mise_env" = "true" ]; then
     mkdir -p "${bin_path}"
     # Identify the location of the binaries for the tool
@@ -298,7 +310,7 @@ EOF
     # Identify the normalized path for the tool, this call does not
     # use the version as we just try to resolve the tool path
     add_command mise where ${plugin_name} latest <<EOF
-${HOME}/.local/share/omni/mise/installs/${plugin_name}/7.8.9
+${HOME}/.local/share/omni/mise/installs/${normalized_plugin_name}/7.8.9
 EOF
   fi
 
@@ -308,7 +320,7 @@ EOF
     if [ "$subdir" = "true" ]; then
       sub="[^ /]+"
     fi
-    add_command ${tool} -m venv "regex:${HOME}/\.local/share/omni/wd/[^ /]+/${plugin_name}/${version}/${sub}"
+    add_command ${tool} -m venv "regex:${HOME}/\.local/share/omni/wd/[^ /]+/${normalized_plugin_name}/${version}/${sub}"
   fi
 }
 
