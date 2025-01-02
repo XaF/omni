@@ -1,0 +1,12 @@
+---
+position: 1
+label: Configuration
+link:
+  slug: /reference/configuration
+  type: generated-index
+  description: |
+    To start making the most of using omni, it is better to understand all
+    the configuration options that are available to you.
+    This section aims at offering you a sense of all the configuration
+    options you can find in any of the supported configuration files,
+    and thus how to configure omni's behavior to your liking.
