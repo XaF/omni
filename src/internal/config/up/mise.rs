@@ -843,7 +843,27 @@ pub struct FullyQualifiedToolName {
 }
 
 impl FullyQualifiedToolName {
-    pub fn new(tool: &str, url: Option<String>, backend: Option<String>) -> Result<Self, UpError> {
+    pub fn new(
+        tool: &str,
+        url: Option<String>,
+        override_url: Option<String>,
+        backend: Option<String>,
+    ) -> Result<Self, UpError> {
+        // Get the default URL for the tool if none is provided
+        let (suffix, url) = if let Some(url) = override_url {
+            (true, Some(url))
+        } else if let Some(url) = global_config()
+            .up_command
+            .operations
+            .mise
+            .default_plugin_sources
+            .get(tool)
+        {
+            (true, Some(url.clone()))
+        } else {
+            (false, url)
+        };
+
         // If an URL is provided, we will generate a plugin name using the URL,
         // which means we won't need to go farther in the plugin resolution
         if let Some(url) = url {
@@ -888,13 +908,17 @@ impl FullyQualifiedToolName {
             }
 
             // Hash the URL into sha256
-            let mut hasher = Sha256::new();
-            hasher.update(url.as_bytes());
-            let hash = format!("{:x}", hasher.finalize());
-            let short_hash = &hash[0..8];
+            let plugin_name = if suffix {
+                let mut hasher = Sha256::new();
+                hasher.update(url.as_bytes());
+                let hash = format!("{:x}", hasher.finalize());
+                let short_hash = &hash[0..8];
 
-            // The plugin name will be the tool name with the hash appended
-            let plugin_name = format!("{}-{}", tool, short_hash);
+                // The plugin name will be the tool name with the hash appended
+                format!("{}-{}", tool, short_hash)
+            } else {
+                tool.to_string()
+            };
 
             let bin_path = OnceCell::new();
             let _ = bin_path.set("bin".to_string());
@@ -1194,20 +1218,6 @@ impl UpConfigMise {
             }
         }
 
-        let override_tool_url = match &override_tool_url {
-            Some(url) => Some(url.to_string()),
-            None => match global_config()
-                .up_command
-                .operations
-                .mise
-                .default_plugin_sources
-                .get(&tool)
-            {
-                Some(url) => Some(url.to_string()),
-                None => None,
-            },
-        };
-
         let tool_url = match &override_tool_url {
             Some(url) => Some(url.to_string()),
             None => params.tool_url.clone(),
@@ -1231,6 +1241,7 @@ impl UpConfigMise {
             FullyQualifiedToolName::new(
                 &self.requested_tool,
                 self.tool_url.clone(),
+                self.override_tool_url.clone(),
                 self.backend.clone(),
             )
             .map_err(|err| {

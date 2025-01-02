@@ -749,3 +749,23 @@ EOF
   [[ "${output}" == *"installing python 3.12.0"* ]]
   [[ "${output}" == *"python 3.11.7, 3.11.9, 3.12.0 installed"* ]]
 }
+
+# bats test_tags=omni:up,omni:up:python,supply-chain
+@test "[omni_up_python=34] omni up python operation fails when mise is disabled through the supply chain" {
+  cat >> ~/.config/omni/config.yaml <<EOF
+up_command:
+  operations:
+    allowed:
+      - '!mise'
+EOF
+
+  cat > .omni.yaml <<EOF
+up:
+  - python
+EOF
+
+  run omni up --trust 3>&-
+  echo "STATUS: $status"
+  echo "OUTPUT: $output"
+  [ "$status" -eq 0 ]
+}
