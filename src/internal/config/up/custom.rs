@@ -7,6 +7,7 @@ use tokio::process::Command as TokioCommand;
 
 use crate::internal::cache::up_environments::UpEnvVar;
 use crate::internal::cache::up_environments::UpEnvironment;
+use crate::internal::config::global_config;
 use crate::internal::config::parser::EnvOperationEnum;
 use crate::internal::config::up::utils::data_path_dir_hash;
 use crate::internal::config::up::utils::run_progress;
@@ -97,6 +98,16 @@ impl UpConfigCustom {
         };
 
         progress_handler.init(format!("{}:", name).light_blue());
+
+        if !global_config()
+            .up_command
+            .operations
+            .is_operation_allowed("custom")
+        {
+            let errmsg = "custom operation is not allowed".to_string();
+            progress_handler.error_with_message(errmsg.clone());
+            return Err(UpError::Config(errmsg));
+        }
 
         if self.met().unwrap_or(false) {
             progress_handler.success_with_message("skipping (already met)".light_black());

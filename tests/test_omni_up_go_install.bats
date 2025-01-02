@@ -10,10 +10,10 @@ setup() {
   setup_omni_config 3>&-
 
   # Add one repository
-  setup_git_dir "git/github.com/test1org/test1repo" "git@github.com:test1org/test1repo.git"
+  setup_git_dir "git/example.com/test1org/test1repo" "git@example.com:test1org/test1repo.git"
 
   # Change directory to the repository
-  cd "git/github.com/test1org/test1repo"
+  cd "git/example.com/test1org/test1repo"
 }
 
 teardown() {
@@ -46,7 +46,7 @@ EOF
   cat > .omni.yaml <<EOF
 up:
   - go-install:
-    - github.com/test/tool
+    - example.com/test/tool
 EOF
 
   go_version=$(mise_tool_latest_version go)
@@ -54,9 +54,9 @@ EOF
   add_brew_golang_calls
   add_mise_golang_calls version="$go_version"
 
-  add_command go list -m -versions -json github.com/test/tool \
+  add_command go list -m -versions -json example.com/test/tool \
     <<< '{"Version":"v0.0.0","Versions":["v1.0.0","v1.1.0","v2.0.0"]}'
-  add_command go install -v github.com/test/tool@v2.0.0 <<< "$(go_install_success)"
+  add_command go install -v example.com/test/tool@v2.0.0 <<< "$(go_install_success)"
 
   run omni up --trust 3>&-
   echo "STATUS: $status"
@@ -69,7 +69,7 @@ EOF
   cat > .omni.yaml <<EOF
 up:
   - go-install:
-    - github.com/my/super/test/tool
+    - example.com/my/super/test/tool
 EOF
 
   go_version=$(mise_tool_latest_version go)
@@ -77,12 +77,12 @@ EOF
   add_brew_golang_calls
   add_mise_golang_calls version="$go_version"
 
-  add_command go list -m -versions -json github.com/my/super/test/tool exit=1
-  add_command go list -m -versions -json github.com/my/super/test exit=1
-  add_command go list -m -versions -json github.com/my/super <<< '{"Version":"v0.0.0"}'
-  add_command go list -m -versions -json github.com/my \
+  add_command go list -m -versions -json example.com/my/super/test/tool exit=1
+  add_command go list -m -versions -json example.com/my/super/test exit=1
+  add_command go list -m -versions -json example.com/my/super <<< '{"Version":"v0.0.0"}'
+  add_command go list -m -versions -json example.com/my \
     <<< '{"Version":"v0.0.0","Versions":["v1.0.0","v1.1.0","v2.0.0"]}'
-  add_command go install -v github.com/my/super/test/tool@v2.0.0 <<< "$(go_install_success)"
+  add_command go install -v example.com/my/super/test/tool@v2.0.0 <<< "$(go_install_success)"
 
   run omni up --trust 3>&-
   echo "STATUS: $status"
@@ -95,7 +95,7 @@ EOF
   cat > .omni.yaml <<EOF
 up:
   - go-install:
-    - path: github.com/test/tool
+    - path: example.com/test/tool
       version: v1.1.0
 EOF
 
@@ -104,9 +104,9 @@ EOF
   add_brew_golang_calls
   add_mise_golang_calls version="$go_version"
 
-  add_command go list -m -versions -json github.com/test/tool \
+  add_command go list -m -versions -json example.com/test/tool \
     <<< '{"Version":"v0.0.0","Versions":["v1.0.0","v1.1.0","v2.0.0"]}'
-  add_command go install -v github.com/test/tool@v1.1.0 <<< "$(go_install_success)"
+  add_command go install -v example.com/test/tool@v1.1.0 <<< "$(go_install_success)"
 
   run omni up --trust 3>&-
   echo "STATUS: $status"
@@ -119,7 +119,7 @@ EOF
   cat > .omni.yaml <<EOF
 up:
   - go-install:
-    - path: github.com/test/tool
+    - path: example.com/test/tool
       prerelease: true
 EOF
 
@@ -128,9 +128,9 @@ EOF
   add_brew_golang_calls
   add_mise_golang_calls version="$go_version"
 
-  add_command go list -m -versions -json github.com/test/tool \
+  add_command go list -m -versions -json example.com/test/tool \
     <<< '{"Version":"v0.0.0","Versions":["v1.0.0","v1.1.0","v2.0.0-beta"]}'
-  add_command go install -v github.com/test/tool@v2.0.0-beta <<< "$(go_install_success)"
+  add_command go install -v example.com/test/tool@v2.0.0-beta <<< "$(go_install_success)"
 
   run omni up --trust 3>&-
   echo "STATUS: $status"
@@ -143,7 +143,7 @@ EOF
   cat > .omni.yaml <<EOF
 up:
   - go-install:
-    - path: github.com/test/tool
+    - path: example.com/test/tool
       build: true
 EOF
 
@@ -152,9 +152,9 @@ EOF
   add_brew_golang_calls
   add_mise_golang_calls version="$go_version"
 
-  add_command go list -m -versions -json github.com/test/tool \
+  add_command go list -m -versions -json example.com/test/tool \
     <<< '{"Version":"v0.0.0","Versions":["v1.0.0","v1.1.0","v2.0.0+build"]}'
-  add_command go install -v github.com/test/tool@v2.0.0+build <<< "$(go_install_success)"
+  add_command go install -v example.com/test/tool@v2.0.0+build <<< "$(go_install_success)"
 
   run omni up --trust 3>&-
   echo "STATUS: $status"
@@ -167,7 +167,7 @@ EOF
   cat > .omni.yaml <<EOF
 up:
   - go-install:
-    - path: github.com/test/tool
+    - path: example.com/test/tool
       version: v1.0.0
       exact: true
 EOF
@@ -177,7 +177,7 @@ EOF
   add_brew_golang_calls
   add_mise_golang_calls version="$go_version"
 
-  add_command go install -v github.com/test/tool@v1.0.0 <<< "$(go_install_success)"
+  add_command go install -v example.com/test/tool@v1.0.0 <<< "$(go_install_success)"
 
   run omni up --trust 3>&-
   echo "STATUS: $status"
@@ -190,7 +190,7 @@ EOF
   cat > .omni.yaml <<EOF
 up:
   - go-install:
-    - path: github.com/test/tool
+    - path: example.com/test/tool
       version: v0.0.0-20210101000000-abcdef123456
       exact: true
 EOF
@@ -200,7 +200,7 @@ EOF
   add_brew_golang_calls
   add_mise_golang_calls version="$go_version"
 
-  add_command go install -v github.com/test/tool@v0.0.0-20210101000000-abcdef123456 <<< "$(go_install_success)"
+  add_command go install -v example.com/test/tool@v0.0.0-20210101000000-abcdef123456 <<< "$(go_install_success)"
 
   run omni up --trust 3>&-
   echo "STATUS: $status"
@@ -213,8 +213,8 @@ EOF
   cat > .omni.yaml <<EOF
 up:
   - go-install:
-    - github.com/test/tool1
-    - github.com/test/tool2
+    - example.com/test/tool1
+    - example.com/test/tool2
 EOF
 
   go_version=$(mise_tool_latest_version go)
@@ -222,13 +222,13 @@ EOF
   add_brew_golang_calls
   add_mise_golang_calls version="$go_version"
 
-  add_command go list -m -versions -json github.com/test/tool1 \
+  add_command go list -m -versions -json example.com/test/tool1 \
     <<< '{"Version":"v0.0.0","Versions":["v1.0.0","v1.1.0","v2.0.0"]}'
-  add_command go install -v github.com/test/tool1@v2.0.0 <<< "$(go_install_success)"
+  add_command go install -v example.com/test/tool1@v2.0.0 <<< "$(go_install_success)"
 
-  add_command go list -m -versions -json github.com/test/tool2 \
+  add_command go list -m -versions -json example.com/test/tool2 \
     <<< '{"Version":"v0.0.0","Versions":["v3.0.0","v4.4.0","v5.0.0"]}'
-  add_command go install -v github.com/test/tool2@v5.0.0 <<< "$(go_install_success)"
+  add_command go install -v example.com/test/tool2@v5.0.0 <<< "$(go_install_success)"
 
   run omni up --trust 3>&-
   echo "STATUS: $status"
@@ -241,11 +241,11 @@ EOF
   cat > .omni.yaml <<EOF
 up:
   - go-install:
-    - github.com/test/tool1@v2.0.0
-    - github.com/test/tool2: v5.0.0
-    - github.com/test/tool3:
+    - example.com/test/tool1@v2.0.0
+    - example.com/test/tool2: v5.0.0
+    - example.com/test/tool3:
         version: 4
-    - github.com/test/tool4:
+    - example.com/test/tool4:
 EOF
 
   go_version=$(mise_tool_latest_version go)
@@ -253,19 +253,19 @@ EOF
   add_brew_golang_calls
   add_mise_golang_calls version="$go_version"
 
-  add_command go install -v github.com/test/tool1@v2.0.0 <<< "$(go_install_success)"
+  add_command go install -v example.com/test/tool1@v2.0.0 <<< "$(go_install_success)"
 
-  add_command go list -m -versions -json github.com/test/tool2 \
+  add_command go list -m -versions -json example.com/test/tool2 \
     <<< '{"Version":"v0.0.0","Versions":["v3.0.0","v4.4.0","v5.0.0"]}'
-  add_command go install -v github.com/test/tool2@v5.0.0 <<< "$(go_install_success)"
+  add_command go install -v example.com/test/tool2@v5.0.0 <<< "$(go_install_success)"
 
-  add_command go list -m -versions -json github.com/test/tool3 \
+  add_command go list -m -versions -json example.com/test/tool3 \
     <<< '{"Version":"v0.0.0","Versions":["v1.0.0","v4.0.0","v7.0.0"]}'
-  add_command go install -v github.com/test/tool3@v4.0.0 <<< "$(go_install_success)"
+  add_command go install -v example.com/test/tool3@v4.0.0 <<< "$(go_install_success)"
 
-  add_command go list -m -versions -json github.com/test/tool4 \
+  add_command go list -m -versions -json example.com/test/tool4 \
     <<< '{"Version":"v0.0.0","Versions":["v1.0.0","v7.0.0","v42.0.0"]}'
-  add_command go install -v github.com/test/tool4@v42.0.0 <<< "$(go_install_success)"
+  add_command go install -v example.com/test/tool4@v42.0.0 <<< "$(go_install_success)"
 
   run omni up --trust 3>&-
   echo "STATUS: $status"
@@ -304,3 +304,140 @@ EOF
   echo "OUTPUT: $output"
   [ "$status" -eq 1 ]
 }
+
+# bats test_tags=omni:up,omni:up:go-install,supply-chain
+@test "[omni_up_go_install=12] omni up go-install operation fails when go-install is disabled through the supply chain" {
+  cat >> ~/.config/omni/config.yaml <<EOF
+up_command:
+  operations:
+    allowed:
+      - '!go-install'
+EOF
+
+  cat > .omni.yaml <<EOF
+up:
+  - go-install:
+    - example.com/test/tool
+EOF
+
+  run omni up --trust 3>&-
+  echo "STATUS: $status"
+  echo "OUTPUT: $output"
+  [ "$status" -eq 1 ]
+
+  # Check that the right error was emitted
+  [[ "${output}" == *"go-install operation is not allowed"* ]]
+}
+
+# bats test_tags=omni:up,omni:up:go-install,supply-chain
+@test "[omni_up_go_install=13] omni up go-install operation fails when go-install is not allow-listed but others are through the supply chain" {
+  cat >> ~/.config/omni/config.yaml <<EOF
+up_command:
+  operations:
+    allowed:
+      - 'blah'
+EOF
+
+  cat > .omni.yaml <<EOF
+up:
+  - go-install:
+    - example.com/test/tool
+EOF
+
+  run omni up --trust 3>&-
+  echo "STATUS: $status"
+  echo "OUTPUT: $output"
+  [ "$status" -eq 1 ]
+
+  # Check that the right error was emitted
+  [[ "${output}" == *"go-install operation is not allowed"* ]]
+}
+
+# bats test_tags=omni:up,omni:up:go-install,supply-chain
+@test "[omni_up_go_install=14] omni up go-install operation fails when a specific url is disabled through the supply chain (global)" {
+  cat >> ~/.config/omni/config.yaml <<EOF
+up_command:
+  operations:
+    sources:
+      - '!https://example.com/test/tool'
+EOF
+
+  cat > .omni.yaml <<EOF
+up:
+  - go-install:
+    - example.com/test/tool
+EOF
+
+  go_version=$(mise_tool_latest_version go)
+  add_fakebin "$(mise_tool_path go "$go_version")/bin/go"
+  add_brew_golang_calls
+  add_mise_golang_calls version="$go_version"
+
+  run omni up --trust 3>&-
+  echo "STATUS: $status"
+  echo "OUTPUT: $output"
+  [ "$status" -eq 1 ]
+
+  # Check that the right error was emitted
+  [[ "${output}" == *"go-install source not allowed: example.com/test/tool"* ]]
+}
+
+# bats test_tags=omni:up,omni:up:go-install,supply-chain
+@test "[omni_up_go_install=15] omni up go-install operation fails when a specific url is disabled through the supply chain (global, wildcard)" {
+  cat >> ~/.config/omni/config.yaml <<EOF
+up_command:
+  operations:
+    sources:
+      - '!https://example.com/test/*'
+EOF
+
+  cat > .omni.yaml <<EOF
+up:
+  - go-install:
+    - example.com/test/tool
+EOF
+
+  go_version=$(mise_tool_latest_version go)
+  add_fakebin "$(mise_tool_path go "$go_version")/bin/go"
+  add_brew_golang_calls
+  add_mise_golang_calls version="$go_version"
+
+  run omni up --trust 3>&-
+  echo "STATUS: $status"
+  echo "OUTPUT: $output"
+  [ "$status" -eq 1 ]
+
+  # Check that the right error was emitted
+  [[ "${output}" == *"go-install source not allowed: example.com/test/tool"* ]]
+}
+
+# bats test_tags=omni:up,omni:up:go-install,supply-chain
+@test "[omni_up_go_install=16] omni up go-install operation fails when a specific url is disabled through the supply chain (mise)" {
+  cat >> ~/.config/omni/config.yaml <<EOF
+up_command:
+  operations:
+    go-install:
+      sources:
+        - '!https://example.com/test/tool'
+EOF
+
+  cat > .omni.yaml <<EOF
+up:
+  - go-install:
+    - example.com/test/tool
+EOF
+
+  go_version=$(mise_tool_latest_version go)
+  add_fakebin "$(mise_tool_path go "$go_version")/bin/go"
+  add_brew_golang_calls
+  add_mise_golang_calls version="$go_version"
+
+  run omni up --trust 3>&-
+  echo "STATUS: $status"
+  echo "OUTPUT: $output"
+  [ "$status" -eq 1 ]
+
+  # Check that the right error was emitted
+  [[ "${output}" == *"go-install source not allowed: example.com/test/tool"* ]]
+}
+

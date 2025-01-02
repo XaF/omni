@@ -135,8 +135,9 @@ impl UpCommandOperationConfig {
     }
 
     pub fn is_go_install_source_allowed(&self, source: &str) -> bool {
-        check_url_allowed(source, &self.sources)
-            && check_url_allowed(source, &self.go_install.sources)
+        let source = format!("https://{}", source.trim_start_matches("https://"));
+        check_url_allowed(&source, &self.sources)
+            && check_url_allowed(&source, &self.go_install.sources)
     }
 
     pub fn is_cargo_install_crate_allowed(&self, crate_name: &str) -> bool {

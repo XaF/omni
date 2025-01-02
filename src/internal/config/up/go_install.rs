@@ -162,7 +162,7 @@ impl UpConfigGoInstalls {
             .operations
             .is_operation_allowed("go-install")
         {
-            let errmsg = "go-install operation not allowed".to_string();
+            let errmsg = "go-install operation is not allowed".to_string();
             progress_handler.error_with_message(errmsg.clone());
             return Err(UpError::Config(errmsg));
         }
@@ -726,6 +726,8 @@ impl UpConfigGoInstall {
             progress_handler.error_with_message(errmsg.clone());
             return Err(UpError::Config(errmsg));
         }
+
+        eprintln!("HELLOOOOOOOOOOOOOOOOOOOOOOOOOOO");
 
         let installed = self.resolve_and_install_version(go_bin, options, progress_handler)?;
 

@@ -156,7 +156,7 @@ impl UpConfigCargoInstalls {
             .operations
             .is_operation_allowed("cargo-install")
         {
-            let errmsg = "cargo-install operation not allowed".to_string();
+            let errmsg = "cargo-install operation is not allowed".to_string();
             progress_handler.error_with_message(errmsg.clone());
             return Err(UpError::Config(errmsg));
         }

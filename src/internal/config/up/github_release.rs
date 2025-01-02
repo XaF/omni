@@ -173,7 +173,7 @@ impl UpConfigGithubReleases {
             .operations
             .is_operation_allowed("github-release")
         {
-            let errmsg = "github-release operation not allowed".to_string();
+            let errmsg = "github-release operation is not allowed".to_string();
             progress_handler.error_with_message(errmsg.clone());
             return Err(UpError::Config(errmsg));
         }
