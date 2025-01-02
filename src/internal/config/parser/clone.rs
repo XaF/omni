@@ -17,6 +17,7 @@ impl CloneConfig {
 
     pub(super) fn from_config_value(
         config_value: Option<ConfigValue>,
+        error_key: &str,
         errors: &mut Vec<ConfigErrorKind>,
     ) -> Self {
         let config_value = match config_value {
@@ -34,7 +35,7 @@ impl CloneConfig {
             config_value
                 .get_as_unsigned_integer("ls_remote_timeout_seconds")
                 .unwrap_or(Self::DEFAULT_LS_REMOTE_TIMEOUT),
-            "clone.ls_remote_timeout",
+            &format!("{}.ls_remote_timeout", error_key),
             errors,
         );
 
@@ -42,7 +43,7 @@ impl CloneConfig {
             auto_up: config_value.get_as_bool_or_default(
                 "auto_up",
                 Self::DEFAULT_AUTO_UP,
-                "clone.auto_up",
+                &format!("{}.auto_up", error_key),
                 errors,
             ),
             ls_remote_timeout,

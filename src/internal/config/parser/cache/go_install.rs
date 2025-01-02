@@ -29,6 +29,7 @@ impl GoInstallCacheConfig {
 
     pub fn from_config_value(
         config_value: Option<ConfigValue>,
+        error_key: &str,
         errors: &mut Vec<ConfigErrorKind>,
     ) -> Self {
         let config_value = match config_value {
@@ -39,21 +40,21 @@ impl GoInstallCacheConfig {
         let versions_expire = parse_duration_or_default(
             config_value.get("versions_expire").as_ref(),
             Self::DEFAULT_VERSIONS_EXPIRE,
-            "cache.go_install.versions_expire",
+            &format!("{}.versions_expire", error_key),
             errors,
         );
 
         let versions_retention = parse_duration_or_default(
             config_value.get("versions_retention").as_ref(),
             Self::DEFAULT_VERSIONS_RETENTION,
-            "cache.go_install.versions_retention",
+            &format!("{}.versions_retention", error_key),
             errors,
         );
 
         let cleanup_after = parse_duration_or_default(
             config_value.get("cleanup_after").as_ref(),
             Self::DEFAULT_CLEANUP_AFTER,
-            "cache.go_install.cleanup_after",
+            &format!("{}.cleanup_after", error_key),
             errors,
         );
 

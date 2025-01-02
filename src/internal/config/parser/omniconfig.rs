@@ -102,7 +102,11 @@ impl OmniConfig {
                 for (key, value) in table {
                     commands_config.insert(
                         key.to_string(),
-                        CommandDefinition::from_config_value(&value, "commands", &mut errors),
+                        CommandDefinition::from_config_value(
+                            &value,
+                            &format!("commands.{}", key),
+                            &mut errors,
+                        ),
                     );
                 }
             } else {
@@ -121,7 +125,8 @@ impl OmniConfig {
             // by any work directory specific configuration.
             if let Some(value) = value.reject_scope(&ConfigScope::Workdir) {
                 if let Some(array) = value.as_array() {
-                    for value in array {
+                    for (_idx, value) in array.iter().enumerate() {
+                        // TODO
                         org_config.push(OrgConfig::from_config_value(&value));
                     }
                 } else {
@@ -134,10 +139,11 @@ impl OmniConfig {
             }
         }
 
-        let askpass = AskPassConfig::from_config_value(config_value.get("askpass"), &mut errors);
-        let cache = CacheConfig::from_config_value(config_value.get("cache"), &mut errors);
-        let cd = CdConfig::from_config_value(config_value.get("cd"), &mut errors);
-        let clone = CloneConfig::from_config_value(config_value.get("clone"), &mut errors);
+        let askpass =
+            AskPassConfig::from_config_value(config_value.get("askpass"), "askpass", &mut errors);
+        let cache = CacheConfig::from_config_value(config_value.get("cache"), "cache", &mut errors);
+        let cd = CdConfig::from_config_value(config_value.get("cd"), "cd", &mut errors);
+        let clone = CloneConfig::from_config_value(config_value.get("clone"), "clone", &mut errors);
         let command_match_min_score = config_value.get_as_float_or_default(
             "command_match_min_score",
             Self::DEFAULT_COMMAND_MATCH_MIN_SCORE,
@@ -151,10 +157,12 @@ impl OmniConfig {
         );
         let config_commands = ConfigCommandsConfig::from_config_value(
             config_value.get("config_commands"),
+            "config_commands",
             &mut errors,
         );
-        let env = EnvConfig::from_config_value(config_value.get("env"), &mut errors);
-        let github = GithubConfig::from_config_value(config_value.get("github"), &mut errors);
+        let env = EnvConfig::from_config_value(config_value.get("env"), "env", &mut errors);
+        let github =
+            GithubConfig::from_config_value(config_value.get("github"), "github", &mut errors);
         let makefile_commands = MakefileCommandsConfig::from_config_value(
             config_value.get("makefile_commands"),
             "makefile_commands",
@@ -189,8 +197,12 @@ impl OmniConfig {
             "suggest_config",
             &mut errors,
         );
-        let up = UpConfig::from_config_value(config_value.get("up"));
-        let up_command = UpCommandConfig::from_config_value(config_value.get("up_command"));
+        let up = UpConfig::from_config_value(config_value.get("up"), "up", &mut errors);
+        let up_command = UpCommandConfig::from_config_value(
+            config_value.get("up_command"),
+            "up_command",
+            &mut errors,
+        );
 
         let worktree = config_value.get_as_str_or_default(
             "worktree",

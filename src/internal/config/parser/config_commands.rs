@@ -25,6 +25,7 @@ impl ConfigCommandsConfig {
 
     pub(super) fn from_config_value(
         config_value: Option<ConfigValue>,
+        error_key: &str,
         errors: &mut Vec<ConfigErrorKind>,
     ) -> Self {
         let config_value = match config_value {
@@ -36,13 +37,13 @@ impl ConfigCommandsConfig {
             split_on_dash: config_value.get_as_bool_or_default(
                 "split_on_dash",
                 Self::DEFAULT_SPLIT_ON_DASH,
-                "config_commands.split_on_dash",
+                &format!("{}.split_on_dash", error_key),
                 errors,
             ),
             split_on_slash: config_value.get_as_bool_or_default(
                 "split_on_slash",
                 Self::DEFAULT_SPLIT_ON_SLASH,
-                "config_commands.split_on_slash",
+                &format!("{}.split_on_slash", error_key),
                 errors,
             ),
         }

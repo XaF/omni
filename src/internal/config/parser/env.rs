@@ -55,6 +55,7 @@ impl Empty for EnvConfig {
 impl EnvConfig {
     pub(super) fn from_config_value(
         config_value: Option<ConfigValue>,
+        error_key: &str,
         errors: &mut Vec<ConfigErrorKind>,
     ) -> Self {
         let operations = if let Some(config_value) = config_value {
@@ -79,7 +80,7 @@ impl EnvConfig {
             } else {
                 // Unsupported type
                 errors.push(ConfigErrorKind::ValueType {
-                    key: "env".to_string(),
+                    key: error_key.to_string(),
                     expected: "array or map".to_string(),
                     found: config_value.as_serde_yaml(),
                 });
@@ -89,8 +90,12 @@ impl EnvConfig {
             operations_array
                 .iter()
                 .enumerate()
-                .flat_map(|(index, item)| {
-                    EnvOperationConfig::from_config_value(item, &format!("env[{}]", index), errors)
+                .flat_map(|(idx, item)| {
+                    EnvOperationConfig::from_config_value(
+                        item,
+                        &format!("{}[{}]", error_key, idx),
+                        errors,
+                    )
                 })
                 .collect()
         } else {

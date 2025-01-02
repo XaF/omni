@@ -49,12 +49,14 @@ impl CommandDefinition {
     ) -> Self {
         let desc = config_value.get_as_str_or_none("desc", &format!("{}.desc", error_key), errors);
 
-        let run = config_value.get_as_str_or_default(
-            "run",
-            "true",
-            &format!("{}.run", error_key),
-            errors,
-        );
+        let run = config_value
+            .get_as_str_or_none("run", &format!("{}.run", error_key), errors)
+            .unwrap_or_else(|| {
+                errors.push(ConfigErrorKind::MissingKey {
+                    key: format!("{}.run", error_key),
+                });
+                "true".to_string()
+            });
 
         let aliases =
             config_value.get_as_str_array("aliases", &format!("{}.aliases", error_key), errors);

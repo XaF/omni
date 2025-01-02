@@ -29,6 +29,7 @@ impl UpEnvironmentCacheConfig {
 
     pub fn from_config_value(
         config_value: Option<ConfigValue>,
+        error_key: &str,
         errors: &mut Vec<ConfigErrorKind>,
     ) -> Self {
         let config_value = match config_value {
@@ -39,7 +40,7 @@ impl UpEnvironmentCacheConfig {
         let retention = parse_duration_or_default(
             config_value.get("retention").as_ref(),
             Self::DEFAULT_RETENTION,
-            "cache.up_environment.retention",
+            &format!("{}.retention", error_key),
             errors,
         );
 
@@ -48,7 +49,7 @@ impl UpEnvironmentCacheConfig {
                 Some(v) => Some(v as usize),
                 None => {
                     errors.push(ConfigErrorKind::ValueType {
-                        key: "cache.up_environment.max_per_workdir".to_string(),
+                        key: format!("{}.max_per_workdir", error_key),
                         expected: "unsigned integer".to_string(),
                         found: v.as_serde_yaml(),
                     });
@@ -63,7 +64,7 @@ impl UpEnvironmentCacheConfig {
                 Some(v) => Some(v as usize),
                 None => {
                     errors.push(ConfigErrorKind::ValueType {
-                        key: "cache.up_environment.max_total".to_string(),
+                        key: format!("{}.max_total", error_key),
                         expected: "unsigned integer".to_string(),
                         found: v.as_serde_yaml(),
                     });

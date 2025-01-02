@@ -8,6 +8,7 @@ use tokio::process::Command as TokioCommand;
 use crate::internal::cache::up_environments::UpEnvVar;
 use crate::internal::cache::up_environments::UpEnvironment;
 use crate::internal::config::global_config;
+use crate::internal::config::parser::ConfigErrorKind;
 use crate::internal::config::parser::EnvOperationEnum;
 use crate::internal::config::up::utils::data_path_dir_hash;
 use crate::internal::config::up::utils::run_progress;
@@ -37,43 +38,58 @@ pub struct UpConfigCustom {
     data_paths: OnceCell<Vec<PathBuf>>,
 }
 
+impl Default for UpConfigCustom {
+    fn default() -> Self {
+        Self {
+            meet: Self::DEFAULT_MEET.to_string(),
+            met: None,
+            unmeet: None,
+            name: None,
+            dir: None,
+            data_paths: OnceCell::new(),
+        }
+    }
+}
+
 impl UpConfigCustom {
-    pub fn from_config_value(config_value: Option<&ConfigValue>) -> Self {
-        let mut meet = None;
-        let mut met = None;
-        let mut unmeet = None;
-        let mut name = None;
-        let mut dir = None;
+    const DEFAULT_MEET: &str = "true";
 
-        if let Some(config_value) = config_value {
-            if let Some(value) = config_value.get_as_str_forced("meet") {
-                meet = Some(value.to_string());
+    pub fn from_config_value(
+        config_value: Option<&ConfigValue>,
+        error_key: &str,
+        errors: &mut Vec<ConfigErrorKind>,
+    ) -> Self {
+        let config_value = match config_value {
+            Some(config_value) => config_value,
+            None => {
+                errors.push(ConfigErrorKind::MissingKey {
+                    key: format!("{}.meet", error_key),
+                });
+                return Self::default();
             }
-            if let Some(value) = config_value.get_as_str_forced("met?") {
-                met = Some(value.to_string());
-            }
-            if let Some(value) = config_value.get_as_str_forced("unmeet") {
-                unmeet = Some(value.to_string());
-            }
-            if let Some(value) = config_value.get_as_str_forced("name") {
-                name = Some(value.to_string());
-            }
-            if let Some(value) = config_value.get_as_str_forced("dir") {
-                dir = Some(value.to_string());
-            }
-        }
+        };
 
-        if meet.is_none() {
-            meet = Some("".to_string());
-        }
+        let meet = config_value
+            .get_as_str_or_none("meet", &format!("{}.meet", error_key), errors)
+            .unwrap_or_else(|| {
+                errors.push(ConfigErrorKind::MissingKey {
+                    key: format!("{}.meet", error_key),
+                });
+                Self::DEFAULT_MEET.to_string()
+            });
+        let met = config_value.get_as_str_or_none("met", &format!("{}.met", error_key), errors);
+        let unmeet =
+            config_value.get_as_str_or_none("unmeet", &format!("{}.unmeet", error_key), errors);
+        let name = config_value.get_as_str_or_none("name", &format!("{}.name", error_key), errors);
+        let dir = config_value.get_as_str_or_none("dir", &format!("{}.dir", error_key), errors);
 
         UpConfigCustom {
-            meet: meet.unwrap(),
+            meet,
             met,
             unmeet,
             name,
             dir,
-            data_paths: OnceCell::new(),
+            ..Self::default()
         }
     }
 

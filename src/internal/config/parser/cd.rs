@@ -18,6 +18,7 @@ impl CdConfig {
 
     pub(super) fn from_config_value(
         config_value: Option<ConfigValue>,
+        error_key: &str,
         errors: &mut Vec<ConfigErrorKind>,
     ) -> Self {
         let config_value = match config_value {
@@ -35,18 +36,18 @@ impl CdConfig {
             fast_search: config_value.get_as_bool_or_default(
                 "fast_search",
                 Self::DEFAULT_FAST_SEARCH,
-                "cd.fast_search",
+                &format!("{}.fast_search", error_key),
                 errors,
             ),
             path_match_min_score: config_value.get_as_float_or_default(
                 "path_match_min_score",
                 Self::DEFAULT_PATH_MATCH_MIN_SCORE,
-                "cd.path_match_min_score",
+                &format!("{}.path_match_min_score", error_key),
                 errors,
             ),
             path_match_skip_prompt_if: MatchSkipPromptIfConfig::from_config_value(
                 config_value.get("path_match_skip_prompt_if"),
-                "cd.path_match_skip_prompt_if",
+                &format!("{}.path_match_skip_prompt_if", error_key),
                 errors,
             ),
         }

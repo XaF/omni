@@ -29,6 +29,7 @@ impl AskPassConfig {
 
     pub(super) fn from_config_value(
         config_value: Option<ConfigValue>,
+        error_key: &str,
         errors: &mut Vec<ConfigErrorKind>,
     ) -> Self {
         let config_value = match config_value {
@@ -45,19 +46,19 @@ impl AskPassConfig {
             enabled: config_value.get_as_bool_or_default(
                 "enabled",
                 Self::DEFAULT_ENABLED,
-                "askpass.enabled",
+                &format!("{}.enabled", error_key),
                 errors,
             ),
             enable_gui: config_value.get_as_bool_or_default(
                 "enable_gui",
                 Self::DEFAULT_ENABLE_GUI,
-                "askpass.enable_gui",
+                &format!("{}.enable_gui", error_key),
                 errors,
             ),
             prefer_gui: config_value.get_as_bool_or_default(
                 "prefer_gui",
                 Self::DEFAULT_PREFER_GUI,
-                "askpass.prefer_gui",
+                &format!("{}.prefer_gui", error_key),
                 errors,
             ),
         }

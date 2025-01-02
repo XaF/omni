@@ -35,6 +35,7 @@ impl HomebrewCacheConfig {
 
     pub fn from_config_value(
         config_value: Option<ConfigValue>,
+        error_key: &str,
         errors: &mut Vec<ConfigErrorKind>,
     ) -> Self {
         let config_value = match config_value {
@@ -45,35 +46,35 @@ impl HomebrewCacheConfig {
         let update_expire = parse_duration_or_default(
             config_value.get("update_expire").as_ref(),
             Self::DEFAULT_UPDATE_EXPIRE,
-            "cache.homebrew.update_expire",
+            &format!("{}.update_expire", error_key),
             errors,
         );
 
         let tap_update_expire = parse_duration_or_default(
             config_value.get("tap_update_expire").as_ref(),
             Self::DEFAULT_TAP_UPDATE_EXPIRE,
-            "cache.homebrew.tap_update_expire",
+            &format!("{}.tap_update_expire", error_key),
             errors,
         );
 
         let install_update_expire = parse_duration_or_default(
             config_value.get("install_update_expire").as_ref(),
             Self::DEFAULT_INSTALL_UPDATE_EXPIRE,
-            "cache.homebrew.install_update_expire",
+            &format!("{}.install_update_expire", error_key),
             errors,
         );
 
         let install_check_expire = parse_duration_or_default(
             config_value.get("install_check_expire").as_ref(),
             Self::DEFAULT_INSTALL_CHECK_EXPIRE,
-            "cache.homebrew.install_check_expire",
+            &format!("{}.install_check_expire", error_key),
             errors,
         );
 
         let cleanup_after = parse_duration_or_default(
             config_value.get("cleanup_after").as_ref(),
             Self::DEFAULT_CLEANUP_AFTER,
-            "cache.homebrew.cleanup_after",
+            &format!("{}.cleanup_after", error_key),
             errors,
         );
 

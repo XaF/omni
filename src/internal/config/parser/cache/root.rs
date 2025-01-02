@@ -39,6 +39,7 @@ impl Default for CacheConfig {
 impl CacheConfig {
     pub fn from_config_value(
         config_value: Option<ConfigValue>,
+        error_key: &str,
         errors: &mut Vec<ConfigErrorKind>,
     ) -> Self {
         let config_value = match config_value {
@@ -51,7 +52,7 @@ impl CacheConfig {
                 Some(value) => value.to_string(),
                 None => {
                     errors.push(ConfigErrorKind::ValueType {
-                        key: "cache.path".to_string(),
+                        key: format!("{}.path", error_key),
                         expected: "string".to_string(),
                         found: value.as_serde_yaml(),
                     });
@@ -61,16 +62,36 @@ impl CacheConfig {
             None => cache_home(),
         };
 
-        let environment =
-            UpEnvironmentCacheConfig::from_config_value(config_value.get("environment"), errors);
-        let github_release =
-            GithubReleaseCacheConfig::from_config_value(config_value.get("github_release"), errors);
-        let cargo_install =
-            CargoInstallCacheConfig::from_config_value(config_value.get("cargo_install"), errors);
-        let go_install =
-            GoInstallCacheConfig::from_config_value(config_value.get("go_install"), errors);
-        let homebrew = HomebrewCacheConfig::from_config_value(config_value.get("homebrew"), errors);
-        let mise = MiseCacheConfig::from_config_value(config_value.get("mise"), errors);
+        let environment = UpEnvironmentCacheConfig::from_config_value(
+            config_value.get("environment"),
+            &format!("{}.environment", error_key),
+            errors,
+        );
+        let github_release = GithubReleaseCacheConfig::from_config_value(
+            config_value.get("github_release"),
+            &format!("{}.github_release", error_key),
+            errors,
+        );
+        let cargo_install = CargoInstallCacheConfig::from_config_value(
+            config_value.get("cargo_install"),
+            &format!("{}.cargo_install", error_key),
+            errors,
+        );
+        let go_install = GoInstallCacheConfig::from_config_value(
+            config_value.get("go_install"),
+            &format!("{}.go_install", error_key),
+            errors,
+        );
+        let homebrew = HomebrewCacheConfig::from_config_value(
+            config_value.get("homebrew"),
+            &format!("{}.homebrew", error_key),
+            errors,
+        );
+        let mise = MiseCacheConfig::from_config_value(
+            config_value.get("mise"),
+            &format!("{}.mise", error_key),
+            errors,
+        );
 
         Self {
             path,

@@ -7,6 +7,7 @@ use tokio::process::Command as TokioCommand;
 use crate::internal::cache::up_environments::UpEnvironment;
 use crate::internal::commands::utils::abs_path;
 use crate::internal::config::global_config;
+use crate::internal::config::parser::ConfigErrorKind;
 use crate::internal::config::up::utils::run_progress;
 use crate::internal::config::up::utils::ProgressHandler;
 use crate::internal::config::up::utils::RunConfig;
@@ -24,24 +25,56 @@ pub struct UpConfigBundler {
     pub path: Option<String>,
 }
 
-impl UpConfigBundler {
-    pub fn from_config_value(config_value: Option<&ConfigValue>) -> Self {
-        let mut gemfile = None;
-        let mut path = Some("vendor/bundle".to_string());
-        if let Some(config_value) = config_value {
-            if let Some(config_value) = config_value.as_table() {
-                if let Some(value) = config_value.get("gemfile") {
-                    gemfile = Some(value.as_str().unwrap().to_string());
-                }
-                if let Some(value) = config_value.get("path") {
-                    path = Some(value.as_str().unwrap().to_string());
-                }
-            } else {
-                gemfile = Some(config_value.as_str().unwrap().to_string());
-            }
+impl Default for UpConfigBundler {
+    fn default() -> Self {
+        UpConfigBundler {
+            gemfile: None,
+            path: Some(Self::DEFAULT_PATH.to_string()),
         }
+    }
+}
 
-        UpConfigBundler { gemfile, path }
+impl UpConfigBundler {
+    const DEFAULT_PATH: &'static str = "vendor/bundle";
+
+    pub fn from_config_value(
+        config_value: Option<&ConfigValue>,
+        error_key: &str,
+        errors: &mut Vec<ConfigErrorKind>,
+    ) -> Self {
+        let config_value = match config_value {
+            Some(config_value) => config_value,
+            None => return Self::default(),
+        };
+
+        if config_value.is_table() {
+            let gemfile = config_value.get_as_str_or_none(
+                "gemfile",
+                &format!("{}.gemfile", error_key),
+                errors,
+            );
+            let path = Some(config_value.get_as_str_or_default(
+                "path",
+                Self::DEFAULT_PATH,
+                &format!("{}.path", error_key),
+                errors,
+            ));
+
+            Self { gemfile, path }
+        } else if let Some(gemfile) = config_value.as_str() {
+            Self {
+                gemfile: Some(gemfile.to_string()),
+                ..Self::default()
+            }
+        } else {
+            errors.push(ConfigErrorKind::ValueType {
+                key: error_key.to_string(),
+                expected: "table or string".to_string(),
+                found: config_value.as_serde_yaml(),
+            });
+
+            Self::default()
+        }
     }
 
     pub fn up(

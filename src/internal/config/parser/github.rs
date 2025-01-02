@@ -20,6 +20,7 @@ impl Empty for GithubConfig {
 impl GithubConfig {
     pub(super) fn from_config_value(
         config_value: Option<ConfigValue>,
+        error_key: &str,
         errors: &mut Vec<ConfigErrorKind>,
     ) -> Self {
         let config_value = match config_value {
@@ -30,7 +31,7 @@ impl GithubConfig {
         Self {
             auth_list: GithubAuthConfigWithFilters::from_config_value_multi(
                 config_value.get("auth"),
-                "github.auth",
+                &format!("{}.auth", error_key),
                 errors,
             ),
         }

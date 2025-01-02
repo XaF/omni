@@ -35,6 +35,7 @@ impl MiseCacheConfig {
 
     pub fn from_config_value(
         config_value: Option<ConfigValue>,
+        error_key: &str,
         errors: &mut Vec<ConfigErrorKind>,
     ) -> Self {
         let config_value = match config_value {
@@ -45,35 +46,35 @@ impl MiseCacheConfig {
         let update_expire = parse_duration_or_default(
             config_value.get("update_expire").as_ref(),
             Self::DEFAULT_UPDATE_EXPIRE,
-            "cache.mise.update_expire",
+            &format!("{}.update_expire", error_key),
             errors,
         );
 
         let plugin_update_expire = parse_duration_or_default(
             config_value.get("plugin_update_expire").as_ref(),
             Self::DEFAULT_PLUGIN_UPDATE_EXPIRE,
-            "cache.mise.plugin_update_expire",
+            &format!("{}.plugin_update_expire", error_key),
             errors,
         );
 
         let plugin_versions_expire = parse_duration_or_default(
             config_value.get("plugin_versions_expire").as_ref(),
             Self::DEFAULT_PLUGIN_VERSIONS_EXPIRE,
-            "cache.mise.plugin_versions_expire",
+            &format!("{}.plugin_versions_expire", error_key),
             errors,
         );
 
         let plugin_versions_retention = parse_duration_or_default(
             config_value.get("plugin_versions_retention").as_ref(),
             Self::DEFAULT_PLUGIN_VERSIONS_RETENTION,
-            "cache.mise.plugin_versions_retention",
+            &format!("{}.plugin_versions_retention", error_key),
             errors,
         );
 
         let cleanup_after = parse_duration_or_default(
             config_value.get("cleanup_after").as_ref(),
             Self::DEFAULT_CLEANUP_AFTER,
-            "cache.mise.cleanup_after",
+            &format!("{}.cleanup_after", error_key),
             errors,
         );
 

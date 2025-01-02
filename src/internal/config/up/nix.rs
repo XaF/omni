@@ -12,6 +12,7 @@ use tokio::process::Command as TokioCommand;
 use crate::internal::cache::up_environments::UpEnvironment;
 use crate::internal::commands::utils::abs_path;
 use crate::internal::config::global_config;
+use crate::internal::config::parser::ConfigErrorKind;
 use crate::internal::config::parser::EnvOperationEnum;
 use crate::internal::config::up::utils::get_command_output;
 use crate::internal::config::up::utils::run_progress;
@@ -104,50 +105,92 @@ impl UpConfigNix {
     /// up:
     /// - nix
     /// ```
-    pub fn from_config_value(config_value: Option<&ConfigValue>) -> Self {
-        if let Some(config_value) = config_value {
-            if let Some(table) = config_value.as_table() {
-                if let Some(nixfile) = table.get("file") {
-                    if let Some(nixfile) = nixfile.as_str_forced() {
-                        return UpConfigNix {
-                            packages: Vec::new(),
-                            nixfile: Some(nixfile.to_string()),
-                            data_paths: OnceCell::new(),
-                        };
-                    }
-                }
-
-                if let Some(packages) = table.get("packages") {
-                    if let Some(pkg_array) = packages.as_array() {
-                        return UpConfigNix {
-                            packages: pkg_array
-                                .iter()
-                                .filter_map(|v| v.as_str_forced())
-                                .collect::<Vec<_>>(),
-                            nixfile: None,
-                            data_paths: OnceCell::new(),
-                        };
-                    }
-                }
-            } else if let Some(pkg_array) = config_value.as_array() {
-                return UpConfigNix {
-                    packages: pkg_array
-                        .iter()
-                        .filter_map(|v| v.as_str_forced())
-                        .collect::<Vec<_>>(),
-                    nixfile: None,
-                    data_paths: OnceCell::new(),
-                };
-            } else if let Some(nixfile) = config_value.as_str_forced() {
-                return UpConfigNix {
-                    packages: Vec::new(),
-                    nixfile: Some(nixfile.to_string()),
-                    data_paths: OnceCell::new(),
-                };
+    pub fn from_config_value(
+        config_value: Option<&ConfigValue>,
+        error_key: &str,
+        errors: &mut Vec<ConfigErrorKind>,
+    ) -> Self {
+        let config_value = match config_value {
+            Some(config_value) => config_value,
+            None => {
+                errors.push(ConfigErrorKind::MissingKey {
+                    key: format!("{}.packages", error_key),
+                });
+                return Self::default();
             }
-        }
+        };
 
-        UpConfigNix::default()
+        if let Some(table) = config_value.as_table() {
+            if let Some(nixfile) = table.get("file") {
+                if let Some(nixfile) = nixfile.as_str_forced() {
+                    return Self {
+                        nixfile: Some(nixfile.to_string()),
+                        ..Self::default()
+                    };
+                } else {
+                    errors.push(ConfigErrorKind::ValueType {
+                        key: format!("{}.file", error_key),
+                        found: nixfile.as_serde_yaml(),
+                        expected: "string".to_string(),
+                    });
+                }
+            }
+
+            if let Some(packages) = table.get("packages") {
+                if let Some(pkg_array) = packages.as_array() {
+                    return Self {
+                        packages: pkg_array
+                            .iter()
+                            .filter_map(|v| v.as_str_forced())
+                            .collect::<Vec<_>>(),
+                        ..Self::default()
+                    };
+                } else {
+                    errors.push(ConfigErrorKind::ValueType {
+                        key: format!("{}.packages", error_key),
+                        found: packages.as_serde_yaml(),
+                        expected: "array".to_string(),
+                    });
+                }
+            }
+
+            errors.push(ConfigErrorKind::MissingKey {
+                key: format!("{}.packages", error_key),
+            });
+            Self::default()
+        } else if let Some(pkg_array) = config_value.as_array() {
+            Self {
+                packages: pkg_array
+                    .iter()
+                    .enumerate()
+                    .filter_map(|(idx, value)| match value.as_str_forced() {
+                        Some(pkg) => Some(pkg.to_string()),
+                        None => {
+                            errors.push(ConfigErrorKind::ValueType {
+                                key: format!("{}[{}]", error_key, idx),
+                                found: value.as_serde_yaml(),
+                                expected: "string".to_string(),
+                            });
+                            None
+                        }
+                    })
+                    .collect::<Vec<_>>(),
+                ..Self::default()
+            }
+        } else if let Some(nixfile) = config_value.as_str_forced() {
+            Self {
+                nixfile: Some(nixfile.to_string()),
+                ..Self::default()
+            }
+        } else {
+            errors.push(ConfigErrorKind::ValueType {
+                key: error_key.to_string(),
+                found: config_value.as_serde_yaml(),
+                expected: "string, array or table".to_string(),
+            });
+
+            Self::default()
+        }
     }
 
     pub fn up(

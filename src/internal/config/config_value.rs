@@ -211,6 +211,14 @@ impl ConfigValue {
         ))
     }
 
+    pub fn from_table(table: HashMap<String, ConfigValue>) -> Self {
+        Self::new(
+            ConfigSource::Null,
+            ConfigScope::Null,
+            Some(Box::new(ConfigData::Mapping(table))),
+        )
+    }
+
     pub fn reject_scope(&self, scope: &ConfigScope) -> Option<ConfigValue> {
         if let Some(data) = self.value.as_ref().map(|data| data.as_ref()) {
             match data {
@@ -708,6 +716,29 @@ impl ConfigValue {
             return value.as_bool_forced();
         }
         None
+    }
+
+    pub fn get_as_bool_or_none(
+        &self,
+        key: &str,
+        error_key: &str,
+        errors: &mut Vec<ConfigErrorKind>,
+    ) -> Option<bool> {
+        if let Some(value) = self.get(key) {
+            match value.as_bool_forced() {
+                Some(value) => Some(value),
+                None => {
+                    errors.push(ConfigErrorKind::ValueType {
+                        key: error_key.to_string(),
+                        expected: "bool".to_string(),
+                        found: value.as_serde_yaml(),
+                    });
+                    None
+                }
+            }
+        } else {
+            None
+        }
     }
 
     pub fn get_as_bool_or_default(

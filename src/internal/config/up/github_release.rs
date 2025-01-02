@@ -31,6 +31,7 @@ use crate::internal::cache::GithubReleaseVersion;
 use crate::internal::cache::GithubReleases;
 use crate::internal::config;
 use crate::internal::config::global_config;
+use crate::internal::config::parser::ConfigErrorKind;
 use crate::internal::config::parser::GithubAuthConfig;
 use crate::internal::config::up::utils::cleanup_path;
 use crate::internal::config::up::utils::force_remove_dir_all;
@@ -80,15 +81,28 @@ impl Serialize for UpConfigGithubReleases {
 }
 
 impl UpConfigGithubReleases {
-    pub fn from_config_value(config_value: Option<&ConfigValue>) -> Self {
+    pub fn from_config_value(
+        config_value: Option<&ConfigValue>,
+        error_key: &str,
+        errors: &mut Vec<ConfigErrorKind>,
+    ) -> Self {
         let config_value = match config_value {
             Some(config_value) => config_value,
-            None => return UpConfigGithubReleases::default(),
+            None => {
+                errors.push(ConfigErrorKind::MissingKey {
+                    key: format!("{}.repository", error_key),
+                });
+                return Self::default();
+            }
         };
 
-        if let Some(_repository) = config_value.as_str_forced() {
+        if config_value.as_str_forced().is_some() {
             return Self {
-                releases: vec![UpConfigGithubRelease::from_config_value(Some(config_value))],
+                releases: vec![UpConfigGithubRelease::from_config_value(
+                    Some(config_value),
+                    error_key,
+                    errors,
+                )],
             };
         }
 
@@ -96,8 +110,13 @@ impl UpConfigGithubReleases {
             return Self {
                 releases: array
                     .iter()
-                    .map(|config_value| {
-                        UpConfigGithubRelease::from_config_value(Some(config_value))
+                    .enumerate()
+                    .map(|(idx, config_value)| {
+                        UpConfigGithubRelease::from_config_value(
+                            Some(config_value),
+                            &format!("{}[{}]", error_key, idx),
+                            errors,
+                        )
                     })
                     .collect(),
             };
@@ -112,7 +131,11 @@ impl UpConfigGithubReleases {
                 .is_some()
             {
                 return Self {
-                    releases: vec![UpConfigGithubRelease::from_config_value(Some(config_value))],
+                    releases: vec![UpConfigGithubRelease::from_config_value(
+                        Some(config_value),
+                        error_key,
+                        errors,
+                    )],
                 };
             }
 
@@ -143,7 +166,11 @@ impl UpConfigGithubReleases {
                 };
 
                 repo_config.insert("repository".to_string(), repository);
-                releases.push(UpConfigGithubRelease::from_table(&repo_config));
+                releases.push(UpConfigGithubRelease::from_table(
+                    &repo_config,
+                    &format!("{}.{}", error_key, repo),
+                    errors,
+                ));
             }
 
             return Self { releases };
@@ -544,25 +571,40 @@ impl UpConfigGithubRelease {
         }
     }
 
-    pub fn from_config_value(config_value: Option<&ConfigValue>) -> Self {
+    pub fn from_config_value(
+        config_value: Option<&ConfigValue>,
+        error_key: &str,
+        errors: &mut Vec<ConfigErrorKind>,
+    ) -> Self {
         let config_value = match config_value {
             Some(config_value) => config_value,
-            None => return UpConfigGithubRelease::default(),
+            None => return Self::default(),
         };
 
         if let Some(table) = config_value.as_table() {
-            Self::from_table(&table)
+            Self::from_table(&table, error_key, errors)
         } else if let Some(repository) = config_value.as_str_forced() {
-            UpConfigGithubRelease {
+            Self {
                 repository,
-                ..UpConfigGithubRelease::default()
+                ..Self::default()
             }
         } else {
-            UpConfigGithubRelease::default()
+            errors.push(ConfigErrorKind::ValueType {
+                key: error_key.to_string(),
+                expected: "string or table".to_string(),
+                found: config_value.as_serde_yaml(),
+            });
+            Self::default()
         }
     }
 
-    fn from_table(table: &HashMap<String, ConfigValue>) -> Self {
+    fn from_table(
+        table: &HashMap<String, ConfigValue>,
+        error_key: &str,
+        errors: &mut Vec<ConfigErrorKind>,
+    ) -> Self {
+        let config_value = ConfigValue::from_table(table.clone());
+
         let repository = ["repository", "repo"]
             .iter()
             .find_map(|key| table.get(*key));
@@ -573,95 +615,118 @@ impl UpConfigGithubRelease {
                 if table.len() == 1 {
                     let (key, value) = table.iter().next().unwrap();
                     if let Some(version) = value.as_str_forced() {
-                        return UpConfigGithubRelease {
+                        return Self {
                             repository: key.clone(),
                             version: Some(version.to_string()),
-                            ..UpConfigGithubRelease::default()
+                            ..Self::default()
                         };
                     } else if let (Some(table), Ok(repo_config_value)) =
                         (value.as_table(), ConfigValue::from_str(key))
                     {
                         let mut repo_config = table.clone();
                         repo_config.insert("repository".to_string(), repo_config_value);
-                        return UpConfigGithubRelease::from_table(&repo_config);
+                        return Self::from_table(&repo_config, error_key, errors);
                     } else if let (true, Ok(repo_config_value)) =
                         (value.is_null(), ConfigValue::from_str(key))
                     {
                         let repo_config =
                             HashMap::from_iter(vec![("repository".to_string(), repo_config_value)]);
-                        return UpConfigGithubRelease::from_table(&repo_config);
+                        return Self::from_table(&repo_config, error_key, errors);
                     }
                 }
-                return UpConfigGithubRelease::default();
+                errors.push(ConfigErrorKind::MissingKey {
+                    key: format!("{}.repository", error_key),
+                });
+                return Self::default();
             }
         };
 
-        let repository = if let Some(repository_details) = repository.as_table() {
-            let owner = repository_details
-                .get("owner")
-                .map(|v| v.as_str_forced())
-                .unwrap_or(None)
-                .unwrap_or("".to_string());
-            let name = repository_details
-                .get("name")
-                .map(|v| v.as_str_forced())
-                .unwrap_or(None)
-                .unwrap_or("".to_string());
+        let repository = if repository.is_table() {
+            let owner = repository
+                .get_as_str_or_none("owner", &format!("{}.repository.owner", error_key), errors)
+                .unwrap_or_else(|| {
+                    errors.push(ConfigErrorKind::EmptyKey {
+                        key: format!("{}.repository.owner", error_key),
+                    });
+                    "".to_string()
+                });
+
+            let name = repository
+                .get_as_str_or_none("name", &format!("{}.repository.name", error_key), errors)
+                .unwrap_or_else(|| {
+                    errors.push(ConfigErrorKind::EmptyKey {
+                        key: format!("{}.repository.name", error_key),
+                    });
+                    "".to_string()
+                });
+
             format!("{}/{}", owner, name)
         } else if let Some(repository) = repository.as_str_forced() {
             repository.to_string()
         } else {
+            errors.push(ConfigErrorKind::ValueType {
+                key: format!("{}.repository", error_key),
+                expected: "string or table".to_string(),
+                found: repository.as_serde_yaml(),
+            });
+
             "".to_string()
         };
 
-        let version = table
-            .get("version")
-            .map(|v| v.as_str_forced())
-            .unwrap_or(None);
-        let upgrade = table
-            .get("upgrade")
-            .map(|v| v.as_bool_forced())
-            .unwrap_or(None)
-            .unwrap_or(false);
-        let prerelease = table
-            .get("prerelease")
-            .map(|v| v.as_bool())
-            .unwrap_or(None)
-            .unwrap_or(false);
-        let build = table
-            .get("build")
-            .map(|v| v.as_bool())
-            .unwrap_or(None)
-            .unwrap_or(false);
-        let binary = table
-            .get("binary")
-            .map(|v| v.as_bool())
-            .unwrap_or(None)
-            .unwrap_or(true);
-        let asset_name = table
-            .get("asset_name")
-            .map(|v| v.as_str_forced())
-            .unwrap_or(None);
-        let skip_os_matching = table
-            .get("skip_os_matching")
-            .map(|v| v.as_bool())
-            .unwrap_or(None)
-            .unwrap_or(false);
-        let skip_arch_matching = table
-            .get("skip_arch_matching")
-            .map(|v| v.as_bool())
-            .unwrap_or(None)
-            .unwrap_or(false);
-        let api_url = table
-            .get("api_url")
-            .map(|v| v.as_str_forced())
-            .unwrap_or(None);
-        let checksum = GithubReleaseChecksumConfig::from_config_value(table.get("checksum"));
-        // TODO: fix error passing
+        let version =
+            config_value.get_as_str_or_none("version", &format!("{}.version", error_key), errors);
+        let upgrade = config_value.get_as_bool_or_default(
+            "upgrade",
+            false,
+            &format!("{}.upgrade", error_key),
+            errors,
+        );
+        let prerelease = config_value.get_as_bool_or_default(
+            "prerelease",
+            false,
+            &format!("{}.prerelease", error_key),
+            errors,
+        );
+        let build = config_value.get_as_bool_or_default(
+            "build",
+            false,
+            &format!("{}.build", error_key),
+            errors,
+        );
+        let binary = config_value.get_as_bool_or_default(
+            "binary",
+            true,
+            &format!("{}.binary", error_key),
+            errors,
+        );
+        let asset_name = config_value.get_as_str_or_none(
+            "asset_name",
+            &format!("{}.asset_name", error_key),
+            errors,
+        );
+        let skip_os_matching = config_value.get_as_bool_or_default(
+            "skip_os_matching",
+            false,
+            &format!("{}.skip_os_matching", error_key),
+            errors,
+        );
+        let skip_arch_matching = config_value.get_as_bool_or_default(
+            "skip_arch_matching",
+            false,
+            &format!("{}.skip_arch_matching", error_key),
+            errors,
+        );
+        let api_url =
+            config_value.get_as_str_or_none("api_url", &format!("{}.api_url", error_key), errors);
+        let checksum = GithubReleaseChecksumConfig::from_config_value(
+            table.get("checksum"),
+            &format!("{}.checksum", error_key),
+            errors,
+        );
         let auth = GithubAuthConfig::from_config_value(
             table.get("auth").cloned(),
-            "ERROR_KEY",
-            &mut vec![],
+            &format!("{}.auth", error_key),
+            errors,
         );
 
         UpConfigGithubRelease {
@@ -1683,41 +1748,58 @@ impl GithubReleaseChecksumConfig {
             && self.asset_name.is_none()
     }
 
-    pub fn from_config_value(config_value: Option<&ConfigValue>) -> Self {
+    pub fn from_config_value(
+        config_value: Option<&ConfigValue>,
+        error_key: &str,
+        errors: &mut Vec<ConfigErrorKind>,
+    ) -> Self {
         let config_value = match config_value {
             Some(config_value) => config_value,
-            None => return GithubReleaseChecksumConfig::default(),
+            None => return Self::default(),
         };
 
         if let Some(table) = config_value.as_table() {
-            Self::from_table(&table)
+            Self::from_table(&table, error_key, errors)
         } else if let Some(string) = config_value.as_str() {
-            GithubReleaseChecksumConfig {
+            Self {
                 value: Some(string.to_string()),
-                ..GithubReleaseChecksumConfig::default()
+                ..Self::default()
             }
         } else {
-            GithubReleaseChecksumConfig::default()
+            errors.push(ConfigErrorKind::ValueType {
+                key: error_key.to_string(),
+                expected: "table or string".to_string(),
+                found: config_value.as_serde_yaml(),
+            });
+            Self::default()
         }
     }
 
-    fn from_table(table: &HashMap<String, ConfigValue>) -> Self {
-        let enabled = table.get("enabled").map(|v| v.as_bool()).unwrap_or(None);
-        let required = table.get("required").map(|v| v.as_bool()).unwrap_or(None);
-        let algorithm = table
-            .get("algorithm")
-            .map(|v| v.as_str_forced())
-            .unwrap_or(None)
+    fn from_table(
+        table: &HashMap<String, ConfigValue>,
+        error_key: &str,
+        errors: &mut Vec<ConfigErrorKind>,
+    ) -> Self {
+        let config_value = ConfigValue::from_table(table.clone());
+
+        let enabled =
+            config_value.get_as_bool_or_none("enabled", &format!("{}.enabled", error_key), errors);
+        let required = config_value.get_as_bool_or_none(
+            "required",
+            &format!("{}.required", error_key),
+            errors,
+        );
+        let algorithm = config_value
+            .get_as_str_or_none("algorithm", &format!("{}.algorithm", error_key), errors)
             .map(|v| GithubReleaseChecksumAlgorithm::from_str(&v))
             .unwrap_or(None);
-        let value = table
-            .get("value")
-            .map(|v| v.as_str_forced())
-            .unwrap_or(None);
-        let asset_name = table
-            .get("asset_name")
-            .map(|v| v.as_str_forced())
-            .unwrap_or(None);
+        let value =
+            config_value.get_as_str_or_none("value", &format!("{}.value", error_key), errors);
+        let asset_name = config_value.get_as_str_or_none(
+            "asset_name",
+            &format!("{}.asset_name", error_key),
+            errors,
+        );
 
         GithubReleaseChecksumConfig {
             enabled,
