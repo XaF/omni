@@ -107,11 +107,9 @@ where
     // Add mise itself to the path
     let path_env = std::env::var("PATH").unwrap_or_default();
     let new_paths = std::env::join_paths(
-        vec![PathBuf::from(mise_bin_dir())].into_iter().chain(
-            std::env::split_paths(&path_env)
-                .into_iter()
-                .filter(|p| p != Path::new(mise_bin_dir())),
-        ),
+        vec![PathBuf::from(mise_bin_dir())]
+            .into_iter()
+            .chain(std::env::split_paths(&path_env).filter(|p| p != Path::new(mise_bin_dir()))),
     )
     .expect("failed to join paths");
     command.env("PATH", new_paths);
