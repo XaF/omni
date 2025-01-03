@@ -25,7 +25,7 @@ pub enum ConfigErrorKind {
     #[error("Value for key '{key}' is empty")]
     EmptyKey { key: String },
     #[error(
-        "Value for key '{key}' should be a table with a single key-value pair but actual: {found:?}"
+        "Value for key '{key}' should be a table with a single key-value pair but found {actual:?}"
     )]
     NotExactlyOneKeyInTable {
         key: String,
@@ -36,7 +36,7 @@ pub enum ConfigErrorKind {
         key: String,
         actual: serde_yaml::Value,
     },
-    #[error("Parsing error for value {actual:?} for key '{key}': {error}")]
+    #[error("Unable to parse value {actual:?} for key '{key}': {error}")]
     ParsingError {
         key: String,
         actual: serde_yaml::Value,
@@ -46,17 +46,17 @@ pub enum ConfigErrorKind {
     MetadataHeaderMissingSubkey { key: String, lineno: usize },
     #[error("Line {lineno} in metadata header is a 'continue' but there is no current key")]
     MetadataHeaderContinueWithoutKey { lineno: usize },
-    #[error("Unknown key {key} in metadata header at line {lineno}")]
+    #[error("Unknown key '{key}' in metadata header at line {lineno}")]
     MetadataHeaderUnknownKey { key: String, lineno: usize },
     #[error("No syntax provided")]
     MetadataHeaderMissingSyntax,
     #[error("No help provided")]
     MetadataHeaderMissingHelp,
-    #[error("Empty part in the definition of group or parameter {name}")]
+    #[error("Empty part in the definition of group or parameter '{name}'")]
     MetadataHeaderGroupOrParamEmptyPart { name: String },
-    #[error("Unknown configuration key {key} in the definition of group or parameter {name}")]
+    #[error("Unknown configuration key '{key}' in the definition of group or parameter '{name}'")]
     MetadataHeaderUnknownGroupOrParamConfigKey { name: String, key: String },
-    #[error("Invalid part '{part}' in the definition of group or parameter {name}")]
+    #[error("Invalid part '{part}' in the definition of group or parameter '{name}'")]
     MetadataHeaderGroupOrParamInvalidPart { name: String, part: String },
     #[error(
         "Invalid value '{value}' for key '{key}' in the definition of group or parameter {name}"
@@ -66,10 +66,65 @@ pub enum ConfigErrorKind {
         key: String,
         value: String,
     },
-    #[error("Missing description for parameter {name}")]
+    #[error("Missing description for parameter '{name}'")]
     MetadataHeaderParamMissingDescription { name: String },
-    #[error("Group {name} does not have any parameters")]
+    #[error("Group '{name}' does not have any parameters")]
     MetadataHeaderGroupMissingParameters { name: String },
+    #[error("File '{path}' is not executable")]
+    OmniPathFileNotExecutable { path: String },
+    #[error("Failed to load metadata for file '{path}'")]
+    OmniPathFileFailedToLoadMetadata { path: String },
+}
+
+impl ConfigErrorKind {
+    pub fn path(&self) -> Option<&str> {
+        match self {
+            ConfigErrorKind::OmniPathFileNotExecutable { path } => Some(path),
+            ConfigErrorKind::OmniPathFileFailedToLoadMetadata { path } => Some(path),
+            _ => None,
+        }
+    }
+
+    pub fn lineno(&self) -> Option<usize> {
+        match self {
+            ConfigErrorKind::MetadataHeaderMissingSubkey { lineno, .. } => Some(*lineno),
+            ConfigErrorKind::MetadataHeaderContinueWithoutKey { lineno } => Some(*lineno),
+            ConfigErrorKind::MetadataHeaderUnknownKey { lineno, .. } => Some(*lineno),
+            _ => None,
+        }
+    }
+
+    pub fn errorcode(&self) -> Option<&str> {
+        // We want error codes in the shape:
+        //  Cxxx for configuration errors
+        //  MDxx for metadata errors
+        //  Pxxx for path errors
+
+        match self {
+            ConfigErrorKind::InvalidValueType { .. } => Some("C001"),
+            ConfigErrorKind::InvalidValue { .. } => Some("C002"),
+            ConfigErrorKind::InvalidRange { .. } => Some("C003"),
+            ConfigErrorKind::InvalidPackage { .. } => Some("C004"),
+            ConfigErrorKind::MissingKey { .. } => Some("C005"),
+            ConfigErrorKind::EmptyKey { .. } => Some("C006"),
+            ConfigErrorKind::NotExactlyOneKeyInTable { .. } => Some("C007"),
+            ConfigErrorKind::UnsupportedValueInContext { .. } => Some("C008"),
+            ConfigErrorKind::ParsingError { .. } => Some("C009"),
+            ConfigErrorKind::MetadataHeaderMissingSubkey { .. } => Some("MD01"),
+            ConfigErrorKind::MetadataHeaderContinueWithoutKey { .. } => Some("MD02"),
+            ConfigErrorKind::MetadataHeaderUnknownKey { .. } => Some("MD03"),
+            ConfigErrorKind::MetadataHeaderMissingSyntax => Some("MD04"),
+            ConfigErrorKind::MetadataHeaderMissingHelp => Some("MD05"),
+            ConfigErrorKind::MetadataHeaderGroupOrParamEmptyPart { .. } => Some("MD06"),
+            ConfigErrorKind::MetadataHeaderUnknownGroupOrParamConfigKey { .. } => Some("MD07"),
+            ConfigErrorKind::MetadataHeaderGroupOrParamInvalidPart { .. } => Some("MD08"),
+            ConfigErrorKind::MetadataHeaderParamInvalidKeyValue { .. } => Some("MD09"),
+            ConfigErrorKind::MetadataHeaderParamMissingDescription { .. } => Some("MD10"),
+            ConfigErrorKind::MetadataHeaderGroupMissingParameters { .. } => Some("MD11"),
+            ConfigErrorKind::OmniPathFileNotExecutable { .. } => Some("P001"),
+            ConfigErrorKind::OmniPathFileFailedToLoadMetadata { .. } => Some("P002"),
+        }
+    }
 }
 
 /// This is the error type for the `parse_args` function

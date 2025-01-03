@@ -24,6 +24,7 @@ use crate::internal::config::parser::SuggestCloneConfig;
 use crate::internal::config::parser::SuggestConfig;
 use crate::internal::config::parser::UpCommandConfig;
 use crate::internal::config::up::UpConfig;
+use crate::internal::config::ConfigLoader;
 use crate::internal::config::ConfigScope;
 use crate::internal::config::ConfigValue;
 use crate::internal::config::OrgConfig;
@@ -211,8 +212,6 @@ impl OmniConfig {
             &mut errors,
         );
 
-        eprintln!("DEBUG: errors: {:?}", errors);
-
         Self {
             askpass,
             cache,
@@ -290,5 +289,11 @@ impl OmniConfig {
         }
 
         config_hasher.finalize().to_hex()[..16].to_string()
+    }
+}
+
+impl From<ConfigLoader> for OmniConfig {
+    fn from(config_loader: ConfigLoader) -> Self {
+        OmniConfig::from_config_value(&config_loader.raw_config)
     }
 }

@@ -41,7 +41,14 @@ pub struct PathCommand {
 
 impl PathCommand {
     pub fn all() -> Vec<Self> {
-        Self::aggregate_commands_from_path(&omnipath())
+        Self::aggregate_commands_from_path(&omnipath(), |_| ())
+    }
+
+    pub fn aggregate_with_errors(
+        paths: &Vec<String>,
+        on_error: impl FnMut(ConfigErrorKind),
+    ) -> Vec<Self> {
+        Self::aggregate_commands_from_path(paths, on_error)
     }
 
     pub fn local() -> Vec<Self> {
@@ -110,10 +117,13 @@ impl PathCommand {
             })
             .collect::<Vec<String>>();
 
-        Self::aggregate_commands_from_path(&local_paths)
+        Self::aggregate_commands_from_path(&local_paths, |_| ())
     }
 
-    fn aggregate_commands_from_path(paths: &Vec<String>) -> Vec<Self> {
+    fn aggregate_commands_from_path(
+        paths: &Vec<String>,
+        mut on_error: impl FnMut(ConfigErrorKind),
+    ) -> Vec<Self> {
         let mut all_commands: Vec<PathCommand> = Vec::new();
         let mut known_sources: HashMap<String, usize> = HashMap::new();
 
@@ -124,7 +134,14 @@ impl PathCommand {
                 let filetype = entry.file_type();
                 let filepath = entry.path();
 
-                if !filetype.is_file() || !is_executable(filepath) {
+                if !filetype.is_file() {
+                    continue;
+                }
+
+                if !is_executable(filepath) {
+                    on_error(ConfigErrorKind::OmniPathFileNotExecutable {
+                        path: filepath.to_string_lossy().to_string(),
+                    });
                     continue;
                 }
 
@@ -292,6 +309,15 @@ impl PathCommand {
         self.file_details
             .get_or_init(|| PathCommandFileDetails::from_file(&self.source))
             .as_ref()
+    }
+
+    pub fn errors(&self) -> Vec<ConfigErrorKind> {
+        match self.file_details() {
+            Some(details) => details.errors.clone(),
+            None => vec![ConfigErrorKind::OmniPathFileFailedToLoadMetadata {
+                path: self.source.clone(),
+            }],
+        }
     }
 }
 

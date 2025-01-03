@@ -42,6 +42,15 @@ impl AskPassConfig {
             None => return Self::default(),
         };
 
+        if !config_value.is_table() {
+            errors.push(ConfigErrorKind::InvalidValueType {
+                key: error_key.to_string(),
+                expected: "table".to_string(),
+                actual: config_value.as_serde_yaml(),
+            });
+            return Self::default();
+        }
+
         Self {
             enabled: config_value.get_as_bool_or_default(
                 "enabled",

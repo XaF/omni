@@ -11,6 +11,7 @@ use crate::internal::commands::base::Command;
 use crate::internal::commands::builtin::CdCommand;
 use crate::internal::commands::builtin::CloneCommand;
 use crate::internal::commands::builtin::ConfigBootstrapCommand;
+use crate::internal::commands::builtin::ConfigCheckCommand;
 use crate::internal::commands::builtin::ConfigPathSwitchCommand;
 use crate::internal::commands::builtin::ConfigReshimCommand;
 use crate::internal::commands::builtin::ConfigTrustCommand;
@@ -91,6 +92,7 @@ impl CommandLoader {
         commands.push(CdCommand::new_command());
         commands.push(CloneCommand::new_command());
         commands.push(ConfigBootstrapCommand::new_command());
+        commands.push(ConfigCheckCommand::new_command());
         commands.push(ConfigPathSwitchCommand::new_command());
         commands.push(ConfigReshimCommand::new_command());
         commands.push(ConfigTrustCommand::new_command());
