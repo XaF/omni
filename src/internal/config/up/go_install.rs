@@ -540,7 +540,7 @@ impl UpConfigGoInstall {
                 Err(err) => {
                     errors.push(ConfigErrorKind::ParsingError {
                         key: error_key.to_string(),
-                        found: serde_yaml::Value::String(path.to_string()),
+                        actual: serde_yaml::Value::String(path.to_string()),
                         error: err.to_string(),
                     });
                     return Self {
@@ -583,7 +583,7 @@ impl UpConfigGoInstall {
                     errors.push(ConfigErrorKind::InvalidValueType {
                         key: format!("{}.path", error_key),
                         expected: "string".to_string(),
-                        found: serde_yaml::Value::String(path.to_string()),
+                        actual: serde_yaml::Value::String(path.to_string()),
                     });
                     return UpConfigGoInstall {
                         config_error: Some("path must be a string".to_string()),
@@ -616,7 +616,7 @@ impl UpConfigGoInstall {
                 }
                 errors.push(ConfigErrorKind::NotExactlyOneKeyInTable {
                     key: error_key.to_string(),
-                    found: config_value.as_serde_yaml(),
+                    actual: config_value.as_serde_yaml(),
                 });
                 return UpConfigGoInstall {
                     config_error: Some("path is required".to_string()),
@@ -630,7 +630,7 @@ impl UpConfigGoInstall {
             Err(err) => {
                 errors.push(ConfigErrorKind::ParsingError {
                     key: format!("{}.path", error_key),
-                    found: serde_yaml::Value::String(path.to_string()),
+                    actual: serde_yaml::Value::String(path.to_string()),
                     error: err.to_string(),
                 });
                 return UpConfigGoInstall {
@@ -648,7 +648,7 @@ impl UpConfigGoInstall {
                     errors.push(ConfigErrorKind::InvalidValueType {
                         key: format!("{}.exact", error_key),
                         expected: "bool".to_string(),
-                        found: value.as_serde_yaml(),
+                        actual: value.as_serde_yaml(),
                     });
                     version.is_some()
                 }
@@ -667,7 +667,7 @@ impl UpConfigGoInstall {
                 if version.is_some() {
                     errors.push(ConfigErrorKind::UnsupportedValueInContext {
                         key: format!("{}.version", error_key),
-                        found: serde_yaml::Value::String(version_field.to_string()),
+                        actual: serde_yaml::Value::String(version_field.to_string()),
                     });
 
                     return UpConfigGoInstall {

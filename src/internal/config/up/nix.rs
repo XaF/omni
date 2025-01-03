@@ -130,7 +130,7 @@ impl UpConfigNix {
                 } else {
                     errors.push(ConfigErrorKind::InvalidValueType {
                         key: format!("{}.file", error_key),
-                        found: nixfile.as_serde_yaml(),
+                        actual: nixfile.as_serde_yaml(),
                         expected: "string".to_string(),
                     });
                 }
@@ -148,7 +148,7 @@ impl UpConfigNix {
                 } else {
                     errors.push(ConfigErrorKind::InvalidValueType {
                         key: format!("{}.packages", error_key),
-                        found: packages.as_serde_yaml(),
+                        actual: packages.as_serde_yaml(),
                         expected: "array".to_string(),
                     });
                 }
@@ -168,7 +168,7 @@ impl UpConfigNix {
                         None => {
                             errors.push(ConfigErrorKind::InvalidValueType {
                                 key: format!("{}[{}]", error_key, idx),
-                                found: value.as_serde_yaml(),
+                                actual: value.as_serde_yaml(),
                                 expected: "string".to_string(),
                             });
                             None
@@ -185,7 +185,7 @@ impl UpConfigNix {
         } else {
             errors.push(ConfigErrorKind::InvalidValueType {
                 key: error_key.to_string(),
-                found: config_value.as_serde_yaml(),
+                actual: config_value.as_serde_yaml(),
                 expected: "string, array or table".to_string(),
             });
 

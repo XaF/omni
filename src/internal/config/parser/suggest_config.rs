@@ -93,7 +93,7 @@ impl SuggestConfig {
                 } else {
                     errors.push(ConfigErrorKind::InvalidValueType {
                         key: format!("{}.template", error_key),
-                        found: value.as_serde_yaml(),
+                        actual: value.as_serde_yaml(),
                         expected: "string".to_string(),
                     });
                 }
@@ -107,7 +107,7 @@ impl SuggestConfig {
                 } else {
                     errors.push(ConfigErrorKind::InvalidValueType {
                         key: format!("{}.template_file", error_key),
-                        found: value.as_serde_yaml(),
+                        actual: value.as_serde_yaml(),
                         expected: "string".to_string(),
                     });
                 }

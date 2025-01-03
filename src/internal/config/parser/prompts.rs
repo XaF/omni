@@ -60,7 +60,7 @@ impl PromptsConfig {
                 errors.push(ConfigErrorKind::InvalidValueType {
                     key: error_key.to_string(),
                     expected: "array".to_string(),
-                    found: config_value.as_serde_yaml(),
+                    actual: config_value.as_serde_yaml(),
                 });
             }
         }
@@ -281,7 +281,7 @@ impl PromptScope {
             _ => {
                 errors.push(ConfigErrorKind::InvalidValue {
                     key: format!("{}.scope", error_key),
-                    found: serde_yaml::Value::String(scope.to_string()),
+                    actual: serde_yaml::Value::String(scope.to_string()),
                     expected: vec!["repo".to_string(), "org".to_string()],
                 });
                 Self::default()
@@ -401,7 +401,7 @@ impl PromptType {
             _ => {
                 errors.push(ConfigErrorKind::InvalidValue {
                     key: format!("{}.type", error_key),
-                    found: serde_yaml::Value::String(prompt_type.to_string()),
+                    actual: serde_yaml::Value::String(prompt_type.to_string()),
                     expected: vec![
                         "text".to_string(),
                         "password".to_string(),
@@ -805,7 +805,7 @@ impl PromptChoicesConfig {
             errors.push(ConfigErrorKind::InvalidValueType {
                 key: error_key.to_string(),
                 expected: "array or template of array".to_string(),
-                found: config_value.as_serde_yaml(),
+                actual: config_value.as_serde_yaml(),
             });
             None
         }
@@ -897,7 +897,7 @@ impl PromptChoiceConfig {
             errors.push(ConfigErrorKind::InvalidValueType {
                 key: error_key.to_string(),
                 expected: "table or string".to_string(),
-                found: config_value.as_serde_yaml(),
+                actual: config_value.as_serde_yaml(),
             });
 
             None

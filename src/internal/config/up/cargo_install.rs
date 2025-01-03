@@ -536,7 +536,7 @@ impl UpConfigCargoInstall {
                 Err(err) => {
                     errors.push(ConfigErrorKind::ParsingError {
                         key: error_key.to_string(),
-                        found: serde_yaml::Value::String(crate_name.to_string()),
+                        actual: serde_yaml::Value::String(crate_name.to_string()),
                         error: err.to_string(),
                     });
                     return Self {
@@ -579,7 +579,7 @@ impl UpConfigCargoInstall {
                     errors.push(ConfigErrorKind::InvalidValueType {
                         key: format!("{}.crate", error_key),
                         expected: "string".to_string(),
-                        found: serde_yaml::Value::String(crate_name.to_string()),
+                        actual: serde_yaml::Value::String(crate_name.to_string()),
                     });
                     return UpConfigCargoInstall {
                         config_error: Some("crate_name must be a string".to_string()),
@@ -622,7 +622,7 @@ impl UpConfigCargoInstall {
                 }
                 errors.push(ConfigErrorKind::NotExactlyOneKeyInTable {
                     key: error_key.to_string(),
-                    found: config_value.as_serde_yaml(),
+                    actual: config_value.as_serde_yaml(),
                 });
                 return UpConfigCargoInstall {
                     config_error: Some("crate is required".to_string()),
@@ -636,7 +636,7 @@ impl UpConfigCargoInstall {
             Err(err) => {
                 errors.push(ConfigErrorKind::ParsingError {
                     key: format!("{}.crate", error_key),
-                    found: serde_yaml::Value::String(crate_name.to_string()),
+                    actual: serde_yaml::Value::String(crate_name.to_string()),
                     error: err.to_string(),
                 });
                 return UpConfigCargoInstall {
@@ -654,7 +654,7 @@ impl UpConfigCargoInstall {
                     errors.push(ConfigErrorKind::InvalidValueType {
                         key: format!("{}.exact", error_key),
                         expected: "bool".to_string(),
-                        found: value.as_serde_yaml(),
+                        actual: value.as_serde_yaml(),
                     });
                     version.is_some()
                 }
@@ -673,7 +673,7 @@ impl UpConfigCargoInstall {
                 if version.is_some() {
                     errors.push(ConfigErrorKind::UnsupportedValueInContext {
                         key: format!("{}.version", error_key),
-                        found: serde_yaml::Value::String(version_field.to_string()),
+                        actual: serde_yaml::Value::String(version_field.to_string()),
                     });
 
                     return UpConfigCargoInstall {

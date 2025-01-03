@@ -47,7 +47,7 @@ impl ShellAliasesConfig {
             } else {
                 errors.push(ConfigErrorKind::InvalidValueType {
                     key: error_key.to_string(),
-                    found: config_value.as_serde_yaml(),
+                    actual: config_value.as_serde_yaml(),
                     expected: "array".to_string(),
                 });
             }
@@ -82,7 +82,7 @@ impl ShellAliasConfig {
                 } else {
                     errors.push(ConfigErrorKind::InvalidValueType {
                         key: format!("{}.alias", error_key),
-                        found: value.as_serde_yaml(),
+                        actual: value.as_serde_yaml(),
                         expected: "string".to_string(),
                     });
                     return None;
@@ -101,7 +101,7 @@ impl ShellAliasConfig {
                 } else {
                     errors.push(ConfigErrorKind::InvalidValueType {
                         key: format!("{}.target", error_key),
-                        found: value.as_serde_yaml(),
+                        actual: value.as_serde_yaml(),
                         expected: "string".to_string(),
                     });
                     return None;
@@ -112,7 +112,7 @@ impl ShellAliasConfig {
         } else {
             errors.push(ConfigErrorKind::InvalidValueType {
                 key: error_key.to_string(),
-                found: config_value.as_serde_yaml(),
+                actual: config_value.as_serde_yaml(),
                 expected: "string or table".to_string(),
             });
 

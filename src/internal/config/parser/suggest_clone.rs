@@ -125,7 +125,7 @@ impl SuggestCloneConfig {
                 } else {
                     errors.push(ConfigErrorKind::InvalidValueType {
                         key: format!("{}.template", error_key),
-                        found: value.as_serde_yaml(),
+                        actual: value.as_serde_yaml(),
                         expected: "string".to_string(),
                     });
                 }
@@ -139,7 +139,7 @@ impl SuggestCloneConfig {
                 } else {
                     errors.push(ConfigErrorKind::InvalidValueType {
                         key: format!("{}.template_file", error_key),
-                        found: value.as_serde_yaml(),
+                        actual: value.as_serde_yaml(),
                         expected: "string".to_string(),
                     });
                 }
@@ -272,7 +272,7 @@ impl SuggestCloneRepositoryConfig {
                 } else {
                     errors.push(ConfigErrorKind::InvalidValueType {
                         key: format!("{}.handle", error_key),
-                        found: value.as_serde_yaml(),
+                        actual: value.as_serde_yaml(),
                         expected: "string".to_string(),
                     });
                     return None;
@@ -293,7 +293,7 @@ impl SuggestCloneRepositoryConfig {
                 } else {
                     errors.push(ConfigErrorKind::InvalidValueType {
                         key: format!("{}.args", error_key),
-                        found: value.as_serde_yaml(),
+                        actual: value.as_serde_yaml(),
                         expected: "string".to_string(),
                     });
                 }
@@ -307,14 +307,14 @@ impl SuggestCloneRepositoryConfig {
                     } else {
                         errors.push(ConfigErrorKind::InvalidValue {
                             key: format!("{}.clone_type", error_key),
-                            found: serde_yaml::Value::String(value.to_string()),
+                            actual: serde_yaml::Value::String(value.to_string()),
                             expected: vec!["package".to_string(), "worktree".to_string()],
                         });
                     }
                 } else {
                     errors.push(ConfigErrorKind::InvalidValueType {
                         key: format!("{}.clone_type", error_key),
-                        found: value.as_serde_yaml(),
+                        actual: value.as_serde_yaml(),
                         expected: "string".to_string(),
                     });
                 }
@@ -328,7 +328,7 @@ impl SuggestCloneRepositoryConfig {
         } else {
             errors.push(ConfigErrorKind::InvalidValueType {
                 key: error_key.to_string(),
-                found: config_value.as_serde_yaml(),
+                actual: config_value.as_serde_yaml(),
                 expected: "string or table".to_string(),
             });
 

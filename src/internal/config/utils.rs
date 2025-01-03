@@ -44,14 +44,14 @@ pub fn parse_duration_or_default(
                 errors.push(ConfigErrorKind::InvalidValueType {
                     key: error_key.to_string(),
                     expected: "duration".to_string(),
-                    found: serde_yaml::Value::String(value.to_string()),
+                    actual: serde_yaml::Value::String(value.to_string()),
                 });
             }
         } else {
             errors.push(ConfigErrorKind::InvalidValueType {
                 key: error_key.to_string(),
                 expected: "duration".to_string(),
-                found: value.as_serde_yaml(),
+                actual: value.as_serde_yaml(),
             });
         }
     }

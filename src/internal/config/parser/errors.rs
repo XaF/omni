@@ -4,17 +4,17 @@ use thiserror::Error;
 
 #[derive(Debug, Error, Clone)]
 pub enum ConfigErrorKind {
-    #[error("Value for key '{key}' should be a {expected} but found {found:?}")]
+    #[error("Value for key '{key}' should be a {expected} but found {actual:?}")]
     InvalidValueType {
         key: String,
         expected: String,
-        found: serde_yaml::Value,
+        actual: serde_yaml::Value,
     },
-    #[error("Value for key '{key}' should be one of {expected:?} but found {found:?}")]
+    #[error("Value for key '{key}' should be one of {expected:?} but found {actual:?}")]
     InvalidValue {
         key: String,
         expected: Vec<String>,
-        found: serde_yaml::Value,
+        actual: serde_yaml::Value,
     },
     #[error("Value for key '{key}' should define a valid range, but found [{min}, {max}[ instead")]
     InvalidRange { key: String, min: usize, max: usize },
@@ -25,21 +25,21 @@ pub enum ConfigErrorKind {
     #[error("Value for key '{key}' is empty")]
     EmptyKey { key: String },
     #[error(
-        "Value for key '{key}' should be a table with a single key-value pair but found: {found:?}"
+        "Value for key '{key}' should be a table with a single key-value pair but actual: {found:?}"
     )]
     NotExactlyOneKeyInTable {
         key: String,
-        found: serde_yaml::Value,
+        actual: serde_yaml::Value,
     },
-    #[error("Value {found:?} for '{key}' is not supported in this context")]
+    #[error("Value {actual:?} for '{key}' is not supported in this context")]
     UnsupportedValueInContext {
         key: String,
-        found: serde_yaml::Value,
+        actual: serde_yaml::Value,
     },
-    #[error("Parsing error for value {found:?} for key '{key}': {error}")]
+    #[error("Parsing error for value {actual:?} for key '{key}': {error}")]
     ParsingError {
         key: String,
-        found: serde_yaml::Value,
+        actual: serde_yaml::Value,
         error: String,
     },
     #[error("Missing subkey for key '{key}' in metadata header at line {lineno}")]

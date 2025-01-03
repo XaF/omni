@@ -51,7 +51,7 @@ impl UpEnvironmentCacheConfig {
                     errors.push(ConfigErrorKind::InvalidValueType {
                         key: format!("{}.max_per_workdir", error_key),
                         expected: "unsigned integer".to_string(),
-                        found: v.as_serde_yaml(),
+                        actual: v.as_serde_yaml(),
                     });
                     None
                 }
@@ -66,7 +66,7 @@ impl UpEnvironmentCacheConfig {
                     errors.push(ConfigErrorKind::InvalidValueType {
                         key: format!("{}.max_total", error_key),
                         expected: "unsigned integer".to_string(),
-                        found: v.as_serde_yaml(),
+                        actual: v.as_serde_yaml(),
                     });
                     None
                 }

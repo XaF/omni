@@ -187,7 +187,7 @@ impl GithubAuthConfig {
                         errors.push(ConfigErrorKind::InvalidValueType {
                             key: format!("{}.skip", error_key),
                             expected: "bool".to_string(),
-                            found: skip.as_serde_yaml(),
+                            actual: skip.as_serde_yaml(),
                         });
                     }
                 };
@@ -200,7 +200,7 @@ impl GithubAuthConfig {
                     errors.push(ConfigErrorKind::InvalidValueType {
                         key: format!("{}.token_env_var", error_key),
                         expected: "string".to_string(),
-                        found: token_env_var.as_serde_yaml(),
+                        actual: token_env_var.as_serde_yaml(),
                     });
                 }
             }
@@ -212,7 +212,7 @@ impl GithubAuthConfig {
                     errors.push(ConfigErrorKind::InvalidValueType {
                         key: format!("{}.token", error_key),
                         expected: "string".to_string(),
-                        found: token.as_serde_yaml(),
+                        actual: token.as_serde_yaml(),
                     });
                 }
             }
@@ -234,7 +234,7 @@ impl GithubAuthConfig {
                     errors.push(ConfigErrorKind::InvalidValueType {
                         key: format!("{}.gh", error_key),
                         expected: "string or table".to_string(),
-                        found: gh_value.as_serde_yaml(),
+                        actual: gh_value.as_serde_yaml(),
                     });
                 }
 
@@ -309,7 +309,7 @@ impl StringFilter {
                     errors.push(ConfigErrorKind::InvalidValueType {
                         key: format!("{}.contains", error_key),
                         expected: "string".to_string(),
-                        found: entry.as_serde_yaml(),
+                        actual: entry.as_serde_yaml(),
                     });
                     Self::default()
                 }
@@ -320,7 +320,7 @@ impl StringFilter {
                     errors.push(ConfigErrorKind::InvalidValueType {
                         key: format!("{}.starts_with", error_key),
                         expected: "string".to_string(),
-                        found: entry.as_serde_yaml(),
+                        actual: entry.as_serde_yaml(),
                     });
                     Self::default()
                 }
@@ -331,7 +331,7 @@ impl StringFilter {
                     errors.push(ConfigErrorKind::InvalidValueType {
                         key: format!("{}.ends_with", error_key),
                         expected: "string".to_string(),
-                        found: entry.as_serde_yaml(),
+                        actual: entry.as_serde_yaml(),
                     });
                     Self::default()
                 }
@@ -342,7 +342,7 @@ impl StringFilter {
                     errors.push(ConfigErrorKind::InvalidValueType {
                         key: format!("{}.regex", error_key),
                         expected: "string".to_string(),
-                        found: entry.as_serde_yaml(),
+                        actual: entry.as_serde_yaml(),
                     });
                     Self::default()
                 }
@@ -353,7 +353,7 @@ impl StringFilter {
                     errors.push(ConfigErrorKind::InvalidValueType {
                         key: format!("{}.glob", error_key),
                         expected: "string".to_string(),
-                        found: entry.as_serde_yaml(),
+                        actual: entry.as_serde_yaml(),
                     });
                     Self::default()
                 }
@@ -364,7 +364,7 @@ impl StringFilter {
                     errors.push(ConfigErrorKind::InvalidValueType {
                         key: format!("{}.exact", error_key),
                         expected: "string".to_string(),
-                        found: entry.as_serde_yaml(),
+                        actual: entry.as_serde_yaml(),
                     });
                     Self::default()
                 }

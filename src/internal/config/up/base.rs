@@ -62,7 +62,7 @@ impl UpConfig {
             None => {
                 errors.push(ConfigErrorKind::InvalidValueType {
                     key: error_key.to_string(),
-                    found: config_value.as_serde_yaml(),
+                    actual: config_value.as_serde_yaml(),
                     expected: "array".to_string(),
                 });
 
@@ -77,7 +77,7 @@ impl UpConfig {
                 if table.len() != 1 {
                     errors.push(ConfigErrorKind::NotExactlyOneKeyInTable {
                         key: format!("{}[{}]", error_key, index),
-                        found: value.as_serde_yaml(),
+                        actual: value.as_serde_yaml(),
                     });
                     up_errors.push(UpError::Config(format!(
                         "invalid config for step {}: {}",
@@ -121,7 +121,7 @@ impl UpConfig {
             } else {
                 errors.push(ConfigErrorKind::InvalidValueType {
                     key: format!("{}[{}]", error_key, index),
-                    found: value.as_serde_yaml(),
+                    actual: value.as_serde_yaml(),
                     expected: "string or table".to_string(),
                 });
                 up_errors.push(UpError::Config(format!(

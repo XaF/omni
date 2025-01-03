@@ -95,7 +95,7 @@ impl CommandDefinition {
                 } else {
                     errors.push(ConfigErrorKind::InvalidValueType {
                         key: format!("{}.subcommands", error_key),
-                        found: value.as_serde_yaml(),
+                        actual: value.as_serde_yaml(),
                         expected: "table".to_string(),
                     });
                 }
@@ -216,7 +216,7 @@ impl CommandSyntax {
                     } else {
                         errors.push(ConfigErrorKind::InvalidValueType {
                             key: format!("{}.{}", error_key, key),
-                            found: value.as_serde_yaml(),
+                            actual: value.as_serde_yaml(),
                             expected: "array or table".to_string(),
                         });
                     }
@@ -237,7 +237,7 @@ impl CommandSyntax {
                 } else {
                     errors.push(ConfigErrorKind::InvalidValueType {
                         key: format!("{}.usage", error_key),
-                        found: value.as_serde_yaml(),
+                        actual: value.as_serde_yaml(),
                         expected: "string".to_string(),
                     });
                 }
@@ -247,7 +247,7 @@ impl CommandSyntax {
         } else {
             errors.push(ConfigErrorKind::InvalidValueType {
                 key: error_key.to_string(),
-                found: config_value.as_serde_yaml(),
+                actual: config_value.as_serde_yaml(),
                 expected: "string, array or table".to_string(),
             });
         }
@@ -862,7 +862,7 @@ impl SyntaxOptArg {
                 } else {
                     errors.push(ConfigErrorKind::InvalidValueType {
                         key: format!("{}.name", error_key),
-                        found: name_value.as_serde_yaml(),
+                        actual: name_value.as_serde_yaml(),
                         expected: "string".to_string(),
                     });
                     return None;
@@ -944,7 +944,7 @@ impl SyntaxOptArg {
                             value.chars().next().or_else(|| {
                                 errors.push(ConfigErrorKind::InvalidValueType {
                                     key: format!("{}.delimiter", error_key),
-                                    found: serde_yaml::Value::String(value),
+                                    actual: serde_yaml::Value::String(value),
                                     expected: "non-empty string".to_string(),
                                 });
                                 None
@@ -1022,7 +1022,7 @@ impl SyntaxOptArg {
                                 } else {
                                     errors.push(ConfigErrorKind::InvalidValueType {
                                         key: format!("{}.required_if_eq.{}", error_key, key),
-                                        found: value.as_serde_yaml(),
+                                        actual: value.as_serde_yaml(),
                                         expected: "string".to_string(),
                                     });
                                 }
@@ -1030,7 +1030,7 @@ impl SyntaxOptArg {
                         } else {
                             errors.push(ConfigErrorKind::InvalidValueType {
                                 key: format!("{}.required_if_eq", error_key),
-                                found: required_if_eq_value.as_serde_yaml(),
+                                actual: required_if_eq_value.as_serde_yaml(),
                                 expected: "table".to_string(),
                             });
                         }
@@ -1044,7 +1044,7 @@ impl SyntaxOptArg {
                                 } else {
                                     errors.push(ConfigErrorKind::InvalidValueType {
                                         key: format!("{}.required_if_eq_all.{}", error_key, key),
-                                        found: value.as_serde_yaml(),
+                                        actual: value.as_serde_yaml(),
                                         expected: "string".to_string(),
                                     });
                                 }
@@ -1052,7 +1052,7 @@ impl SyntaxOptArg {
                         } else {
                             errors.push(ConfigErrorKind::InvalidValueType {
                                 key: format!("{}.required_if_eq_all", error_key),
-                                found: required_if_eq_all_value.as_serde_yaml(),
+                                actual: required_if_eq_all_value.as_serde_yaml(),
                                 expected: "table".to_string(),
                             });
                         }
@@ -1071,7 +1071,7 @@ impl SyntaxOptArg {
         } else {
             errors.push(ConfigErrorKind::InvalidValueType {
                 key: error_key.to_string(),
-                found: config_value.as_serde_yaml(),
+                actual: config_value.as_serde_yaml(),
                 expected: "string or table".to_string(),
             });
             return None;
@@ -2044,7 +2044,7 @@ impl SyntaxOptArgNumValues {
                     Err(_) => {
                         errors.push(ConfigErrorKind::InvalidValueType {
                             key: error_key.to_string(),
-                            found: serde_yaml::Value::String(value.to_string()),
+                            actual: serde_yaml::Value::String(value.to_string()),
                             expected: "positive integer".to_string(),
                         });
                         return None;
@@ -2059,7 +2059,7 @@ impl SyntaxOptArgNumValues {
                     Err(_) => {
                         errors.push(ConfigErrorKind::InvalidValueType {
                             key: error_key.to_string(),
-                            found: serde_yaml::Value::String(value.to_string()),
+                            actual: serde_yaml::Value::String(value.to_string()),
                             expected: "positive integer".to_string(),
                         });
                         return None;
@@ -2114,7 +2114,7 @@ impl SyntaxOptArgNumValues {
                 Err(_) => {
                     errors.push(ConfigErrorKind::InvalidValueType {
                         key: error_key.to_string(),
-                        found: serde_yaml::Value::String(value.to_string()),
+                        actual: serde_yaml::Value::String(value.to_string()),
                         expected: "positive integer".to_string(),
                     });
                     None
@@ -2138,7 +2138,7 @@ impl SyntaxOptArgNumValues {
         } else {
             errors.push(ConfigErrorKind::InvalidValueType {
                 key: error_key.to_string(),
-                found: config_value.as_serde_yaml(),
+                actual: config_value.as_serde_yaml(),
                 expected: "string or integer".to_string(),
             });
             None
@@ -2231,7 +2231,7 @@ impl SyntaxOptArgType {
             &config_value_type.as_str_forced().or_else(|| {
                 errors.push(ConfigErrorKind::InvalidValueType {
                     key: error_key.to_string(),
-                    found: config_value_type.as_serde_yaml(),
+                    actual: config_value_type.as_serde_yaml(),
                     expected: "string".to_string(),
                 });
                 None
@@ -2318,7 +2318,7 @@ impl SyntaxOptArgType {
                 } else {
                     errors.push(ConfigErrorKind::InvalidValue {
                         key: error_key.to_string(),
-                        found: serde_yaml::Value::String(value.to_string()),
+                        actual: serde_yaml::Value::String(value.to_string()),
                         expected: vec![
                             "int".to_string(),
                             "float".to_string(),
@@ -2463,7 +2463,7 @@ impl SyntaxGroup {
         } else {
             errors.push(ConfigErrorKind::InvalidValueType {
                 key: error_key.to_string(),
-                found: config_value.as_serde_yaml(),
+                actual: config_value.as_serde_yaml(),
                 expected: "array or table".to_string(),
             });
         }
@@ -2493,7 +2493,7 @@ impl SyntaxGroup {
         } else {
             errors.push(ConfigErrorKind::InvalidValueType {
                 key: error_key.to_string(),
-                found: config_value.as_serde_yaml(),
+                actual: config_value.as_serde_yaml(),
                 expected: "table".to_string(),
             });
             return None;
@@ -2518,7 +2518,7 @@ impl SyntaxGroup {
                     if !config_value.is_table() {
                         errors.push(ConfigErrorKind::InvalidValueType {
                             key: error_key,
-                            found: config_value.as_serde_yaml(),
+                            actual: config_value.as_serde_yaml(),
                             expected: "table".to_string(),
                         });
                         return None;
@@ -2532,7 +2532,7 @@ impl SyntaxGroup {
                     } else {
                         errors.push(ConfigErrorKind::InvalidValueType {
                             key: format!("{}.name", error_key),
-                            found: name.as_serde_yaml(),
+                            actual: name.as_serde_yaml(),
                             expected: "string".to_string(),
                         });
                         return None;

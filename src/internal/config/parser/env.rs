@@ -82,7 +82,7 @@ impl EnvConfig {
                 errors.push(ConfigErrorKind::InvalidValueType {
                     key: error_key.to_string(),
                     expected: "array or map".to_string(),
-                    found: config_value.as_serde_yaml(),
+                    actual: config_value.as_serde_yaml(),
                 });
                 vec![]
             };
@@ -179,7 +179,7 @@ impl EnvOperationConfig {
                 Some(_) => {
                     errors.push(ConfigErrorKind::InvalidValue {
                         key: format!("{}.type", error_key),
-                        found: value_type.as_serde_yaml(),
+                        actual: value_type.as_serde_yaml(),
                         expected: vec!["text".to_string(), "path".to_string()],
                     });
                     return None;
@@ -188,7 +188,7 @@ impl EnvOperationConfig {
                     errors.push(ConfigErrorKind::InvalidValueType {
                         key: format!("{}.type", error_key),
                         expected: "text".to_string(),
-                        found: value_type.as_serde_yaml(),
+                        actual: value_type.as_serde_yaml(),
                     });
                     return None;
                 }
@@ -208,7 +208,7 @@ impl EnvOperationConfig {
                         _ => {
                             errors.push(ConfigErrorKind::UnsupportedValueInContext {
                                 key: format!("{}.type", error_key),
-                                found: serde_yaml::Value::String(value.to_string()),
+                                actual: serde_yaml::Value::String(value.to_string()),
                             });
                             None
                         }
@@ -236,7 +236,7 @@ impl EnvOperationConfig {
                 errors.push(ConfigErrorKind::InvalidValueType {
                     key: format!("{}.value", error_key),
                     expected: "string".to_string(),
-                    found: config_value.as_serde_yaml(),
+                    actual: config_value.as_serde_yaml(),
                 });
                 None
             }
@@ -270,7 +270,7 @@ impl EnvOperationConfig {
                 errors.push(ConfigErrorKind::InvalidValueType {
                     key: error_key.to_string(),
                     expected: "table".to_string(),
-                    found: config_value.as_serde_yaml(),
+                    actual: config_value.as_serde_yaml(),
                 });
                 return vec![];
             }
@@ -280,7 +280,7 @@ impl EnvOperationConfig {
         if table.len() != 1 {
             errors.push(ConfigErrorKind::NotExactlyOneKeyInTable {
                 key: error_key.to_string(),
-                found: config_value.as_serde_yaml(),
+                actual: config_value.as_serde_yaml(),
             });
             return vec![];
         }

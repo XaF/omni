@@ -48,7 +48,7 @@ impl PathConfig {
             } else {
                 errors.push(ConfigErrorKind::InvalidValueType {
                     key: format!("{}.append", error_key),
-                    found: append.as_serde_yaml(),
+                    actual: append.as_serde_yaml(),
                     expected: "array".to_string(),
                 });
                 vec![]
@@ -73,7 +73,7 @@ impl PathConfig {
             } else {
                 errors.push(ConfigErrorKind::InvalidValueType {
                     key: format!("{}.prepend", error_key),
-                    found: prepend.as_serde_yaml(),
+                    actual: prepend.as_serde_yaml(),
                     expected: "array".to_string(),
                 });
                 vec![]
@@ -137,7 +137,7 @@ impl PathEntryConfig {
                 if absolute_path {
                     errors.push(ConfigErrorKind::UnsupportedValueInContext {
                         key: format!("{}.package", error_key),
-                        found: config_value.get("package").unwrap().as_serde_yaml(),
+                        actual: config_value.get("package").unwrap().as_serde_yaml(),
                     });
                 } else {
                     if let Some(package_path) = package_path_from_handle(&package) {
@@ -175,7 +175,7 @@ impl PathEntryConfig {
         } else {
             errors.push(ConfigErrorKind::InvalidValueType {
                 key: error_key.to_string(),
-                found: config_value.as_serde_yaml(),
+                actual: config_value.as_serde_yaml(),
                 expected: "string or table".to_string(),
             });
             None

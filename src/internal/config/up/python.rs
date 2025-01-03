@@ -54,7 +54,7 @@ impl UpConfigPythonParams {
                     } else {
                         errors.push(ConfigErrorKind::InvalidValueType {
                             key: error_key.to_string(),
-                            found: file_path.as_serde_yaml(),
+                            actual: file_path.as_serde_yaml(),
                             expected: "string".to_string(),
                         });
                     }
@@ -68,7 +68,7 @@ impl UpConfigPythonParams {
             } else {
                 errors.push(ConfigErrorKind::InvalidValueType {
                     key: error_key.to_string(),
-                    found: config_value.as_serde_yaml(),
+                    actual: config_value.as_serde_yaml(),
                     expected: "string or array of strings".to_string(),
                 });
             }

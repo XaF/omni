@@ -326,7 +326,7 @@ impl<'de> Deserialize<'de> for PathCommandFileDetails {
                         errors.push(ConfigErrorKind::InvalidValueType {
                             key: "autocompletion".to_string(),
                             expected: "boolean".to_string(),
-                            found: v.to_owned(),
+                            actual: v.to_owned(),
                         });
                         false
                     }
@@ -339,7 +339,7 @@ impl<'de> Deserialize<'de> for PathCommandFileDetails {
                         errors.push(ConfigErrorKind::InvalidValueType {
                             key: "sync_update".to_string(),
                             expected: "boolean".to_string(),
-                            found: v.to_owned(),
+                            actual: v.to_owned(),
                         });
                         false
                     }
@@ -352,7 +352,7 @@ impl<'de> Deserialize<'de> for PathCommandFileDetails {
                         errors.push(ConfigErrorKind::InvalidValueType {
                             key: "argparser".to_string(),
                             expected: "boolean".to_string(),
-                            found: v.to_owned(),
+                            actual: v.to_owned(),
                         });
                         false
                     }
@@ -367,7 +367,7 @@ impl<'de> Deserialize<'de> for PathCommandFileDetails {
                         errors.push(ConfigErrorKind::InvalidValueType {
                             key: "help".to_string(),
                             expected: "string".to_string(),
-                            found: v.to_owned(),
+                            actual: v.to_owned(),
                         });
                         None
                     }
@@ -394,7 +394,7 @@ impl<'de> Deserialize<'de> for PathCommandFileDetails {
                                         errors.push(ConfigErrorKind::InvalidValueType {
                                             key: format!("category[{}]", idx),
                                             expected: "string".to_string(),
-                                            found: entry.to_owned(),
+                                            actual: entry.to_owned(),
                                         });
                                         None
                                     }
@@ -405,7 +405,7 @@ impl<'de> Deserialize<'de> for PathCommandFileDetails {
                             errors.push(ConfigErrorKind::InvalidValueType {
                                 key: "category".to_string(),
                                 expected: "string or sequence".to_string(),
-                                found: value.to_owned(),
+                                actual: value.to_owned(),
                             });
                             None
                         }
@@ -414,7 +414,7 @@ impl<'de> Deserialize<'de> for PathCommandFileDetails {
                         errors.push(ConfigErrorKind::InvalidValueType {
                             key: "category".to_string(),
                             expected: "string or sequence".to_string(),
-                            found: v.to_owned(),
+                            actual: v.to_owned(),
                         });
                         None
                     }
@@ -430,7 +430,7 @@ impl<'de> Deserialize<'de> for PathCommandFileDetails {
                             errors.push(ConfigErrorKind::InvalidValueType {
                                 key: "syntax".to_string(),
                                 expected: "map".to_string(),
-                                found: v.to_owned(),
+                                actual: v.to_owned(),
                             });
                             None
                         }
@@ -451,7 +451,7 @@ impl<'de> Deserialize<'de> for PathCommandFileDetails {
                 errors: vec![ConfigErrorKind::InvalidValueType {
                     key: ".".to_string(),
                     expected: "map".to_string(),
-                    found: value,
+                    actual: value,
                 }],
                 ..Self::default()
             })

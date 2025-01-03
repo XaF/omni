@@ -108,7 +108,7 @@ impl PathRepoUpdatesConfig {
                 errors.push(ConfigErrorKind::InvalidValueType {
                     key: format!("{}.self_update", error_key),
                     expected: "boolean, string, or integer".to_string(),
-                    found: value.as_serde_yaml(),
+                    actual: value.as_serde_yaml(),
                 });
                 PathRepoUpdatesSelfUpdateEnum::default()
             }
@@ -128,7 +128,7 @@ impl PathRepoUpdatesConfig {
                 errors.push(ConfigErrorKind::InvalidValueType {
                     key: format!("{}.on_command_not_found", error_key),
                     expected: "boolean, string, or integer".to_string(),
-                    found: value.as_serde_yaml(),
+                    actual: value.as_serde_yaml(),
                 });
                 PathRepoUpdatesOnCommandNotFoundEnum::default()
             }
@@ -143,7 +143,7 @@ impl PathRepoUpdatesConfig {
                 errors.push(ConfigErrorKind::InvalidValueType {
                     key: format!("{}.ref_type", error_key),
                     expected: "string".to_string(),
-                    found: value.as_serde_yaml(),
+                    actual: value.as_serde_yaml(),
                 });
                 Self::DEFAULT_REF_TYPE.to_string()
             }
@@ -158,7 +158,7 @@ impl PathRepoUpdatesConfig {
                 errors.push(ConfigErrorKind::InvalidValueType {
                     key: format!("{}.ref_match", error_key),
                     expected: "string".to_string(),
-                    found: value.as_serde_yaml(),
+                    actual: value.as_serde_yaml(),
                 });
                 None
             }

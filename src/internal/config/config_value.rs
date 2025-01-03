@@ -635,7 +635,7 @@ impl ConfigValue {
                     errors.push(ConfigErrorKind::InvalidValueType {
                         key: error_key.to_string(),
                         expected: "string".to_string(),
-                        found: value.as_serde_yaml(),
+                        actual: value.as_serde_yaml(),
                     });
                     None
                 }
@@ -659,7 +659,7 @@ impl ConfigValue {
                     errors.push(ConfigErrorKind::InvalidValueType {
                         key: error_key.to_string(),
                         expected: "string".to_string(),
-                        found: value.as_serde_yaml(),
+                        actual: value.as_serde_yaml(),
                     });
                     default.to_string()
                 }
@@ -687,7 +687,7 @@ impl ConfigValue {
                     } else {
                         errors.push(ConfigErrorKind::InvalidValueType {
                             key: format!("{}[{}]", error_key, idx),
-                            found: value.as_serde_yaml(),
+                            actual: value.as_serde_yaml(),
                             expected: "string".to_string(),
                         });
                     }
@@ -695,7 +695,7 @@ impl ConfigValue {
             } else {
                 errors.push(ConfigErrorKind::InvalidValueType {
                     key: error_key.to_string(),
-                    found: value.as_serde_yaml(),
+                    actual: value.as_serde_yaml(),
                     expected: "string or array of strings".to_string(),
                 });
             }
@@ -731,7 +731,7 @@ impl ConfigValue {
                     errors.push(ConfigErrorKind::InvalidValueType {
                         key: error_key.to_string(),
                         expected: "bool".to_string(),
-                        found: value.as_serde_yaml(),
+                        actual: value.as_serde_yaml(),
                     });
                     None
                 }
@@ -755,7 +755,7 @@ impl ConfigValue {
                     errors.push(ConfigErrorKind::InvalidValueType {
                         key: error_key.to_string(),
                         expected: "bool".to_string(),
-                        found: value.as_serde_yaml(),
+                        actual: value.as_serde_yaml(),
                     });
                     default
                 }
@@ -785,7 +785,7 @@ impl ConfigValue {
                     errors.push(ConfigErrorKind::InvalidValueType {
                         key: error_key.to_string(),
                         expected: "float".to_string(),
-                        found: value.as_serde_yaml(),
+                        actual: value.as_serde_yaml(),
                     });
                     None
                 }
@@ -809,7 +809,7 @@ impl ConfigValue {
                     errors.push(ConfigErrorKind::InvalidValueType {
                         key: error_key.to_string(),
                         expected: "float".to_string(),
-                        found: value.as_serde_yaml(),
+                        actual: value.as_serde_yaml(),
                     });
                     default
                 }
@@ -839,7 +839,7 @@ impl ConfigValue {
                     errors.push(ConfigErrorKind::InvalidValueType {
                         key: error_key.to_string(),
                         expected: "integer".to_string(),
-                        found: value.as_serde_yaml(),
+                        actual: value.as_serde_yaml(),
                     });
                     None
                 }

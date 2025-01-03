@@ -493,7 +493,7 @@ impl HomebrewTap {
         } else {
             errors.push(ConfigErrorKind::InvalidValueType {
                 key: error_key.to_string(),
-                found: config_value.as_serde_yaml(),
+                actual: config_value.as_serde_yaml(),
                 expected: "string or table".to_string(),
             });
         }
@@ -529,7 +529,7 @@ impl HomebrewTap {
         } else {
             errors.push(ConfigErrorKind::InvalidValueType {
                 key: error_key.to_string(),
-                found: config_value.as_serde_yaml(),
+                actual: config_value.as_serde_yaml(),
                 expected: "string or table".to_string(),
             });
         }
@@ -957,7 +957,7 @@ impl HomebrewInstall {
                     } else {
                         errors.push(ConfigErrorKind::InvalidValueType {
                             key: error_key.to_string(),
-                            found: rest_of_config.as_serde_yaml(),
+                            actual: rest_of_config.as_serde_yaml(),
                             expected: "string".to_string(),
                         });
                     }
@@ -966,7 +966,7 @@ impl HomebrewInstall {
                 } else {
                     errors.push(ConfigErrorKind::InvalidValueType {
                         key: error_key.to_string(),
-                        found: formula_config_value.as_serde_yaml(),
+                        actual: formula_config_value.as_serde_yaml(),
                         expected: "string or table".to_string(),
                     });
                 }

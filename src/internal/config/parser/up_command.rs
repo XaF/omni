@@ -284,7 +284,7 @@ impl UpCommandOperationMiseConfig {
                                 errors.push(ConfigErrorKind::InvalidValueType {
                                     key: format!("{}.default_plugin_sources.{}", error_key, key),
                                     expected: "string".to_string(),
-                                    found: value.as_serde_yaml(),
+                                    actual: value.as_serde_yaml(),
                                 });
 
                                 None
@@ -295,7 +295,7 @@ impl UpCommandOperationMiseConfig {
                     errors.push(ConfigErrorKind::InvalidValueType {
                         key: format!("{}.default_plugin_sources", error_key),
                         expected: "table".to_string(),
-                        found: value.as_serde_yaml(),
+                        actual: value.as_serde_yaml(),
                     });
 
                     HashMap::new()

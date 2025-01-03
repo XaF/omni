@@ -54,7 +54,7 @@ impl CacheConfig {
                     errors.push(ConfigErrorKind::InvalidValueType {
                         key: format!("{}.path", error_key),
                         expected: "string".to_string(),
-                        found: value.as_serde_yaml(),
+                        actual: value.as_serde_yaml(),
                     });
                     cache_home()
                 }
