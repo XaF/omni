@@ -49,7 +49,8 @@ use crate::internal::workdir;
 use crate::omni_warning;
 
 static MISE_PATH: Lazy<String> = Lazy::new(|| format!("{}/mise", data_home()));
-static MISE_BIN: Lazy<String> = Lazy::new(|| format!("{}/bin/mise", *MISE_PATH));
+static MISE_BIN_DIR: Lazy<String> = Lazy::new(|| format!("{}/bin", *MISE_PATH));
+static MISE_BIN: Lazy<String> = Lazy::new(|| format!("{}/mise", *MISE_BIN_DIR));
 static MISE_CACHE_PATH: Lazy<String> = Lazy::new(|| format!("{}/mise", cache_home()));
 static MISE_REGISTRY: Lazy<MiseRegistry> =
     Lazy::new(|| MiseRegistry::new().expect("failed to load mise registry"));
@@ -79,6 +80,10 @@ pub fn mise_cache_path() -> String {
     (*MISE_CACHE_PATH).clone()
 }
 
+fn mise_bin_dir() -> &'static str {
+    MISE_BIN_DIR.as_str()
+}
+
 fn mise_bin() -> &'static str {
     MISE_BIN.as_str()
 }
@@ -87,6 +92,7 @@ fn configure_mise_command<T>(command: &mut T) -> &mut T
 where
     T: CommandExt,
 {
+    // Configure the environment for the command
     command.env_remove_prefix("MISE_");
     command.env_remove("INSTALL_PREFIX");
     command.env_remove("DESTDIR");
@@ -97,9 +103,26 @@ where
     command.env("MISE_LIBGIT2", "false");
     command.env("MISE_RUSTUP_HOME", format!("{}/rustup", mise_path()));
     command.env("MISE_CARGO_HOME", format!("{}/cargo", mise_path()));
+
+    // Add mise itself to the path
+    let path_env = std::env::var("PATH").unwrap_or_default();
+    let new_paths = std::env::join_paths(
+        vec![PathBuf::from(mise_bin_dir())].into_iter().chain(
+            std::env::split_paths(&path_env)
+                .into_iter()
+                .filter(|p| p != Path::new(mise_bin_dir())),
+        ),
+    )
+    .expect("failed to join paths");
+    command.env("PATH", new_paths);
+
+    // Configure the output
     command.stdout(std::process::Stdio::piped());
     command.stderr(std::process::Stdio::piped());
+
+    // Run from the /tmp directory so we don't expect any .mise.toml files
     command.current_dir("/tmp");
+
     command
 }
 
