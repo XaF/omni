@@ -19,6 +19,7 @@ use crate::internal::commands::utils::SplitOnSeparators;
 use crate::internal::config;
 use crate::internal::config::config_loader;
 use crate::internal::config::parser::parse_arg_name;
+use crate::internal::config::parser::ConfigErrorKind;
 use crate::internal::config::utils::is_executable;
 use crate::internal::config::CommandSyntax;
 use crate::internal::config::ConfigExtendOptions;
@@ -294,72 +295,168 @@ impl PathCommand {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Default)]
 pub struct PathCommandFileDetails {
-    #[serde(default, deserialize_with = "deserialize_category")]
     category: Option<Vec<String>>,
-    #[serde(default, deserialize_with = "deserialize_help")]
     help: Option<String>,
-    #[serde(default, deserialize_with = "deserialize_bool_default_false")]
     autocompletion: bool,
-    #[serde(default, deserialize_with = "deserialize_syntax")]
     syntax: Option<CommandSyntax>,
-    #[serde(default, deserialize_with = "deserialize_bool_default_false")]
     sync_update: bool,
-    #[serde(default, deserialize_with = "deserialize_bool_default_false")]
     argparser: bool,
+    #[serde(skip)]
+    errors: Vec<ConfigErrorKind>,
 }
 
-fn deserialize_category<'de, D>(deserializer: D) -> Result<Option<Vec<String>>, D::Error>
-where
-    D: serde::Deserializer<'de>,
-{
-    let value = serde_yaml::Value::deserialize(deserializer)?;
-    match value {
-        serde_yaml::Value::String(s) => Ok(Some(
-            s.split(',')
-                .map(|s| s.trim().to_string())
-                .collect::<Vec<String>>(),
-        )),
-        serde_yaml::Value::Sequence(s) => Ok(Some(
-            s.iter()
-                .map(|s| s.as_str().unwrap().trim().to_string())
-                .collect::<Vec<String>>(),
-        )),
-        _ => Ok(None),
-    }
-}
+impl<'de> Deserialize<'de> for PathCommandFileDetails {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let mut value = serde_yaml::Value::deserialize(deserializer)?;
 
-fn deserialize_help<'de, D>(deserializer: D) -> Result<Option<String>, D::Error>
-where
-    D: serde::Deserializer<'de>,
-{
-    let value = serde_yaml::Value::deserialize(deserializer)?;
-    match value {
-        serde_yaml::Value::String(s) => Ok(Some(s)),
-        _ => Ok(None),
-    }
-}
+        if let serde_yaml::Value::Mapping(ref mut map) = value {
+            let mut errors = vec![];
 
-fn deserialize_bool_default_false<'de, D>(deserializer: D) -> Result<bool, D::Error>
-where
-    D: serde::Deserializer<'de>,
-{
-    let value = serde_yaml::Value::deserialize(deserializer)?;
-    match value {
-        serde_yaml::Value::Bool(b) => Ok(b),
-        _ => Ok(false),
-    }
-}
+            // Deserialize the booleans
+            let autocompletion = map
+                .remove(&serde_yaml::Value::String("autocompletion".to_string()))
+                .map_or(false, |v| match bool::deserialize(v.clone()) {
+                    Ok(b) => b,
+                    Err(_err) => {
+                        errors.push(ConfigErrorKind::ValueType {
+                            key: "autocompletion".to_string(),
+                            expected: "boolean".to_string(),
+                            found: v.to_owned(),
+                        });
+                        false
+                    }
+                });
+            let sync_update = map
+                .remove(&serde_yaml::Value::String("sync_update".to_string()))
+                .map_or(false, |v| match bool::deserialize(v.clone()) {
+                    Ok(b) => b,
+                    Err(_err) => {
+                        errors.push(ConfigErrorKind::ValueType {
+                            key: "sync_update".to_string(),
+                            expected: "boolean".to_string(),
+                            found: v.to_owned(),
+                        });
+                        false
+                    }
+                });
+            let argparser = map
+                .remove(&serde_yaml::Value::String("argparser".to_string()))
+                .map_or(false, |v| match bool::deserialize(v.clone()) {
+                    Ok(b) => b,
+                    Err(_err) => {
+                        errors.push(ConfigErrorKind::ValueType {
+                            key: "argparser".to_string(),
+                            expected: "boolean".to_string(),
+                            found: v.to_owned(),
+                        });
+                        false
+                    }
+                });
 
-fn deserialize_syntax<'de, D>(deserializer: D) -> Result<Option<CommandSyntax>, D::Error>
-where
-    D: serde::Deserializer<'de>,
-{
-    if let Ok(value) = CommandSyntax::deserialize(deserializer) {
-        return Ok(Some(value));
+            // Deserialize the help message
+            let help = map
+                .remove(&serde_yaml::Value::String("help".to_string()))
+                .map_or(None, |v| match String::deserialize(v.clone()) {
+                    Ok(s) => Some(s),
+                    Err(_err) => {
+                        errors.push(ConfigErrorKind::ValueType {
+                            key: "help".to_string(),
+                            expected: "string".to_string(),
+                            found: v.to_owned(),
+                        });
+                        None
+                    }
+                });
+
+            // Deserialize the category
+            let category = map
+                .remove(&serde_yaml::Value::String("category".to_string()))
+                .map_or(None, |v| match serde_yaml::Value::deserialize(v.clone()) {
+                    Ok(value) => match value {
+                        serde_yaml::Value::String(s) => Some(
+                            s.split(',')
+                                .map(|s| s.trim().to_string())
+                                .collect::<Vec<String>>(),
+                        ),
+                        serde_yaml::Value::Sequence(s) => Some(
+                            s.iter()
+                                .enumerate()
+                                .filter_map(|(idx, entry)| match entry {
+                                    serde_yaml::Value::String(s) => Some(s.trim().to_string()),
+                                    serde_yaml::Value::Number(n) => Some(n.to_string()),
+                                    serde_yaml::Value::Bool(b) => Some(b.to_string()),
+                                    _ => {
+                                        errors.push(ConfigErrorKind::ValueType {
+                                            key: format!("category[{}]", idx),
+                                            expected: "string".to_string(),
+                                            found: entry.to_owned(),
+                                        });
+                                        None
+                                    }
+                                })
+                                .collect::<Vec<String>>(),
+                        ),
+                        _ => {
+                            errors.push(ConfigErrorKind::ValueType {
+                                key: "category".to_string(),
+                                expected: "string or sequence".to_string(),
+                                found: value.to_owned(),
+                            });
+                            None
+                        }
+                    },
+                    Err(_err) => {
+                        errors.push(ConfigErrorKind::ValueType {
+                            key: "category".to_string(),
+                            expected: "string or sequence".to_string(),
+                            found: v.to_owned(),
+                        });
+                        None
+                    }
+                });
+
+            // Deserialize the syntax
+            let syntax = map
+                .remove(&serde_yaml::Value::String("syntax".to_string()))
+                .map_or(None, |v| {
+                    match CommandSyntax::deserialize(v.clone(), "syntax", &mut errors) {
+                        Ok(s) => Some(s),
+                        Err(_err) => {
+                            errors.push(ConfigErrorKind::ValueType {
+                                key: "syntax".to_string(),
+                                expected: "map".to_string(),
+                                found: v.to_owned(),
+                            });
+                            None
+                        }
+                    }
+                });
+
+            Ok(Self {
+                autocompletion,
+                sync_update,
+                argparser,
+                help,
+                category,
+                syntax,
+                errors,
+            })
+        } else {
+            Ok(Self {
+                errors: vec![ConfigErrorKind::ValueType {
+                    key: "".to_string(),
+                    expected: "map".to_string(),
+                    found: value,
+                }],
+                ..Self::default()
+            })
+        }
     }
-    Ok(None)
 }
 
 impl PathCommandFileDetails {
@@ -813,6 +910,7 @@ impl PathCommandFileDetails {
             argparser,
             syntax,
             sync_update,
+            ..Self::default()
         })
     }
 

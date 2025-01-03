@@ -143,14 +143,18 @@ impl CommandSyntax {
         Self::default()
     }
 
-    pub fn deserialize<'de, D>(deserializer: D) -> Result<Self, D::Error>
+    pub fn deserialize<'de, D>(
+        deserializer: D,
+        error_key: &str,
+        errors: &mut Vec<ConfigErrorKind>,
+    ) -> Result<Self, D::Error>
     where
         D: serde::Deserializer<'de>,
     {
         let value = serde_yaml::Value::deserialize(deserializer)?;
         let config_value = ConfigValue::from_value(ConfigSource::Null, ConfigScope::Null, value);
         if let Some(command_syntax) =
-            CommandSyntax::from_config_value(&config_value, "", &mut vec![])
+            CommandSyntax::from_config_value(&config_value, error_key, errors)
         {
             Ok(command_syntax)
         } else {
