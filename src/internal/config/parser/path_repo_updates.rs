@@ -105,7 +105,7 @@ impl PathRepoUpdatesConfig {
             } else if let Some(value) = value.as_integer() {
                 PathRepoUpdatesSelfUpdateEnum::from_int(value)
             } else {
-                errors.push(ConfigErrorKind::ValueType {
+                errors.push(ConfigErrorKind::InvalidValueType {
                     key: format!("{}.self_update", error_key),
                     expected: "boolean, string, or integer".to_string(),
                     found: value.as_serde_yaml(),
@@ -125,7 +125,7 @@ impl PathRepoUpdatesConfig {
             } else if let Some(value) = value.as_integer() {
                 PathRepoUpdatesOnCommandNotFoundEnum::from_int(value)
             } else {
-                errors.push(ConfigErrorKind::ValueType {
+                errors.push(ConfigErrorKind::InvalidValueType {
                     key: format!("{}.on_command_not_found", error_key),
                     expected: "boolean, string, or integer".to_string(),
                     found: value.as_serde_yaml(),
@@ -140,7 +140,7 @@ impl PathRepoUpdatesConfig {
             if let Some(value) = value.as_str() {
                 value.to_string()
             } else {
-                errors.push(ConfigErrorKind::ValueType {
+                errors.push(ConfigErrorKind::InvalidValueType {
                     key: format!("{}.ref_type", error_key),
                     expected: "string".to_string(),
                     found: value.as_serde_yaml(),
@@ -155,7 +155,7 @@ impl PathRepoUpdatesConfig {
             if let Some(value) = value.as_str() {
                 Some(value.to_string())
             } else {
-                errors.push(ConfigErrorKind::ValueType {
+                errors.push(ConfigErrorKind::InvalidValueType {
                     key: format!("{}.ref_match", error_key),
                     expected: "string".to_string(),
                     found: value.as_serde_yaml(),

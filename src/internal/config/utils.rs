@@ -41,14 +41,14 @@ pub fn parse_duration_or_default(
             if let Ok(value) = parse_duration(&value) {
                 return value.as_secs();
             } else {
-                errors.push(ConfigErrorKind::ValueType {
+                errors.push(ConfigErrorKind::InvalidValueType {
                     key: error_key.to_string(),
                     expected: "duration".to_string(),
                     found: serde_yaml::Value::String(value.to_string()),
                 });
             }
         } else {
-            errors.push(ConfigErrorKind::ValueType {
+            errors.push(ConfigErrorKind::InvalidValueType {
                 key: error_key.to_string(),
                 expected: "duration".to_string(),
                 found: value.as_serde_yaml(),

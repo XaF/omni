@@ -123,7 +123,7 @@ impl SuggestCloneConfig {
                         template_file: "".to_string(),
                     };
                 } else {
-                    errors.push(ConfigErrorKind::ValueType {
+                    errors.push(ConfigErrorKind::InvalidValueType {
                         key: format!("{}.template", error_key),
                         found: value.as_serde_yaml(),
                         expected: "string".to_string(),
@@ -137,7 +137,7 @@ impl SuggestCloneConfig {
                         template_file: filepath.to_string(),
                     };
                 } else {
-                    errors.push(ConfigErrorKind::ValueType {
+                    errors.push(ConfigErrorKind::InvalidValueType {
                         key: format!("{}.template_file", error_key),
                         found: value.as_serde_yaml(),
                         expected: "string".to_string(),
@@ -270,7 +270,7 @@ impl SuggestCloneRepositoryConfig {
                 if let Some(value) = value.as_str() {
                     value.to_string()
                 } else {
-                    errors.push(ConfigErrorKind::ValueType {
+                    errors.push(ConfigErrorKind::InvalidValueType {
                         key: format!("{}.handle", error_key),
                         found: value.as_serde_yaml(),
                         expected: "string".to_string(),
@@ -291,7 +291,7 @@ impl SuggestCloneRepositoryConfig {
                         args.extend(value);
                     }
                 } else {
-                    errors.push(ConfigErrorKind::ValueType {
+                    errors.push(ConfigErrorKind::InvalidValueType {
                         key: format!("{}.args", error_key),
                         found: value.as_serde_yaml(),
                         expected: "string".to_string(),
@@ -312,7 +312,7 @@ impl SuggestCloneRepositoryConfig {
                         });
                     }
                 } else {
-                    errors.push(ConfigErrorKind::ValueType {
+                    errors.push(ConfigErrorKind::InvalidValueType {
                         key: format!("{}.clone_type", error_key),
                         found: value.as_serde_yaml(),
                         expected: "string".to_string(),
@@ -326,7 +326,7 @@ impl SuggestCloneRepositoryConfig {
                 clone_type,
             })
         } else {
-            errors.push(ConfigErrorKind::ValueType {
+            errors.push(ConfigErrorKind::InvalidValueType {
                 key: error_key.to_string(),
                 found: config_value.as_serde_yaml(),
                 expected: "string or table".to_string(),

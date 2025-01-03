@@ -110,7 +110,7 @@ impl OmniConfig {
                     );
                 }
             } else {
-                errors.push(ConfigErrorKind::ValueType {
+                errors.push(ConfigErrorKind::InvalidValueType {
                     key: "commands".to_string(),
                     expected: "table".to_string(),
                     found: value.as_serde_yaml(),
@@ -130,7 +130,7 @@ impl OmniConfig {
                         org_config.push(OrgConfig::from_config_value(&value));
                     }
                 } else {
-                    errors.push(ConfigErrorKind::ValueType {
+                    errors.push(ConfigErrorKind::InvalidValueType {
                         key: "org".to_string(),
                         expected: "array".to_string(),
                         found: value.as_serde_yaml(),

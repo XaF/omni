@@ -60,7 +60,7 @@ impl UpConfig {
         let config_array = match config_value.as_array() {
             Some(config_array) => config_array,
             None => {
-                errors.push(ConfigErrorKind::ValueType {
+                errors.push(ConfigErrorKind::InvalidValueType {
                     key: error_key.to_string(),
                     found: config_value.as_serde_yaml(),
                     expected: "array".to_string(),
@@ -119,7 +119,7 @@ impl UpConfig {
                     )));
                 }
             } else {
-                errors.push(ConfigErrorKind::ValueType {
+                errors.push(ConfigErrorKind::InvalidValueType {
                     key: format!("{}[{}]", error_key, index),
                     found: value.as_serde_yaml(),
                     expected: "string or table".to_string(),

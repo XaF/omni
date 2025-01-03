@@ -589,7 +589,7 @@ impl UpConfigGithubRelease {
                 ..Self::default()
             }
         } else {
-            errors.push(ConfigErrorKind::ValueType {
+            errors.push(ConfigErrorKind::InvalidValueType {
                 key: error_key.to_string(),
                 expected: "string or table".to_string(),
                 found: config_value.as_serde_yaml(),
@@ -664,7 +664,7 @@ impl UpConfigGithubRelease {
         } else if let Some(repository) = repository.as_str_forced() {
             repository.to_string()
         } else {
-            errors.push(ConfigErrorKind::ValueType {
+            errors.push(ConfigErrorKind::InvalidValueType {
                 key: format!("{}.repository", error_key),
                 expected: "string or table".to_string(),
                 found: repository.as_serde_yaml(),
@@ -1766,7 +1766,7 @@ impl GithubReleaseChecksumConfig {
                 ..Self::default()
             }
         } else {
-            errors.push(ConfigErrorKind::ValueType {
+            errors.push(ConfigErrorKind::InvalidValueType {
                 key: error_key.to_string(),
                 expected: "table or string".to_string(),
                 found: config_value.as_serde_yaml(),

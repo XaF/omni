@@ -323,7 +323,7 @@ impl<'de> Deserialize<'de> for PathCommandFileDetails {
                 .map_or(false, |v| match bool::deserialize(v.clone()) {
                     Ok(b) => b,
                     Err(_err) => {
-                        errors.push(ConfigErrorKind::ValueType {
+                        errors.push(ConfigErrorKind::InvalidValueType {
                             key: "autocompletion".to_string(),
                             expected: "boolean".to_string(),
                             found: v.to_owned(),
@@ -336,7 +336,7 @@ impl<'de> Deserialize<'de> for PathCommandFileDetails {
                 .map_or(false, |v| match bool::deserialize(v.clone()) {
                     Ok(b) => b,
                     Err(_err) => {
-                        errors.push(ConfigErrorKind::ValueType {
+                        errors.push(ConfigErrorKind::InvalidValueType {
                             key: "sync_update".to_string(),
                             expected: "boolean".to_string(),
                             found: v.to_owned(),
@@ -349,7 +349,7 @@ impl<'de> Deserialize<'de> for PathCommandFileDetails {
                 .map_or(false, |v| match bool::deserialize(v.clone()) {
                     Ok(b) => b,
                     Err(_err) => {
-                        errors.push(ConfigErrorKind::ValueType {
+                        errors.push(ConfigErrorKind::InvalidValueType {
                             key: "argparser".to_string(),
                             expected: "boolean".to_string(),
                             found: v.to_owned(),
@@ -364,7 +364,7 @@ impl<'de> Deserialize<'de> for PathCommandFileDetails {
                 .map_or(None, |v| match String::deserialize(v.clone()) {
                     Ok(s) => Some(s),
                     Err(_err) => {
-                        errors.push(ConfigErrorKind::ValueType {
+                        errors.push(ConfigErrorKind::InvalidValueType {
                             key: "help".to_string(),
                             expected: "string".to_string(),
                             found: v.to_owned(),
@@ -391,7 +391,7 @@ impl<'de> Deserialize<'de> for PathCommandFileDetails {
                                     serde_yaml::Value::Number(n) => Some(n.to_string()),
                                     serde_yaml::Value::Bool(b) => Some(b.to_string()),
                                     _ => {
-                                        errors.push(ConfigErrorKind::ValueType {
+                                        errors.push(ConfigErrorKind::InvalidValueType {
                                             key: format!("category[{}]", idx),
                                             expected: "string".to_string(),
                                             found: entry.to_owned(),
@@ -402,7 +402,7 @@ impl<'de> Deserialize<'de> for PathCommandFileDetails {
                                 .collect::<Vec<String>>(),
                         ),
                         _ => {
-                            errors.push(ConfigErrorKind::ValueType {
+                            errors.push(ConfigErrorKind::InvalidValueType {
                                 key: "category".to_string(),
                                 expected: "string or sequence".to_string(),
                                 found: value.to_owned(),
@@ -411,7 +411,7 @@ impl<'de> Deserialize<'de> for PathCommandFileDetails {
                         }
                     },
                     Err(_err) => {
-                        errors.push(ConfigErrorKind::ValueType {
+                        errors.push(ConfigErrorKind::InvalidValueType {
                             key: "category".to_string(),
                             expected: "string or sequence".to_string(),
                             found: v.to_owned(),
@@ -427,7 +427,7 @@ impl<'de> Deserialize<'de> for PathCommandFileDetails {
                     match CommandSyntax::deserialize(v.clone(), "syntax", &mut errors) {
                         Ok(s) => Some(s),
                         Err(_err) => {
-                            errors.push(ConfigErrorKind::ValueType {
+                            errors.push(ConfigErrorKind::InvalidValueType {
                                 key: "syntax".to_string(),
                                 expected: "map".to_string(),
                                 found: v.to_owned(),
@@ -448,8 +448,8 @@ impl<'de> Deserialize<'de> for PathCommandFileDetails {
             })
         } else {
             Ok(Self {
-                errors: vec![ConfigErrorKind::ValueType {
-                    key: "".to_string(),
+                errors: vec![ConfigErrorKind::InvalidValueType {
+                    key: ".".to_string(),
                     expected: "map".to_string(),
                     found: value,
                 }],

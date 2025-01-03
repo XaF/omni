@@ -281,7 +281,7 @@ impl UpCommandOperationMiseConfig {
                         .filter_map(|(key, value)| match value.as_str_forced() {
                             Some(value) => Some((key.to_string(), value.to_string())),
                             None => {
-                                errors.push(ConfigErrorKind::ValueType {
+                                errors.push(ConfigErrorKind::InvalidValueType {
                                     key: format!("{}.default_plugin_sources.{}", error_key, key),
                                     expected: "string".to_string(),
                                     found: value.as_serde_yaml(),
@@ -292,7 +292,7 @@ impl UpCommandOperationMiseConfig {
                         })
                         .collect()
                 } else {
-                    errors.push(ConfigErrorKind::ValueType {
+                    errors.push(ConfigErrorKind::InvalidValueType {
                         key: format!("{}.default_plugin_sources", error_key),
                         expected: "table".to_string(),
                         found: value.as_serde_yaml(),

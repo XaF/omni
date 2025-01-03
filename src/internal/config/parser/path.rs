@@ -46,7 +46,7 @@ impl PathConfig {
                     })
                     .collect()
             } else {
-                errors.push(ConfigErrorKind::ValueType {
+                errors.push(ConfigErrorKind::InvalidValueType {
                     key: format!("{}.append", error_key),
                     found: append.as_serde_yaml(),
                     expected: "array".to_string(),
@@ -71,7 +71,7 @@ impl PathConfig {
                     })
                     .collect()
             } else {
-                errors.push(ConfigErrorKind::ValueType {
+                errors.push(ConfigErrorKind::InvalidValueType {
                     key: format!("{}.prepend", error_key),
                     found: prepend.as_serde_yaml(),
                     expected: "array".to_string(),
@@ -173,7 +173,7 @@ impl PathEntryConfig {
                 full_path: path,
             })
         } else {
-            errors.push(ConfigErrorKind::ValueType {
+            errors.push(ConfigErrorKind::InvalidValueType {
                 key: error_key.to_string(),
                 found: config_value.as_serde_yaml(),
                 expected: "string or table".to_string(),

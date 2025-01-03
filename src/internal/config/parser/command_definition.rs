@@ -93,7 +93,7 @@ impl CommandDefinition {
                         );
                     }
                 } else {
-                    errors.push(ConfigErrorKind::ValueType {
+                    errors.push(ConfigErrorKind::InvalidValueType {
                         key: format!("{}.subcommands", error_key),
                         found: value.as_serde_yaml(),
                         expected: "table".to_string(),
@@ -214,7 +214,7 @@ impl CommandSyntax {
                     ) {
                         parameters.push(arg);
                     } else {
-                        errors.push(ConfigErrorKind::ValueType {
+                        errors.push(ConfigErrorKind::InvalidValueType {
                             key: format!("{}.{}", error_key, key),
                             found: value.as_serde_yaml(),
                             expected: "array or table".to_string(),
@@ -235,7 +235,7 @@ impl CommandSyntax {
                 if let Some(value) = value.as_str_forced() {
                     usage = Some(value.to_string());
                 } else {
-                    errors.push(ConfigErrorKind::ValueType {
+                    errors.push(ConfigErrorKind::InvalidValueType {
                         key: format!("{}.usage", error_key),
                         found: value.as_serde_yaml(),
                         expected: "string".to_string(),
@@ -245,7 +245,7 @@ impl CommandSyntax {
         } else if let Some(value) = config_value.as_str_forced() {
             usage = Some(value.to_string());
         } else {
-            errors.push(ConfigErrorKind::ValueType {
+            errors.push(ConfigErrorKind::InvalidValueType {
                 key: error_key.to_string(),
                 found: config_value.as_serde_yaml(),
                 expected: "string, array or table".to_string(),
@@ -860,7 +860,7 @@ impl SyntaxOptArg {
                     (names, arg_type, placeholders, leftovers) = parse_arg_name(&name_value);
                     value_for_details = Some(config_value.clone());
                 } else {
-                    errors.push(ConfigErrorKind::ValueType {
+                    errors.push(ConfigErrorKind::InvalidValueType {
                         key: format!("{}.name", error_key),
                         found: name_value.as_serde_yaml(),
                         expected: "string".to_string(),
@@ -942,7 +942,7 @@ impl SyntaxOptArg {
                         )
                         .and_then(|value| {
                             value.chars().next().or_else(|| {
-                                errors.push(ConfigErrorKind::ValueType {
+                                errors.push(ConfigErrorKind::InvalidValueType {
                                     key: format!("{}.delimiter", error_key),
                                     found: serde_yaml::Value::String(value),
                                     expected: "non-empty string".to_string(),
@@ -1020,7 +1020,7 @@ impl SyntaxOptArg {
                                 if let Some(value) = value.as_str_forced() {
                                     required_if_eq.insert(key.to_string(), value.to_string());
                                 } else {
-                                    errors.push(ConfigErrorKind::ValueType {
+                                    errors.push(ConfigErrorKind::InvalidValueType {
                                         key: format!("{}.required_if_eq.{}", error_key, key),
                                         found: value.as_serde_yaml(),
                                         expected: "string".to_string(),
@@ -1028,7 +1028,7 @@ impl SyntaxOptArg {
                                 }
                             }
                         } else {
-                            errors.push(ConfigErrorKind::ValueType {
+                            errors.push(ConfigErrorKind::InvalidValueType {
                                 key: format!("{}.required_if_eq", error_key),
                                 found: required_if_eq_value.as_serde_yaml(),
                                 expected: "table".to_string(),
@@ -1042,7 +1042,7 @@ impl SyntaxOptArg {
                                 if let Some(value) = value.as_str_forced() {
                                     required_if_eq_all.insert(key.to_string(), value.to_string());
                                 } else {
-                                    errors.push(ConfigErrorKind::ValueType {
+                                    errors.push(ConfigErrorKind::InvalidValueType {
                                         key: format!("{}.required_if_eq_all.{}", error_key, key),
                                         found: value.as_serde_yaml(),
                                         expected: "string".to_string(),
@@ -1050,7 +1050,7 @@ impl SyntaxOptArg {
                                 }
                             }
                         } else {
-                            errors.push(ConfigErrorKind::ValueType {
+                            errors.push(ConfigErrorKind::InvalidValueType {
                                 key: format!("{}.required_if_eq_all", error_key),
                                 found: required_if_eq_all_value.as_serde_yaml(),
                                 expected: "table".to_string(),
@@ -1069,7 +1069,7 @@ impl SyntaxOptArg {
         } else if let Some(value) = config_value.as_str() {
             (names, arg_type, placeholders, leftovers) = parse_arg_name(&value);
         } else {
-            errors.push(ConfigErrorKind::ValueType {
+            errors.push(ConfigErrorKind::InvalidValueType {
                 key: error_key.to_string(),
                 found: config_value.as_serde_yaml(),
                 expected: "string or table".to_string(),
@@ -2042,7 +2042,7 @@ impl SyntaxOptArgNumValues {
                 value => match value.parse::<usize>() {
                     Ok(value) => Some(value),
                     Err(_) => {
-                        errors.push(ConfigErrorKind::ValueType {
+                        errors.push(ConfigErrorKind::InvalidValueType {
                             key: error_key.to_string(),
                             found: serde_yaml::Value::String(value.to_string()),
                             expected: "positive integer".to_string(),
@@ -2057,7 +2057,7 @@ impl SyntaxOptArgNumValues {
                 value => match value.parse::<usize>() {
                     Ok(value) => Some(value),
                     Err(_) => {
-                        errors.push(ConfigErrorKind::ValueType {
+                        errors.push(ConfigErrorKind::InvalidValueType {
                             key: error_key.to_string(),
                             found: serde_yaml::Value::String(value.to_string()),
                             expected: "positive integer".to_string(),
@@ -2112,7 +2112,7 @@ impl SyntaxOptArgNumValues {
             let value = match value.parse::<usize>() {
                 Ok(value) => Some(value),
                 Err(_) => {
-                    errors.push(ConfigErrorKind::ValueType {
+                    errors.push(ConfigErrorKind::InvalidValueType {
                         key: error_key.to_string(),
                         found: serde_yaml::Value::String(value.to_string()),
                         expected: "positive integer".to_string(),
@@ -2136,7 +2136,7 @@ impl SyntaxOptArgNumValues {
         } else if let Some(value) = config_value.as_str_forced() {
             Self::from_str(&value, error_key, errors)
         } else {
-            errors.push(ConfigErrorKind::ValueType {
+            errors.push(ConfigErrorKind::InvalidValueType {
                 key: error_key.to_string(),
                 found: config_value.as_serde_yaml(),
                 expected: "string or integer".to_string(),
@@ -2229,7 +2229,7 @@ impl SyntaxOptArgType {
 
         let obj = Self::from_str(
             &config_value_type.as_str_forced().or_else(|| {
-                errors.push(ConfigErrorKind::ValueType {
+                errors.push(ConfigErrorKind::InvalidValueType {
                     key: error_key.to_string(),
                     found: config_value_type.as_serde_yaml(),
                     expected: "string".to_string(),
@@ -2461,7 +2461,7 @@ impl SyntaxGroup {
                 }
             }
         } else {
-            errors.push(ConfigErrorKind::ValueType {
+            errors.push(ConfigErrorKind::InvalidValueType {
                 key: error_key.to_string(),
                 found: config_value.as_serde_yaml(),
                 expected: "array or table".to_string(),
@@ -2491,7 +2491,7 @@ impl SyntaxGroup {
             }
             table
         } else {
-            errors.push(ConfigErrorKind::ValueType {
+            errors.push(ConfigErrorKind::InvalidValueType {
                 key: error_key.to_string(),
                 found: config_value.as_serde_yaml(),
                 expected: "table".to_string(),
@@ -2516,7 +2516,7 @@ impl SyntaxGroup {
 
                     // Exit early if the value is not a table
                     if !config_value.is_table() {
-                        errors.push(ConfigErrorKind::ValueType {
+                        errors.push(ConfigErrorKind::InvalidValueType {
                             key: error_key,
                             found: config_value.as_serde_yaml(),
                             expected: "table".to_string(),
@@ -2530,7 +2530,7 @@ impl SyntaxGroup {
                     if let Some(name) = name.as_str_forced() {
                         name.to_string()
                     } else {
-                        errors.push(ConfigErrorKind::ValueType {
+                        errors.push(ConfigErrorKind::InvalidValueType {
                             key: format!("{}.name", error_key),
                             found: name.as_serde_yaml(),
                             expected: "string".to_string(),

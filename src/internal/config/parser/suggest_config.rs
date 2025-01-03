@@ -91,7 +91,7 @@ impl SuggestConfig {
                         template_file: "".to_string(),
                     };
                 } else {
-                    errors.push(ConfigErrorKind::ValueType {
+                    errors.push(ConfigErrorKind::InvalidValueType {
                         key: format!("{}.template", error_key),
                         found: value.as_serde_yaml(),
                         expected: "string".to_string(),
@@ -105,7 +105,7 @@ impl SuggestConfig {
                         template_file: filepath.to_string(),
                     };
                 } else {
-                    errors.push(ConfigErrorKind::ValueType {
+                    errors.push(ConfigErrorKind::InvalidValueType {
                         key: format!("{}.template_file", error_key),
                         found: value.as_serde_yaml(),
                         expected: "string".to_string(),

@@ -4,40 +4,45 @@ use thiserror::Error;
 
 #[derive(Debug, Error, Clone)]
 pub enum ConfigErrorKind {
-    #[error("Value for key {key} should be a {expected} but found {found:?}")]
-    ValueType {
+    #[error("Value for key '{key}' should be a {expected} but found {found:?}")]
+    InvalidValueType {
         key: String,
         expected: String,
         found: serde_yaml::Value,
     },
-    #[error("Value for key {key} should be one of {expected:?} but found {found:?}")]
+    #[error("Value for key '{key}' should be one of {expected:?} but found {found:?}")]
     InvalidValue {
         key: String,
         expected: Vec<String>,
         found: serde_yaml::Value,
     },
-    #[error("Value for key {key} should define a valid range, but found [{min}, {max}[ instead")]
+    #[error("Value for key '{key}' should define a valid range, but found [{min}, {max}[ instead")]
     InvalidRange { key: String, min: usize, max: usize },
-    #[error("Value for key {key} should be a valid package, but found {package}")]
+    #[error("Value for key '{key}' should be a valid package, but found '{package}'")]
     InvalidPackage { key: String, package: String },
-    #[error("Value for key {key} is missing")]
+    #[error("Value for key '{key}' is missing")]
     MissingKey { key: String },
-    #[error("Value for key {key} is empty")]
+    #[error("Value for key '{key}' is empty")]
     EmptyKey { key: String },
     #[error(
-        "Value for key {key} should be a table with a single key-value pair but found: {found:?}"
+        "Value for key '{key}' should be a table with a single key-value pair but found: {found:?}"
     )]
     NotExactlyOneKeyInTable {
         key: String,
         found: serde_yaml::Value,
     },
-    #[error("Value {found:?} for {key} is not supported in this context")]
+    #[error("Value {found:?} for '{key}' is not supported in this context")]
     UnsupportedValueInContext {
         key: String,
         found: serde_yaml::Value,
     },
-
-    #[error("Missing subkey for key {key} in metadata header at line {lineno}")]
+    #[error("Parsing error for value {found:?} for key '{key}': {error}")]
+    ParsingError {
+        key: String,
+        found: serde_yaml::Value,
+        error: String,
+    },
+    #[error("Missing subkey for key '{key}' in metadata header at line {lineno}")]
     MetadataHeaderMissingSubkey { key: String, lineno: usize },
     #[error("Line {lineno} in metadata header is a 'continue' but there is no current key")]
     MetadataHeaderContinueWithoutKey { lineno: usize },

@@ -45,7 +45,7 @@ impl ShellAliasesConfig {
                     }
                 }
             } else {
-                errors.push(ConfigErrorKind::ValueType {
+                errors.push(ConfigErrorKind::InvalidValueType {
                     key: error_key.to_string(),
                     found: config_value.as_serde_yaml(),
                     expected: "array".to_string(),
@@ -80,7 +80,7 @@ impl ShellAliasConfig {
                 if let Some(value) = value.as_str() {
                     value.to_string()
                 } else {
-                    errors.push(ConfigErrorKind::ValueType {
+                    errors.push(ConfigErrorKind::InvalidValueType {
                         key: format!("{}.alias", error_key),
                         found: value.as_serde_yaml(),
                         expected: "string".to_string(),
@@ -99,7 +99,7 @@ impl ShellAliasConfig {
                 if let Some(value) = value.as_str() {
                     target = Some(value.to_string());
                 } else {
-                    errors.push(ConfigErrorKind::ValueType {
+                    errors.push(ConfigErrorKind::InvalidValueType {
                         key: format!("{}.target", error_key),
                         found: value.as_serde_yaml(),
                         expected: "string".to_string(),
@@ -110,7 +110,7 @@ impl ShellAliasConfig {
 
             Some(Self { alias, target })
         } else {
-            errors.push(ConfigErrorKind::ValueType {
+            errors.push(ConfigErrorKind::InvalidValueType {
                 key: error_key.to_string(),
                 found: config_value.as_serde_yaml(),
                 expected: "string or table".to_string(),

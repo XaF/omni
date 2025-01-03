@@ -52,7 +52,7 @@ impl UpConfigPythonParams {
                     if let Some(file_path) = file_path.as_str_forced() {
                         pip_files.push(file_path.to_string());
                     } else {
-                        errors.push(ConfigErrorKind::ValueType {
+                        errors.push(ConfigErrorKind::InvalidValueType {
                             key: error_key.to_string(),
                             found: file_path.as_serde_yaml(),
                             expected: "string".to_string(),
@@ -66,7 +66,7 @@ impl UpConfigPythonParams {
                     pip_files.push(file_path.to_string());
                 }
             } else {
-                errors.push(ConfigErrorKind::ValueType {
+                errors.push(ConfigErrorKind::InvalidValueType {
                     key: error_key.to_string(),
                     found: config_value.as_serde_yaml(),
                     expected: "string or array of strings".to_string(),

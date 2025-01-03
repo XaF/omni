@@ -538,11 +538,10 @@ impl UpConfigGoInstall {
             let (path, version) = match parse_go_install_path(&path) {
                 Ok((path, version)) => (path, version),
                 Err(err) => {
-                    // TODO(2025-01-02): better error
-                    errors.push(ConfigErrorKind::InvalidValue {
+                    errors.push(ConfigErrorKind::ParsingError {
                         key: error_key.to_string(),
                         found: serde_yaml::Value::String(path.to_string()),
-                        expected: vec![err.to_string()],
+                        error: err.to_string(),
                     });
                     return Self {
                         path: path.to_string(),
@@ -581,7 +580,7 @@ impl UpConfigGoInstall {
                 if let Some(path) = path.as_str_forced() {
                     path.to_string()
                 } else {
-                    errors.push(ConfigErrorKind::ValueType {
+                    errors.push(ConfigErrorKind::InvalidValueType {
                         key: format!("{}.path", error_key),
                         expected: "string".to_string(),
                         found: serde_yaml::Value::String(path.to_string()),
@@ -629,11 +628,10 @@ impl UpConfigGoInstall {
         let (path, version) = match parse_go_install_path(&path) {
             Ok((path, version)) => (path, version),
             Err(err) => {
-                // TODO(2025-01-02): better error
-                errors.push(ConfigErrorKind::InvalidValue {
+                errors.push(ConfigErrorKind::ParsingError {
                     key: format!("{}.path", error_key),
                     found: serde_yaml::Value::String(path.to_string()),
-                    expected: vec![err.to_string()],
+                    error: err.to_string(),
                 });
                 return UpConfigGoInstall {
                     path,
@@ -647,7 +645,7 @@ impl UpConfigGoInstall {
             Some(value) => match value.as_bool_forced() {
                 Some(exact) => exact,
                 None => {
-                    errors.push(ConfigErrorKind::ValueType {
+                    errors.push(ConfigErrorKind::InvalidValueType {
                         key: format!("{}.exact", error_key),
                         expected: "bool".to_string(),
                         found: value.as_serde_yaml(),

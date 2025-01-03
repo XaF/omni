@@ -48,7 +48,7 @@ impl UpEnvironmentCacheConfig {
             Some(v) => match v.as_unsigned_integer() {
                 Some(v) => Some(v as usize),
                 None => {
-                    errors.push(ConfigErrorKind::ValueType {
+                    errors.push(ConfigErrorKind::InvalidValueType {
                         key: format!("{}.max_per_workdir", error_key),
                         expected: "unsigned integer".to_string(),
                         found: v.as_serde_yaml(),
@@ -63,7 +63,7 @@ impl UpEnvironmentCacheConfig {
             Some(v) => match v.as_unsigned_integer() {
                 Some(v) => Some(v as usize),
                 None => {
-                    errors.push(ConfigErrorKind::ValueType {
+                    errors.push(ConfigErrorKind::InvalidValueType {
                         key: format!("{}.max_total", error_key),
                         expected: "unsigned integer".to_string(),
                         found: v.as_serde_yaml(),

@@ -51,7 +51,7 @@ impl CacheConfig {
             Some(value) => match value.as_str() {
                 Some(value) => value.to_string(),
                 None => {
-                    errors.push(ConfigErrorKind::ValueType {
+                    errors.push(ConfigErrorKind::InvalidValueType {
                         key: format!("{}.path", error_key),
                         expected: "string".to_string(),
                         found: value.as_serde_yaml(),

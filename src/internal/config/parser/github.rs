@@ -184,7 +184,7 @@ impl GithubAuthConfig {
                     Some(true) => return Self::Skip(true),
                     Some(false) => {}
                     None => {
-                        errors.push(ConfigErrorKind::ValueType {
+                        errors.push(ConfigErrorKind::InvalidValueType {
                             key: format!("{}.skip", error_key),
                             expected: "bool".to_string(),
                             found: skip.as_serde_yaml(),
@@ -197,7 +197,7 @@ impl GithubAuthConfig {
                 if let Some(token_env_var) = token_env_var.as_str_forced() {
                     return Self::TokenEnvVar(token_env_var.to_string());
                 } else {
-                    errors.push(ConfigErrorKind::ValueType {
+                    errors.push(ConfigErrorKind::InvalidValueType {
                         key: format!("{}.token_env_var", error_key),
                         expected: "string".to_string(),
                         found: token_env_var.as_serde_yaml(),
@@ -209,7 +209,7 @@ impl GithubAuthConfig {
                 if let Some(token) = token.as_str_forced() {
                     return Self::Token(token.to_string());
                 } else {
-                    errors.push(ConfigErrorKind::ValueType {
+                    errors.push(ConfigErrorKind::InvalidValueType {
                         key: format!("{}.token", error_key),
                         expected: "string".to_string(),
                         found: token.as_serde_yaml(),
@@ -231,7 +231,7 @@ impl GithubAuthConfig {
                 } else if let Some(gh_string) = gh_value.as_str_forced() {
                     hostname = Some(gh_string.to_string());
                 } else {
-                    errors.push(ConfigErrorKind::ValueType {
+                    errors.push(ConfigErrorKind::InvalidValueType {
                         key: format!("{}.gh", error_key),
                         expected: "string or table".to_string(),
                         found: gh_value.as_serde_yaml(),
@@ -306,7 +306,7 @@ impl StringFilter {
                 if let Some(value) = entry.as_str_forced() {
                     StringFilter::Contains(value)
                 } else {
-                    errors.push(ConfigErrorKind::ValueType {
+                    errors.push(ConfigErrorKind::InvalidValueType {
                         key: format!("{}.contains", error_key),
                         expected: "string".to_string(),
                         found: entry.as_serde_yaml(),
@@ -317,7 +317,7 @@ impl StringFilter {
                 if let Some(value) = entry.as_str_forced() {
                     StringFilter::StartsWith(value)
                 } else {
-                    errors.push(ConfigErrorKind::ValueType {
+                    errors.push(ConfigErrorKind::InvalidValueType {
                         key: format!("{}.starts_with", error_key),
                         expected: "string".to_string(),
                         found: entry.as_serde_yaml(),
@@ -328,7 +328,7 @@ impl StringFilter {
                 if let Some(value) = entry.as_str_forced() {
                     StringFilter::EndsWith(value)
                 } else {
-                    errors.push(ConfigErrorKind::ValueType {
+                    errors.push(ConfigErrorKind::InvalidValueType {
                         key: format!("{}.ends_with", error_key),
                         expected: "string".to_string(),
                         found: entry.as_serde_yaml(),
@@ -339,7 +339,7 @@ impl StringFilter {
                 if let Some(value) = entry.as_str_forced() {
                     StringFilter::Regex(value)
                 } else {
-                    errors.push(ConfigErrorKind::ValueType {
+                    errors.push(ConfigErrorKind::InvalidValueType {
                         key: format!("{}.regex", error_key),
                         expected: "string".to_string(),
                         found: entry.as_serde_yaml(),
@@ -350,7 +350,7 @@ impl StringFilter {
                 if let Some(value) = entry.as_str_forced() {
                     StringFilter::Glob(value)
                 } else {
-                    errors.push(ConfigErrorKind::ValueType {
+                    errors.push(ConfigErrorKind::InvalidValueType {
                         key: format!("{}.glob", error_key),
                         expected: "string".to_string(),
                         found: entry.as_serde_yaml(),
@@ -361,7 +361,7 @@ impl StringFilter {
                 if let Some(value) = entry.as_str_forced() {
                     StringFilter::Exact(value)
                 } else {
-                    errors.push(ConfigErrorKind::ValueType {
+                    errors.push(ConfigErrorKind::InvalidValueType {
                         key: format!("{}.exact", error_key),
                         expected: "string".to_string(),
                         found: entry.as_serde_yaml(),

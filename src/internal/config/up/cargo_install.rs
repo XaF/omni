@@ -534,11 +534,10 @@ impl UpConfigCargoInstall {
             let (crate_name, version) = match parse_cargo_crate_name(&crate_name) {
                 Ok((crate_name, version)) => (crate_name, version),
                 Err(err) => {
-                    // TODO(2025-01-02): better error
-                    errors.push(ConfigErrorKind::InvalidValue {
+                    errors.push(ConfigErrorKind::ParsingError {
                         key: error_key.to_string(),
                         found: serde_yaml::Value::String(crate_name.to_string()),
-                        expected: vec![err.to_string()],
+                        error: err.to_string(),
                     });
                     return Self {
                         crate_name: crate_name.to_string(),
@@ -577,7 +576,7 @@ impl UpConfigCargoInstall {
                 if let Some(crate_name) = crate_name.as_str_forced() {
                     crate_name.to_string()
                 } else {
-                    errors.push(ConfigErrorKind::ValueType {
+                    errors.push(ConfigErrorKind::InvalidValueType {
                         key: format!("{}.crate", error_key),
                         expected: "string".to_string(),
                         found: serde_yaml::Value::String(crate_name.to_string()),
@@ -635,11 +634,10 @@ impl UpConfigCargoInstall {
         let (crate_name, version) = match parse_cargo_crate_name(&crate_name) {
             Ok((crate_name, version)) => (crate_name, version),
             Err(err) => {
-                // TODO(2025-01-02): better error
-                errors.push(ConfigErrorKind::InvalidValue {
+                errors.push(ConfigErrorKind::ParsingError {
                     key: format!("{}.crate", error_key),
                     found: serde_yaml::Value::String(crate_name.to_string()),
-                    expected: vec![err.to_string()],
+                    error: err.to_string(),
                 });
                 return UpConfigCargoInstall {
                     crate_name,
@@ -653,7 +651,7 @@ impl UpConfigCargoInstall {
             Some(value) => match value.as_bool_forced() {
                 Some(exact) => exact,
                 None => {
-                    errors.push(ConfigErrorKind::ValueType {
+                    errors.push(ConfigErrorKind::InvalidValueType {
                         key: format!("{}.exact", error_key),
                         expected: "bool".to_string(),
                         found: value.as_serde_yaml(),

@@ -67,7 +67,7 @@ impl UpConfigBundler {
                 ..Self::default()
             }
         } else {
-            errors.push(ConfigErrorKind::ValueType {
+            errors.push(ConfigErrorKind::InvalidValueType {
                 key: error_key.to_string(),
                 expected: "table or string".to_string(),
                 found: config_value.as_serde_yaml(),

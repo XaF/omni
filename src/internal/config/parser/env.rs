@@ -79,7 +79,7 @@ impl EnvConfig {
                     .collect::<Vec<ConfigValue>>()
             } else {
                 // Unsupported type
-                errors.push(ConfigErrorKind::ValueType {
+                errors.push(ConfigErrorKind::InvalidValueType {
                     key: error_key.to_string(),
                     expected: "array or map".to_string(),
                     found: config_value.as_serde_yaml(),
@@ -185,7 +185,7 @@ impl EnvOperationConfig {
                     return None;
                 }
                 None => {
-                    errors.push(ConfigErrorKind::ValueType {
+                    errors.push(ConfigErrorKind::InvalidValueType {
                         key: format!("{}.type", error_key),
                         expected: "text".to_string(),
                         found: value_type.as_serde_yaml(),
@@ -233,7 +233,7 @@ impl EnvOperationConfig {
                     Some(value.to_string())
                 }
             } else {
-                errors.push(ConfigErrorKind::ValueType {
+                errors.push(ConfigErrorKind::InvalidValueType {
                     key: format!("{}.value", error_key),
                     expected: "string".to_string(),
                     found: config_value.as_serde_yaml(),
@@ -267,7 +267,7 @@ impl EnvOperationConfig {
         let table = match config_value.as_table() {
             Some(table) => table,
             None => {
-                errors.push(ConfigErrorKind::ValueType {
+                errors.push(ConfigErrorKind::InvalidValueType {
                     key: error_key.to_string(),
                     expected: "table".to_string(),
                     found: config_value.as_serde_yaml(),

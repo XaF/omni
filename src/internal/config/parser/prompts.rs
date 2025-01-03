@@ -57,7 +57,7 @@ impl PromptsConfig {
 
                 return Self { prompts };
             } else {
-                errors.push(ConfigErrorKind::ValueType {
+                errors.push(ConfigErrorKind::InvalidValueType {
                     key: error_key.to_string(),
                     expected: "array".to_string(),
                     found: config_value.as_serde_yaml(),
@@ -802,7 +802,7 @@ impl PromptChoicesConfig {
         } else if let Some(string) = config_value.as_str_forced() {
             Some(Self::ChoicesAsString(string.to_string()))
         } else {
-            errors.push(ConfigErrorKind::ValueType {
+            errors.push(ConfigErrorKind::InvalidValueType {
                 key: error_key.to_string(),
                 expected: "array or template of array".to_string(),
                 found: config_value.as_serde_yaml(),
@@ -894,7 +894,7 @@ impl PromptChoiceConfig {
                 choice: choice.to_string(),
             })
         } else {
-            errors.push(ConfigErrorKind::ValueType {
+            errors.push(ConfigErrorKind::InvalidValueType {
                 key: error_key.to_string(),
                 expected: "table or string".to_string(),
                 found: config_value.as_serde_yaml(),
