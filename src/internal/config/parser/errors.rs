@@ -36,6 +36,35 @@ pub enum ConfigErrorKind {
         key: String,
         found: serde_yaml::Value,
     },
+
+    #[error("Missing subkey for key {key} in metadata header at line {lineno}")]
+    MetadataHeaderMissingSubkey { key: String, lineno: usize },
+    #[error("Line {lineno} in metadata header is a 'continue' but there is no current key")]
+    MetadataHeaderContinueWithoutKey { lineno: usize },
+    #[error("Unknown key {key} in metadata header at line {lineno}")]
+    MetadataHeaderUnknownKey { key: String, lineno: usize },
+    #[error("No syntax provided")]
+    MetadataHeaderMissingSyntax,
+    #[error("No help provided")]
+    MetadataHeaderMissingHelp,
+    #[error("Empty part in the definition of group or parameter {name}")]
+    MetadataHeaderGroupOrParamEmptyPart { name: String },
+    #[error("Unknown configuration key {key} in the definition of group or parameter {name}")]
+    MetadataHeaderUnknownGroupOrParamConfigKey { name: String, key: String },
+    #[error("Invalid part '{part}' in the definition of group or parameter {name}")]
+    MetadataHeaderGroupOrParamInvalidPart { name: String, part: String },
+    #[error(
+        "Invalid value '{value}' for key '{key}' in the definition of group or parameter {name}"
+    )]
+    MetadataHeaderParamInvalidKeyValue {
+        name: String,
+        key: String,
+        value: String,
+    },
+    #[error("Missing description for parameter {name}")]
+    MetadataHeaderParamMissingDescription { name: String },
+    #[error("Group {name} does not have any parameters")]
+    MetadataHeaderGroupMissingParameters { name: String },
 }
 
 /// This is the error type for the `parse_args` function

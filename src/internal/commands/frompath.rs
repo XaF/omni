@@ -503,7 +503,11 @@ impl PathCommandFileDetails {
         None
     }
 
-    fn parse_header_group(group_name: &str, value: &str) -> Option<SyntaxGroup> {
+    fn parse_header_group(
+        group_name: &str,
+        value: &str,
+        errors: &mut Vec<ConfigErrorKind>,
+    ) -> Option<SyntaxGroup> {
         if group_name.is_empty() {
             return None;
         }
@@ -519,6 +523,9 @@ impl PathCommandFileDetails {
         while let Some(part) = value_parts.next() {
             let part = part.trim();
             if part.is_empty() {
+                errors.push(ConfigErrorKind::MetadataHeaderGroupOrParamEmptyPart {
+                    name: group_name.to_string(),
+                });
                 continue;
             }
 
@@ -527,6 +534,10 @@ impl PathCommandFileDetails {
                 let key = kv[0].to_lowercase();
                 if !key.contains(' ') {
                     if !kv.len() == 2 {
+                        errors.push(ConfigErrorKind::MetadataHeaderGroupOrParamInvalidPart {
+                            name: group_name.to_string(),
+                            part: part.to_string(),
+                        });
                         continue;
                     }
 
@@ -547,7 +558,14 @@ impl PathCommandFileDetails {
                                 _ => unreachable!(),
                             }
                         }
-                        _ => {}
+                        _ => {
+                            errors.push(
+                                ConfigErrorKind::MetadataHeaderUnknownGroupOrParamConfigKey {
+                                    name: group_name.to_string(),
+                                    key: key.clone(),
+                                },
+                            );
+                        }
                     }
 
                     // We have a key-value pair, so we can continue to the next part
@@ -563,6 +581,12 @@ impl PathCommandFileDetails {
                 .iter()
                 .map(|s| s.to_string())
                 .collect();
+
+            if parameters.is_empty() {
+                errors.push(ConfigErrorKind::MetadataHeaderGroupMissingParameters {
+                    name: group_name.to_string(),
+                });
+            }
         }
 
         Some(SyntaxGroup {
@@ -575,7 +599,12 @@ impl PathCommandFileDetails {
         })
     }
 
-    fn parse_header_arg(required: bool, arg_name: &str, value: &str) -> Option<SyntaxOptArg> {
+    fn parse_header_arg(
+        required: bool,
+        arg_name: &str,
+        value: &str,
+        errors: &mut Vec<ConfigErrorKind>,
+    ) -> Option<SyntaxOptArg> {
         if arg_name.is_empty() {
             return None;
         }
@@ -612,6 +641,9 @@ impl PathCommandFileDetails {
         while let Some(part) = value_parts.next() {
             let part = part.trim();
             if part.is_empty() {
+                errors.push(ConfigErrorKind::MetadataHeaderGroupOrParamEmptyPart {
+                    name: arg_name.to_string(),
+                });
                 continue;
             }
 
@@ -620,6 +652,10 @@ impl PathCommandFileDetails {
                 let key = kv[0].to_lowercase();
                 if !key.contains(' ') {
                     if !kv.len() == 2 {
+                        errors.push(ConfigErrorKind::MetadataHeaderGroupOrParamInvalidPart {
+                            name: arg_name.to_string(),
+                            part: part.to_string(),
+                        });
                         continue;
                     }
 
@@ -631,15 +667,23 @@ impl PathCommandFileDetails {
                         "dest" => dest = Some(value.to_string()),
                         "type" => arg_type = value.to_string(),
                         "num_values" => {
-                            if let Some(num) =
-                                SyntaxOptArgNumValues::from_str(value, "", &mut vec![])
-                            {
+                            if let Some(num) = SyntaxOptArgNumValues::from_str(
+                                value,
+                                &format!("{}.num_values", arg_name),
+                                errors,
+                            ) {
                                 num_values = Some(num)
                             }
                         }
                         "delimiter" => {
                             if value.len() == 1 {
                                 value_delimiter = Some(value.chars().next().unwrap());
+                            } else {
+                                errors.push(ConfigErrorKind::MetadataHeaderParamInvalidKeyValue {
+                                    name: arg_name.to_string(),
+                                    key: key.clone(),
+                                    value: value.to_string(),
+                                });
                             }
                         }
                         "last" => last_arg_double_hyphen = str_to_bool(value).unwrap_or(false),
@@ -703,9 +747,22 @@ impl PathCommandFileDetails {
                                         }
                                     }
                                 }
+                            } else {
+                                errors.push(ConfigErrorKind::MetadataHeaderParamInvalidKeyValue {
+                                    name: arg_name.to_string(),
+                                    key: key.clone(),
+                                    value: value.to_string(),
+                                });
                             }
                         }
-                        _ => {}
+                        _ => {
+                            errors.push(
+                                ConfigErrorKind::MetadataHeaderUnknownGroupOrParamConfigKey {
+                                    name: arg_name.to_string(),
+                                    key: key.clone(),
+                                },
+                            );
+                        }
                     }
 
                     // We have a key-value pair, so we can continue to the next part
@@ -719,11 +776,19 @@ impl PathCommandFileDetails {
 
         description = description.trim().to_string();
         let desc = if description.is_empty() {
+            errors.push(ConfigErrorKind::MetadataHeaderParamMissingDescription {
+                name: arg_name.to_string(),
+            });
+
             None
         } else {
             let description = handle_color_codes(description);
             Some(description)
         };
+
+        let arg_type =
+            SyntaxOptArgType::from_str(&arg_type, &format!("{}.arg_type", arg_name), errors)
+                .unwrap_or(SyntaxOptArgType::String);
 
         Some(SyntaxOptArg {
             names,
@@ -733,8 +798,7 @@ impl PathCommandFileDetails {
             placeholders,
             default,
             default_missing_value,
-            arg_type: SyntaxOptArgType::from_str(&arg_type, "", &mut vec![])
-                .unwrap_or(SyntaxOptArgType::String),
+            arg_type,
             num_values,
             value_delimiter,
             last_arg_double_hyphen,
@@ -752,6 +816,8 @@ impl PathCommandFileDetails {
     }
 
     fn from_source_file_header<R: BufRead>(reader: &mut R) -> Option<Self> {
+        let mut errors = vec![];
+
         let mut autocompletion = false;
         let mut sync_update = false;
         let mut argparser = false;
@@ -769,32 +835,54 @@ impl PathCommandFileDetails {
         // # key: this is a multiline
         // # + value for the key
 
-        for (key, subkey, value) in reader
+        for (idx, line) in reader
             .lines()
             .map_while(Result::ok)
             .take_while(|line| line.starts_with('#'))
             .filter_map(|line| line.strip_prefix('#').map(|s| s.to_string()))
             .map(|line| line.trim().to_string())
-            .filter_map(|line| {
+            .enumerate()
+        {
+            let lineno = idx + 1;
+            let (key, subkey, value) = {
                 let mut parts = line.splitn(2, ':');
-                let key = parts.next()?.trim().to_string().to_lowercase();
-                let value = parts.next()?.trim().to_string();
+                let key = match parts.next() {
+                    Some(key) => key.trim().to_lowercase(),
+                    None => continue,
+                };
+                let value = match parts.next() {
+                    Some(value) => value.trim().to_string(),
+                    None => continue,
+                };
+
                 let (subkey, value) = match key.as_str() {
                     "opt" | "arg" | "arggroup" => {
                         let mut subparts = value.splitn(2, ':');
-                        let subkey = subparts.next()?.trim().to_string();
+                        let subkey = match subparts.next() {
+                            Some(subkey) => subkey.trim().to_string(),
+                            None => {
+                                errors.push(ConfigErrorKind::MetadataHeaderMissingSubkey {
+                                    key: key.clone(),
+                                    lineno,
+                                });
+                                continue;
+                            }
+                        };
                         let value = subparts.next().unwrap_or("").trim().to_string();
                         (Some(subkey), value)
                     }
                     _ => (None, value),
                 };
-                Some((key, subkey, value))
-            })
-        {
+                (key, subkey, value)
+            };
+
             let (key, subkey) = match key.as_str() {
                 "+" => match current_key {
                     Some((ref key, ref subkey)) => (key.clone(), subkey.clone()),
-                    None => continue,
+                    None => {
+                        errors.push(ConfigErrorKind::MetadataHeaderContinueWithoutKey { lineno });
+                        continue;
+                    }
                 },
                 _ => {
                     current_key = Some((key.clone(), subkey.clone()));
@@ -852,7 +940,9 @@ impl PathCommandFileDetails {
                         }
                     }
                 }
-                _ => {}
+                _ => {
+                    errors.push(ConfigErrorKind::MetadataHeaderUnknownKey { key, lineno });
+                }
             }
         }
 
@@ -873,7 +963,7 @@ impl PathCommandFileDetails {
             .iter()
             .flat_map(|(key, arg_name, value)| {
                 let is_required = key == "arg";
-                Self::parse_header_arg(is_required, arg_name, value)
+                Self::parse_header_arg(is_required, arg_name, value, &mut errors)
             })
             .map(|mut param| {
                 if let Some(desc) = &param.desc {
@@ -885,10 +975,12 @@ impl PathCommandFileDetails {
 
         let groups = group_data
             .iter()
-            .flat_map(|(grp_name, value)| Self::parse_header_group(grp_name, value))
+            .flat_map(|(grp_name, value)| Self::parse_header_group(grp_name, value, &mut errors))
             .collect::<Vec<SyntaxGroup>>();
 
         let syntax = if parameters.is_empty() && groups.is_empty() {
+            errors.push(ConfigErrorKind::MetadataHeaderMissingSyntax);
+
             None
         } else {
             let mut syntax = CommandSyntax::new();
@@ -898,18 +990,23 @@ impl PathCommandFileDetails {
             Some(syntax)
         };
 
+        let help = if help_lines.is_empty() {
+            errors.push(ConfigErrorKind::MetadataHeaderMissingHelp);
+
+            None
+        } else {
+            let help = handle_color_codes(help_lines.join("\n"));
+            Some(help)
+        };
+
         Some(PathCommandFileDetails {
             category,
-            help: if help_lines.is_empty() {
-                None
-            } else {
-                let help = handle_color_codes(help_lines.join("\n"));
-                Some(help)
-            },
+            help,
             autocompletion,
             argparser,
             syntax,
             sync_update,
+            errors,
             ..Self::default()
         })
     }
