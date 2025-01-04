@@ -57,12 +57,12 @@ impl UpConfigCustom {
     pub fn from_config_value(
         config_value: Option<&ConfigValue>,
         error_key: &str,
-        errors: &mut Vec<ConfigErrorKind>,
+        on_error: &mut impl FnMut(ConfigErrorKind),
     ) -> Self {
         let config_value = match config_value {
             Some(config_value) => config_value,
             None => {
-                errors.push(ConfigErrorKind::MissingKey {
+                on_error(ConfigErrorKind::MissingKey {
                     key: format!("{}.meet", error_key),
                 });
                 return Self::default();
@@ -70,18 +70,19 @@ impl UpConfigCustom {
         };
 
         let meet = config_value
-            .get_as_str_or_none("meet", &format!("{}.meet", error_key), errors)
+            .get_as_str_or_none("meet", &format!("{}.meet", error_key), on_error)
             .unwrap_or_else(|| {
-                errors.push(ConfigErrorKind::MissingKey {
+                on_error(ConfigErrorKind::MissingKey {
                     key: format!("{}.meet", error_key),
                 });
                 Self::DEFAULT_MEET.to_string()
             });
-        let met = config_value.get_as_str_or_none("met", &format!("{}.met", error_key), errors);
+        let met = config_value.get_as_str_or_none("met", &format!("{}.met", error_key), on_error);
         let unmeet =
-            config_value.get_as_str_or_none("unmeet", &format!("{}.unmeet", error_key), errors);
-        let name = config_value.get_as_str_or_none("name", &format!("{}.name", error_key), errors);
-        let dir = config_value.get_as_str_or_none("dir", &format!("{}.dir", error_key), errors);
+            config_value.get_as_str_or_none("unmeet", &format!("{}.unmeet", error_key), on_error);
+        let name =
+            config_value.get_as_str_or_none("name", &format!("{}.name", error_key), on_error);
+        let dir = config_value.get_as_str_or_none("dir", &format!("{}.dir", error_key), on_error);
 
         UpConfigCustom {
             meet,

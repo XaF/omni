@@ -108,12 +108,12 @@ impl UpConfigNix {
     pub fn from_config_value(
         config_value: Option<&ConfigValue>,
         error_key: &str,
-        errors: &mut Vec<ConfigErrorKind>,
+        on_error: &mut impl FnMut(ConfigErrorKind)
     ) -> Self {
         let config_value = match config_value {
             Some(config_value) => config_value,
             None => {
-                errors.push(ConfigErrorKind::MissingKey {
+                on_error(ConfigErrorKind::MissingKey {
                     key: format!("{}.packages", error_key),
                 });
                 return Self::default();
@@ -128,7 +128,7 @@ impl UpConfigNix {
                         ..Self::default()
                     };
                 } else {
-                    errors.push(ConfigErrorKind::InvalidValueType {
+                    on_error(ConfigErrorKind::InvalidValueType {
                         key: format!("{}.file", error_key),
                         actual: nixfile.as_serde_yaml(),
                         expected: "string".to_string(),
@@ -146,7 +146,7 @@ impl UpConfigNix {
                         ..Self::default()
                     };
                 } else {
-                    errors.push(ConfigErrorKind::InvalidValueType {
+                    on_error(ConfigErrorKind::InvalidValueType {
                         key: format!("{}.packages", error_key),
                         actual: packages.as_serde_yaml(),
                         expected: "array".to_string(),
@@ -154,7 +154,7 @@ impl UpConfigNix {
                 }
             }
 
-            errors.push(ConfigErrorKind::MissingKey {
+            on_error(ConfigErrorKind::MissingKey {
                 key: format!("{}.packages", error_key),
             });
             Self::default()
@@ -166,7 +166,7 @@ impl UpConfigNix {
                     .filter_map(|(idx, value)| match value.as_str_forced() {
                         Some(pkg) => Some(pkg.to_string()),
                         None => {
-                            errors.push(ConfigErrorKind::InvalidValueType {
+                            on_error(ConfigErrorKind::InvalidValueType {
                                 key: format!("{}[{}]", error_key, idx),
                                 actual: value.as_serde_yaml(),
                                 expected: "string".to_string(),
@@ -183,7 +183,7 @@ impl UpConfigNix {
                 ..Self::default()
             }
         } else {
-            errors.push(ConfigErrorKind::InvalidValueType {
+            on_error(ConfigErrorKind::InvalidValueType {
                 key: error_key.to_string(),
                 actual: config_value.as_serde_yaml(),
                 expected: "string, array or table".to_string(),

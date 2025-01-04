@@ -44,7 +44,7 @@ impl UpCommandConfig {
     pub(super) fn from_config_value(
         config_value: Option<ConfigValue>,
         error_key: &str,
-        errors: &mut Vec<ConfigErrorKind>,
+        on_error: &mut impl FnMut(ConfigErrorKind),
     ) -> Self {
         let config_value = match config_value {
             Some(config_value) => config_value,
@@ -60,34 +60,34 @@ impl UpCommandConfig {
             "auto_bootstrap",
             Self::DEFAULT_AUTO_BOOTSTRAP,
             &format!("{}.auto_bootstrap", error_key),
-            errors,
+            on_error,
         );
 
         let notify_workdir_config_updated = config_value_global.get_as_bool_or_default(
             "notify_workdir_config_updated",
             Self::DEFAULT_NOTIFY_WORKDIR_CONFIG_UPDATED,
             &format!("{}.notify_workdir_config_updated", error_key),
-            errors,
+            on_error,
         );
 
         let notify_workdir_config_available = config_value_global.get_as_bool_or_default(
             "notify_workdir_config_available",
             Self::DEFAULT_NOTIFY_WORKDIR_CONFIG_AVAILABLE,
             &format!("{}.notify_workdir_config_available", error_key),
-            errors,
+            on_error,
         );
 
         let preferred_tools = config_value_global.get_as_str_array(
             "preferred_tools",
             &format!("{}.preferred_tools", error_key),
-            errors,
+            on_error,
         );
 
         let mise_version = config_value_global.get_as_str_or_default(
             "mise_version",
             Self::DEFAULT_MISE_VERSION,
             &format!("{}.mise_version", error_key),
-            errors,
+            on_error,
         );
 
         // For upgrade, we allow overriding in the workdir
@@ -95,13 +95,13 @@ impl UpCommandConfig {
             "upgrade",
             Self::DEFAULT_UPGRADE,
             &format!("{}.upgrade", error_key),
-            errors,
+            on_error,
         );
 
         let operations = UpCommandOperationConfig::from_config_value(
             config_value.get("operations"),
             &format!("{}.operations", error_key),
-            errors,
+            on_error,
         );
 
         Self {
@@ -181,7 +181,7 @@ impl UpCommandOperationConfig {
     fn from_config_value(
         config_value: Option<ConfigValue>,
         error_key: &str,
-        errors: &mut Vec<ConfigErrorKind>,
+        on_error: &mut impl FnMut(ConfigErrorKind),
     ) -> Self {
         let config_value = match config_value {
             Some(config_value) => config_value,
@@ -195,37 +195,37 @@ impl UpCommandOperationConfig {
         let allowed = config_value_global.get_as_str_array(
             "allowed",
             &format!("{}.allowed", error_key),
-            errors,
+            on_error,
         );
 
         let sources = config_value_global.get_as_str_array(
             "sources",
             &format!("{}.sources", error_key),
-            errors,
+            on_error,
         );
 
         let mise = UpCommandOperationMiseConfig::from_config_value(
             config_value.get("mise"),
             &format!("{}.mise", error_key),
-            errors,
+            on_error,
         );
 
         let cargo_install = UpCommandOperationCargoInstallConfig::from_config_value(
             config_value.get("cargo-install"),
             &format!("{}.cargo-install", error_key),
-            errors,
+            on_error,
         );
 
         let go_install = UpCommandOperationGoInstallConfig::from_config_value(
             config_value.get("go-install"),
             &format!("{}.go-install", error_key),
-            errors,
+            on_error,
         );
 
         let github_release = UpCommandOperationGithubReleaseConfig::from_config_value(
             config_value.get("github-release"),
             &format!("{}.github-release", error_key),
-            errors,
+            on_error,
         );
 
         Self {
@@ -250,7 +250,7 @@ impl UpCommandOperationMiseConfig {
     fn from_config_value(
         config_value: Option<ConfigValue>,
         error_key: &str,
-        errors: &mut Vec<ConfigErrorKind>,
+        on_error: &mut impl FnMut(ConfigErrorKind),
     ) -> Self {
         let config_value = match config_value {
             Some(config_value) => config_value,
@@ -264,13 +264,13 @@ impl UpCommandOperationMiseConfig {
         let backends = config_value_global.get_as_str_array(
             "backends",
             &format!("{}.backends", error_key),
-            errors,
+            on_error,
         );
 
         let sources = config_value_global.get_as_str_array(
             "sources",
             &format!("{}.sources", error_key),
-            errors,
+            on_error,
         );
 
         let default_plugin_sources =
@@ -281,7 +281,7 @@ impl UpCommandOperationMiseConfig {
                         .filter_map(|(key, value)| match value.as_str_forced() {
                             Some(value) => Some((key.to_string(), value.to_string())),
                             None => {
-                                errors.push(ConfigErrorKind::InvalidValueType {
+                                on_error(ConfigErrorKind::InvalidValueType {
                                     key: format!("{}.default_plugin_sources.{}", error_key, key),
                                     expected: "string".to_string(),
                                     actual: value.as_serde_yaml(),
@@ -292,7 +292,7 @@ impl UpCommandOperationMiseConfig {
                         })
                         .collect()
                 } else {
-                    errors.push(ConfigErrorKind::InvalidValueType {
+                    on_error(ConfigErrorKind::InvalidValueType {
                         key: format!("{}.default_plugin_sources", error_key),
                         expected: "table".to_string(),
                         actual: value.as_serde_yaml(),
@@ -327,7 +327,7 @@ impl UpCommandOperationCargoInstallConfig {
     fn from_config_value(
         config_value: Option<ConfigValue>,
         error_key: &str,
-        errors: &mut Vec<ConfigErrorKind>,
+        on_error: &mut impl FnMut(ConfigErrorKind),
     ) -> Self {
         let config_value = match config_value {
             Some(config_value) => config_value,
@@ -341,7 +341,7 @@ impl UpCommandOperationCargoInstallConfig {
         let crates = config_value_global.get_as_str_array(
             "crates",
             &format!("{}.crates", error_key),
-            errors,
+            on_error,
         );
 
         Self { crates }
@@ -361,7 +361,7 @@ impl UpCommandOperationGoInstallConfig {
     fn from_config_value(
         config_value: Option<ConfigValue>,
         error_key: &str,
-        errors: &mut Vec<ConfigErrorKind>,
+        on_error: &mut impl FnMut(ConfigErrorKind),
     ) -> Self {
         let config_value = match config_value {
             Some(config_value) => config_value,
@@ -375,7 +375,7 @@ impl UpCommandOperationGoInstallConfig {
         let sources = config_value_global.get_as_str_array(
             "sources",
             &format!("{}.sources", error_key),
-            errors,
+            on_error,
         );
 
         Self { sources }
@@ -395,7 +395,7 @@ impl UpCommandOperationGithubReleaseConfig {
     fn from_config_value(
         config_value: Option<ConfigValue>,
         error_key: &str,
-        errors: &mut Vec<ConfigErrorKind>,
+        on_error: &mut impl FnMut(ConfigErrorKind),
     ) -> Self {
         let config_value = match config_value {
             Some(config_value) => config_value,
@@ -409,7 +409,7 @@ impl UpCommandOperationGithubReleaseConfig {
         let repositories = config_value_global.get_as_str_array(
             "repositories",
             &format!("{}.repositories", error_key),
-            errors,
+            on_error,
         );
 
         Self { repositories }

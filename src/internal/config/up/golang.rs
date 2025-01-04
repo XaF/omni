@@ -90,7 +90,7 @@ impl UpConfigGolang {
     pub fn from_config_value(
         config_value: Option<&ConfigValue>,
         error_key: &str,
-        errors: &mut Vec<ConfigErrorKind>,
+        on_error: &mut impl FnMut(ConfigErrorKind),
     ) -> Self {
         let mut version = None;
         let mut version_file = None;
@@ -108,19 +108,19 @@ impl UpConfigGolang {
                 if let Some(value) = config_value.get_as_str_or_none(
                     "version",
                     &format!("{}.version", error_key),
-                    errors,
+                    on_error,
                 ) {
                     version = Some(value.to_string());
                 } else if let Some(value) = config_value.get_as_str_or_none(
                     "version_file",
                     &format!("{}.version_file", error_key),
-                    errors,
+                    on_error,
                 ) {
                     version_file = Some(value.to_string());
                 }
 
                 let list_dirs =
-                    config_value.get_as_str_array("dir", &format!("{}.dir", error_key), errors);
+                    config_value.get_as_str_array("dir", &format!("{}.dir", error_key), on_error);
                 for value in list_dirs {
                     dirs.insert(
                         PathBuf::from(value)
@@ -133,7 +133,7 @@ impl UpConfigGolang {
                 if let Some(value) = config_value.get_as_bool_or_none(
                     "upgrade",
                     &format!("{}.upgrade", error_key),
-                    errors,
+                    on_error,
                 ) {
                     upgrade = value;
                 }

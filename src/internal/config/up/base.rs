@@ -50,7 +50,7 @@ impl UpConfig {
     pub fn from_config_value(
         config_value: Option<ConfigValue>,
         error_key: &str,
-        errors: &mut Vec<ConfigErrorKind>,
+        on_error: &mut impl FnMut(ConfigErrorKind),
     ) -> Option<Self> {
         let config_value = match config_value {
             Some(config_value) => config_value,
@@ -60,7 +60,7 @@ impl UpConfig {
         let config_array = match config_value.as_array() {
             Some(config_array) => config_array,
             None => {
-                errors.push(ConfigErrorKind::InvalidValueType {
+                on_error(ConfigErrorKind::InvalidValueType {
                     key: error_key.to_string(),
                     actual: config_value.as_serde_yaml(),
                     expected: "array".to_string(),
@@ -75,7 +75,7 @@ impl UpConfig {
         for (value, index) in config_array.iter().zip(0..) {
             if let Some(table) = value.as_table() {
                 if table.len() != 1 {
-                    errors.push(ConfigErrorKind::NotExactlyOneKeyInTable {
+                    on_error(ConfigErrorKind::NotExactlyOneKeyInTable {
                         key: format!("{}[{}]", error_key, index),
                         actual: value.as_serde_yaml(),
                     });
@@ -92,7 +92,7 @@ impl UpConfig {
                     up_name,
                     Some(config_value),
                     &format!("{}[{}].{}", error_key, index, up_name),
-                    errors,
+                    on_error,
                 ) {
                     steps.push(up_config);
                 } else {
@@ -108,7 +108,7 @@ impl UpConfig {
                     &up_name,
                     None,
                     &format!("{}[{}].{}", error_key, index, up_name),
-                    errors,
+                    on_error,
                 ) {
                     steps.push(up_config);
                 } else {
@@ -119,7 +119,7 @@ impl UpConfig {
                     )));
                 }
             } else {
-                errors.push(ConfigErrorKind::InvalidValueType {
+                on_error(ConfigErrorKind::InvalidValueType {
                     key: format!("{}[{}]", error_key, index),
                     actual: value.as_serde_yaml(),
                     expected: "string or table".to_string(),

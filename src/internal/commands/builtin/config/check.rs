@@ -163,7 +163,7 @@ impl BuiltinCommand for ConfigCheckCommand {
             })
             .collect::<Vec<_>>();
 
-        for command in PathCommand::aggregate_with_errors(&paths, |e| {
+        for command in PathCommand::aggregate_with_errors(&paths, &mut |e| {
             errors.push(ErrorFormatter::new_from_error(None, e))
         }) {
             // Load the file details

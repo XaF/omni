@@ -40,7 +40,7 @@ impl UpConfigBundler {
     pub fn from_config_value(
         config_value: Option<&ConfigValue>,
         error_key: &str,
-        errors: &mut Vec<ConfigErrorKind>,
+        on_error: &mut impl FnMut(ConfigErrorKind),
     ) -> Self {
         let config_value = match config_value {
             Some(config_value) => config_value,
@@ -51,13 +51,13 @@ impl UpConfigBundler {
             let gemfile = config_value.get_as_str_or_none(
                 "gemfile",
                 &format!("{}.gemfile", error_key),
-                errors,
+                on_error,
             );
             let path = Some(config_value.get_as_str_or_default(
                 "path",
                 Self::DEFAULT_PATH,
                 &format!("{}.path", error_key),
-                errors,
+                on_error,
             ));
 
             Self { gemfile, path }
@@ -67,7 +67,7 @@ impl UpConfigBundler {
                 ..Self::default()
             }
         } else {
-            errors.push(ConfigErrorKind::InvalidValueType {
+            on_error(ConfigErrorKind::InvalidValueType {
                 key: error_key.to_string(),
                 expected: "table or string".to_string(),
                 actual: config_value.as_serde_yaml(),

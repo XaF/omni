@@ -30,7 +30,7 @@ impl ShellAliasesConfig {
     pub(super) fn from_config_value(
         config_value: Option<ConfigValue>,
         error_key: &str,
-        errors: &mut Vec<ConfigErrorKind>,
+        on_error: &mut impl FnMut(ConfigErrorKind),
     ) -> Self {
         let mut aliases = vec![];
         if let Some(config_value) = config_value {
@@ -39,13 +39,13 @@ impl ShellAliasesConfig {
                     if let Some(alias) = ShellAliasConfig::from_config_value(
                         &value,
                         &format!("{}[{}]", error_key, idx),
-                        errors,
+                        on_error,
                     ) {
                         aliases.push(alias);
                     }
                 }
             } else {
-                errors.push(ConfigErrorKind::InvalidValueType {
+                on_error(ConfigErrorKind::InvalidValueType {
                     key: error_key.to_string(),
                     actual: config_value.as_serde_yaml(),
                     expected: "array".to_string(),
@@ -68,7 +68,7 @@ impl ShellAliasConfig {
     pub(super) fn from_config_value(
         config_value: &ConfigValue,
         error_key: &str,
-        errors: &mut Vec<ConfigErrorKind>,
+        on_error: &mut impl FnMut(ConfigErrorKind),
     ) -> Option<Self> {
         if let Some(value) = config_value.as_str() {
             Some(Self {
@@ -80,7 +80,7 @@ impl ShellAliasConfig {
                 if let Some(value) = value.as_str() {
                     value.to_string()
                 } else {
-                    errors.push(ConfigErrorKind::InvalidValueType {
+                    on_error(ConfigErrorKind::InvalidValueType {
                         key: format!("{}.alias", error_key),
                         actual: value.as_serde_yaml(),
                         expected: "string".to_string(),
@@ -88,7 +88,7 @@ impl ShellAliasConfig {
                     return None;
                 }
             } else {
-                errors.push(ConfigErrorKind::MissingKey {
+                on_error(ConfigErrorKind::MissingKey {
                     key: format!("{}.alias", error_key),
                 });
                 return None;
@@ -99,7 +99,7 @@ impl ShellAliasConfig {
                 if let Some(value) = value.as_str() {
                     target = Some(value.to_string());
                 } else {
-                    errors.push(ConfigErrorKind::InvalidValueType {
+                    on_error(ConfigErrorKind::InvalidValueType {
                         key: format!("{}.target", error_key),
                         actual: value.as_serde_yaml(),
                         expected: "string".to_string(),
@@ -110,7 +110,7 @@ impl ShellAliasConfig {
 
             Some(Self { alias, target })
         } else {
-            errors.push(ConfigErrorKind::InvalidValueType {
+            on_error(ConfigErrorKind::InvalidValueType {
                 key: error_key.to_string(),
                 actual: config_value.as_serde_yaml(),
                 expected: "string or table".to_string(),

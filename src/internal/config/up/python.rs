@@ -41,7 +41,7 @@ impl UpConfigPythonParams {
     pub fn from_config_value(
         config_value: Option<&ConfigValue>,
         error_key: &str,
-        errors: &mut Vec<ConfigErrorKind>,
+        on_error: &mut impl FnMut(ConfigErrorKind),
     ) -> Self {
         let mut pip_files = Vec::new();
         let mut pip_auto = false;
@@ -52,7 +52,7 @@ impl UpConfigPythonParams {
                     if let Some(file_path) = file_path.as_str_forced() {
                         pip_files.push(file_path.to_string());
                     } else {
-                        errors.push(ConfigErrorKind::InvalidValueType {
+                        on_error(ConfigErrorKind::InvalidValueType {
                             key: error_key.to_string(),
                             actual: file_path.as_serde_yaml(),
                             expected: "string".to_string(),
@@ -66,7 +66,7 @@ impl UpConfigPythonParams {
                     pip_files.push(file_path.to_string());
                 }
             } else {
-                errors.push(ConfigErrorKind::InvalidValueType {
+                on_error(ConfigErrorKind::InvalidValueType {
                     key: error_key.to_string(),
                     actual: config_value.as_serde_yaml(),
                     expected: "string or array of strings".to_string(),
@@ -120,14 +120,14 @@ impl UpConfigPython {
     pub fn from_config_value(
         config_value: Option<&ConfigValue>,
         error_key: &str,
-        errors: &mut Vec<ConfigErrorKind>,
+        on_error: &mut impl FnMut(ConfigErrorKind),
     ) -> Self {
         let mut backend =
-            UpConfigMise::from_config_value("python", config_value, error_key, errors);
+            UpConfigMise::from_config_value("python", config_value, error_key, on_error);
         backend.add_post_install_func(setup_python_venv);
         backend.add_post_install_func(setup_python_pip);
 
-        let params = UpConfigPythonParams::from_config_value(config_value, error_key, errors);
+        let params = UpConfigPythonParams::from_config_value(config_value, error_key, on_error);
 
         Self { backend, params }
     }
@@ -314,7 +314,7 @@ fn setup_python_pip(
     args: &PostInstallFuncArgs,
 ) -> Result<(), UpError> {
     let params =
-        UpConfigPythonParams::from_config_value(args.config_value.as_ref(), "", &mut vec![]);
+        UpConfigPythonParams::from_config_value(args.config_value.as_ref(), "", &mut |_| ());
     let mut pip_auto = params.pip_auto;
 
     // TODO: should we default set pip_auto to true if no pip_files are specified?

@@ -41,12 +41,12 @@ pub struct PathCommand {
 
 impl PathCommand {
     pub fn all() -> Vec<Self> {
-        Self::aggregate_commands_from_path(&omnipath(), |_| ())
+        Self::aggregate_commands_from_path(&omnipath(), &mut |_| ())
     }
 
     pub fn aggregate_with_errors(
         paths: &Vec<String>,
-        on_error: impl FnMut(ConfigErrorKind),
+        on_error: &mut impl FnMut(ConfigErrorKind),
     ) -> Vec<Self> {
         Self::aggregate_commands_from_path(paths, on_error)
     }
@@ -117,12 +117,12 @@ impl PathCommand {
             })
             .collect::<Vec<String>>();
 
-        Self::aggregate_commands_from_path(&local_paths, |_| ())
+        Self::aggregate_commands_from_path(&local_paths, &mut |_| ())
     }
 
     fn aggregate_commands_from_path(
         paths: &Vec<String>,
-        mut on_error: impl FnMut(ConfigErrorKind),
+        on_error: &mut impl FnMut(ConfigErrorKind),
     ) -> Vec<Self> {
         let mut all_commands: Vec<PathCommand> = Vec::new();
         let mut known_sources: HashMap<String, usize> = HashMap::new();
@@ -342,6 +342,7 @@ impl<'de> Deserialize<'de> for PathCommandFileDetails {
 
         if let serde_yaml::Value::Mapping(ref mut map) = value {
             let mut errors = vec![];
+            let on_error = &mut |err: ConfigErrorKind| errors.push(err);
 
             // Deserialize the booleans
             let autocompletion = map
@@ -349,7 +350,7 @@ impl<'de> Deserialize<'de> for PathCommandFileDetails {
                 .map_or(false, |v| match bool::deserialize(v.clone()) {
                     Ok(b) => b,
                     Err(_err) => {
-                        errors.push(ConfigErrorKind::InvalidValueType {
+                        on_error(ConfigErrorKind::InvalidValueType {
                             key: "autocompletion".to_string(),
                             expected: "boolean".to_string(),
                             actual: v.to_owned(),
@@ -362,7 +363,7 @@ impl<'de> Deserialize<'de> for PathCommandFileDetails {
                 .map_or(false, |v| match bool::deserialize(v.clone()) {
                     Ok(b) => b,
                     Err(_err) => {
-                        errors.push(ConfigErrorKind::InvalidValueType {
+                        on_error(ConfigErrorKind::InvalidValueType {
                             key: "sync_update".to_string(),
                             expected: "boolean".to_string(),
                             actual: v.to_owned(),
@@ -375,7 +376,7 @@ impl<'de> Deserialize<'de> for PathCommandFileDetails {
                 .map_or(false, |v| match bool::deserialize(v.clone()) {
                     Ok(b) => b,
                     Err(_err) => {
-                        errors.push(ConfigErrorKind::InvalidValueType {
+                        on_error(ConfigErrorKind::InvalidValueType {
                             key: "argparser".to_string(),
                             expected: "boolean".to_string(),
                             actual: v.to_owned(),
@@ -390,7 +391,7 @@ impl<'de> Deserialize<'de> for PathCommandFileDetails {
                 .map_or(None, |v| match String::deserialize(v.clone()) {
                     Ok(s) => Some(s),
                     Err(_err) => {
-                        errors.push(ConfigErrorKind::InvalidValueType {
+                        on_error(ConfigErrorKind::InvalidValueType {
                             key: "help".to_string(),
                             expected: "string".to_string(),
                             actual: v.to_owned(),
@@ -417,7 +418,7 @@ impl<'de> Deserialize<'de> for PathCommandFileDetails {
                                     serde_yaml::Value::Number(n) => Some(n.to_string()),
                                     serde_yaml::Value::Bool(b) => Some(b.to_string()),
                                     _ => {
-                                        errors.push(ConfigErrorKind::InvalidValueType {
+                                        on_error(ConfigErrorKind::InvalidValueType {
                                             key: format!("category[{}]", idx),
                                             expected: "string".to_string(),
                                             actual: entry.to_owned(),
@@ -428,7 +429,7 @@ impl<'de> Deserialize<'de> for PathCommandFileDetails {
                                 .collect::<Vec<String>>(),
                         ),
                         _ => {
-                            errors.push(ConfigErrorKind::InvalidValueType {
+                            on_error(ConfigErrorKind::InvalidValueType {
                                 key: "category".to_string(),
                                 expected: "string or sequence".to_string(),
                                 actual: value.to_owned(),
@@ -437,7 +438,7 @@ impl<'de> Deserialize<'de> for PathCommandFileDetails {
                         }
                     },
                     Err(_err) => {
-                        errors.push(ConfigErrorKind::InvalidValueType {
+                        on_error(ConfigErrorKind::InvalidValueType {
                             key: "category".to_string(),
                             expected: "string or sequence".to_string(),
                             actual: v.to_owned(),
@@ -450,10 +451,10 @@ impl<'de> Deserialize<'de> for PathCommandFileDetails {
             let syntax = map
                 .remove(&serde_yaml::Value::String("syntax".to_string()))
                 .map_or(None, |v| {
-                    match CommandSyntax::deserialize(v.clone(), "syntax", &mut errors) {
+                    match CommandSyntax::deserialize(v.clone(), "syntax", on_error) {
                         Ok(s) => Some(s),
                         Err(_err) => {
-                            errors.push(ConfigErrorKind::InvalidValueType {
+                            on_error(ConfigErrorKind::InvalidValueType {
                                 key: "syntax".to_string(),
                                 expected: "map".to_string(),
                                 actual: v.to_owned(),
@@ -532,7 +533,7 @@ impl PathCommandFileDetails {
     fn parse_header_group(
         group_name: &str,
         value: &str,
-        errors: &mut Vec<ConfigErrorKind>,
+        on_error: &mut impl FnMut(ConfigErrorKind),
     ) -> Option<SyntaxGroup> {
         if group_name.is_empty() {
             return None;
@@ -549,7 +550,7 @@ impl PathCommandFileDetails {
         while let Some(part) = value_parts.next() {
             let part = part.trim();
             if part.is_empty() {
-                errors.push(ConfigErrorKind::MetadataHeaderGroupOrParamEmptyPart {
+                on_error(ConfigErrorKind::MetadataHeaderGroupOrParamEmptyPart {
                     name: group_name.to_string(),
                 });
                 continue;
@@ -560,7 +561,7 @@ impl PathCommandFileDetails {
                 let key = kv[0].to_lowercase();
                 if !key.contains(' ') {
                     if !kv.len() == 2 {
-                        errors.push(ConfigErrorKind::MetadataHeaderGroupOrParamInvalidPart {
+                        on_error(ConfigErrorKind::MetadataHeaderGroupOrParamInvalidPart {
                             name: group_name.to_string(),
                             part: part.to_string(),
                         });
@@ -585,7 +586,7 @@ impl PathCommandFileDetails {
                             }
                         }
                         _ => {
-                            errors.push(
+                            on_error(
                                 ConfigErrorKind::MetadataHeaderUnknownGroupOrParamConfigKey {
                                     name: group_name.to_string(),
                                     key: key.clone(),
@@ -609,7 +610,7 @@ impl PathCommandFileDetails {
                 .collect();
 
             if parameters.is_empty() {
-                errors.push(ConfigErrorKind::MetadataHeaderGroupMissingParameters {
+                on_error(ConfigErrorKind::MetadataHeaderGroupMissingParameters {
                     name: group_name.to_string(),
                 });
             }
@@ -629,7 +630,7 @@ impl PathCommandFileDetails {
         required: bool,
         arg_name: &str,
         value: &str,
-        errors: &mut Vec<ConfigErrorKind>,
+        on_error: &mut impl FnMut(ConfigErrorKind),
     ) -> Option<SyntaxOptArg> {
         if arg_name.is_empty() {
             return None;
@@ -667,7 +668,7 @@ impl PathCommandFileDetails {
         while let Some(part) = value_parts.next() {
             let part = part.trim();
             if part.is_empty() {
-                errors.push(ConfigErrorKind::MetadataHeaderGroupOrParamEmptyPart {
+                on_error(ConfigErrorKind::MetadataHeaderGroupOrParamEmptyPart {
                     name: arg_name.to_string(),
                 });
                 continue;
@@ -678,7 +679,7 @@ impl PathCommandFileDetails {
                 let key = kv[0].to_lowercase();
                 if !key.contains(' ') {
                     if !kv.len() == 2 {
-                        errors.push(ConfigErrorKind::MetadataHeaderGroupOrParamInvalidPart {
+                        on_error(ConfigErrorKind::MetadataHeaderGroupOrParamInvalidPart {
                             name: arg_name.to_string(),
                             part: part.to_string(),
                         });
@@ -696,7 +697,7 @@ impl PathCommandFileDetails {
                             if let Some(num) = SyntaxOptArgNumValues::from_str(
                                 value,
                                 &format!("{}.num_values", arg_name),
-                                errors,
+                                on_error,
                             ) {
                                 num_values = Some(num)
                             }
@@ -705,7 +706,7 @@ impl PathCommandFileDetails {
                             if value.len() == 1 {
                                 value_delimiter = Some(value.chars().next().unwrap());
                             } else {
-                                errors.push(ConfigErrorKind::MetadataHeaderParamInvalidKeyValue {
+                                on_error(ConfigErrorKind::MetadataHeaderParamInvalidKeyValue {
                                     name: arg_name.to_string(),
                                     key: key.clone(),
                                     value: value.to_string(),
@@ -774,7 +775,7 @@ impl PathCommandFileDetails {
                                     }
                                 }
                             } else {
-                                errors.push(ConfigErrorKind::MetadataHeaderParamInvalidKeyValue {
+                                on_error(ConfigErrorKind::MetadataHeaderParamInvalidKeyValue {
                                     name: arg_name.to_string(),
                                     key: key.clone(),
                                     value: value.to_string(),
@@ -782,7 +783,7 @@ impl PathCommandFileDetails {
                             }
                         }
                         _ => {
-                            errors.push(
+                            on_error(
                                 ConfigErrorKind::MetadataHeaderUnknownGroupOrParamConfigKey {
                                     name: arg_name.to_string(),
                                     key: key.clone(),
@@ -802,7 +803,7 @@ impl PathCommandFileDetails {
 
         description = description.trim().to_string();
         let desc = if description.is_empty() {
-            errors.push(ConfigErrorKind::MetadataHeaderParamMissingDescription {
+            on_error(ConfigErrorKind::MetadataHeaderParamMissingDescription {
                 name: arg_name.to_string(),
             });
 
@@ -813,7 +814,7 @@ impl PathCommandFileDetails {
         };
 
         let arg_type =
-            SyntaxOptArgType::from_str(&arg_type, &format!("{}.arg_type", arg_name), errors)
+            SyntaxOptArgType::from_str(&arg_type, &format!("{}.arg_type", arg_name), on_error)
                 .unwrap_or(SyntaxOptArgType::String);
 
         Some(SyntaxOptArg {
@@ -843,6 +844,7 @@ impl PathCommandFileDetails {
 
     fn from_source_file_header<R: BufRead>(reader: &mut R) -> Option<Self> {
         let mut errors = vec![];
+        let on_error = &mut |err: ConfigErrorKind| errors.push(err);
 
         let mut autocompletion = false;
         let mut sync_update = false;
@@ -887,7 +889,7 @@ impl PathCommandFileDetails {
                         let subkey = match subparts.next() {
                             Some(subkey) => subkey.trim().to_string(),
                             None => {
-                                errors.push(ConfigErrorKind::MetadataHeaderMissingSubkey {
+                                on_error(ConfigErrorKind::MetadataHeaderMissingSubkey {
                                     key: key.clone(),
                                     lineno,
                                 });
@@ -906,7 +908,7 @@ impl PathCommandFileDetails {
                 "+" => match current_key {
                     Some((ref key, ref subkey)) => (key.clone(), subkey.clone()),
                     None => {
-                        errors.push(ConfigErrorKind::MetadataHeaderContinueWithoutKey { lineno });
+                        on_error(ConfigErrorKind::MetadataHeaderContinueWithoutKey { lineno });
                         continue;
                     }
                 },
@@ -967,7 +969,7 @@ impl PathCommandFileDetails {
                     }
                 }
                 _ => {
-                    errors.push(ConfigErrorKind::MetadataHeaderUnknownKey { key, lineno });
+                    on_error(ConfigErrorKind::MetadataHeaderUnknownKey { key, lineno });
                 }
             }
         }
@@ -989,7 +991,7 @@ impl PathCommandFileDetails {
             .iter()
             .flat_map(|(key, arg_name, value)| {
                 let is_required = key == "arg";
-                Self::parse_header_arg(is_required, arg_name, value, &mut errors)
+                Self::parse_header_arg(is_required, arg_name, value, on_error)
             })
             .map(|mut param| {
                 if let Some(desc) = &param.desc {
@@ -1001,11 +1003,11 @@ impl PathCommandFileDetails {
 
         let groups = group_data
             .iter()
-            .flat_map(|(grp_name, value)| Self::parse_header_group(grp_name, value, &mut errors))
+            .flat_map(|(grp_name, value)| Self::parse_header_group(grp_name, value, on_error))
             .collect::<Vec<SyntaxGroup>>();
 
         let syntax = if parameters.is_empty() && groups.is_empty() {
-            errors.push(ConfigErrorKind::MetadataHeaderMissingSyntax);
+            on_error(ConfigErrorKind::MetadataHeaderMissingSyntax);
 
             None
         } else {
@@ -1017,7 +1019,7 @@ impl PathCommandFileDetails {
         };
 
         let help = if help_lines.is_empty() {
-            errors.push(ConfigErrorKind::MetadataHeaderMissingHelp);
+            on_error(ConfigErrorKind::MetadataHeaderMissingHelp);
 
             None
         } else {

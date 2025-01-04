@@ -30,7 +30,7 @@ impl GithubReleaseCacheConfig {
     pub fn from_config_value(
         config_value: Option<ConfigValue>,
         error_key: &str,
-        errors: &mut Vec<ConfigErrorKind>,
+        on_error: &mut impl FnMut(ConfigErrorKind),
     ) -> Self {
         let config_value = match config_value {
             Some(config_value) => config_value,
@@ -41,21 +41,21 @@ impl GithubReleaseCacheConfig {
             config_value.get("versions_expire").as_ref(),
             Self::DEFAULT_VERSIONS_EXPIRE,
             &format!("{}.versions_expire", error_key),
-            errors,
+            on_error,
         );
 
         let versions_retention = parse_duration_or_default(
             config_value.get("versions_retention").as_ref(),
             Self::DEFAULT_VERSIONS_RETENTION,
             &format!("{}.versions_retention", error_key),
-            errors,
+            on_error,
         );
 
         let cleanup_after = parse_duration_or_default(
             config_value.get("cleanup_after").as_ref(),
             Self::DEFAULT_CLEANUP_AFTER,
             &format!("{}.cleanup_after", error_key),
-            errors,
+            on_error,
         );
 
         Self {

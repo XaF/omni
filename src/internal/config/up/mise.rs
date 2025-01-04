@@ -1169,14 +1169,14 @@ impl UpConfigMise {
         tool: &str,
         config_value: Option<&ConfigValue>,
         error_key: &str,
-        errors: &mut Vec<ConfigErrorKind>,
+        on_error: &mut impl FnMut(ConfigErrorKind),
     ) -> Self {
         Self::from_config_value_with_params(
             tool,
             config_value,
             UpConfigMiseParams::default(),
             error_key,
-            errors,
+            on_error,
         )
     }
 
@@ -1185,7 +1185,7 @@ impl UpConfigMise {
         config_value: Option<&ConfigValue>,
         params: UpConfigMiseParams,
         error_key: &str,
-        errors: &mut Vec<ConfigErrorKind>,
+        on_error: &mut impl FnMut(ConfigErrorKind),
     ) -> Self {
         let mut version = "latest".to_string();
         let mut backend = None;
@@ -1212,7 +1212,7 @@ impl UpConfigMise {
                 if let Some(value) = config_value.get_as_str_or_none(
                     "version",
                     &format!("{}.version", error_key),
-                    errors,
+                    on_error,
                 ) {
                     version = value.to_string();
                 }
@@ -1220,13 +1220,13 @@ impl UpConfigMise {
                 if let Some(value) = config_value.get_as_str_or_none(
                     "backend",
                     &format!("{}.backend", error_key),
-                    errors,
+                    on_error,
                 ) {
                     backend = Some(value.to_string());
                 }
 
                 let list_dirs =
-                    config_value.get_as_str_array("dir", &format!("{}.dir", error_key), errors);
+                    config_value.get_as_str_array("dir", &format!("{}.dir", error_key), on_error);
                 for value in list_dirs {
                     dirs.insert(
                         PathBuf::from(value)
@@ -1237,7 +1237,7 @@ impl UpConfigMise {
                 }
 
                 if let Some(url) =
-                    config_value.get_as_str_or_none("url", &format!("{}.url", error_key), errors)
+                    config_value.get_as_str_or_none("url", &format!("{}.url", error_key), on_error)
                 {
                     override_tool_url = Some(url.to_string());
                 }
@@ -1245,7 +1245,7 @@ impl UpConfigMise {
                 if let Some(value) = config_value.get_as_bool_or_none(
                     "upgrade",
                     &format!("{}.upgrade", error_key),
-                    errors,
+                    on_error,
                 ) {
                     upgrade = value;
                 }

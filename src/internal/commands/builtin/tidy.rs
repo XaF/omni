@@ -742,7 +742,7 @@ impl TidyGitRepo {
                     if let Some(path_list) = path_list.as_array() {
                         for value in path_list {
                             if let Some(path_entry) =
-                                PathEntryConfig::from_config_value(&value, "", &mut vec![])
+                                PathEntryConfig::from_config_value(&value, "", &mut |_| ())
                             {
                                 if path_entry.starts_with(&current_path) {
                                     if let ConfigSource::File(path) = value.get_source() {
@@ -778,7 +778,7 @@ impl TidyGitRepo {
                     if let Some(path_list) = path_list.as_array_mut() {
                         for value in path_list.iter_mut() {
                             if let Some(mut path_entry) =
-                                PathEntryConfig::from_config_value(value, "", &mut vec![])
+                                PathEntryConfig::from_config_value(value, "", &mut |_| ())
                             {
                                 if path_entry.replace(&current_path, &expected_path) {
                                     *value = path_entry.as_config_value().clone();

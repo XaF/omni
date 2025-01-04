@@ -56,13 +56,13 @@ impl SuggestConfig {
     pub(super) fn from_config_value(
         config_value: Option<ConfigValue>,
         error_key: &str,
-        errors: &mut Vec<ConfigErrorKind>,
+        on_error: &mut impl FnMut(ConfigErrorKind),
     ) -> Self {
         if let Some(config_value) = config_value {
             // We can filter by values provided by the repository, as this is only
             // a repository-scoped configuration
             if let Some(config_value) = config_value.select_scope(&ConfigScope::Workdir) {
-                return Self::parse_config_value(config_value, error_key, errors);
+                return Self::parse_config_value(config_value, error_key, on_error);
             }
         }
 
@@ -72,7 +72,7 @@ impl SuggestConfig {
     fn parse_config_value(
         config_value: ConfigValue,
         error_key: &str,
-        errors: &mut Vec<ConfigErrorKind>,
+        on_error: &mut impl FnMut(ConfigErrorKind),
     ) -> Self {
         if let Some(table) = config_value.as_table() {
             if let Some(config) = table.get("config") {
@@ -91,7 +91,7 @@ impl SuggestConfig {
                         template_file: "".to_string(),
                     };
                 } else {
-                    errors.push(ConfigErrorKind::InvalidValueType {
+                    on_error(ConfigErrorKind::InvalidValueType {
                         key: format!("{}.template", error_key),
                         actual: value.as_serde_yaml(),
                         expected: "string".to_string(),
@@ -105,7 +105,7 @@ impl SuggestConfig {
                         template_file: filepath.to_string(),
                     };
                 } else {
-                    errors.push(ConfigErrorKind::InvalidValueType {
+                    on_error(ConfigErrorKind::InvalidValueType {
                         key: format!("{}.template_file", error_key),
                         actual: value.as_serde_yaml(),
                         expected: "string".to_string(),
@@ -157,7 +157,7 @@ impl SuggestConfig {
                     match ConfigValue::from_str(&value) {
                         Ok(value) => {
                             // Parse the config value into an object of this type
-                            let suggest = Self::parse_config_value(value, "", &mut vec![]);
+                            let suggest = Self::parse_config_value(value, "", &mut |_| ());
                             // In case this is recursive for some reason...
                             return suggest.config_with_context(template_context);
                         }

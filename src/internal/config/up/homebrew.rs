@@ -45,10 +45,10 @@ impl UpConfigHomebrew {
     pub fn from_config_value(
         config_value: Option<&ConfigValue>,
         error_key: &str,
-        errors: &mut Vec<ConfigErrorKind>,
+        on_error: &mut impl FnMut(ConfigErrorKind),
     ) -> Self {
-        let install = HomebrewInstall::from_config_value(config_value, error_key, errors);
-        let tap = HomebrewTap::from_config_value(config_value, &install, error_key, errors);
+        let install = HomebrewInstall::from_config_value(config_value, error_key, on_error);
+        let tap = HomebrewTap::from_config_value(config_value, &install, error_key, on_error);
 
         UpConfigHomebrew { install, tap }
     }
@@ -383,7 +383,7 @@ impl HomebrewTap {
         config_value: Option<&ConfigValue>,
         installs: &[HomebrewInstall],
         error_key: &str,
-        errors: &mut Vec<ConfigErrorKind>,
+        on_error: &mut impl FnMut(ConfigErrorKind),
     ) -> Vec<Self> {
         #[allow(clippy::mutable_key_type)]
         let mut taps = BTreeSet::new();
@@ -394,7 +394,7 @@ impl HomebrewTap {
                     taps.extend(Self::parse_taps(
                         parsed_taps,
                         &format!("{}.tap", error_key),
-                        errors,
+                        on_error,
                     ));
                 }
             }
@@ -418,7 +418,7 @@ impl HomebrewTap {
     fn parse_taps(
         taps: &ConfigValue,
         error_key: &str,
-        errors: &mut Vec<ConfigErrorKind>,
+        on_error: &mut impl FnMut(ConfigErrorKind),
     ) -> Vec<Self> {
         let mut parsed_taps = Vec::new();
 
@@ -428,7 +428,7 @@ impl HomebrewTap {
                     None,
                     &config_value,
                     &format!("{}[{}]", error_key, idx),
-                    errors,
+                    on_error,
                 ) {
                     parsed_taps.push(tap);
                 }
@@ -439,11 +439,11 @@ impl HomebrewTap {
                     tap_name.to_string(),
                     &config_value,
                     &format!("{}.{}", error_key, tap_name),
-                    errors,
+                    on_error,
                 ));
             }
         } else if taps.as_str().is_some() {
-            if let Some(tap) = Self::parse_tap(None, taps, error_key, errors) {
+            if let Some(tap) = Self::parse_tap(None, taps, error_key, on_error) {
                 parsed_taps.push(tap);
             }
         }
@@ -455,10 +455,10 @@ impl HomebrewTap {
         name: Option<String>,
         config_value: &ConfigValue,
         error_key: &str,
-        errors: &mut Vec<ConfigErrorKind>,
+        on_error: &mut impl FnMut(ConfigErrorKind),
     ) -> Option<Self> {
         if let Some(name) = name {
-            return Some(Self::parse_config(name, config_value, error_key, errors));
+            return Some(Self::parse_config(name, config_value, error_key, on_error));
         }
 
         if let Some(tap_str) = config_value.as_str() {
@@ -475,7 +475,7 @@ impl HomebrewTap {
                         name,
                         config_value,
                         &format!("{}.repo", error_key),
-                        errors,
+                        on_error,
                     ));
                 }
                 return None;
@@ -487,11 +487,11 @@ impl HomebrewTap {
                     name.to_string(),
                     config_value,
                     &format!("{}.{}", error_key, name),
-                    errors,
+                    on_error,
                 ));
             }
         } else {
-            errors.push(ConfigErrorKind::InvalidValueType {
+            on_error(ConfigErrorKind::InvalidValueType {
                 key: error_key.to_string(),
                 actual: config_value.as_serde_yaml(),
                 expected: "string or table".to_string(),
@@ -505,7 +505,7 @@ impl HomebrewTap {
         name: String,
         config_value: &ConfigValue,
         error_key: &str,
-        errors: &mut Vec<ConfigErrorKind>,
+        on_error: &mut impl FnMut(ConfigErrorKind),
     ) -> Self {
         let mut url = None;
         let mut upgrade = false;
@@ -514,7 +514,7 @@ impl HomebrewTap {
             url = Some(tap_str.to_string());
         } else if config_value.is_table() {
             if let Some(url_value) =
-                config_value.get_as_str_or_none("url", &format!("{}.url", error_key), errors)
+                config_value.get_as_str_or_none("url", &format!("{}.url", error_key), on_error)
             {
                 url = Some(url_value.to_string());
             }
@@ -522,12 +522,12 @@ impl HomebrewTap {
             if let Some(upgrade_value) = config_value.get_as_bool_or_none(
                 "upgrade",
                 &format!("{}.upgrade", error_key),
-                errors,
+                on_error,
             ) {
                 upgrade = upgrade_value;
             }
         } else {
-            errors.push(ConfigErrorKind::InvalidValueType {
+            on_error(ConfigErrorKind::InvalidValueType {
                 key: error_key.to_string(),
                 actual: config_value.as_serde_yaml(),
                 expected: "string or table".to_string(),
@@ -867,14 +867,14 @@ impl HomebrewInstall {
     fn from_config_value(
         config_value: Option<&ConfigValue>,
         error_key: &str,
-        errors: &mut Vec<ConfigErrorKind>,
+        on_error: &mut impl FnMut(ConfigErrorKind),
     ) -> Vec<Self> {
         // TODO: maybe support "alternate" packages with `or`
 
         let config_value = match config_value {
             Some(config_value) => config_value,
             None => {
-                errors.push(ConfigErrorKind::MissingKey {
+                on_error(ConfigErrorKind::MissingKey {
                     key: format!("{}.install", error_key),
                 });
                 return Vec::new();
@@ -888,11 +888,11 @@ impl HomebrewInstall {
                 installs.extend(Self::parse_formulae(
                     formulae,
                     &format!("{}.install", error_key),
-                    errors,
+                    on_error,
                 ));
             }
         } else {
-            installs.extend(Self::parse_formulae(config_value, error_key, errors));
+            installs.extend(Self::parse_formulae(config_value, error_key, on_error));
         }
 
         installs
@@ -901,7 +901,7 @@ impl HomebrewInstall {
     fn parse_formulae(
         formulae: &ConfigValue,
         error_key: &str,
-        errors: &mut Vec<ConfigErrorKind>,
+        on_error: &mut impl FnMut(ConfigErrorKind),
     ) -> Vec<Self> {
         let mut installs = Vec::new();
 
@@ -919,13 +919,13 @@ impl HomebrewInstall {
                     if let Some(formula) = formula_config_value.get_as_str_or_none(
                         "formula",
                         &format!("{}.formula", error_key),
-                        errors,
+                        on_error,
                     ) {
                         name = Some(formula.to_string());
                     } else if let Some(cask) = formula_config_value.get_as_str_or_none(
                         "cask",
                         &format!("{}.cask", error_key),
-                        errors,
+                        on_error,
                     ) {
                         install_type = HomebrewInstallType::Cask;
                         name = Some(cask.to_string());
@@ -940,7 +940,7 @@ impl HomebrewInstall {
                         if let Some(upgrade_value) = rest_of_config.get_as_bool_or_none(
                             "upgrade",
                             &format!("{}.upgrade", error_key),
-                            errors,
+                            on_error,
                         ) {
                             upgrade = upgrade_value;
                         }
@@ -948,14 +948,14 @@ impl HomebrewInstall {
                         if let Some(version_value) = rest_of_config.get_as_str_or_none(
                             "version",
                             &format!("{}.version", error_key),
-                            errors,
+                            on_error,
                         ) {
                             version = Some(version_value.to_string());
                         }
                     } else if let Some(version_value) = rest_of_config.as_str_forced() {
                         version = Some(version_value.to_string());
                     } else {
-                        errors.push(ConfigErrorKind::InvalidValueType {
+                        on_error(ConfigErrorKind::InvalidValueType {
                             key: error_key.to_string(),
                             actual: rest_of_config.as_serde_yaml(),
                             expected: "string".to_string(),
@@ -964,7 +964,7 @@ impl HomebrewInstall {
                 } else if let Some(formula) = formula_config_value.as_str_forced() {
                     name = Some(formula.to_string());
                 } else {
-                    errors.push(ConfigErrorKind::InvalidValueType {
+                    on_error(ConfigErrorKind::InvalidValueType {
                         key: error_key.to_string(),
                         actual: formula_config_value.as_serde_yaml(),
                         expected: "string or table".to_string(),
@@ -980,7 +980,7 @@ impl HomebrewInstall {
                         was_handled: OnceCell::new(),
                     });
                 } else {
-                    errors.push(ConfigErrorKind::MissingKey {
+                    on_error(ConfigErrorKind::MissingKey {
                         key: format!("{}.formula", error_key),
                     });
                 }

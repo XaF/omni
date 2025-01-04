@@ -147,26 +147,26 @@ impl UpConfigTool {
         up_name: &str,
         config_value: Option<&ConfigValue>,
         error_key: &str,
-        errors: &mut Vec<ConfigErrorKind>,
+        on_error: &mut impl FnMut(ConfigErrorKind),
     ) -> Option<Self> {
         match up_name {
             "and" | "any" | "or" => {
                 if config_value.is_none() {
                     // If there is no config value, we can't proceed
-                    errors.push(ConfigErrorKind::MissingKey {
+                    on_error(ConfigErrorKind::MissingKey {
                         key: format!("{}[0]", error_key),
                     });
                     return None;
                 }
 
                 let upconfig =
-                    match UpConfig::from_config_value(config_value.cloned(), error_key, errors) {
+                    match UpConfig::from_config_value(config_value.cloned(), error_key, on_error) {
                         Some(upconfig) => upconfig,
                         None => return None,
                     };
 
                 if upconfig.steps.is_empty() {
-                    errors.push(ConfigErrorKind::MissingKey {
+                    on_error(ConfigErrorKind::MissingKey {
                         key: format!("{}[0]", error_key),
                     });
 
@@ -188,57 +188,57 @@ impl UpConfigTool {
                         tool_url: Some("https://github.com/xaf/asdf-bash".into()),
                     },
                     error_key,
-                    errors,
+                    on_error,
                 ),
             )),
             "bundler" | "bundle" => Some(UpConfigTool::Bundler(
-                UpConfigBundler::from_config_value(config_value, error_key, errors),
+                UpConfigBundler::from_config_value(config_value, error_key, on_error),
             )),
             "cargo-install" | "cargo_install" | "cargoinstall" => Some(UpConfigTool::CargoInstall(
-                UpConfigCargoInstalls::from_config_value(config_value, error_key, errors),
+                UpConfigCargoInstalls::from_config_value(config_value, error_key, on_error),
             )),
             "custom" => Some(UpConfigTool::Custom(UpConfigCustom::from_config_value(
                 config_value,
                 error_key,
-                errors,
+                on_error,
             ))),
             "github-release" | "github_release" | "githubrelease" | "ghrelease"
             | "github-releases" | "github_releases" | "githubreleases" | "ghreleases" => {
                 Some(UpConfigTool::GithubRelease(
-                    UpConfigGithubReleases::from_config_value(config_value, error_key, errors),
+                    UpConfigGithubReleases::from_config_value(config_value, error_key, on_error),
                 ))
             }
             "go" | "golang" => Some(UpConfigTool::Go(UpConfigGolang::from_config_value(
                 config_value,
                 error_key,
-                errors,
+                on_error,
             ))),
             "go-install" | "go_install" | "goinstall" => Some(UpConfigTool::GoInstall(
-                UpConfigGoInstalls::from_config_value(config_value, error_key, errors),
+                UpConfigGoInstalls::from_config_value(config_value, error_key, on_error),
             )),
             "homebrew" | "brew" => Some(UpConfigTool::Homebrew(
-                UpConfigHomebrew::from_config_value(config_value, error_key, errors),
+                UpConfigHomebrew::from_config_value(config_value, error_key, on_error),
             )),
             "nix" => Some(UpConfigTool::Nix(UpConfigNix::from_config_value(
                 config_value,
                 error_key,
-                errors,
+                on_error,
             ))),
             "nodejs" | "node" => Some(UpConfigTool::Nodejs(UpConfigNodejs::from_config_value(
                 config_value,
                 error_key,
-                errors,
+                on_error,
             ))),
             "python" => Some(UpConfigTool::Python(UpConfigPython::from_config_value(
                 config_value,
                 error_key,
-                errors,
+                on_error,
             ))),
             _ => Some(UpConfigTool::Mise(UpConfigMise::from_config_value(
                 up_name,
                 config_value,
                 error_key,
-                errors,
+                on_error,
             ))),
         }
     }

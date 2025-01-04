@@ -25,7 +25,7 @@ impl PathConfig {
     pub(super) fn from_config_value(
         config_value: Option<ConfigValue>,
         error_key: &str,
-        errors: &mut Vec<ConfigErrorKind>,
+        on_error: &mut impl FnMut(ConfigErrorKind),
     ) -> Self {
         let config_value = match config_value {
             Some(config_value) => config_value,
@@ -41,12 +41,12 @@ impl PathConfig {
                         PathEntryConfig::from_config_value(
                             value,
                             &format!("{}.append[{}]", error_key, idx),
-                            errors,
+                            on_error,
                         )
                     })
                     .collect()
             } else {
-                errors.push(ConfigErrorKind::InvalidValueType {
+                on_error(ConfigErrorKind::InvalidValueType {
                     key: format!("{}.append", error_key),
                     actual: append.as_serde_yaml(),
                     expected: "array".to_string(),
@@ -66,12 +66,12 @@ impl PathConfig {
                         PathEntryConfig::from_config_value(
                             value,
                             &format!("{}.prepend[{}]", error_key, idx),
-                            errors,
+                            on_error,
                         )
                     })
                     .collect()
             } else {
-                errors.push(ConfigErrorKind::InvalidValueType {
+                on_error(ConfigErrorKind::InvalidValueType {
                     key: format!("{}.prepend", error_key),
                     actual: prepend.as_serde_yaml(),
                     expected: "array".to_string(),
@@ -117,25 +117,25 @@ impl PathEntryConfig {
     pub fn from_config_value(
         config_value: &ConfigValue,
         error_key: &str,
-        errors: &mut Vec<ConfigErrorKind>,
+        on_error: &mut impl FnMut(ConfigErrorKind),
     ) -> Option<Self> {
         if config_value.is_table() {
             let path = config_value.get_as_str_or_default(
                 "path",
                 "",
                 &format!("{}.path", error_key),
-                errors,
+                on_error,
             );
             let package = config_value.get_as_str_or_none(
                 "package",
                 &format!("{}.package", error_key),
-                errors,
+                on_error,
             );
             let absolute_path = path.starts_with('/');
 
             if let Some(package) = package {
                 if absolute_path {
-                    errors.push(ConfigErrorKind::UnsupportedValueInContext {
+                    on_error(ConfigErrorKind::UnsupportedValueInContext {
                         key: format!("{}.package", error_key),
                         actual: config_value.get("package").unwrap().as_serde_yaml(),
                     });
@@ -152,7 +152,7 @@ impl PathEntryConfig {
                             full_path: full_path.to_str().unwrap().to_string(),
                         });
                     } else {
-                        errors.push(ConfigErrorKind::InvalidPackage {
+                        on_error(ConfigErrorKind::InvalidPackage {
                             key: format!("{}.package", error_key),
                             package: package.to_string(),
                         });
@@ -173,7 +173,7 @@ impl PathEntryConfig {
                 full_path: path,
             })
         } else {
-            errors.push(ConfigErrorKind::InvalidValueType {
+            on_error(ConfigErrorKind::InvalidValueType {
                 key: error_key.to_string(),
                 actual: config_value.as_serde_yaml(),
                 expected: "string or table".to_string(),

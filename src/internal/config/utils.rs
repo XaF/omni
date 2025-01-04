@@ -32,7 +32,7 @@ pub fn parse_duration_or_default(
     value: Option<&ConfigValue>,
     default: u64,
     error_key: &str,
-    errors: &mut Vec<ConfigErrorKind>,
+    on_error: &mut impl FnMut(ConfigErrorKind)
 ) -> u64 {
     if let Some(value) = value {
         if let Some(value) = value.as_unsigned_integer() {
@@ -41,14 +41,14 @@ pub fn parse_duration_or_default(
             if let Ok(value) = parse_duration(&value) {
                 return value.as_secs();
             } else {
-                errors.push(ConfigErrorKind::InvalidValueType {
+                on_error(ConfigErrorKind::InvalidValueType {
                     key: error_key.to_string(),
                     expected: "duration".to_string(),
                     actual: serde_yaml::Value::String(value.to_string()),
                 });
             }
         } else {
-            errors.push(ConfigErrorKind::InvalidValueType {
+            on_error(ConfigErrorKind::InvalidValueType {
                 key: error_key.to_string(),
                 expected: "duration".to_string(),
                 actual: value.as_serde_yaml(),

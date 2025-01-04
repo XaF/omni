@@ -30,7 +30,7 @@ impl MatchSkipPromptIfConfig {
     pub(super) fn from_config_value(
         config_value: Option<ConfigValue>,
         error_key: &str,
-        errors: &mut Vec<ConfigErrorKind>,
+        on_error: &mut impl FnMut(ConfigErrorKind),
     ) -> Self {
         match config_value {
             Some(config_value) => Self {
@@ -38,19 +38,19 @@ impl MatchSkipPromptIfConfig {
                     "enabled",
                     Self::DEFAULT_ENABLED,
                     &format!("{}.enabled", error_key),
-                    errors,
+                    on_error,
                 ),
                 first_min: config_value.get_as_float_or_default(
                     "first_min",
                     Self::DEFAULT_FIRST_MIN,
                     &format!("{}.first_min", error_key),
-                    errors,
+                    on_error,
                 ),
                 second_max: config_value.get_as_float_or_default(
                     "second_max",
                     Self::DEFAULT_SECOND_MAX,
                     &format!("{}.second_max", error_key),
-                    errors,
+                    on_error,
                 ),
             },
             None => Self::default(),

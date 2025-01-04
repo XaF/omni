@@ -56,7 +56,7 @@ impl UpConfigNodejsParams {
     pub fn from_config_value(
         config_value: Option<&ConfigValue>,
         error_key: &str,
-        errors: &mut Vec<ConfigErrorKind>,
+        on_error: &mut impl FnMut(ConfigErrorKind),
     ) -> Self {
         let mut params = Self::default();
 
@@ -64,7 +64,7 @@ impl UpConfigNodejsParams {
             if let Some(value) = config_value.get_as_bool_or_none(
                 "install_engines",
                 &format!("{}.install_engines", error_key),
-                errors,
+                on_error,
             ) {
                 params.install_engines = value;
             }
@@ -72,7 +72,7 @@ impl UpConfigNodejsParams {
             if let Some(value) = config_value.get_as_bool_or_none(
                 "install_packages",
                 &format!("{}.install_packages", error_key),
-                errors,
+                on_error,
             ) {
                 params.install_packages = value;
             }
@@ -116,15 +116,15 @@ impl UpConfigNodejs {
     pub fn from_config_value(
         config_value: Option<&ConfigValue>,
         error_key: &str,
-        errors: &mut Vec<ConfigErrorKind>,
+        on_error: &mut impl FnMut(ConfigErrorKind),
     ) -> Self {
         let mut backend =
-            UpConfigMise::from_config_value("nodejs", config_value, error_key, errors);
+            UpConfigMise::from_config_value("nodejs", config_value, error_key, on_error);
         backend.add_detect_version_func(detect_version_from_package_json);
         backend.add_detect_version_func(detect_version_from_nvmrc);
         backend.add_post_install_func(setup_individual_npm_prefix);
 
-        let params = UpConfigNodejsParams::from_config_value(config_value, error_key, errors);
+        let params = UpConfigNodejsParams::from_config_value(config_value, error_key, on_error);
 
         Self { backend, params }
     }
@@ -261,7 +261,7 @@ fn setup_individual_npm_prefix(
     };
 
     let params =
-        UpConfigNodejsParams::from_config_value(args.config_value.as_ref(), "", &mut vec![]);
+        UpConfigNodejsParams::from_config_value(args.config_value.as_ref(), "", &mut |_| ());
     if !params.install_engines && !params.install_packages {
         // Exit early if we don't need to install engines or packages
         return Ok(());

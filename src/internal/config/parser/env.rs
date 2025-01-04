@@ -56,7 +56,7 @@ impl EnvConfig {
     pub(super) fn from_config_value(
         config_value: Option<ConfigValue>,
         error_key: &str,
-        errors: &mut Vec<ConfigErrorKind>,
+        on_error: &mut impl FnMut(ConfigErrorKind),
     ) -> Self {
         let operations = if let Some(config_value) = config_value {
             let operations_array = if let Some(array) = config_value.as_array() {
@@ -79,7 +79,7 @@ impl EnvConfig {
                     .collect::<Vec<ConfigValue>>()
             } else {
                 // Unsupported type
-                errors.push(ConfigErrorKind::InvalidValueType {
+                on_error(ConfigErrorKind::InvalidValueType {
                     key: error_key.to_string(),
                     expected: "array or map".to_string(),
                     actual: config_value.as_serde_yaml(),
@@ -94,7 +94,7 @@ impl EnvConfig {
                     EnvOperationConfig::from_config_value(
                         item,
                         &format!("{}[{}]", error_key, idx),
-                        errors,
+                        on_error,
                     )
                 })
                 .collect()
@@ -119,7 +119,7 @@ impl EnvOperationConfig {
         config_value: &ConfigValue,
         operation: EnvOperationEnum,
         error_key: &str,
-        errors: &mut Vec<ConfigErrorKind>,
+        on_error: &mut impl FnMut(ConfigErrorKind),
     ) -> Vec<Self> {
         if let Some(array) = config_value.as_array() {
             array
@@ -140,7 +140,7 @@ impl EnvOperationConfig {
                         table,
                         operation,
                         &format!("{}[{}]", error_key, index),
-                        errors,
+                        on_error,
                     )
                 })
                 .collect()
@@ -150,7 +150,7 @@ impl EnvOperationConfig {
                 table,
                 operation,
                 &format!("{}.{}", error_key, name),
-                errors,
+                on_error,
             ) {
                 Some(value) => vec![value],
                 None => vec![],
@@ -159,7 +159,7 @@ impl EnvOperationConfig {
             let mut table = HashMap::new();
             table.insert("value".to_string(), config_value.clone());
 
-            match Self::from_table(name, table, operation, error_key, errors) {
+            match Self::from_table(name, table, operation, error_key, on_error) {
                 Some(value) => vec![value],
                 None => vec![],
             }
@@ -171,13 +171,13 @@ impl EnvOperationConfig {
         table: HashMap<String, ConfigValue>,
         operation: EnvOperationEnum,
         error_key: &str,
-        errors: &mut Vec<ConfigErrorKind>,
+        on_error: &mut impl FnMut(ConfigErrorKind),
     ) -> Option<Self> {
         let value_type = match table.get("type") {
             Some(value_type) => match value_type.as_str() {
                 Some(vtype) if vtype == "text" || vtype == "path" => vtype.to_string(),
                 Some(_) => {
-                    errors.push(ConfigErrorKind::InvalidValue {
+                    on_error(ConfigErrorKind::InvalidValue {
                         key: format!("{}.type", error_key),
                         actual: value_type.as_serde_yaml(),
                         expected: vec!["text".to_string(), "path".to_string()],
@@ -185,7 +185,7 @@ impl EnvOperationConfig {
                     return None;
                 }
                 None => {
-                    errors.push(ConfigErrorKind::InvalidValueType {
+                    on_error(ConfigErrorKind::InvalidValueType {
                         key: format!("{}.type", error_key),
                         expected: "text".to_string(),
                         actual: value_type.as_serde_yaml(),
@@ -206,7 +206,7 @@ impl EnvOperationConfig {
                         ConfigSource::File(path) => Some(path.to_string()),
                         ConfigSource::Package(path_entry) => Some(path_entry.to_string()),
                         _ => {
-                            errors.push(ConfigErrorKind::UnsupportedValueInContext {
+                            on_error(ConfigErrorKind::UnsupportedValueInContext {
                                 key: format!("{}.type", error_key),
                                 actual: serde_yaml::Value::String(value.to_string()),
                             });
@@ -233,7 +233,7 @@ impl EnvOperationConfig {
                     Some(value.to_string())
                 }
             } else {
-                errors.push(ConfigErrorKind::InvalidValueType {
+                on_error(ConfigErrorKind::InvalidValueType {
                     key: format!("{}.value", error_key),
                     expected: "string".to_string(),
                     actual: config_value.as_serde_yaml(),
@@ -245,7 +245,7 @@ impl EnvOperationConfig {
         };
 
         if value.is_none() && operation != EnvOperationEnum::Set {
-            errors.push(ConfigErrorKind::MissingKey {
+            on_error(ConfigErrorKind::MissingKey {
                 key: format!("{}.value", error_key),
             });
             return None;
@@ -261,13 +261,13 @@ impl EnvOperationConfig {
     pub(super) fn from_config_value(
         config_value: &ConfigValue,
         error_key: &str,
-        errors: &mut Vec<ConfigErrorKind>,
+        on_error: &mut impl FnMut(ConfigErrorKind),
     ) -> Vec<Self> {
         // The config_value should be a table.
         let table = match config_value.as_table() {
             Some(table) => table,
             None => {
-                errors.push(ConfigErrorKind::InvalidValueType {
+                on_error(ConfigErrorKind::InvalidValueType {
                     key: error_key.to_string(),
                     expected: "table".to_string(),
                     actual: config_value.as_serde_yaml(),
@@ -278,7 +278,7 @@ impl EnvOperationConfig {
 
         // There should be exactly one key/value pair in the table.
         if table.len() != 1 {
-            errors.push(ConfigErrorKind::NotExactlyOneKeyInTable {
+            on_error(ConfigErrorKind::NotExactlyOneKeyInTable {
                 key: error_key.to_string(),
                 actual: config_value.as_serde_yaml(),
             });
@@ -297,7 +297,7 @@ impl EnvOperationConfig {
                     config_value,
                     EnvOperationEnum::Set,
                     &format!("{}.set", error_key),
-                    errors,
+                    on_error,
                 )
                 .pop()
                 {
@@ -316,7 +316,7 @@ impl EnvOperationConfig {
                     config_value,
                     EnvOperationEnum::Remove,
                     &format!("{}.remove", error_key),
-                    errors,
+                    on_error,
                 ))
             }
 
@@ -327,7 +327,7 @@ impl EnvOperationConfig {
                     config_value,
                     EnvOperationEnum::Prepend,
                     &format!("{}.prepend", error_key),
-                    errors,
+                    on_error,
                 ))
             }
 
@@ -338,7 +338,7 @@ impl EnvOperationConfig {
                     config_value,
                     EnvOperationEnum::Append,
                     &format!("{}.append", error_key),
-                    errors,
+                    on_error,
                 ))
             }
 
@@ -349,7 +349,7 @@ impl EnvOperationConfig {
                     config_value,
                     EnvOperationEnum::Prefix,
                     &format!("{}.prefix", error_key),
-                    errors,
+                    on_error,
                 ))
             }
 
@@ -360,7 +360,7 @@ impl EnvOperationConfig {
                     config_value,
                     EnvOperationEnum::Suffix,
                     &format!("{}.suffix", error_key),
-                    errors,
+                    on_error,
                 ))
             }
 
@@ -368,12 +368,12 @@ impl EnvOperationConfig {
                 return operations;
             }
 
-            match Self::from_table(name, table, EnvOperationEnum::Set, error_key, errors) {
+            match Self::from_table(name, table, EnvOperationEnum::Set, error_key, on_error) {
                 Some(value) => vec![value],
                 None => vec![],
             }
         } else if let Some(value) =
-            Self::from_config_value_multi(name, value, EnvOperationEnum::Set, error_key, errors)
+            Self::from_config_value_multi(name, value, EnvOperationEnum::Set, error_key, on_error)
                 .pop()
         {
             vec![value]
