@@ -27,6 +27,8 @@ use crate::omni_error;
 struct ConfigCheckCommandArgs {
     search_paths: HashSet<String>,
     config_files: HashSet<String>,
+    ignore_errors: HashSet<String>,
+    select_errors: HashSet<String>,
     global_scope: bool,
     local_scope: bool,
     default_scope: bool,
@@ -48,6 +50,20 @@ impl From<BTreeMap<String, ParseArgsValue>> for ConfigCheckCommandArgs {
             _ => HashSet::new(),
         };
 
+        let ignore_errors = match args.get("ignore") {
+            Some(ParseArgsValue::ManyString(ignore_errors)) => {
+                ignore_errors.iter().flat_map(|v| v.clone()).collect()
+            }
+            _ => HashSet::new(),
+        };
+
+        let select_errors = match args.get("select") {
+            Some(ParseArgsValue::ManyString(select_errors)) => {
+                select_errors.iter().flat_map(|v| v.clone()).collect()
+            }
+            _ => HashSet::new(),
+        };
+
         let global_scope = matches!(
             args.get("global"),
             Some(ParseArgsValue::SingleBoolean(Some(true)))
@@ -61,6 +77,8 @@ impl From<BTreeMap<String, ParseArgsValue>> for ConfigCheckCommandArgs {
         Self {
             search_paths,
             config_files,
+            ignore_errors,
+            select_errors,
             global_scope,
             local_scope,
             default_scope,
@@ -153,6 +171,20 @@ impl BuiltinCommand for ConfigCheckCommand {
                         "Check the local configuration files and omnipath only.".to_string(),
                     ),
                     arg_type: SyntaxOptArgType::Flag,
+                    ..Default::default()
+                },
+                SyntaxOptArg {
+                    names: vec!["--ignore".to_string()],
+                    desc: Some("Error codes to ignore".to_string()),
+                    arg_type: SyntaxOptArgType::Array(Box::new(SyntaxOptArgType::String)),
+                    value_delimiter: Some(','),
+                    ..Default::default()
+                },
+                SyntaxOptArg {
+                    names: vec!["--select".to_string()],
+                    desc: Some("Error codes to select".to_string()),
+                    arg_type: SyntaxOptArgType::Array(Box::new(SyntaxOptArgType::String)),
+                    value_delimiter: Some(','),
                     ..Default::default()
                 },
             ],
@@ -313,6 +345,36 @@ impl BuiltinCommand for ConfigCheckCommand {
         // Print the errors after sorting them
         errors.sort();
         for error in errors.iter() {
+            let errorcode = error.errorcode().to_uppercase();
+
+            // Get the longest selected entry from which the error starts with
+            let selected_level: i8 = args
+                .select_errors
+                .iter()
+                .filter(|e| errorcode.starts_with(e.to_uppercase().as_str()))
+                .map(|e| e.len() as i8)
+                .max()
+                .unwrap_or(if args.select_errors.is_empty() { 0 } else { -1 });
+
+            // Skip this error if the selected_level < 0
+            if selected_level < 0 {
+                continue;
+            }
+
+            // Get the longest ignored entry from which the error starts with
+            let ignored_level: i8 = args
+                .ignore_errors
+                .iter()
+                .filter(|e| errorcode.starts_with(e.to_uppercase().as_str()))
+                .map(|e| e.len() as i8)
+                .max()
+                .unwrap_or(-1);
+
+            // Skip this error if the ignored_level >= selected_level
+            if ignored_level >= selected_level {
+                continue;
+            }
+
             eprintln!("{}", error);
         }
 
@@ -361,7 +423,7 @@ impl ErrorFormatter {
         let errorcode = error.errorcode().map(|s| s.to_string());
 
         let message = match error {
-            ConfigErrorKind::OmniPathFileNotExecutable { path } => "Not executable".to_string(),
+            ConfigErrorKind::OmniPathFileNotExecutable { path: _ } => "Not executable".to_string(),
             _ => error.to_string(),
         };
 
@@ -370,6 +432,20 @@ impl ErrorFormatter {
             lineno,
             errorcode,
             message,
+        }
+    }
+
+    fn file(&self) -> String {
+        match &self.file {
+            Some(file) => file.clone(),
+            None => "<unknown>".to_string(),
+        }
+    }
+
+    fn errorcode(&self) -> String {
+        match &self.errorcode {
+            Some(errorcode) => errorcode.clone(),
+            None => "UNKN".to_string(),
         }
     }
 }
@@ -394,13 +470,8 @@ impl std::fmt::Display for ErrorFormatter {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         let mut parts = vec![];
 
-        if let Some(file) = &self.file {
-            parts.push(file.light_blue());
-        }
-
-        if let Some(errorcode) = &self.errorcode {
-            parts.push(errorcode.red());
-        }
+        parts.push(self.file().light_blue());
+        parts.push(self.errorcode().red());
 
         if let Some(lineno) = &self.lineno {
             parts.push(format!("{}", lineno).light_green());
