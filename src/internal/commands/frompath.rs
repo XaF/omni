@@ -65,7 +65,7 @@ impl PathCommand {
         // going over the omnipath.
         let cfg = config(".");
         let suggest_config_value = cfg.suggest_config.config();
-        let local_config = if suggest_config_value.is_null() {
+        let local_config: OmniConfig = if suggest_config_value.is_null() {
             cfg
         } else {
             let mut local_config = config_loader(".").raw_config.clone();
@@ -74,7 +74,7 @@ impl PathCommand {
                 ConfigExtendOptions::new(),
                 vec![],
             );
-            OmniConfig::from_config_value(&local_config)
+            local_config.into()
         };
 
         // Get the package and worktree paths for the current repo

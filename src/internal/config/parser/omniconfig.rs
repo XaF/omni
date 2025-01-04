@@ -85,21 +85,16 @@ pub struct OmniConfig {
     pub up_command: UpCommandConfig,
     #[serde(skip_serializing_if = "String::is_empty")]
     pub worktree: String,
-
-    #[serde(skip)]
-    pub config_errors: Vec<ConfigErrorKind>,
 }
 
 impl OmniConfig {
     const DEFAULT_COMMAND_MATCH_MIN_SCORE: f64 = 0.12;
     const DEFAULT_REPO_PATH_FORMAT: &'static str = "%{host}/%{org}/%{repo}";
 
-    pub fn from_config_value(config_value: &ConfigValue) -> Self {
-        let mut errors = Vec::new();
-        let on_error = &mut |error: ConfigErrorKind| {
-            errors.push(error);
-        };
-
+    pub fn from_config_value(
+        config_value: &ConfigValue,
+        on_error: &mut impl FnMut(ConfigErrorKind),
+    ) -> Self {
         let mut commands_config = HashMap::new();
         if let Some(value) = config_value.get("commands") {
             if let Some(table) = value.as_table() {
@@ -238,7 +233,6 @@ impl OmniConfig {
             up,
             up_command,
             worktree,
-            config_errors: errors,
         }
     }
 
@@ -295,8 +289,14 @@ impl OmniConfig {
     }
 }
 
+impl From<ConfigValue> for OmniConfig {
+    fn from(config_value: ConfigValue) -> Self {
+        OmniConfig::from_config_value(&config_value, &mut |_| ())
+    }
+}
+
 impl From<ConfigLoader> for OmniConfig {
     fn from(config_loader: ConfigLoader) -> Self {
-        OmniConfig::from_config_value(&config_loader.raw_config)
+        config_loader.raw_config.into()
     }
 }

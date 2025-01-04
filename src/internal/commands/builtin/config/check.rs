@@ -124,14 +124,9 @@ impl BuiltinCommand for ConfigCheckCommand {
         let config_files = ConfigLoader::all_config_files();
         for (file, scope) in config_files {
             let loader = ConfigLoader::new_from_file(&file, scope);
-            let config: OmniConfig = loader.into();
-
-            for error in config.config_errors.iter() {
-                errors.push(ErrorFormatter::new_from_error(
-                    Some(file.clone()),
-                    error.clone(),
-                ));
-            }
+            let _config = OmniConfig::from_config_value(&loader.raw_config, &mut |e| {
+                errors.push(ErrorFormatter::new_from_error(Some(file.clone()), e))
+            });
         }
 
         // Now go over all the paths in the omnipath, so we can report:

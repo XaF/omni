@@ -87,7 +87,7 @@ impl OmniConfigPerPath {
         // Get the config for the path
         if !self.config.contains_key(&key) {
             let config_loader = config_loader(&key);
-            let new_config = OmniConfig::from_config_value(&config_loader.raw_config);
+            let new_config: OmniConfig = config_loader.into();
             self.config.insert(key.clone(), new_config);
         }
 
