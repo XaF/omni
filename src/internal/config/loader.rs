@@ -213,7 +213,7 @@ impl ConfigLoader {
         new_config_loader
     }
 
-    fn new_empty() -> Self {
+    pub fn new_empty() -> Self {
         Self {
             loaded_config_files: vec![],
             raw_config: ConfigValue::new_null(ConfigSource::Null, ConfigScope::Null),

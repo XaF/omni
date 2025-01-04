@@ -45,7 +45,7 @@ impl PathCommand {
     }
 
     pub fn aggregate_with_errors(
-        paths: &Vec<String>,
+        paths: &[String],
         on_error: &mut impl FnMut(ConfigErrorKind),
     ) -> Vec<Self> {
         Self::aggregate_commands_from_path(paths, on_error)
@@ -121,7 +121,7 @@ impl PathCommand {
     }
 
     fn aggregate_commands_from_path(
-        paths: &Vec<String>,
+        paths: &[String],
         on_error: &mut impl FnMut(ConfigErrorKind),
     ) -> Vec<Self> {
         let mut all_commands: Vec<PathCommand> = Vec::new();
@@ -307,17 +307,18 @@ impl PathCommand {
 
     fn file_details(&self) -> Option<&PathCommandFileDetails> {
         self.file_details
-            .get_or_init(|| PathCommandFileDetails::from_file(&self.source))
+            .get_or_init(|| PathCommandFileDetails::from_file(&self.source, &mut |_| ()))
             .as_ref()
     }
 
     pub fn errors(&self) -> Vec<ConfigErrorKind> {
-        match self.file_details() {
-            Some(details) => details.errors.clone(),
-            None => vec![ConfigErrorKind::OmniPathFileFailedToLoadMetadata {
+        let mut errors = vec![];
+        if PathCommandFileDetails::from_file(&self.source, &mut |err| errors.push(err)).is_none() {
+            errors.push(ConfigErrorKind::OmniPathFileFailedToLoadMetadata {
                 path: self.source.clone(),
-            }],
+            });
         }
+        errors
     }
 }
 
@@ -329,8 +330,6 @@ pub struct PathCommandFileDetails {
     syntax: Option<CommandSyntax>,
     sync_update: bool,
     argparser: bool,
-    #[serde(skip)]
-    errors: Vec<ConfigErrorKind>,
 }
 
 impl<'de> Deserialize<'de> for PathCommandFileDetails {
@@ -338,12 +337,21 @@ impl<'de> Deserialize<'de> for PathCommandFileDetails {
     where
         D: serde::Deserializer<'de>,
     {
+        Self::deserialize_with_errors(deserializer, &mut |_| ())
+    }
+}
+
+impl<'de> PathCommandFileDetails {
+    fn deserialize_with_errors<D>(
+        deserializer: D,
+        on_error: &mut impl FnMut(ConfigErrorKind),
+    ) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
         let mut value = serde_yaml::Value::deserialize(deserializer)?;
 
         if let serde_yaml::Value::Mapping(ref mut map) = value {
-            let mut errors = vec![];
-            let on_error = &mut |err: ConfigErrorKind| errors.push(err);
-
             // Deserialize the booleans
             let autocompletion = map
                 .remove(&serde_yaml::Value::String("autocompletion".to_string()))
@@ -471,35 +479,35 @@ impl<'de> Deserialize<'de> for PathCommandFileDetails {
                 help,
                 category,
                 syntax,
-                errors,
             })
         } else {
-            Ok(Self {
-                errors: vec![ConfigErrorKind::InvalidValueType {
-                    key: ".".to_string(),
-                    expected: "map".to_string(),
-                    actual: value,
-                }],
-                ..Self::default()
-            })
+            on_error(ConfigErrorKind::InvalidValueType {
+                key: ".".to_string(),
+                expected: "map".to_string(),
+                actual: value,
+            });
+            Ok(Self::default())
         }
     }
 }
 
 impl PathCommandFileDetails {
-    pub fn from_file(path: &str) -> Option<Self> {
-        if let Some(details) = Self::from_metadata_file(path) {
+    pub fn from_file(path: &str, on_error: &mut impl FnMut(ConfigErrorKind)) -> Option<Self> {
+        if let Some(details) = Self::from_metadata_file(path, on_error) {
             return Some(details);
         }
 
-        if let Some(details) = Self::from_source_file(path) {
+        if let Some(details) = Self::from_source_file(path, on_error) {
             return Some(details);
         }
 
         None
     }
 
-    pub fn from_metadata_file(path: &str) -> Option<Self> {
+    pub fn from_metadata_file(
+        path: &str,
+        on_error: &mut impl FnMut(ConfigErrorKind),
+    ) -> Option<Self> {
         // The metadata file for `file.ext` can be either
         // `file.ext.metadata.yaml` or `file.metadata.yaml`
         let mut metadata_files = vec![format!("{}.metadata.yaml", path)];
@@ -516,7 +524,8 @@ impl PathCommandFileDetails {
             }
 
             if let Ok(file) = File::open(path) {
-                if let Ok(mut md) = serde_yaml::from_reader::<_, Self>(file) {
+                let deserializer = serde_yaml::Deserializer::from_reader(file);
+                if let Ok(mut md) = Self::deserialize_with_errors(deserializer, on_error) {
                     // If the help is not empty, split it into lines
                     if let Some(help) = &mut md.help {
                         *help = handle_color_codes(help.clone());
@@ -842,10 +851,10 @@ impl PathCommandFileDetails {
         })
     }
 
-    fn from_source_file_header<R: BufRead>(reader: &mut R) -> Option<Self> {
-        let mut errors = vec![];
-        let on_error = &mut |err: ConfigErrorKind| errors.push(err);
-
+    fn from_source_file_header<R: BufRead>(
+        reader: &mut R,
+        on_error: &mut impl FnMut(ConfigErrorKind),
+    ) -> Option<Self> {
         let mut autocompletion = false;
         let mut sync_update = false;
         let mut argparser = false;
@@ -1034,12 +1043,14 @@ impl PathCommandFileDetails {
             argparser,
             syntax,
             sync_update,
-            errors,
             ..Self::default()
         })
     }
 
-    pub fn from_source_file(path: &str) -> Option<Self> {
+    pub fn from_source_file(
+        path: &str,
+        on_error: &mut impl FnMut(ConfigErrorKind),
+    ) -> Option<Self> {
         let file = File::open(path);
         if file.is_err() {
             return None;
@@ -1048,7 +1059,7 @@ impl PathCommandFileDetails {
 
         let mut reader = BufReader::new(file);
 
-        Self::from_source_file_header(&mut reader)
+        Self::from_source_file_header(&mut reader, on_error)
     }
 }
 

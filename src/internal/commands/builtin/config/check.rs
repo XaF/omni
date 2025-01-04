@@ -13,15 +13,23 @@ use crate::internal::config::up::utils::PrintProgressHandler;
 use crate::internal::config::up::utils::ProgressHandler;
 use crate::internal::config::CommandSyntax;
 use crate::internal::config::ConfigLoader;
+use crate::internal::config::ConfigScope;
 use crate::internal::config::OmniConfig;
+use crate::internal::config::SyntaxGroup;
 use crate::internal::config::SyntaxOptArg;
 use crate::internal::config::SyntaxOptArgType;
+use crate::internal::env::omnipath_env;
 use crate::internal::user_interface::StringColor;
 use crate::internal::workdir;
+use crate::omni_error;
 
 #[derive(Debug, Clone)]
 struct ConfigCheckCommandArgs {
     search_paths: HashSet<String>,
+    config_files: HashSet<String>,
+    global_scope: bool,
+    local_scope: bool,
+    default_scope: bool,
 }
 
 impl From<BTreeMap<String, ParseArgsValue>> for ConfigCheckCommandArgs {
@@ -33,7 +41,30 @@ impl From<BTreeMap<String, ParseArgsValue>> for ConfigCheckCommandArgs {
             _ => HashSet::new(),
         };
 
-        Self { search_paths }
+        let config_files = match args.get("config_file") {
+            Some(ParseArgsValue::ManyString(config_files)) => {
+                config_files.iter().flat_map(|v| v.clone()).collect()
+            }
+            _ => HashSet::new(),
+        };
+
+        let global_scope = matches!(
+            args.get("global"),
+            Some(ParseArgsValue::SingleBoolean(Some(true)))
+        );
+        let local_scope = matches!(
+            args.get("local"),
+            Some(ParseArgsValue::SingleBoolean(Some(true)))
+        );
+        let default_scope = !global_scope && !local_scope;
+
+        Self {
+            search_paths,
+            config_files,
+            global_scope,
+            local_scope,
+            default_scope,
+        }
     }
 }
 
@@ -77,16 +108,57 @@ impl BuiltinCommand for ConfigCheckCommand {
 
     fn syntax(&self) -> Option<CommandSyntax> {
         Some(CommandSyntax {
-            parameters: vec![SyntaxOptArg {
-                names: vec!["-P".to_string(), "--search-path".to_string()],
-                desc: Some(
-                    concat!(
-                        "Extra path to search git repositories to tidy up ",
-                        "(repeat as many times as you need)",
-                    )
-                    .to_string(),
-                ),
-                arg_type: SyntaxOptArgType::Array(Box::new(SyntaxOptArgType::String)),
+            parameters: vec![
+                SyntaxOptArg {
+                    names: vec!["-P".to_string(), "--search-path".to_string()],
+                    desc: Some(
+                        concat!(
+                            "Path to check for commands.\n",
+                            "\n",
+                            "Can be used multiple times. If not passed, ",
+                            "worktree-defined paths are used if in a worktree, ",
+                            "or the omnipath otherwise.\n",
+                        )
+                        .to_string(),
+                    ),
+                    arg_type: SyntaxOptArgType::Array(Box::new(SyntaxOptArgType::String)),
+                    ..Default::default()
+                },
+                SyntaxOptArg {
+                    names: vec!["-C".to_string(), "--config-file".to_string()],
+                    desc: Some(
+                        concat!(
+                            "Configuration file to check.\n",
+                            "\n",
+                            "Can be used multiple times. If not passed, ",
+                            "the default configuration files loaded by omni ",
+                            "are checked.\n",
+                        )
+                        .to_string(),
+                    ),
+                    arg_type: SyntaxOptArgType::Array(Box::new(SyntaxOptArgType::String)),
+                    ..Default::default()
+                },
+                SyntaxOptArg {
+                    names: vec!["--global".to_string()],
+                    desc: Some(
+                        "Check the global configuration files and omnipath only.".to_string(),
+                    ),
+                    arg_type: SyntaxOptArgType::Flag,
+                    ..Default::default()
+                },
+                SyntaxOptArg {
+                    names: vec!["--local".to_string()],
+                    desc: Some(
+                        "Check the local configuration files and omnipath only.".to_string(),
+                    ),
+                    arg_type: SyntaxOptArgType::Flag,
+                    ..Default::default()
+                },
+            ],
+            groups: vec![SyntaxGroup {
+                name: "scope".to_string(),
+                parameters: vec!["--global".to_string(), "--local".to_string()],
                 ..Default::default()
             }],
             ..Default::default()
@@ -110,18 +182,33 @@ impl BuiltinCommand for ConfigCheckCommand {
         let wd = workdir(".");
         let wd_root = wd.root();
 
+        if args.local_scope && wd_root.is_none() {
+            omni_error!("Not in a worktree");
+            exit(1);
+        }
+
         // TODO(2025-01-03): Implement the following:
-        // - Allow to specify files to check against for configuration
-        // - Allow to specify dirs or files to check against for commands
-        // - If no --search-path or --config-file is passed:
-        //   - When in a workdir, default to check locally only unless
-        //     --global is passed
-        //   - When not in a workdir, default to check globally
-        // - Add error codes
         // - Allow to select/deselect specific error codes
 
         // Get all the available configuration files
-        let config_files = ConfigLoader::all_config_files();
+        let config_files: Vec<(String, ConfigScope)> = if !args.config_files.is_empty() {
+            args.config_files
+                .into_iter()
+                .map(|file| (file, ConfigScope::Null))
+                .collect()
+        } else {
+            ConfigLoader::all_config_files()
+                .into_iter()
+                .filter(|(_file, scope)| match scope {
+                    ConfigScope::System => args.global_scope || args.default_scope,
+                    ConfigScope::User => args.global_scope || args.default_scope,
+                    ConfigScope::Workdir => args.local_scope || args.default_scope,
+                    ConfigScope::Null => args.local_scope || args.default_scope,
+                    ConfigScope::Default => true,
+                })
+                .collect()
+        };
+
         for (file, scope) in config_files {
             let loader = ConfigLoader::new_from_file(&file, scope);
             let _config = OmniConfig::from_config_value(&loader.raw_config, &mut |e| {
@@ -135,12 +222,63 @@ impl BuiltinCommand for ConfigCheckCommand {
         // - Errors in the metadata files (yaml)
         // - Errors in the metadata headers
 
-        let omnipath = omnipath_entries()
-            .into_iter()
-            .map(|entry| entry.full_path)
-            .collect::<Vec<_>>();
+        let search_paths = if !args.search_paths.is_empty() {
+            args.search_paths
+        } else {
+            // Use the configuration files to get the paths
+            let config_files: Vec<_> = ConfigLoader::all_config_files()
+                .into_iter()
+                .filter(|(_file, scope)| match scope {
+                    ConfigScope::System => args.global_scope || args.default_scope,
+                    ConfigScope::User => args.global_scope || args.default_scope,
+                    ConfigScope::Workdir => args.local_scope || args.default_scope,
+                    ConfigScope::Null => args.local_scope || args.default_scope,
+                    ConfigScope::Default => true,
+                })
+                .collect();
 
-        let paths = omnipath
+            // Load the selected configuration files
+            let mut loader = ConfigLoader::new_empty();
+            for (file, scope) in config_files {
+                loader.import_config_file(&file, scope);
+            }
+            let config: OmniConfig = loader.into();
+
+            // Prepare the path list
+            let mut paths = vec![];
+            let mut seen = HashSet::new();
+
+            // Read the prepend paths
+            for path in config.path.prepend {
+                if seen.insert(path.to_string()) {
+                    paths.push(path.to_string());
+                }
+            }
+
+            // If global, read the environment paths
+            if args.global_scope || args.default_scope {
+                for path in omnipath_env() {
+                    if !path.is_empty() && seen.insert(path.clone()) {
+                        paths.push(path.clone());
+                    }
+                }
+            }
+
+            // Read the append paths
+            for path in config.path.append {
+                if seen.insert(path.to_string()) {
+                    paths.push(path.to_string());
+                }
+            }
+
+            // TODO: If local, try and apply the `suggest_config` so that
+            // we can evaluate any path that would be suggested to be added
+
+            // Return all those paths
+            paths.into_iter().collect()
+        };
+
+        let paths = search_paths
             .iter()
             .filter_map(|entry| {
                 let path = PathBuf::from(&entry);
@@ -158,15 +296,17 @@ impl BuiltinCommand for ConfigCheckCommand {
             })
             .collect::<Vec<_>>();
 
-        for command in PathCommand::aggregate_with_errors(&paths, &mut |e| {
-            errors.push(ErrorFormatter::new_from_error(None, e))
-        }) {
-            // Load the file details
-            for err in command.errors().iter() {
-                errors.push(ErrorFormatter::new_from_error(
-                    Some(command.source().to_string()),
-                    err.clone(),
-                ));
+        for path in paths {
+            for command in PathCommand::aggregate_with_errors(&[path.clone()], &mut |e| {
+                errors.push(ErrorFormatter::new_from_error(Some(path.clone()), e))
+            }) {
+                // Load the file details
+                for err in command.errors().iter() {
+                    errors.push(ErrorFormatter::new_from_error(
+                        Some(command.source().to_string()),
+                        err.clone(),
+                    ));
+                }
             }
         }
 
@@ -213,12 +353,9 @@ impl ErrorFormatter {
     }
 
     fn new_from_error(file: Option<String>, error: ConfigErrorKind) -> Self {
-        let file = match file {
-            Some(file) => Some(file),
-            None => match error.path() {
-                Some(path) => Some(path.to_string()),
-                None => None,
-            },
+        let file = match error.path() {
+            Some(path) => Some(path.to_string()),
+            None => file,
         };
         let lineno = error.lineno();
         let errorcode = error.errorcode().map(|s| s.to_string());
