@@ -21,6 +21,8 @@ use crate::internal::config::SyntaxGroup;
 use crate::internal::config::SyntaxOptArg;
 use crate::internal::config::SyntaxOptArgType;
 use crate::internal::env::omnipath_env;
+use crate::internal::git::is_path_gitignored;
+use crate::internal::git::package_root_path;
 use crate::internal::user_interface::StringColor;
 use crate::internal::workdir;
 use crate::omni_error;
@@ -32,6 +34,7 @@ struct ConfigCheckCommandArgs {
     ignore_errors: HashSet<String>,
     select_errors: HashSet<String>,
     patterns: Vec<String>,
+    include_packages: bool,
     global_scope: bool,
     local_scope: bool,
     default_scope: bool,
@@ -74,6 +77,11 @@ impl From<BTreeMap<String, ParseArgsValue>> for ConfigCheckCommandArgs {
             _ => Vec::new(),
         };
 
+        let include_packages = matches!(
+            args.get("include_packages"),
+            Some(ParseArgsValue::SingleBoolean(Some(true)))
+        );
+
         let global_scope = matches!(
             args.get("global"),
             Some(ParseArgsValue::SingleBoolean(Some(true)))
@@ -90,6 +98,7 @@ impl From<BTreeMap<String, ParseArgsValue>> for ConfigCheckCommandArgs {
             ignore_errors,
             select_errors,
             patterns,
+            include_packages,
             global_scope,
             local_scope,
             default_scope,
@@ -213,8 +222,12 @@ impl BuiltinCommand for ConfigCheckCommand {
                     arg_type: SyntaxOptArgType::Array(Box::new(SyntaxOptArgType::String)),
                     ..Default::default()
                 },
-                // TODO: add support for `--include-packages` so that we can
-                // ignore package errors by default
+                SyntaxOptArg {
+                    names: vec!["-p".to_string(), "--include-packages".to_string()],
+                    desc: Some("Include package errors in the check.".to_string()),
+                    arg_type: SyntaxOptArgType::Flag,
+                    ..Default::default()
+                },
             ],
             groups: vec![SyntaxGroup {
                 name: "scope".to_string(),
@@ -345,8 +358,8 @@ impl BuiltinCommand for ConfigCheckCommand {
                     errors.push(ErrorFormatter::new(
                         Some(entry.to_string()),
                         None,
-                        None,
-                        "Not found".to_string(),
+                        "P001",
+                        "Path not found",
                     ));
                     None
                 }
@@ -370,8 +383,12 @@ impl BuiltinCommand for ConfigCheckCommand {
         // Filter and sort the errors
         let errors = errors
             .iter()
+            .filter(|e| {
+                args.include_packages || !PathBuf::from(e.file()).starts_with(package_root_path())
+            })
             .filter(|e| check_allowed(&e.file(), &args.patterns))
             .filter(|e| e.selected(&args.select_errors, &args.ignore_errors))
+            .filter(|e| !is_path_gitignored(&e.file()).unwrap_or(false))
             .sorted()
             .collect::<Vec<_>>();
 
@@ -399,23 +416,20 @@ struct ErrorFormatter {
     file: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     lineno: Option<usize>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    errorcode: Option<String>,
+    errorcode: String,
     message: String,
+    #[serde(skip)]
+    default_ignored: bool,
 }
 
 impl ErrorFormatter {
-    fn new(
-        file: Option<String>,
-        lineno: Option<usize>,
-        errorcode: Option<String>,
-        message: String,
-    ) -> Self {
+    fn new(file: Option<String>, lineno: Option<usize>, errorcode: &str, message: &str) -> Self {
         Self {
             file,
             lineno,
-            errorcode,
-            message,
+            errorcode: errorcode.to_string(),
+            message: message.to_string(),
+            default_ignored: false,
         }
     }
 
@@ -425,10 +439,11 @@ impl ErrorFormatter {
             None => file,
         };
         let lineno = error.lineno();
-        let errorcode = error.errorcode().map(|s| s.to_string());
+        let errorcode = error.errorcode().to_string();
+        let default_ignored = matches!(error, ConfigErrorKind::MetadataHeaderMissingSyntax);
 
         let message = match error {
-            ConfigErrorKind::OmniPathFileNotExecutable { path: _ } => "Not executable".to_string(),
+            ConfigErrorKind::OmniPathFileNotExecutable { .. } => "Not executable".to_string(),
             _ => error.to_string(),
         };
 
@@ -437,6 +452,7 @@ impl ErrorFormatter {
             lineno,
             errorcode,
             message,
+            default_ignored,
         }
     }
 
@@ -447,17 +463,11 @@ impl ErrorFormatter {
         }
     }
 
-    fn errorcode(&self) -> String {
-        match &self.errorcode {
-            Some(errorcode) => errorcode.clone(),
-            None => "UNKN".to_string(),
-        }
+    fn errorcode(&self) -> &str {
+        &self.errorcode
     }
 
     fn selected(&self, select_errors: &HashSet<String>, ignore_errors: &HashSet<String>) -> bool {
-        // TODO: add support for defaulting to ignore some errors unless
-        // specifically selected
-
         // Filter according to the error code
         let errorcode = self.errorcode().to_uppercase();
 
@@ -470,7 +480,7 @@ impl ErrorFormatter {
             .unwrap_or(if select_errors.is_empty() { 0 } else { -1 });
 
         // Skip this error if the selected_level < 0
-        if selected_level < 0 {
+        if selected_level < 0 || (self.default_ignored && selected_level < 4) {
             return false;
         }
 

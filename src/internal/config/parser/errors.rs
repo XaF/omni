@@ -109,43 +109,44 @@ impl ConfigErrorKind {
         }
     }
 
-    pub fn errorcode(&self) -> Option<&str> {
+    pub fn errorcode(&self) -> &str {
         match self {
             //  Cxxx for configuration errors
             //    C0xx for key errors
-            ConfigErrorKind::MissingKey { .. } => Some("C001"),
-            ConfigErrorKind::EmptyKey { .. } => Some("C002"),
-            ConfigErrorKind::NotExactlyOneKeyInTable { .. } => Some("C003"),
+            ConfigErrorKind::MissingKey { .. } => "C001",
+            ConfigErrorKind::EmptyKey { .. } => "C002",
+            ConfigErrorKind::NotExactlyOneKeyInTable { .. } => "C003",
             //    C1xx for value errors
-            ConfigErrorKind::InvalidValueType { .. } => Some("C101"),
-            ConfigErrorKind::InvalidValue { .. } => Some("C102"),
-            ConfigErrorKind::InvalidRange { .. } => Some("C103"),
-            ConfigErrorKind::InvalidPackage { .. } => Some("C104"),
-            ConfigErrorKind::UnsupportedValueInContext { .. } => Some("C105"),
-            ConfigErrorKind::ParsingError { .. } => Some("C106"),
+            ConfigErrorKind::InvalidValueType { .. } => "C101",
+            ConfigErrorKind::InvalidValue { .. } => "C102",
+            ConfigErrorKind::InvalidRange { .. } => "C103",
+            ConfigErrorKind::InvalidPackage { .. } => "C104",
+            ConfigErrorKind::UnsupportedValueInContext { .. } => "C105",
+            ConfigErrorKind::ParsingError { .. } => "C106",
             //  MDxx for metadata errors
             //    MD0x for larger missing errors
-            ConfigErrorKind::MetadataHeaderMissingHelp => Some("MD02"),
-            ConfigErrorKind::MetadataHeaderMissingSyntax => Some("MD01"),
+            ConfigErrorKind::MetadataHeaderMissingHelp => "MD01",
+            ConfigErrorKind::MetadataHeaderMissingSyntax => "MD02",
             //    MD1x for key or subkey errors
-            ConfigErrorKind::MetadataHeaderContinueWithoutKey { .. } => Some("MD12"),
-            ConfigErrorKind::MetadataHeaderDuplicateKey { .. } => Some("MD13"),
-            ConfigErrorKind::MetadataHeaderMissingSubkey { .. } => Some("MD11"),
-            ConfigErrorKind::MetadataHeaderUnknownKey { .. } => Some("MD10"),
+            ConfigErrorKind::MetadataHeaderContinueWithoutKey { .. } => "MD12",
+            ConfigErrorKind::MetadataHeaderDuplicateKey { .. } => "MD13",
+            ConfigErrorKind::MetadataHeaderMissingSubkey { .. } => "MD11",
+            ConfigErrorKind::MetadataHeaderUnknownKey { .. } => "MD10",
             //    MD2x for group errors
-            ConfigErrorKind::MetadataHeaderGroupEmptyPart { .. } => Some("MD28"),
-            ConfigErrorKind::MetadataHeaderGroupInvalidPart { .. } => Some("MD27"),
-            ConfigErrorKind::MetadataHeaderGroupMissingParameters { .. } => Some("MD21"),
-            ConfigErrorKind::MetadataHeaderGroupUnknownConfigKey { .. } => Some("MD29"),
+            ConfigErrorKind::MetadataHeaderGroupEmptyPart { .. } => "MD28",
+            ConfigErrorKind::MetadataHeaderGroupInvalidPart { .. } => "MD27",
+            ConfigErrorKind::MetadataHeaderGroupMissingParameters { .. } => "MD21",
+            ConfigErrorKind::MetadataHeaderGroupUnknownConfigKey { .. } => "MD29",
             //    MD3x for parameter errors
-            ConfigErrorKind::MetadataHeaderParameterEmptyPart { .. } => Some("MD38"),
-            ConfigErrorKind::MetadataHeaderParameterInvalidKeyValue { .. } => Some("MD31"),
-            ConfigErrorKind::MetadataHeaderParameterInvalidPart { .. } => Some("MD37"),
-            ConfigErrorKind::MetadataHeaderParameterMissingDescription { .. } => Some("MD32"),
-            ConfigErrorKind::MetadataHeaderParameterUnknownConfigKey { .. } => Some("MD39"),
+            ConfigErrorKind::MetadataHeaderParameterEmptyPart { .. } => "MD38",
+            ConfigErrorKind::MetadataHeaderParameterInvalidKeyValue { .. } => "MD31",
+            ConfigErrorKind::MetadataHeaderParameterInvalidPart { .. } => "MD37",
+            ConfigErrorKind::MetadataHeaderParameterMissingDescription { .. } => "MD32",
+            ConfigErrorKind::MetadataHeaderParameterUnknownConfigKey { .. } => "MD39",
             //  Pxxx for path errors
-            ConfigErrorKind::OmniPathFileNotExecutable { .. } => Some("P001"),
-            ConfigErrorKind::OmniPathFileFailedToLoadMetadata { .. } => Some("P002"),
+            //    P001 is "Path not found"
+            ConfigErrorKind::OmniPathFileNotExecutable { .. } => "P002",
+            ConfigErrorKind::OmniPathFileFailedToLoadMetadata { .. } => "P003",
         }
     }
 }
