@@ -4,6 +4,7 @@ use serde::Deserialize;
 use serde::Serialize;
 
 use crate::internal::config::parser::errors::ConfigErrorKind;
+use crate::internal::config::utils::check_allowed;
 use crate::internal::config::ConfigScope;
 use crate::internal::config::ConfigValue;
 
@@ -581,26 +582,6 @@ fn check_url_allowed(url_str: &str, patterns: &[String]) -> bool {
         };
 
         let matches = pattern_url.matches(&url);
-        if matches {
-            return !is_deny; // Early return on match
-        }
-    }
-
-    // Get the last pattern's deny status (if any) for the default case
-    let default = patterns.last().map_or(true, |p| p.starts_with('!'));
-    default
-}
-
-fn check_allowed(value: &str, patterns: &[String]) -> bool {
-    if patterns.is_empty() {
-        return true; // No patterns means allow all
-    }
-
-    for pattern in patterns {
-        let is_deny = pattern.starts_with('!');
-        let pattern_str = if is_deny { &pattern[1..] } else { pattern };
-
-        let matches = glob::Pattern::new(pattern_str).map_or(false, |pat| pat.matches(value));
         if matches {
             return !is_deny; // Early return on match
         }

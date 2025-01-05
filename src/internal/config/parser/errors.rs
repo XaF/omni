@@ -48,28 +48,42 @@ pub enum ConfigErrorKind {
     MetadataHeaderContinueWithoutKey { lineno: usize },
     #[error("Unknown key '{key}' in metadata header at line {lineno}")]
     MetadataHeaderUnknownKey { key: String, lineno: usize },
+    #[error(
+        "Key '{key}' in metadata header at line {lineno} previously defined at line {prev_lineno}"
+    )]
+    MetadataHeaderDuplicateKey {
+        key: String,
+        lineno: usize,
+        prev_lineno: usize,
+    },
     #[error("No syntax provided")]
     MetadataHeaderMissingSyntax,
     #[error("No help provided")]
     MetadataHeaderMissingHelp,
-    #[error("Empty part in the definition of group or parameter '{name}'")]
-    MetadataHeaderGroupOrParamEmptyPart { name: String },
-    #[error("Unknown configuration key '{key}' in the definition of group or parameter '{name}'")]
-    MetadataHeaderUnknownGroupOrParamConfigKey { name: String, key: String },
-    #[error("Invalid part '{part}' in the definition of group or parameter '{name}'")]
-    MetadataHeaderGroupOrParamInvalidPart { name: String, part: String },
+    #[error("Empty part in the definition of group '{group}'")]
+    MetadataHeaderGroupEmptyPart { group: String },
+    #[error("Invalid part '{part}' in the definition of group '{group}'")]
+    MetadataHeaderGroupInvalidPart { group: String, part: String },
+    #[error("Unknown configuration key '{key}' in the definition of group '{group}'")]
+    MetadataHeaderGroupUnknownConfigKey { group: String, key: String },
+    #[error("Group '{group}' does not have any parameters")]
+    MetadataHeaderGroupMissingParameters { group: String },
+    #[error("Empty part in the definition of parameter '{parameter}'")]
+    MetadataHeaderParameterEmptyPart { parameter: String },
+    #[error("Invalid part '{part}' in the definition of parameter '{parameter}'")]
+    MetadataHeaderParameterInvalidPart { parameter: String, part: String },
+    #[error("Unknown configuration key '{key}' in the definition of parameter '{parameter}'")]
+    MetadataHeaderParameterUnknownConfigKey { parameter: String, key: String },
     #[error(
-        "Invalid value '{value}' for key '{key}' in the definition of group or parameter {name}"
+        "Invalid value '{value}' for key '{key}' in the definition of group or parameter {parameter}"
     )]
-    MetadataHeaderParamInvalidKeyValue {
-        name: String,
+    MetadataHeaderParameterInvalidKeyValue {
+        parameter: String,
         key: String,
         value: String,
     },
-    #[error("Missing description for parameter '{name}'")]
-    MetadataHeaderParamMissingDescription { name: String },
-    #[error("Group '{name}' does not have any parameters")]
-    MetadataHeaderGroupMissingParameters { name: String },
+    #[error("Missing description for parameter '{parameter}'")]
+    MetadataHeaderParameterMissingDescription { parameter: String },
     #[error("File '{path}' is not executable")]
     OmniPathFileNotExecutable { path: String },
     #[error("Failed to load metadata for file '{path}'")]
@@ -90,37 +104,46 @@ impl ConfigErrorKind {
             ConfigErrorKind::MetadataHeaderMissingSubkey { lineno, .. } => Some(*lineno),
             ConfigErrorKind::MetadataHeaderContinueWithoutKey { lineno } => Some(*lineno),
             ConfigErrorKind::MetadataHeaderUnknownKey { lineno, .. } => Some(*lineno),
+            ConfigErrorKind::MetadataHeaderDuplicateKey { lineno, .. } => Some(*lineno),
             _ => None,
         }
     }
 
     pub fn errorcode(&self) -> Option<&str> {
-        // We want error codes in the shape:
-        //  Cxxx for configuration errors
-        //  MDxx for metadata errors
-        //  Pxxx for path errors
-
         match self {
-            ConfigErrorKind::InvalidValueType { .. } => Some("C001"),
-            ConfigErrorKind::InvalidValue { .. } => Some("C002"),
-            ConfigErrorKind::InvalidRange { .. } => Some("C003"),
-            ConfigErrorKind::InvalidPackage { .. } => Some("C004"),
-            ConfigErrorKind::MissingKey { .. } => Some("C005"),
-            ConfigErrorKind::EmptyKey { .. } => Some("C006"),
-            ConfigErrorKind::NotExactlyOneKeyInTable { .. } => Some("C007"),
-            ConfigErrorKind::UnsupportedValueInContext { .. } => Some("C008"),
-            ConfigErrorKind::ParsingError { .. } => Some("C009"),
-            ConfigErrorKind::MetadataHeaderMissingSubkey { .. } => Some("MD01"),
-            ConfigErrorKind::MetadataHeaderContinueWithoutKey { .. } => Some("MD02"),
-            ConfigErrorKind::MetadataHeaderUnknownKey { .. } => Some("MD03"),
-            ConfigErrorKind::MetadataHeaderMissingSyntax => Some("MD04"),
-            ConfigErrorKind::MetadataHeaderMissingHelp => Some("MD05"),
-            ConfigErrorKind::MetadataHeaderGroupOrParamEmptyPart { .. } => Some("MD06"),
-            ConfigErrorKind::MetadataHeaderUnknownGroupOrParamConfigKey { .. } => Some("MD07"),
-            ConfigErrorKind::MetadataHeaderGroupOrParamInvalidPart { .. } => Some("MD08"),
-            ConfigErrorKind::MetadataHeaderParamInvalidKeyValue { .. } => Some("MD09"),
-            ConfigErrorKind::MetadataHeaderParamMissingDescription { .. } => Some("MD10"),
-            ConfigErrorKind::MetadataHeaderGroupMissingParameters { .. } => Some("MD11"),
+            //  Cxxx for configuration errors
+            //    C0xx for key errors
+            ConfigErrorKind::MissingKey { .. } => Some("C001"),
+            ConfigErrorKind::EmptyKey { .. } => Some("C002"),
+            ConfigErrorKind::NotExactlyOneKeyInTable { .. } => Some("C003"),
+            //    C1xx for value errors
+            ConfigErrorKind::InvalidValueType { .. } => Some("C101"),
+            ConfigErrorKind::InvalidValue { .. } => Some("C102"),
+            ConfigErrorKind::InvalidRange { .. } => Some("C103"),
+            ConfigErrorKind::InvalidPackage { .. } => Some("C104"),
+            ConfigErrorKind::UnsupportedValueInContext { .. } => Some("C105"),
+            ConfigErrorKind::ParsingError { .. } => Some("C106"),
+            //  MDxx for metadata errors
+            //    MD0x for larger missing errors
+            ConfigErrorKind::MetadataHeaderMissingHelp => Some("MD02"),
+            ConfigErrorKind::MetadataHeaderMissingSyntax => Some("MD01"),
+            //    MD1x for key or subkey errors
+            ConfigErrorKind::MetadataHeaderContinueWithoutKey { .. } => Some("MD12"),
+            ConfigErrorKind::MetadataHeaderDuplicateKey { .. } => Some("MD13"),
+            ConfigErrorKind::MetadataHeaderMissingSubkey { .. } => Some("MD11"),
+            ConfigErrorKind::MetadataHeaderUnknownKey { .. } => Some("MD10"),
+            //    MD2x for group errors
+            ConfigErrorKind::MetadataHeaderGroupEmptyPart { .. } => Some("MD28"),
+            ConfigErrorKind::MetadataHeaderGroupInvalidPart { .. } => Some("MD27"),
+            ConfigErrorKind::MetadataHeaderGroupMissingParameters { .. } => Some("MD21"),
+            ConfigErrorKind::MetadataHeaderGroupUnknownConfigKey { .. } => Some("MD29"),
+            //    MD3x for parameter errors
+            ConfigErrorKind::MetadataHeaderParameterEmptyPart { .. } => Some("MD38"),
+            ConfigErrorKind::MetadataHeaderParameterInvalidKeyValue { .. } => Some("MD31"),
+            ConfigErrorKind::MetadataHeaderParameterInvalidPart { .. } => Some("MD37"),
+            ConfigErrorKind::MetadataHeaderParameterMissingDescription { .. } => Some("MD32"),
+            ConfigErrorKind::MetadataHeaderParameterUnknownConfigKey { .. } => Some("MD39"),
+            //  Pxxx for path errors
             ConfigErrorKind::OmniPathFileNotExecutable { .. } => Some("P001"),
             ConfigErrorKind::OmniPathFileFailedToLoadMetadata { .. } => Some("P002"),
         }

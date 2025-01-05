@@ -3,14 +3,16 @@ use std::collections::HashSet;
 use std::path::PathBuf;
 use std::process::exit;
 
+use itertools::Itertools;
+use serde::Serialize;
+
 use crate::internal::commands::base::BuiltinCommand;
 use crate::internal::commands::frompath::PathCommand;
-use crate::internal::commands::path::omnipath_entries;
+use crate::internal::commands::utils::abs_or_rel_path;
 use crate::internal::commands::Command;
 use crate::internal::config::parser::ConfigErrorKind;
 use crate::internal::config::parser::ParseArgsValue;
-use crate::internal::config::up::utils::PrintProgressHandler;
-use crate::internal::config::up::utils::ProgressHandler;
+use crate::internal::config::utils::check_allowed;
 use crate::internal::config::CommandSyntax;
 use crate::internal::config::ConfigLoader;
 use crate::internal::config::ConfigScope;
@@ -29,6 +31,7 @@ struct ConfigCheckCommandArgs {
     config_files: HashSet<String>,
     ignore_errors: HashSet<String>,
     select_errors: HashSet<String>,
+    patterns: Vec<String>,
     global_scope: bool,
     local_scope: bool,
     default_scope: bool,
@@ -64,6 +67,13 @@ impl From<BTreeMap<String, ParseArgsValue>> for ConfigCheckCommandArgs {
             _ => HashSet::new(),
         };
 
+        let patterns = match args.get("pattern") {
+            Some(ParseArgsValue::ManyString(patterns)) => {
+                patterns.iter().flat_map(|v| v.clone()).collect()
+            }
+            _ => Vec::new(),
+        };
+
         let global_scope = matches!(
             args.get("global"),
             Some(ParseArgsValue::SingleBoolean(Some(true)))
@@ -79,6 +89,7 @@ impl From<BTreeMap<String, ParseArgsValue>> for ConfigCheckCommandArgs {
             config_files,
             ignore_errors,
             select_errors,
+            patterns,
             global_scope,
             local_scope,
             default_scope,
@@ -187,6 +198,23 @@ impl BuiltinCommand for ConfigCheckCommand {
                     value_delimiter: Some(','),
                     ..Default::default()
                 },
+                SyntaxOptArg {
+                    names: vec!["--pattern".to_string()],
+                    desc: Some(
+                        concat!(
+                            "Pattern of files to include (or exclude, if starting ",
+                            "by '!') in the check.\n",
+                            "\n",
+                            "Allows for glob patterns to be used. If not passed, ",
+                            "all files are included.\n",
+                        )
+                        .to_string(),
+                    ),
+                    arg_type: SyntaxOptArgType::Array(Box::new(SyntaxOptArgType::String)),
+                    ..Default::default()
+                },
+                // TODO: add support for `--include-packages` so that we can
+                // ignore package errors by default
             ],
             groups: vec![SyntaxGroup {
                 name: "scope".to_string(),
@@ -218,9 +246,6 @@ impl BuiltinCommand for ConfigCheckCommand {
             omni_error!("Not in a worktree");
             exit(1);
         }
-
-        // TODO(2025-01-03): Implement the following:
-        // - Allow to select/deselect specific error codes
 
         // Get all the available configuration files
         let config_files: Vec<(String, ConfigScope)> = if !args.config_files.is_empty() {
@@ -342,39 +367,16 @@ impl BuiltinCommand for ConfigCheckCommand {
             }
         }
 
-        // Print the errors after sorting them
-        errors.sort();
+        // Filter and sort the errors
+        let errors = errors
+            .iter()
+            .filter(|e| check_allowed(&e.file(), &args.patterns))
+            .filter(|e| e.selected(&args.select_errors, &args.ignore_errors))
+            .sorted()
+            .collect::<Vec<_>>();
+
+        // Print the errors
         for error in errors.iter() {
-            let errorcode = error.errorcode().to_uppercase();
-
-            // Get the longest selected entry from which the error starts with
-            let selected_level: i8 = args
-                .select_errors
-                .iter()
-                .filter(|e| errorcode.starts_with(e.to_uppercase().as_str()))
-                .map(|e| e.len() as i8)
-                .max()
-                .unwrap_or(if args.select_errors.is_empty() { 0 } else { -1 });
-
-            // Skip this error if the selected_level < 0
-            if selected_level < 0 {
-                continue;
-            }
-
-            // Get the longest ignored entry from which the error starts with
-            let ignored_level: i8 = args
-                .ignore_errors
-                .iter()
-                .filter(|e| errorcode.starts_with(e.to_uppercase().as_str()))
-                .map(|e| e.len() as i8)
-                .max()
-                .unwrap_or(-1);
-
-            // Skip this error if the ignored_level >= selected_level
-            if ignored_level >= selected_level {
-                continue;
-            }
-
             eprintln!("{}", error);
         }
 
@@ -391,10 +393,13 @@ impl BuiltinCommand for ConfigCheckCommand {
     }
 }
 
-#[derive(PartialEq, Eq, Debug)]
+#[derive(PartialEq, Eq, Debug, Serialize)]
 struct ErrorFormatter {
+    #[serde(skip_serializing_if = "Option::is_none")]
     file: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     lineno: Option<usize>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     errorcode: Option<String>,
     message: String,
 }
@@ -448,6 +453,42 @@ impl ErrorFormatter {
             None => "UNKN".to_string(),
         }
     }
+
+    fn selected(&self, select_errors: &HashSet<String>, ignore_errors: &HashSet<String>) -> bool {
+        // TODO: add support for defaulting to ignore some errors unless
+        // specifically selected
+
+        // Filter according to the error code
+        let errorcode = self.errorcode().to_uppercase();
+
+        // Get the longest selected entry from which the error starts with
+        let selected_level: i8 = select_errors
+            .iter()
+            .filter(|e| errorcode.starts_with(e.to_uppercase().as_str()))
+            .map(|e| e.len() as i8)
+            .max()
+            .unwrap_or(if select_errors.is_empty() { 0 } else { -1 });
+
+        // Skip this error if the selected_level < 0
+        if selected_level < 0 {
+            return false;
+        }
+
+        // Get the longest ignored entry from which the error starts with
+        let ignored_level: i8 = ignore_errors
+            .iter()
+            .filter(|e| errorcode.starts_with(e.to_uppercase().as_str()))
+            .map(|e| e.len() as i8)
+            .max()
+            .unwrap_or(-1);
+
+        // Skip this error if the ignored_level >= selected_level
+        if ignored_level >= selected_level {
+            return false;
+        }
+
+        true
+    }
 }
 
 impl Ord for ErrorFormatter {
@@ -470,7 +511,8 @@ impl std::fmt::Display for ErrorFormatter {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         let mut parts = vec![];
 
-        parts.push(self.file().light_blue());
+        let path = abs_or_rel_path(&self.file());
+        parts.push(path.light_blue());
         parts.push(self.errorcode().red());
 
         if let Some(lineno) = &self.lineno {

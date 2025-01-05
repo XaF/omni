@@ -559,8 +559,8 @@ impl PathCommandFileDetails {
         while let Some(part) = value_parts.next() {
             let part = part.trim();
             if part.is_empty() {
-                on_error(ConfigErrorKind::MetadataHeaderGroupOrParamEmptyPart {
-                    name: group_name.to_string(),
+                on_error(ConfigErrorKind::MetadataHeaderGroupEmptyPart {
+                    group: group_name.to_string(),
                 });
                 continue;
             }
@@ -570,8 +570,8 @@ impl PathCommandFileDetails {
                 let key = kv[0].to_lowercase();
                 if !key.contains(' ') {
                     if !kv.len() == 2 {
-                        on_error(ConfigErrorKind::MetadataHeaderGroupOrParamInvalidPart {
-                            name: group_name.to_string(),
+                        on_error(ConfigErrorKind::MetadataHeaderGroupInvalidPart {
+                            group: group_name.to_string(),
                             part: part.to_string(),
                         });
                         continue;
@@ -595,12 +595,10 @@ impl PathCommandFileDetails {
                             }
                         }
                         _ => {
-                            on_error(
-                                ConfigErrorKind::MetadataHeaderUnknownGroupOrParamConfigKey {
-                                    name: group_name.to_string(),
-                                    key: key.clone(),
-                                },
-                            );
+                            on_error(ConfigErrorKind::MetadataHeaderGroupUnknownConfigKey {
+                                group: group_name.to_string(),
+                                key: key.clone(),
+                            });
                         }
                     }
 
@@ -620,7 +618,7 @@ impl PathCommandFileDetails {
 
             if parameters.is_empty() {
                 on_error(ConfigErrorKind::MetadataHeaderGroupMissingParameters {
-                    name: group_name.to_string(),
+                    group: group_name.to_string(),
                 });
             }
         }
@@ -677,8 +675,8 @@ impl PathCommandFileDetails {
         while let Some(part) = value_parts.next() {
             let part = part.trim();
             if part.is_empty() {
-                on_error(ConfigErrorKind::MetadataHeaderGroupOrParamEmptyPart {
-                    name: arg_name.to_string(),
+                on_error(ConfigErrorKind::MetadataHeaderParameterEmptyPart {
+                    parameter: arg_name.to_string(),
                 });
                 continue;
             }
@@ -688,8 +686,8 @@ impl PathCommandFileDetails {
                 let key = kv[0].to_lowercase();
                 if !key.contains(' ') {
                     if !kv.len() == 2 {
-                        on_error(ConfigErrorKind::MetadataHeaderGroupOrParamInvalidPart {
-                            name: arg_name.to_string(),
+                        on_error(ConfigErrorKind::MetadataHeaderParameterInvalidPart {
+                            parameter: arg_name.to_string(),
                             part: part.to_string(),
                         });
                         continue;
@@ -715,8 +713,8 @@ impl PathCommandFileDetails {
                             if value.len() == 1 {
                                 value_delimiter = Some(value.chars().next().unwrap());
                             } else {
-                                on_error(ConfigErrorKind::MetadataHeaderParamInvalidKeyValue {
-                                    name: arg_name.to_string(),
+                                on_error(ConfigErrorKind::MetadataHeaderParameterInvalidKeyValue {
+                                    parameter: arg_name.to_string(),
                                     key: key.clone(),
                                     value: value.to_string(),
                                 });
@@ -784,20 +782,18 @@ impl PathCommandFileDetails {
                                     }
                                 }
                             } else {
-                                on_error(ConfigErrorKind::MetadataHeaderParamInvalidKeyValue {
-                                    name: arg_name.to_string(),
+                                on_error(ConfigErrorKind::MetadataHeaderParameterInvalidKeyValue {
+                                    parameter: arg_name.to_string(),
                                     key: key.clone(),
                                     value: value.to_string(),
                                 });
                             }
                         }
                         _ => {
-                            on_error(
-                                ConfigErrorKind::MetadataHeaderUnknownGroupOrParamConfigKey {
-                                    name: arg_name.to_string(),
-                                    key: key.clone(),
-                                },
-                            );
+                            on_error(ConfigErrorKind::MetadataHeaderParameterUnknownConfigKey {
+                                parameter: arg_name.to_string(),
+                                key: key.clone(),
+                            });
                         }
                     }
 
@@ -812,8 +808,8 @@ impl PathCommandFileDetails {
 
         description = description.trim().to_string();
         let desc = if description.is_empty() {
-            on_error(ConfigErrorKind::MetadataHeaderParamMissingDescription {
-                name: arg_name.to_string(),
+            on_error(ConfigErrorKind::MetadataHeaderParameterMissingDescription {
+                parameter: arg_name.to_string(),
             });
 
             None
@@ -865,6 +861,8 @@ impl PathCommandFileDetails {
         let mut current_obj: Option<(String, String, String)> = None;
         let mut parameters_data: Vec<(String, String, String)> = vec![];
         let mut group_data: Vec<(String, String)> = vec![];
+
+        let mut key_tracker = MetadataKeyTracker::new();
 
         // We want to parse lines in the format:
         // # key: value
@@ -929,6 +927,8 @@ impl PathCommandFileDetails {
 
             match (key.as_str(), value) {
                 ("category", value) => {
+                    key_tracker.handle_seen_key(&key, lineno, true, on_error);
+
                     let handled_value = value
                         .split(',')
                         .map(|s| s.trim().to_string())
@@ -939,19 +939,31 @@ impl PathCommandFileDetails {
                     }
                 }
                 ("autocompletion", value) => {
+                    key_tracker.handle_seen_key(&key, lineno, false, on_error);
                     autocompletion = str_to_bool(&value).unwrap_or(false);
                 }
                 ("sync_update", value) => {
+                    key_tracker.handle_seen_key(&key, lineno, false, on_error);
                     sync_update = str_to_bool(&value).unwrap_or(false);
                 }
                 ("argparser", value) => {
+                    key_tracker.handle_seen_key(&key, lineno, false, on_error);
                     argparser = str_to_bool(&value).unwrap_or(false);
                 }
                 ("help", value) => {
+                    key_tracker.handle_seen_key(&key, lineno, true, on_error);
+
                     help_lines.push(value);
                 }
                 ("arg", value) | ("opt", value) | ("arggroup", value) if subkey.is_some() => {
                     let subkey = subkey.unwrap();
+                    key_tracker.handle_seen_key(
+                        &format!("{}:{}", key, subkey),
+                        lineno,
+                        true,
+                        on_error,
+                    );
+
                     match current_obj {
                         Some((cur_key, cur_subkey, cur_value))
                             if cur_key == key
@@ -977,9 +989,10 @@ impl PathCommandFileDetails {
                         }
                     }
                 }
-                _ => {
+                _ if !key_tracker.is_empty() => {
                     on_error(ConfigErrorKind::MetadataHeaderUnknownKey { key, lineno });
                 }
+                _ => {}
             }
         }
 
@@ -1060,6 +1073,45 @@ impl PathCommandFileDetails {
         let mut reader = BufReader::new(file);
 
         Self::from_source_file_header(&mut reader, on_error)
+    }
+}
+
+struct MetadataKeyTracker {
+    seen_keys: HashMap<String, usize>,
+    last_key: String,
+}
+
+impl MetadataKeyTracker {
+    fn new() -> Self {
+        Self {
+            seen_keys: HashMap::new(),
+            last_key: String::new(),
+        }
+    }
+
+    fn handle_seen_key(
+        &mut self,
+        key: &str,
+        lineno: usize,
+        allow_repeat: bool,
+        on_error: &mut dyn FnMut(ConfigErrorKind),
+    ) {
+        if let Some(prev_lineno) = self.seen_keys.get(key) {
+            if !allow_repeat || key != &self.last_key {
+                on_error(ConfigErrorKind::MetadataHeaderDuplicateKey {
+                    key: key.to_string(),
+                    lineno,
+                    prev_lineno: *prev_lineno,
+                });
+            }
+        } else {
+            self.seen_keys.insert(key.to_string(), lineno);
+        }
+        self.last_key = key.to_string();
+    }
+
+    fn is_empty(&self) -> bool {
+        self.seen_keys.is_empty()
     }
 }
 
