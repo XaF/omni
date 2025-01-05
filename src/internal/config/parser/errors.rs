@@ -20,7 +20,7 @@ pub enum ConfigErrorKind {
     InvalidRange { key: String, min: usize, max: usize },
     #[error("Value for key '{key}' should be a valid package, but found '{package}'")]
     InvalidPackage { key: String, package: String },
-    #[error("Value for key '{key}' is missing")]
+    #[error("Key '{key}' is missing")]
     MissingKey { key: String },
     #[error("Value for key '{key}' is empty")]
     EmptyKey { key: String },
@@ -121,8 +121,8 @@ impl ConfigErrorKind {
             ConfigErrorKind::InvalidValue { .. } => "C102",
             ConfigErrorKind::InvalidRange { .. } => "C103",
             ConfigErrorKind::InvalidPackage { .. } => "C104",
-            ConfigErrorKind::UnsupportedValueInContext { .. } => "C105",
-            ConfigErrorKind::ParsingError { .. } => "C106",
+            ConfigErrorKind::UnsupportedValueInContext { .. } => "C110",
+            ConfigErrorKind::ParsingError { .. } => "C120",
             //  MDxx for metadata errors
             //    MD0x for larger missing errors
             ConfigErrorKind::MetadataHeaderMissingHelp => "MD01",

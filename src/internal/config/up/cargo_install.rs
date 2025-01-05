@@ -77,7 +77,12 @@ impl UpConfigCargoInstalls {
     ) -> Self {
         let config_value = match config_value {
             Some(config_value) => config_value,
-            None => return Self::default(),
+            None => {
+                on_error(ConfigErrorKind::EmptyKey {
+                    key: error_key.to_string(),
+                });
+                return Self::default();
+            }
         };
 
         if config_value.as_str_forced().is_some() {
@@ -153,8 +158,20 @@ impl UpConfigCargoInstalls {
                 ));
             }
 
+            if crates.is_empty() {
+                on_error(ConfigErrorKind::EmptyKey {
+                    key: error_key.to_string(),
+                });
+            }
+
             return Self { crates };
         }
+
+        on_error(ConfigErrorKind::InvalidValueType {
+            key: error_key.to_string(),
+            expected: "string, array, or table".to_string(),
+            actual: config_value.as_serde_yaml(),
+        });
 
         UpConfigCargoInstalls::default()
     }

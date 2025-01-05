@@ -81,7 +81,12 @@ impl UpConfigGoInstalls {
     ) -> Self {
         let config_value = match config_value {
             Some(config_value) => config_value,
-            None => return Self::default(),
+            None => {
+                on_error(ConfigErrorKind::EmptyKey {
+                    key: error_key.to_string(),
+                });
+                return Self::default();
+            }
         };
 
         if config_value.as_str_forced().is_some() {
@@ -157,10 +162,22 @@ impl UpConfigGoInstalls {
                 ));
             }
 
+            if tools.is_empty() {
+                on_error(ConfigErrorKind::EmptyKey {
+                    key: error_key.to_string(),
+                });
+            }
+
             return Self { tools };
         }
 
-        UpConfigGoInstalls::default()
+        on_error(ConfigErrorKind::InvalidValueType {
+            key: error_key.to_string(),
+            expected: "string, array, or table".to_string(),
+            actual: config_value.as_serde_yaml(),
+        });
+
+        Self::default()
     }
 
     pub fn up(

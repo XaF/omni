@@ -89,8 +89,8 @@ impl UpConfigGithubReleases {
         let config_value = match config_value {
             Some(config_value) => config_value,
             None => {
-                on_error(ConfigErrorKind::MissingKey {
-                    key: format!("{}.repository", error_key),
+                on_error(ConfigErrorKind::EmptyKey {
+                    key: error_key.to_string(),
                 });
                 return Self::default();
             }
@@ -173,10 +173,22 @@ impl UpConfigGithubReleases {
                 ));
             }
 
+            if releases.is_empty() {
+                on_error(ConfigErrorKind::EmptyKey {
+                    key: error_key.to_string(),
+                });
+            }
+
             return Self { releases };
         }
 
-        UpConfigGithubReleases::default()
+        on_error(ConfigErrorKind::InvalidValueType {
+            key: error_key.to_string(),
+            expected: "string, array, or table".to_string(),
+            actual: config_value.as_serde_yaml(),
+        });
+
+        Self::default()
     }
 
     pub fn up(
