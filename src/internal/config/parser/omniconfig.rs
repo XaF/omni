@@ -124,9 +124,9 @@ impl OmniConfig {
             // by any work directory specific configuration.
             if let Some(value) = value.reject_scope(&ConfigScope::Workdir) {
                 if let Some(array) = value.as_array() {
-                    for (_idx, value) in array.iter().enumerate() {
+                    for value in array.iter() {
                         // TODO
-                        org_config.push(OrgConfig::from_config_value(&value));
+                        org_config.push(OrgConfig::from_config_value(value));
                     }
                 } else {
                     on_error(ConfigErrorKind::InvalidValueType {
@@ -203,12 +203,8 @@ impl OmniConfig {
             on_error,
         );
 
-        let worktree = config_value.get_as_str_or_default(
-            "worktree",
-            &*DEFAULT_WORKTREE,
-            "worktree",
-            on_error,
-        );
+        let worktree =
+            config_value.get_as_str_or_default("worktree", &DEFAULT_WORKTREE, "worktree", on_error);
 
         Self {
             askpass,

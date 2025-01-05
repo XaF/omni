@@ -108,7 +108,7 @@ impl UpConfigNix {
     pub fn from_config_value(
         config_value: Option<&ConfigValue>,
         error_key: &str,
-        on_error: &mut impl FnMut(ConfigErrorKind)
+        on_error: &mut impl FnMut(ConfigErrorKind),
     ) -> Self {
         let config_value = match config_value {
             Some(config_value) => config_value,

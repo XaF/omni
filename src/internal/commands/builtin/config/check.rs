@@ -388,7 +388,7 @@ impl BuiltinCommand for ConfigCheckCommand {
             })
             .filter(|e| check_allowed(&e.file(), &args.patterns))
             .filter(|e| e.selected(&args.select_errors, &args.ignore_errors))
-            .filter(|e| !is_path_gitignored(&e.file()).unwrap_or(false))
+            .filter(|e| !is_path_gitignored(e.file()).unwrap_or(false))
             .sorted()
             .collect::<Vec<_>>();
 

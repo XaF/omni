@@ -139,25 +139,23 @@ impl PathEntryConfig {
                         key: format!("{}.package", error_key),
                         actual: config_value.get("package").unwrap().as_serde_yaml(),
                     });
-                } else {
-                    if let Some(package_path) = package_path_from_handle(&package) {
-                        let mut full_path = package_path;
-                        if !path.is_empty() {
-                            full_path = full_path.join(path.clone());
-                        }
-
-                        return Some(Self {
-                            path: path.clone(),
-                            package: Some(package.to_string()),
-                            full_path: full_path.to_str().unwrap().to_string(),
-                        });
-                    } else {
-                        on_error(ConfigErrorKind::InvalidPackage {
-                            key: format!("{}.package", error_key),
-                            package: package.to_string(),
-                        });
-                        return None;
+                } else if let Some(package_path) = package_path_from_handle(&package) {
+                    let mut full_path = package_path;
+                    if !path.is_empty() {
+                        full_path = full_path.join(path.clone());
                     }
+
+                    return Some(Self {
+                        path: path.clone(),
+                        package: Some(package.to_string()),
+                        full_path: full_path.to_str().unwrap().to_string(),
+                    });
+                } else {
+                    on_error(ConfigErrorKind::InvalidPackage {
+                        key: format!("{}.package", error_key),
+                        package: package.to_string(),
+                    });
+                    return None;
                 }
             }
 

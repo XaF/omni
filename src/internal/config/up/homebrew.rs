@@ -426,7 +426,7 @@ impl HomebrewTap {
             for (idx, config_value) in taps_array.iter().enumerate() {
                 if let Some(tap) = Self::parse_tap(
                     None,
-                    &config_value,
+                    config_value,
                     &format!("{}[{}]", error_key, idx),
                     on_error,
                 ) {

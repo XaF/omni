@@ -37,7 +37,7 @@ impl ShellAliasesConfig {
             if let Some(array) = config_value.as_array() {
                 for (idx, value) in array.iter().enumerate() {
                     if let Some(alias) = ShellAliasConfig::from_config_value(
-                        &value,
+                        value,
                         &format!("{}[{}]", error_key, idx),
                         on_error,
                     ) {

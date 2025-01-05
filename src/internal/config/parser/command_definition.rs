@@ -2090,7 +2090,7 @@ impl SyntaxOptArgNumValues {
                     } else {
                         on_error(ConfigErrorKind::InvalidRange {
                             key: error_key.to_string(),
-                            min: min,
+                            min,
                             max: max + 1,
                         });
                         None
@@ -2102,8 +2102,8 @@ impl SyntaxOptArgNumValues {
                     } else {
                         on_error(ConfigErrorKind::InvalidRange {
                             key: error_key.to_string(),
-                            min: min,
-                            max: max,
+                            min,
+                            max,
                         });
                         None
                     }
@@ -2441,7 +2441,7 @@ impl SyntaxGroup {
             // If this is an array, we can simply iterate over it and create the groups
             for (idx, value) in array.iter().enumerate() {
                 if let Some(group) = Self::from_config_value(
-                    &value,
+                    value,
                     None,
                     &format!("{}[{}]", error_key, idx),
                     on_error,

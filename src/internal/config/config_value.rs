@@ -626,7 +626,7 @@ impl ConfigValue {
         &self,
         key: &str,
         error_key: &str,
-        on_error: &mut impl FnMut(ConfigErrorKind)
+        on_error: &mut impl FnMut(ConfigErrorKind),
     ) -> Option<String> {
         if let Some(value) = self.get(key) {
             match value.as_str_forced() {
@@ -650,7 +650,7 @@ impl ConfigValue {
         key: &str,
         default: &str,
         error_key: &str,
-        on_error: &mut impl FnMut(ConfigErrorKind)
+        on_error: &mut impl FnMut(ConfigErrorKind),
     ) -> String {
         if let Some(value) = self.get(key) {
             match value.as_str_forced() {
@@ -673,7 +673,7 @@ impl ConfigValue {
         &self,
         key: &str,
         error_key: &str,
-        on_error: &mut impl FnMut(ConfigErrorKind)
+        on_error: &mut impl FnMut(ConfigErrorKind),
     ) -> Vec<String> {
         let mut output = Vec::new();
 
@@ -722,7 +722,7 @@ impl ConfigValue {
         &self,
         key: &str,
         error_key: &str,
-        on_error: &mut impl FnMut(ConfigErrorKind)
+        on_error: &mut impl FnMut(ConfigErrorKind),
     ) -> Option<bool> {
         if let Some(value) = self.get(key) {
             match value.as_bool_forced() {
@@ -746,7 +746,7 @@ impl ConfigValue {
         key: &str,
         default: bool,
         error_key: &str,
-        on_error: &mut impl FnMut(ConfigErrorKind)
+        on_error: &mut impl FnMut(ConfigErrorKind),
     ) -> bool {
         if let Some(value) = self.get(key) {
             match value.as_bool_forced() {
@@ -776,7 +776,7 @@ impl ConfigValue {
         &self,
         key: &str,
         error_key: &str,
-        on_error: &mut impl FnMut(ConfigErrorKind)
+        on_error: &mut impl FnMut(ConfigErrorKind),
     ) -> Option<f64> {
         if let Some(value) = self.get(key) {
             match value.as_float() {
@@ -800,7 +800,7 @@ impl ConfigValue {
         key: &str,
         default: f64,
         error_key: &str,
-        on_error: &mut impl FnMut(ConfigErrorKind)
+        on_error: &mut impl FnMut(ConfigErrorKind),
     ) -> f64 {
         if let Some(value) = self.get(key) {
             match value.as_float() {
@@ -830,7 +830,7 @@ impl ConfigValue {
         &self,
         key: &str,
         error_key: &str,
-        on_error: &mut impl FnMut(ConfigErrorKind)
+        on_error: &mut impl FnMut(ConfigErrorKind),
     ) -> Option<i64> {
         if let Some(value) = self.get(key) {
             match value.as_integer() {

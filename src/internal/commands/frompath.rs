@@ -354,7 +354,7 @@ impl<'de> PathCommandFileDetails {
         if let serde_yaml::Value::Mapping(ref mut map) = value {
             // Deserialize the booleans
             let autocompletion = map
-                .remove(&serde_yaml::Value::String("autocompletion".to_string()))
+                .remove(serde_yaml::Value::String("autocompletion".to_string()))
                 .map_or(false, |v| match bool::deserialize(v.clone()) {
                     Ok(b) => b,
                     Err(_err) => {
@@ -367,7 +367,7 @@ impl<'de> PathCommandFileDetails {
                     }
                 });
             let sync_update = map
-                .remove(&serde_yaml::Value::String("sync_update".to_string()))
+                .remove(serde_yaml::Value::String("sync_update".to_string()))
                 .map_or(false, |v| match bool::deserialize(v.clone()) {
                     Ok(b) => b,
                     Err(_err) => {
@@ -380,7 +380,7 @@ impl<'de> PathCommandFileDetails {
                     }
                 });
             let argparser = map
-                .remove(&serde_yaml::Value::String("argparser".to_string()))
+                .remove(serde_yaml::Value::String("argparser".to_string()))
                 .map_or(false, |v| match bool::deserialize(v.clone()) {
                     Ok(b) => b,
                     Err(_err) => {
@@ -395,8 +395,8 @@ impl<'de> PathCommandFileDetails {
 
             // Deserialize the help message
             let help = map
-                .remove(&serde_yaml::Value::String("help".to_string()))
-                .map_or(None, |v| match String::deserialize(v.clone()) {
+                .remove(serde_yaml::Value::String("help".to_string()))
+                .and_then(|v| match String::deserialize(v.clone()) {
                     Ok(s) => Some(s),
                     Err(_err) => {
                         on_error(ConfigErrorKind::InvalidValueType {
@@ -410,8 +410,8 @@ impl<'de> PathCommandFileDetails {
 
             // Deserialize the category
             let category = map
-                .remove(&serde_yaml::Value::String("category".to_string()))
-                .map_or(None, |v| match serde_yaml::Value::deserialize(v.clone()) {
+                .remove(serde_yaml::Value::String("category".to_string()))
+                .and_then(|v| match serde_yaml::Value::deserialize(v.clone()) {
                     Ok(value) => match value {
                         serde_yaml::Value::String(s) => Some(
                             s.split(',')
@@ -457,9 +457,9 @@ impl<'de> PathCommandFileDetails {
 
             // Deserialize the syntax
             let syntax = map
-                .remove(&serde_yaml::Value::String("syntax".to_string()))
-                .map_or(None, |v| {
-                    match CommandSyntax::deserialize(v.clone(), "syntax", on_error) {
+                .remove(serde_yaml::Value::String("syntax".to_string()))
+                .and_then(
+                    |v| match CommandSyntax::deserialize(v.clone(), "syntax", on_error) {
                         Ok(s) => Some(s),
                         Err(_err) => {
                             on_error(ConfigErrorKind::InvalidValueType {
@@ -469,8 +469,8 @@ impl<'de> PathCommandFileDetails {
                             });
                             None
                         }
-                    }
-                });
+                    },
+                );
 
             Ok(Self {
                 autocompletion,
@@ -1056,7 +1056,6 @@ impl PathCommandFileDetails {
             argparser,
             syntax,
             sync_update,
-            ..Self::default()
         })
     }
 
@@ -1097,7 +1096,7 @@ impl MetadataKeyTracker {
         on_error: &mut dyn FnMut(ConfigErrorKind),
     ) {
         if let Some(prev_lineno) = self.seen_keys.get(key) {
-            if !allow_repeat || key != &self.last_key {
+            if !allow_repeat || key != self.last_key {
                 on_error(ConfigErrorKind::MetadataHeaderDuplicateKey {
                     key: key.to_string(),
                     lineno,
@@ -1136,7 +1135,7 @@ mod tests {
         #[test]
         fn default() {
             let mut reader = BufReader::new("".as_bytes());
-            let details = PathCommandFileDetails::from_source_file_header(&mut reader);
+            let details = PathCommandFileDetails::from_source_file_header(&mut reader, &mut |_| ());
 
             assert!(details.is_some());
 
@@ -1151,7 +1150,7 @@ mod tests {
         #[test]
         fn simple() {
             let mut reader = BufReader::new("# category: test cat\n# help: test help\n".as_bytes());
-            let details = PathCommandFileDetails::from_source_file_header(&mut reader);
+            let details = PathCommandFileDetails::from_source_file_header(&mut reader, &mut |_| ());
 
             assert!(details.is_some());
             let details = details.unwrap();
@@ -1163,7 +1162,7 @@ mod tests {
         #[test]
         fn help() {
             let mut reader = BufReader::new("# help: test help\n".as_bytes());
-            let details = PathCommandFileDetails::from_source_file_header(&mut reader);
+            let details = PathCommandFileDetails::from_source_file_header(&mut reader, &mut |_| ());
 
             assert!(details.is_some());
             let details = details.unwrap();
@@ -1175,7 +1174,7 @@ mod tests {
         fn help_multiline_using_repeat() {
             let mut reader =
                 BufReader::new("# help: test help\n# help: continued help\n".as_bytes());
-            let details = PathCommandFileDetails::from_source_file_header(&mut reader);
+            let details = PathCommandFileDetails::from_source_file_header(&mut reader, &mut |_| ());
 
             assert!(details.is_some());
             let details = details.unwrap();
@@ -1186,7 +1185,7 @@ mod tests {
         #[test]
         fn help_multiline_using_plus() {
             let mut reader = BufReader::new("# help: test help\n# +: continued help\n".as_bytes());
-            let details = PathCommandFileDetails::from_source_file_header(&mut reader);
+            let details = PathCommandFileDetails::from_source_file_header(&mut reader, &mut |_| ());
 
             assert!(details.is_some());
             let details = details.unwrap();
@@ -1197,7 +1196,7 @@ mod tests {
         #[test]
         fn category() {
             let mut reader = BufReader::new("# category: test cat\n".as_bytes());
-            let details = PathCommandFileDetails::from_source_file_header(&mut reader);
+            let details = PathCommandFileDetails::from_source_file_header(&mut reader, &mut |_| ());
 
             assert!(details.is_some());
             let details = details.unwrap();
@@ -1208,7 +1207,7 @@ mod tests {
         #[test]
         fn category_splits_commas() {
             let mut reader = BufReader::new("# category: test cat, continued cat\n".as_bytes());
-            let details = PathCommandFileDetails::from_source_file_header(&mut reader);
+            let details = PathCommandFileDetails::from_source_file_header(&mut reader, &mut |_| ());
 
             assert!(details.is_some());
             let details = details.unwrap();
@@ -1223,7 +1222,7 @@ mod tests {
         fn category_multiline_appends_to_existing() {
             let mut reader =
                 BufReader::new("# category: test cat\n# category: continued cat\n".as_bytes());
-            let details = PathCommandFileDetails::from_source_file_header(&mut reader);
+            let details = PathCommandFileDetails::from_source_file_header(&mut reader, &mut |_| ());
 
             assert!(details.is_some());
             let details = details.unwrap();
@@ -1239,7 +1238,7 @@ mod tests {
             let mut reader = BufReader::new(
                 "# category: test cat, other cat\n# category: continued cat, more cat\n".as_bytes(),
             );
-            let details = PathCommandFileDetails::from_source_file_header(&mut reader);
+            let details = PathCommandFileDetails::from_source_file_header(&mut reader, &mut |_| ());
 
             assert!(details.is_some());
             let details = details.unwrap();
@@ -1258,7 +1257,7 @@ mod tests {
         #[test]
         fn autocompletion() {
             let mut reader = BufReader::new("# autocompletion: true\n".as_bytes());
-            let details = PathCommandFileDetails::from_source_file_header(&mut reader);
+            let details = PathCommandFileDetails::from_source_file_header(&mut reader, &mut |_| ());
 
             assert!(details.is_some());
             let details = details.unwrap();
@@ -1269,7 +1268,7 @@ mod tests {
         #[test]
         fn autocompletion_false() {
             let mut reader = BufReader::new("# autocompletion: false\n".as_bytes());
-            let details = PathCommandFileDetails::from_source_file_header(&mut reader);
+            let details = PathCommandFileDetails::from_source_file_header(&mut reader, &mut |_| ());
 
             assert!(details.is_some());
             let details = details.unwrap();
@@ -1280,7 +1279,7 @@ mod tests {
         #[test]
         fn argparser() {
             let mut reader = BufReader::new("# argparser: true\n".as_bytes());
-            let details = PathCommandFileDetails::from_source_file_header(&mut reader);
+            let details = PathCommandFileDetails::from_source_file_header(&mut reader, &mut |_| ());
 
             assert!(details.is_some());
             let details = details.unwrap();
@@ -1291,7 +1290,7 @@ mod tests {
         #[test]
         fn argparser_false() {
             let mut reader = BufReader::new("# argparser: false\n".as_bytes());
-            let details = PathCommandFileDetails::from_source_file_header(&mut reader);
+            let details = PathCommandFileDetails::from_source_file_header(&mut reader, &mut |_| ());
 
             assert!(details.is_some());
             let details = details.unwrap();
@@ -1302,7 +1301,7 @@ mod tests {
         #[test]
         fn sync_update() {
             let mut reader = BufReader::new("# sync_update: true\n".as_bytes());
-            let details = PathCommandFileDetails::from_source_file_header(&mut reader);
+            let details = PathCommandFileDetails::from_source_file_header(&mut reader, &mut |_| ());
 
             assert!(details.is_some());
             let details = details.unwrap();
@@ -1313,7 +1312,7 @@ mod tests {
         #[test]
         fn sync_update_false() {
             let mut reader = BufReader::new("# sync_update: false\n".as_bytes());
-            let details = PathCommandFileDetails::from_source_file_header(&mut reader);
+            let details = PathCommandFileDetails::from_source_file_header(&mut reader, &mut |_| ());
 
             assert!(details.is_some());
             let details = details.unwrap();
@@ -1324,7 +1323,7 @@ mod tests {
         #[test]
         fn arg_simple_short() {
             let mut reader = BufReader::new("# arg: -a: test desc\n".as_bytes());
-            let details = PathCommandFileDetails::from_source_file_header(&mut reader);
+            let details = PathCommandFileDetails::from_source_file_header(&mut reader, &mut |_| ());
 
             assert!(details.is_some(), "Details are not present");
             let details = details.unwrap();
@@ -1349,7 +1348,7 @@ mod tests {
         #[test]
         fn arg_simple_long() {
             let mut reader = BufReader::new("# arg: --arg: test desc\n".as_bytes());
-            let details = PathCommandFileDetails::from_source_file_header(&mut reader);
+            let details = PathCommandFileDetails::from_source_file_header(&mut reader, &mut |_| ());
 
             assert!(details.is_some(), "Details are not present");
             let details = details.unwrap();
@@ -1374,7 +1373,7 @@ mod tests {
         #[test]
         fn arg_simple_positional() {
             let mut reader = BufReader::new("# arg: arg: test desc\n".as_bytes());
-            let details = PathCommandFileDetails::from_source_file_header(&mut reader);
+            let details = PathCommandFileDetails::from_source_file_header(&mut reader, &mut |_| ());
 
             assert!(details.is_some(), "Details are not present");
             let details = details.unwrap();
@@ -1399,7 +1398,7 @@ mod tests {
         #[test]
         fn arg_without_description() {
             let mut reader = BufReader::new("# arg: -a\n".as_bytes());
-            let details = PathCommandFileDetails::from_source_file_header(&mut reader);
+            let details = PathCommandFileDetails::from_source_file_header(&mut reader, &mut |_| ());
 
             assert!(details.is_some(), "Details are not present");
             let details = details.unwrap();
@@ -1427,7 +1426,7 @@ mod tests {
                 type_str
             );
             let mut reader = BufReader::new(value.as_bytes());
-            let details = PathCommandFileDetails::from_source_file_header(&mut reader);
+            let details = PathCommandFileDetails::from_source_file_header(&mut reader, &mut |_| ());
 
             assert!(details.is_some(), "Details are not present");
             let details = details.unwrap();
@@ -1542,7 +1541,7 @@ mod tests {
         #[test]
         fn arg_with_delimiter() {
             let mut reader = BufReader::new("# arg: -a: delimiter=,: test desc\n".as_bytes());
-            let details = PathCommandFileDetails::from_source_file_header(&mut reader);
+            let details = PathCommandFileDetails::from_source_file_header(&mut reader, &mut |_| ());
 
             assert!(details.is_some(), "Details are not present");
             let details = details.unwrap();
@@ -1568,7 +1567,7 @@ mod tests {
         #[test]
         fn arg_with_last() {
             let mut reader = BufReader::new("# arg: -a: last=true: test desc\n".as_bytes());
-            let details = PathCommandFileDetails::from_source_file_header(&mut reader);
+            let details = PathCommandFileDetails::from_source_file_header(&mut reader, &mut |_| ());
 
             assert!(details.is_some(), "Details are not present");
             let details = details.unwrap();
@@ -1594,7 +1593,7 @@ mod tests {
         #[test]
         fn arg_with_leftovers_dots() {
             let mut reader = BufReader::new("# arg: a...: test desc\n".as_bytes());
-            let details = PathCommandFileDetails::from_source_file_header(&mut reader);
+            let details = PathCommandFileDetails::from_source_file_header(&mut reader, &mut |_| ());
 
             assert!(details.is_some(), "Details are not present");
             let details = details.unwrap();
@@ -1620,7 +1619,7 @@ mod tests {
         #[test]
         fn arg_with_leftovers_no_dots() {
             let mut reader = BufReader::new("# arg: -a: leftovers=true: test desc\n".as_bytes());
-            let details = PathCommandFileDetails::from_source_file_header(&mut reader);
+            let details = PathCommandFileDetails::from_source_file_header(&mut reader, &mut |_| ());
 
             assert!(details.is_some(), "Details are not present");
             let details = details.unwrap();
@@ -1646,7 +1645,7 @@ mod tests {
         #[test]
         fn arg_with_allow_hyphen_values() {
             let mut reader = BufReader::new("# arg: -a: allow_hyphen=true: test desc\n# arg: -b: allow_hyphen_values=true: test desc2".as_bytes());
-            let details = PathCommandFileDetails::from_source_file_header(&mut reader);
+            let details = PathCommandFileDetails::from_source_file_header(&mut reader, &mut |_| ());
 
             assert!(details.is_some(), "Details are not present");
             let details = details.unwrap();
@@ -1684,7 +1683,7 @@ mod tests {
         #[test]
         fn arg_with_allow_negative_numbers() {
             let mut reader = BufReader::new("# arg: -a: allow_negative_numbers=true: test desc\n# arg: -b: negative_numbers=true: test desc2".as_bytes());
-            let details = PathCommandFileDetails::from_source_file_header(&mut reader);
+            let details = PathCommandFileDetails::from_source_file_header(&mut reader, &mut |_| ());
 
             assert!(details.is_some(), "Details are not present");
             let details = details.unwrap();
@@ -1722,7 +1721,7 @@ mod tests {
         #[test]
         fn arg_with_requires_single() {
             let mut reader = BufReader::new("# arg: -a: requires=b: test desc\n".as_bytes());
-            let details = PathCommandFileDetails::from_source_file_header(&mut reader);
+            let details = PathCommandFileDetails::from_source_file_header(&mut reader, &mut |_| ());
 
             assert!(details.is_some(), "Details are not present");
             let details = details.unwrap();
@@ -1748,7 +1747,7 @@ mod tests {
         #[test]
         fn arg_with_requires_multiple() {
             let mut reader = BufReader::new("# arg: -a: requires=b c: test desc\n".as_bytes());
-            let details = PathCommandFileDetails::from_source_file_header(&mut reader);
+            let details = PathCommandFileDetails::from_source_file_header(&mut reader, &mut |_| ());
 
             assert!(details.is_some(), "Details are not present");
             let details = details.unwrap();
@@ -1775,7 +1774,7 @@ mod tests {
         fn arg_with_requires_multiple_repeat() {
             let mut reader =
                 BufReader::new("# arg: -a: requires=b: requires=c: test desc\n".as_bytes());
-            let details = PathCommandFileDetails::from_source_file_header(&mut reader);
+            let details = PathCommandFileDetails::from_source_file_header(&mut reader, &mut |_| ());
 
             assert!(details.is_some(), "Details are not present");
             let details = details.unwrap();
@@ -1801,7 +1800,7 @@ mod tests {
         #[test]
         fn arg_with_conflicts_with() {
             let mut reader = BufReader::new("# arg: -a: conflicts_with=b: test desc\n".as_bytes());
-            let details = PathCommandFileDetails::from_source_file_header(&mut reader);
+            let details = PathCommandFileDetails::from_source_file_header(&mut reader, &mut |_| ());
 
             assert!(details.is_some(), "Details are not present");
             let details = details.unwrap();
@@ -1828,7 +1827,7 @@ mod tests {
         fn arg_with_conflits_with_multiple() {
             let mut reader =
                 BufReader::new("# arg: -a: conflicts_with=b c: test desc\n".as_bytes());
-            let details = PathCommandFileDetails::from_source_file_header(&mut reader);
+            let details = PathCommandFileDetails::from_source_file_header(&mut reader, &mut |_| ());
 
             assert!(details.is_some(), "Details are not present");
             let details = details.unwrap();
@@ -1856,7 +1855,7 @@ mod tests {
             let mut reader = BufReader::new(
                 "# arg: -a: conflicts_with=b: conflicts_with=c: test desc\n".as_bytes(),
             );
-            let details = PathCommandFileDetails::from_source_file_header(&mut reader);
+            let details = PathCommandFileDetails::from_source_file_header(&mut reader, &mut |_| ());
 
             assert!(details.is_some(), "Details are not present");
             let details = details.unwrap();
@@ -1883,7 +1882,7 @@ mod tests {
         fn arg_with_required_without() {
             let mut reader =
                 BufReader::new("# arg: -a: required_without=b: test desc\n".as_bytes());
-            let details = PathCommandFileDetails::from_source_file_header(&mut reader);
+            let details = PathCommandFileDetails::from_source_file_header(&mut reader, &mut |_| ());
 
             assert!(details.is_some(), "Details are not present");
             let details = details.unwrap();
@@ -1910,7 +1909,7 @@ mod tests {
         fn arg_with_required_without_multiple() {
             let mut reader =
                 BufReader::new("# arg: -a: required_without=b c: test desc\n".as_bytes());
-            let details = PathCommandFileDetails::from_source_file_header(&mut reader);
+            let details = PathCommandFileDetails::from_source_file_header(&mut reader, &mut |_| ());
 
             assert!(details.is_some(), "Details are not present");
             let details = details.unwrap();
@@ -1938,7 +1937,7 @@ mod tests {
             let mut reader = BufReader::new(
                 "# arg: -a: required_without=b: required_without=c: test desc\n".as_bytes(),
             );
-            let details = PathCommandFileDetails::from_source_file_header(&mut reader);
+            let details = PathCommandFileDetails::from_source_file_header(&mut reader, &mut |_| ());
 
             assert!(details.is_some(), "Details are not present");
             let details = details.unwrap();
@@ -1965,7 +1964,7 @@ mod tests {
         fn arg_with_required_without_all() {
             let mut reader =
                 BufReader::new("# arg: -a: required_without_all=b c: test desc\n".as_bytes());
-            let details = PathCommandFileDetails::from_source_file_header(&mut reader);
+            let details = PathCommandFileDetails::from_source_file_header(&mut reader, &mut |_| ());
 
             assert!(details.is_some(), "Details are not present");
             let details = details.unwrap();
@@ -1992,7 +1991,7 @@ mod tests {
         fn arg_with_required_if_eq() {
             let mut reader =
                 BufReader::new("# arg: -a: required_if_eq=b c=5: test desc\n".as_bytes());
-            let details = PathCommandFileDetails::from_source_file_header(&mut reader);
+            let details = PathCommandFileDetails::from_source_file_header(&mut reader, &mut |_| ());
 
             assert!(details.is_some(), "Details are not present");
             let details = details.unwrap();
@@ -2022,7 +2021,7 @@ mod tests {
         fn arg_with_required_if_eq_all() {
             let mut reader =
                 BufReader::new("# arg: -a: required_if_eq_all=b c=5 d=10: test desc\n".as_bytes());
-            let details = PathCommandFileDetails::from_source_file_header(&mut reader);
+            let details = PathCommandFileDetails::from_source_file_header(&mut reader, &mut |_| ());
 
             assert!(details.is_some(), "Details are not present");
             let details = details.unwrap();
@@ -2052,7 +2051,7 @@ mod tests {
         #[test]
         fn arg_with_default() {
             let mut reader = BufReader::new("# arg: -a: default=5: test desc\n".as_bytes());
-            let details = PathCommandFileDetails::from_source_file_header(&mut reader);
+            let details = PathCommandFileDetails::from_source_file_header(&mut reader, &mut |_| ());
 
             assert!(details.is_some(), "Details are not present");
             let details = details.unwrap();
@@ -2080,7 +2079,7 @@ mod tests {
             let mut reader = BufReader::new(
                 "# arg: -a: type=int\n# arg: -a: delimiter=,\n# arg: -a: test desc\n".as_bytes(),
             );
-            let details = PathCommandFileDetails::from_source_file_header(&mut reader);
+            let details = PathCommandFileDetails::from_source_file_header(&mut reader, &mut |_| ());
 
             assert!(details.is_some(), "Details are not present");
             let details = details.unwrap();
@@ -2109,7 +2108,7 @@ mod tests {
             let mut reader = BufReader::new(
                 "# arg: -a: type=int\n# +: delimiter=,\n# +: test desc\n".as_bytes(),
             );
-            let details = PathCommandFileDetails::from_source_file_header(&mut reader);
+            let details = PathCommandFileDetails::from_source_file_header(&mut reader, &mut |_| ());
 
             assert!(details.is_some(), "Details are not present");
             let details = details.unwrap();
@@ -2137,7 +2136,7 @@ mod tests {
         fn arg_multiline_description_using_repeat() {
             let mut reader =
                 BufReader::new("# arg: -a: test desc\n# arg: -a: continued desc\n".as_bytes());
-            let details = PathCommandFileDetails::from_source_file_header(&mut reader);
+            let details = PathCommandFileDetails::from_source_file_header(&mut reader, &mut |_| ());
 
             assert!(details.is_some(), "Details are not present");
             let details = details.unwrap();
@@ -2163,7 +2162,7 @@ mod tests {
         fn arg_multiline_description_using_plus() {
             let mut reader =
                 BufReader::new("# arg: -a: test desc\n# +: continued desc\n".as_bytes());
-            let details = PathCommandFileDetails::from_source_file_header(&mut reader);
+            let details = PathCommandFileDetails::from_source_file_header(&mut reader, &mut |_| ());
 
             assert!(details.is_some(), "Details are not present");
             let details = details.unwrap();
@@ -2188,7 +2187,7 @@ mod tests {
         #[test]
         fn opt_simple_short() {
             let mut reader = BufReader::new("# opt: -a: test desc\n".as_bytes());
-            let details = PathCommandFileDetails::from_source_file_header(&mut reader);
+            let details = PathCommandFileDetails::from_source_file_header(&mut reader, &mut |_| ());
 
             assert!(details.is_some(), "Details are not present");
             let details = details.unwrap();
@@ -2213,7 +2212,7 @@ mod tests {
         #[test]
         fn arggroup_simple() {
             let mut reader = BufReader::new("# arggroup: a_group: a\n".as_bytes());
-            let details = PathCommandFileDetails::from_source_file_header(&mut reader);
+            let details = PathCommandFileDetails::from_source_file_header(&mut reader, &mut |_| ());
 
             assert!(details.is_some(), "Details are not present");
             let details = details.unwrap();
@@ -2238,7 +2237,7 @@ mod tests {
         fn arggroup_multiple() {
             let mut reader =
                 BufReader::new("# arggroup: a_group: multiple=true: a b c\n".as_bytes());
-            let details = PathCommandFileDetails::from_source_file_header(&mut reader);
+            let details = PathCommandFileDetails::from_source_file_header(&mut reader, &mut |_| ());
 
             assert!(details.is_some(), "Details are not present");
             let details = details.unwrap();
@@ -2264,7 +2263,7 @@ mod tests {
         fn arggroup_required() {
             let mut reader =
                 BufReader::new("# arggroup: a_group: required=true: a b c\n".as_bytes());
-            let details = PathCommandFileDetails::from_source_file_header(&mut reader);
+            let details = PathCommandFileDetails::from_source_file_header(&mut reader, &mut |_| ());
 
             assert!(details.is_some(), "Details are not present");
             let details = details.unwrap();
@@ -2290,7 +2289,7 @@ mod tests {
         fn arggroup_conflicts_with() {
             let mut reader =
                 BufReader::new("# arggroup: a_group: conflicts_with=b_group: a b c\n".as_bytes());
-            let details = PathCommandFileDetails::from_source_file_header(&mut reader);
+            let details = PathCommandFileDetails::from_source_file_header(&mut reader, &mut |_| ());
 
             assert!(details.is_some(), "Details are not present");
             let details = details.unwrap();
@@ -2316,7 +2315,7 @@ mod tests {
         fn arggroup_requires() {
             let mut reader =
                 BufReader::new("# arggroup: a_group: requires=b_group: a b c\n".as_bytes());
-            let details = PathCommandFileDetails::from_source_file_header(&mut reader);
+            let details = PathCommandFileDetails::from_source_file_header(&mut reader, &mut |_| ());
 
             assert!(details.is_some(), "Details are not present");
             let details = details.unwrap();
@@ -2343,7 +2342,7 @@ mod tests {
             let mut reader = BufReader::new(
                 "# arggroup: a_group: a b c\n# arggroup: a_group: d e f\n".as_bytes(),
             );
-            let details = PathCommandFileDetails::from_source_file_header(&mut reader);
+            let details = PathCommandFileDetails::from_source_file_header(&mut reader, &mut |_| ());
 
             assert!(details.is_some(), "Details are not present");
             let details = details.unwrap();
@@ -2375,7 +2374,7 @@ mod tests {
         #[test]
         fn arggroup_repeat_plus() {
             let mut reader = BufReader::new("# arggroup: a_group: a b c\n# +: d e f\n".as_bytes());
-            let details = PathCommandFileDetails::from_source_file_header(&mut reader);
+            let details = PathCommandFileDetails::from_source_file_header(&mut reader, &mut |_| ());
 
             assert!(details.is_some(), "Details are not present");
             let details = details.unwrap();
@@ -2409,7 +2408,7 @@ mod tests {
             let mut reader = BufReader::new(
                 "# arggroup: a_group: required=true\n# arggroup: a_group: a b c\n".as_bytes(),
             );
-            let details = PathCommandFileDetails::from_source_file_header(&mut reader);
+            let details = PathCommandFileDetails::from_source_file_header(&mut reader, &mut |_| ());
 
             assert!(details.is_some(), "Details are not present");
             let details = details.unwrap();
@@ -2437,7 +2436,7 @@ mod tests {
             let mut reader = BufReader::new(
                 "# category: test cat\n# +: more cat\n# autocompletion: true\n# argparser: true\n# sync_update: false\n# help: test help\n# +: more help\n# arg: -a: type=int\n# +: delimiter=,\n# +: test desc\n# opt: -b: type=string\n# +: delimiter=|\n# +: test desc\n# arggroup: a_group: multiple=true: a".as_bytes(),
             );
-            let details = PathCommandFileDetails::from_source_file_header(&mut reader);
+            let details = PathCommandFileDetails::from_source_file_header(&mut reader, &mut |_| ());
 
             assert!(details.is_some());
             let details = details.unwrap();
