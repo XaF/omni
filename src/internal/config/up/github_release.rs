@@ -1034,7 +1034,10 @@ impl UpConfigGithubRelease {
         // Use https://api.github.com/repos/<owner>/<repo>/releases to
         // list the available releases
         let api_url = self.api_url.clone().unwrap_or(GITHUB_API_URL.to_string());
-        let releases_url = format!("{}/repos/{}/releases", api_url, self.repository);
+        let releases_url = format!(
+            "{}/repos/{}/releases?per_page=100",
+            api_url, self.repository
+        );
 
         let mut headers = reqwest::header::HeaderMap::new();
         headers.insert(
@@ -1074,37 +1077,72 @@ impl UpConfigGithubRelease {
             }
         };
 
-        let response = client.get(&releases_url).send().map_err(|err| {
-            let errmsg = format!("failed to get releases: {}", err);
-            progress_handler.error_with_message(errmsg.clone());
-            UpError::Exec(errmsg)
-        })?;
+        let mut releases = GithubReleases::new();
+        let mut cur_page = 1;
 
-        let status = response.status();
-        let contents = response.text().map_err(|err| {
-            let errmsg = format!("failed to read response: {}", err);
-            progress_handler.error_with_message(errmsg.clone());
-            UpError::Exec(errmsg)
-        })?;
+        loop {
+            progress_handler.progress(format!("fetching releases (page {})", cur_page));
 
-        if !status.is_success() {
-            // Try parsing the error message from the body, and default to
-            // the body if we can't parse it
-            let errmsg = match GithubApiError::from_json(&contents) {
-                Ok(gherr) => gherr.message,
-                Err(_) => contents.clone(),
-            };
+            let request_url = format!("{}&page={}", releases_url, cur_page);
 
-            let errmsg = format!("{}: {} ({})", releases_url, errmsg, status);
-            progress_handler.error_with_message(errmsg.to_string());
-            return Err(UpError::Exec(errmsg));
+            let response = client.get(&request_url).send().map_err(|err| {
+                let errmsg = format!("failed to get releases (page {}): {}", cur_page, err);
+                progress_handler.error_with_message(errmsg.clone());
+                UpError::Exec(errmsg)
+            })?;
+
+            // Grab the response data we need before `text()` consumes the response
+            let status = response.status();
+            let link_header = response
+                .headers()
+                .get("link")
+                .and_then(|link| link.to_str().ok())
+                .unwrap_or("")
+                .to_string();
+
+            // Read the response body
+            let contents = response.text().map_err(|err| {
+                let errmsg = format!("failed to read response (page {}): {}", cur_page, err);
+                progress_handler.error_with_message(errmsg.clone());
+                UpError::Exec(errmsg)
+            })?;
+
+            if !status.is_success() {
+                // Try parsing the error message from the body, and default to
+                // the body if we can't parse it
+                let errmsg = match GithubApiError::from_json(&contents) {
+                    Ok(gherr) => gherr.message,
+                    Err(_) => contents.clone(),
+                };
+
+                let errmsg = format!("{}: {} ({})", releases_url, errmsg, status);
+                progress_handler.error_with_message(errmsg.to_string());
+                return Err(UpError::Exec(errmsg));
+            }
+
+            // Add the newly-fetched releases to the list
+            let all_added = releases.add_json(&contents).map_err(|err| {
+                let errmsg = format!("failed to parse releases (page {}): {}", cur_page, err);
+                progress_handler.error_with_message(errmsg.clone());
+                UpError::Exec(errmsg)
+            })?;
+            if !all_added {
+                progress_handler
+                    .progress("done fetching releases (all new releases fetched".to_string());
+                break;
+            }
+
+            // If we get here, we should try fetching the next page, but only if there is a next
+            // page to fetch; we can know by checking if the `link` header contains a `rel="next"`
+            // link; we do not need to fully parse it at this time since those links do not contain
+            // any special identifiers that we need to keep track of
+            if !link_header.contains(r#"rel="next""#) {
+                progress_handler.progress("done fetching releases (no more pages)".to_string());
+                break;
+            }
+
+            cur_page += 1;
         }
-
-        let releases = GithubReleases::from_json(&contents).map_err(|err| {
-            let errmsg = format!("failed to parse releases: {}", err);
-            progress_handler.error_with_message(errmsg.clone());
-            UpError::Exec(errmsg)
-        })?;
 
         Ok(releases)
     }
@@ -2268,7 +2306,7 @@ mod tests {
                 );
 
                 let mock_list_releases = mock_server
-                    .mock("GET", "/repos/owner/repo/releases")
+                    .mock("GET", "/repos/owner/repo/releases?per_page=100&page=1")
                     .with_status(200)
                     .with_body(list_releases_body)
                     .create();
