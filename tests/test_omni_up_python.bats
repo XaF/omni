@@ -891,7 +891,7 @@ up:
 EOF
 
   add_brew_python_calls
-  add_mise_python_calls mise_registry_alt="asdf:alt/python" plugin_name="asdf:alt/python"
+  add_mise_python_calls mise_registry_alt="asdf:alt/python" plugin_name="asdf-python-5c9935a9" plugin_list=installed plugin_update=true
 
   run omni up --trust 3>&-
   echo "STATUS: $status"
@@ -946,7 +946,7 @@ up:
 EOF
 
   add_brew_python_calls
-  add_mise_python_calls mise_registry_alt="asdf:alt/python" plugin_name="asdf:alt/python"
+  add_mise_python_calls mise_registry_alt="asdf:alt/python" plugin_name="asdf-python-5c9935a9" plugin_list=installed plugin_update=true
 
   run omni up --trust 3>&-
   echo "STATUS: $status"
