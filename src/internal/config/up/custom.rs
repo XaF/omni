@@ -76,7 +76,7 @@ impl UpConfigCustom {
 
                 Self::DEFAULT_MEET.to_string()
             });
-        let met = config_value.get_as_str_or_none("met", &error_handler.with_key("met"));
+        let met = config_value.get_as_str_or_none("met?", &error_handler.with_key("met?"));
         let unmeet = config_value.get_as_str_or_none("unmeet", &error_handler.with_key("unmeet"));
         let name = config_value.get_as_str_or_none("name", &error_handler.with_key("name"));
         let dir = config_value.get_as_str_or_none("dir", &error_handler.with_key("dir"));
