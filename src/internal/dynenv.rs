@@ -438,7 +438,13 @@ impl DynamicEnv {
             for toolversion in up_env.versions_for_dir(&dir).iter() {
                 hasher.update(toolversion.tool.as_bytes());
                 hasher.update(DATA_SEPARATOR.as_bytes());
+                hasher.update(toolversion.plugin_name.as_bytes());
+                hasher.update(DATA_SEPARATOR.as_bytes());
+                hasher.update(toolversion.normalized_name.as_bytes());
+                hasher.update(DATA_SEPARATOR.as_bytes());
                 hasher.update(toolversion.version.as_bytes());
+                hasher.update(DATA_SEPARATOR.as_bytes());
+                hasher.update(toolversion.bin_path.as_bytes());
                 hasher.update(DATA_SEPARATOR.as_bytes());
                 if let Some(data_path) = &toolversion.data_path {
                     hasher.update(data_path.as_bytes());
@@ -519,7 +525,11 @@ impl DynamicEnv {
                 let version = toolversion.version.clone();
                 let version_minor = version.split('.').take(2).join(".");
                 let tool_prefix = mise_tool_path(&normalized_name, &version);
-                let bin_path = toolversion.bin_path.clone();
+                let bin_path = if toolversion.bin_path.is_empty() {
+                    String::new()
+                } else {
+                    format!("/{}", toolversion.bin_path.clone())
+                };
 
                 self.features.push(format!("{}:{}", tool, version));
 
@@ -614,11 +624,11 @@ impl DynamicEnv {
                         };
 
                         envsetter.unset_value("PYTHONHOME");
-                        envsetter.prepend_to_list("PATH", &format!("{}/{}", tool_prefix, bin_path));
+                        envsetter.prepend_to_list("PATH", &format!("{}{}", tool_prefix, bin_path));
                     }
                     "nodejs" => {
                         envsetter.set_value("NODE_VERSION", &version);
-                        envsetter.prepend_to_list("PATH", &format!("{}/{}", tool_prefix, bin_path));
+                        envsetter.prepend_to_list("PATH", &format!("{}{}", tool_prefix, bin_path));
 
                         // Handle the isolated NPM prefix
                         if let Some(data_path) = &toolversion.data_path {
@@ -627,7 +637,7 @@ impl DynamicEnv {
                         };
                     }
                     _ => {
-                        envsetter.prepend_to_list("PATH", &format!("{}/{}", tool_prefix, bin_path));
+                        envsetter.prepend_to_list("PATH", &format!("{}{}", tool_prefix, bin_path));
                     }
                 }
             }

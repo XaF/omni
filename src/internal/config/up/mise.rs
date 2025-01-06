@@ -860,6 +860,9 @@ pub struct FullyQualifiedToolName {
     /// Indicates if we need to manage the plugin installation/removal
     requires_plugin_management: bool,
 
+    /// The url to install the tool from for plugin management
+    url: Option<String>,
+
     /// Store the bin path for that plugin
     #[serde(skip)]
     bin_path: OnceCell<String>,
@@ -960,6 +963,7 @@ impl FullyQualifiedToolName {
                 fully_qualified_plugin_name: plugin_name.clone(),
                 list_name: plugin_name.to_string(),
                 requires_plugin_management: true,
+                url: Some(url),
                 bin_path,
                 normalized_plugin_name,
             });
@@ -1002,8 +1006,9 @@ impl FullyQualifiedToolName {
                     fully_qualified_plugin_name: plugin_name.clone(),
                     list_name: plugin_name.clone(),
                     requires_plugin_management: true,
-                    bin_path: OnceCell::new(),
-                    normalized_plugin_name: OnceCell::new(),
+                    url: Some(url),
+                    normalized_plugin_name,
+                    ..Default::default()
                 })
             }
             _ => {
@@ -1021,8 +1026,7 @@ impl FullyQualifiedToolName {
                     fully_qualified_plugin_name: fqpn.to_string(),
                     list_name: registry_entry.short_name.clone(),
                     requires_plugin_management: false,
-                    bin_path: OnceCell::new(),
-                    normalized_plugin_name: OnceCell::new(),
+                    ..Default::default()
                 })
             }
         }
@@ -1042,6 +1046,10 @@ impl FullyQualifiedToolName {
 
     pub fn requires_plugin_management(&self) -> bool {
         self.requires_plugin_management
+    }
+
+    pub fn url(&self) -> Option<&str> {
+        self.url.as_deref()
     }
 
     pub fn bin_path(&self, version: &str) -> Result<String, UpError> {
@@ -1929,16 +1937,19 @@ impl UpConfigMise {
             return Ok(());
         }
 
-        let plugin_name = self.fully_qualified_plugin_name()?;
+        let fqtn = self.fully_qualified_tool_name()?;
 
-        progress_handler.progress(format!("installing {} plugin", &plugin_name));
+        progress_handler.progress(format!(
+            "installing {} plugin",
+            &fqtn.fully_qualified_plugin_name()
+        ));
 
         let mut mise_plugin_add = mise_async_command();
         mise_plugin_add.arg("plugins");
         mise_plugin_add.arg("install");
-        mise_plugin_add.arg(plugin_name);
-        if let Some(tool_url) = &self.tool_url {
-            mise_plugin_add.arg(tool_url.clone());
+        mise_plugin_add.arg(fqtn.fully_qualified_plugin_name());
+        if let Some(tool_url) = fqtn.url() {
+            mise_plugin_add.arg(tool_url);
         }
 
         run_progress(
@@ -1950,7 +1961,7 @@ impl UpConfigMise {
 
     fn update_plugin(&self, progress_handler: &dyn ProgressHandler) -> Result<(), UpError> {
         let fqtn = self.fully_qualified_tool_name()?;
-        if !fqtn.requires_plugin_management {
+        if !fqtn.requires_plugin_management() {
             return Ok(());
         }
 
