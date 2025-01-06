@@ -169,9 +169,9 @@ impl BuiltinCommand for ConfigCheckCommand {
                         concat!(
                             "Path to check for commands.\n",
                             "\n",
-                            "Can be used multiple times. If not passed, ",
-                            "worktree-defined paths are used if in a worktree, ",
-                            "or the omnipath otherwise.\n",
+                            "Can be used multiple times. If neither this nor ",
+                            "\033[1m--config-file\033[0m are provided, the current ",
+                            "omnipath is checked.\n",
                         )
                         .to_string(),
                     ),
@@ -184,9 +184,9 @@ impl BuiltinCommand for ConfigCheckCommand {
                         concat!(
                             "Configuration file to check.\n",
                             "\n",
-                            "Can be used multiple times. If not passed, ",
-                            "the default configuration files loaded by omni ",
-                            "are checked.\n",
+                            "Can be used multiple times. If neither this nor ",
+                            "\033[1m--search-path\033[0m are provided, the current ",
+                            "configuration is checked.\n",
                         )
                         .to_string(),
                     ),

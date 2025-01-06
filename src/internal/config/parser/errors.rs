@@ -318,35 +318,37 @@ pub enum ConfigErrorKind {
     MetadataHeaderMissingHelp,
     #[error("M002")]
     MetadataHeaderMissingSyntax,
-    #[error("M003")]
-    MetadataHeaderInvalidValueType,
 
     //    M1xx for key or subkey errors
-    #[error("M100")]
-    MetadataHeaderUnknownKey,
     #[error("M101")]
-    MetadataHeaderMissingSubkey,
+    MetadataHeaderUnknownKey,
     #[error("M102")]
-    MetadataHeaderContinueWithoutKey,
+    MetadataHeaderMissingSubkey,
     #[error("M103")]
+    MetadataHeaderContinueWithoutKey,
+    #[error("M104")]
     MetadataHeaderDuplicateKey,
 
-    //    M2xx for group errors
+    //    M2xx for value errors
     #[error("M201")]
+    MetadataHeaderInvalidValueType,
+
+    //    M3xx for group errors
+    #[error("M301")]
     MetadataHeaderGroupMissingParameters,
-    #[error("M208")]
+    #[error("M308")]
     MetadataHeaderGroupEmptyPart,
-    #[error("M209")]
+    #[error("M309")]
     MetadataHeaderGroupUnknownConfigKey,
 
-    //    M3xx for parameter errors
-    #[error("M301")]
+    //    M4xx for parameter errors
+    #[error("M401")]
     MetadataHeaderParameterInvalidKeyValue,
-    #[error("M302")]
+    #[error("M402")]
     MetadataHeaderParameterMissingDescription,
-    #[error("M308")]
+    #[error("M408")]
     MetadataHeaderParameterEmptyPart,
-    #[error("M309")]
+    #[error("M409")]
     MetadataHeaderParameterUnknownConfigKey,
 
     //  Pxxx for path errors
