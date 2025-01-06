@@ -44,6 +44,7 @@ use crate::internal::config::ConfigValue;
 use crate::internal::config::SyntaxOptArg;
 use crate::internal::config::SyntaxOptArgNumValues;
 use crate::internal::config::SyntaxOptArgType;
+use crate::internal::env::now as omni_now;
 use crate::internal::env::shell_is_interactive;
 use crate::internal::errors::SyncUpdateError;
 use crate::internal::git::format_path_with_template;
@@ -1565,6 +1566,9 @@ impl BuiltinCommand for UpCommand {
 
         // If it has an up configuration, handle it
         if has_up_config {
+            // Make sure that `omni_now()` is initialized
+            let _ = omni_now();
+
             if self.is_up() {
                 let wd = workdir(".");
                 let workdir_id = match wd.id() {
