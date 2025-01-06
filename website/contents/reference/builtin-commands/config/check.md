@@ -58,7 +58,7 @@ omni config check --ignore M --select M0
 | Error code | Description |
 |------------|-------------|
 | `M001` | Metadata header is missing the `help` key |
-| `M002` | Metadata header is missing the `syntax` key |
+| `M002` | Metadata header is missing the `syntax` key *(ignored by default, needs to be explicitly selected)* |
 | `M003` | Metadata header has an invalid value type |
 | `M100` | Metadata header has an unknown key |
 | `M101` | Metadata header is missing a subkey |
