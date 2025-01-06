@@ -152,7 +152,7 @@ impl BuiltinCommand for ConfigCheckCommand {
     fn help(&self) -> Option<String> {
         Some(
             concat!(
-                "Check the configuration files and commands in the path for errors\n",
+                "Check the configuration files and commands in the omnipath for errors\n",
                 "\n",
                 "This allows to report any error or potential error in the ",
                 "configuration, or in any metadata for commands in the omnipath.\n",
@@ -373,26 +373,18 @@ impl BuiltinCommand for ConfigCheckCommand {
             paths.into_iter().collect()
         };
 
-        let paths = search_paths
-            .iter()
-            .filter_map(|entry| {
-                let path = PathBuf::from(&entry);
-                if path.exists() {
-                    Some(entry.to_string())
-                } else {
-                    error_handler
-                        .with_file(entry)
-                        .error(ConfigErrorKind::OmniPathNotFound);
+        for entry in search_paths {
+            let path = PathBuf::from(&entry);
+            if !path.exists() {
+                error_handler
+                    .with_file(entry)
+                    .error(ConfigErrorKind::OmniPathNotFound);
 
-                    None
-                }
-            })
-            .collect::<Vec<_>>();
+                continue;
+            }
 
-        for path in paths {
-            let path_error_handler = error_handler.with_file(path.clone());
-            for command in PathCommand::aggregate_with_errors(&[path.clone()], &path_error_handler)
-            {
+            let path_error_handler = error_handler.with_file(&entry);
+            for command in PathCommand::aggregate_with_errors(&[entry], &path_error_handler) {
                 command.check_errors(&path_error_handler);
             }
         }
