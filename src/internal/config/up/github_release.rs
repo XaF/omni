@@ -1023,7 +1023,7 @@ impl UpConfigGithubRelease {
         };
 
         progress_handler.progress("refreshing releases list from GitHub".to_string());
-        match self.list_releases_from_api(progress_handler) {
+        match self.list_releases_from_api(progress_handler, cached_releases.as_ref()) {
             Ok(releases) => {
                 if options.write_cache {
                     progress_handler.progress("updating cache with release list".to_string());
@@ -1137,6 +1137,7 @@ impl UpConfigGithubRelease {
     fn list_releases_from_api(
         &self,
         progress_handler: &UpProgressHandler,
+        cached_releases: Option<&GithubReleases>,
     ) -> Result<GithubReleases, UpError> {
         // Use https://api.github.com/repos/<owner>/<repo>/releases to
         // list the available releases
@@ -1184,7 +1185,14 @@ impl UpConfigGithubRelease {
             }
         };
 
-        let mut releases = GithubReleases::new();
+        let mut releases = if let Some(releases) = cached_releases {
+            // If we had cached releases, we are just trying to refresh the
+            // available releases, so let's use that list as base and only
+            // add the new releases to it
+            releases.clone()
+        } else {
+            GithubReleases::new()
+        };
         let mut cur_page = 1;
 
         loop {
@@ -1235,7 +1243,7 @@ impl UpConfigGithubRelease {
             })?;
             if !all_added {
                 progress_handler
-                    .progress("done fetching releases (all new releases fetched".to_string());
+                    .progress("done fetching releases (all new releases fetched)".to_string());
                 break;
             }
 

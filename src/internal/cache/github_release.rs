@@ -1,3 +1,5 @@
+use std::collections::HashSet;
+
 use globset::Glob;
 use itertools::Itertools;
 use lazy_static::lazy_static;
