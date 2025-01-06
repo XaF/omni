@@ -4,6 +4,8 @@ use std::fmt;
 use std::path::Path;
 use std::rc::Rc;
 
+use serde::ser::SerializeMap;
+use serde::Serialize;
 use serde_yaml::Value as YamlValue;
 use thiserror::Error;
 
@@ -170,10 +172,24 @@ pub struct ConfigError {
     context: HashMap<String, YamlValue>,
 }
 
+impl Serialize for ConfigError {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::ser::Serializer,
+    {
+        let mut map = serializer.serialize_map(Some(4))?;
+        map.serialize_entry("file", &abs_or_rel_path(self.file()))?;
+        map.serialize_entry("lineno", &self.lineno())?;
+        map.serialize_entry("errorcode", &self.errorcode())?;
+        map.serialize_entry("message", &self.message())?;
+        map.end()
+    }
+}
+
 impl ConfigError {
     pub fn new_from_kind(
         kind: ConfigErrorKind,
-        context: HashMap<String, serde_yaml::Value>,
+        context: HashMap<String, YamlValue>,
     ) -> Result<Self, String> {
         let file = context
             .get("file")

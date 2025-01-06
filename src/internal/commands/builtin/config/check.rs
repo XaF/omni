@@ -38,6 +38,7 @@ struct ConfigCheckCommandArgs {
     global_scope: bool,
     local_scope: bool,
     default_scope: bool,
+    output: ConfigCheckCommandOutput,
 }
 
 impl From<BTreeMap<String, ParseArgsValue>> for ConfigCheckCommandArgs {
@@ -92,6 +93,15 @@ impl From<BTreeMap<String, ParseArgsValue>> for ConfigCheckCommandArgs {
         );
         let default_scope = !global_scope && !local_scope;
 
+        let output = match args.get("output") {
+            Some(ParseArgsValue::SingleString(Some(value))) => match value.as_str() {
+                "json" => ConfigCheckCommandOutput::Json,
+                "plain" => ConfigCheckCommandOutput::Plain,
+                _ => unreachable!("unknown value for output"),
+            },
+            _ => ConfigCheckCommandOutput::Plain,
+        };
+
         Self {
             search_paths,
             config_files,
@@ -102,8 +112,15 @@ impl From<BTreeMap<String, ParseArgsValue>> for ConfigCheckCommandArgs {
             global_scope,
             local_scope,
             default_scope,
+            output,
         }
     }
+}
+
+#[derive(Debug, Clone)]
+enum ConfigCheckCommandOutput {
+    Plain,
+    Json,
 }
 
 #[derive(Debug, Clone)]
@@ -226,6 +243,13 @@ impl BuiltinCommand for ConfigCheckCommand {
                     names: vec!["-p".to_string(), "--include-packages".to_string()],
                     desc: Some("Include package errors in the check.".to_string()),
                     arg_type: SyntaxOptArgType::Flag,
+                    ..Default::default()
+                },
+                SyntaxOptArg {
+                    names: vec!["-o".to_string(), "--output".to_string()],
+                    desc: Some("Output format".to_string()),
+                    arg_type: SyntaxOptArgType::Enum(vec!["json".to_string(), "plain".to_string()]),
+                    default: Some("plain".to_string()),
                     ..Default::default()
                 },
             ],
@@ -387,8 +411,18 @@ impl BuiltinCommand for ConfigCheckCommand {
             .collect::<Vec<_>>();
 
         // Print the errors
-        for error in errors.iter() {
-            eprintln!("{}", error);
+        match args.output {
+            ConfigCheckCommandOutput::Plain => {
+                for error in errors.iter() {
+                    eprintln!("{}", error);
+                }
+            }
+            ConfigCheckCommandOutput::Json => match serde_json::to_string_pretty(&errors) {
+                Ok(json) => println!("{}", json),
+                Err(e) => {
+                    omni_error!(format!("Error while serializing the errors to JSON: {}", e));
+                }
+            },
         }
 
         // Exit with the appropriate code
