@@ -1,6 +1,7 @@
 use serde::Deserialize;
 use serde::Serialize;
 
+use crate::internal::config::parser::errors::ConfigErrorHandler;
 use crate::internal::config::parser::errors::ConfigErrorKind;
 use crate::internal::config::utils::parse_duration_or_default;
 use crate::internal::config::ConfigValue;
@@ -35,8 +36,7 @@ impl MiseCacheConfig {
 
     pub fn from_config_value(
         config_value: Option<ConfigValue>,
-        error_key: &str,
-        on_error: &mut impl FnMut(ConfigErrorKind),
+        error_handler: &ConfigErrorHandler,
     ) -> Self {
         let config_value = match config_value {
             Some(config_value) => config_value,
@@ -46,36 +46,31 @@ impl MiseCacheConfig {
         let update_expire = parse_duration_or_default(
             config_value.get("update_expire").as_ref(),
             Self::DEFAULT_UPDATE_EXPIRE,
-            &format!("{}.update_expire", error_key),
-            on_error,
+            &error_handler.with_key("update_expire"),
         );
 
         let plugin_update_expire = parse_duration_or_default(
             config_value.get("plugin_update_expire").as_ref(),
             Self::DEFAULT_PLUGIN_UPDATE_EXPIRE,
-            &format!("{}.plugin_update_expire", error_key),
-            on_error,
+            &error_handler.with_key("plugin_update_expire"),
         );
 
         let plugin_versions_expire = parse_duration_or_default(
             config_value.get("plugin_versions_expire").as_ref(),
             Self::DEFAULT_PLUGIN_VERSIONS_EXPIRE,
-            &format!("{}.plugin_versions_expire", error_key),
-            on_error,
+            &error_handler.with_key("plugin_versions_expire"),
         );
 
         let plugin_versions_retention = parse_duration_or_default(
             config_value.get("plugin_versions_retention").as_ref(),
             Self::DEFAULT_PLUGIN_VERSIONS_RETENTION,
-            &format!("{}.plugin_versions_retention", error_key),
-            on_error,
+            &error_handler.with_key("plugin_versions_retention"),
         );
 
         let cleanup_after = parse_duration_or_default(
             config_value.get("cleanup_after").as_ref(),
             Self::DEFAULT_CLEANUP_AFTER,
-            &format!("{}.cleanup_after", error_key),
-            on_error,
+            &error_handler.with_key("cleanup_after"),
         );
 
         Self {

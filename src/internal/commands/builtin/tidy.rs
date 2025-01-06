@@ -16,6 +16,7 @@ use crate::internal::commands::utils::abs_path;
 use crate::internal::commands::Command;
 use crate::internal::config::config;
 use crate::internal::config::global_config_loader;
+use crate::internal::config::parser::ConfigErrorHandler;
 use crate::internal::config::parser::ParseArgsValue;
 use crate::internal::config::parser::PathEntryConfig;
 use crate::internal::config::CommandSyntax;
@@ -741,9 +742,10 @@ impl TidyGitRepo {
                 if let Some(path_list) = config_path.get(key) {
                     if let Some(path_list) = path_list.as_array() {
                         for value in path_list {
-                            if let Some(path_entry) =
-                                PathEntryConfig::from_config_value(&value, "", &mut |_| ())
-                            {
+                            if let Some(path_entry) = PathEntryConfig::from_config_value(
+                                &value,
+                                &ConfigErrorHandler::noop(),
+                            ) {
                                 if path_entry.starts_with(&current_path) {
                                     if let ConfigSource::File(path) = value.get_source() {
                                         files_to_edit.insert(path.clone());
@@ -777,9 +779,10 @@ impl TidyGitRepo {
                 for (_key, path_list) in config_path.iter_mut() {
                     if let Some(path_list) = path_list.as_array_mut() {
                         for value in path_list.iter_mut() {
-                            if let Some(mut path_entry) =
-                                PathEntryConfig::from_config_value(value, "", &mut |_| ())
-                            {
+                            if let Some(mut path_entry) = PathEntryConfig::from_config_value(
+                                value,
+                                &ConfigErrorHandler::noop(),
+                            ) {
                                 if path_entry.replace(&current_path, &expected_path) {
                                     *value = path_entry.as_config_value().clone();
                                     edited = true;

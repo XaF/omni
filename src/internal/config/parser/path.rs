@@ -6,6 +6,7 @@ use serde::Deserialize;
 use serde::Serialize;
 
 use crate::internal::config::config_value::ConfigData;
+use crate::internal::config::parser::errors::ConfigErrorHandler;
 use crate::internal::config::parser::errors::ConfigErrorKind;
 use crate::internal::config::ConfigScope;
 use crate::internal::config::ConfigSource;
@@ -24,8 +25,7 @@ pub struct PathConfig {
 impl PathConfig {
     pub(super) fn from_config_value(
         config_value: Option<ConfigValue>,
-        error_key: &str,
-        on_error: &mut impl FnMut(ConfigErrorKind),
+        error_handler: &ConfigErrorHandler,
     ) -> Self {
         let config_value = match config_value {
             Some(config_value) => config_value,
@@ -40,17 +40,17 @@ impl PathConfig {
                     .filter_map(|(idx, value)| {
                         PathEntryConfig::from_config_value(
                             value,
-                            &format!("{}.append[{}]", error_key, idx),
-                            on_error,
+                            &error_handler.with_key("append").with_index(idx),
                         )
                     })
                     .collect()
             } else {
-                on_error(ConfigErrorKind::InvalidValueType {
-                    key: format!("{}.append", error_key),
-                    actual: append.as_serde_yaml(),
-                    expected: "array".to_string(),
-                });
+                error_handler
+                    .with_key("append")
+                    .with_expected("array")
+                    .with_actual(append)
+                    .error(ConfigErrorKind::InvalidValueType);
+
                 vec![]
             }
         } else {
@@ -65,17 +65,17 @@ impl PathConfig {
                     .filter_map(|(idx, value)| {
                         PathEntryConfig::from_config_value(
                             value,
-                            &format!("{}.prepend[{}]", error_key, idx),
-                            on_error,
+                            &error_handler.with_key("prepend").with_index(idx),
                         )
                     })
                     .collect()
             } else {
-                on_error(ConfigErrorKind::InvalidValueType {
-                    key: format!("{}.prepend", error_key),
-                    actual: prepend.as_serde_yaml(),
-                    expected: "array".to_string(),
-                });
+                error_handler
+                    .with_key("prepend")
+                    .with_expected("array")
+                    .with_actual(prepend)
+                    .error(ConfigErrorKind::InvalidValueType);
+
                 vec![]
             }
         } else {
@@ -116,29 +116,21 @@ impl PathEntryConfig {
 
     pub fn from_config_value(
         config_value: &ConfigValue,
-        error_key: &str,
-        on_error: &mut impl FnMut(ConfigErrorKind),
+        error_handler: &ConfigErrorHandler,
     ) -> Option<Self> {
         if config_value.is_table() {
-            let path = config_value.get_as_str_or_default(
-                "path",
-                "",
-                &format!("{}.path", error_key),
-                on_error,
-            );
-            let package = config_value.get_as_str_or_none(
-                "package",
-                &format!("{}.package", error_key),
-                on_error,
-            );
+            let path =
+                config_value.get_as_str_or_default("path", "", &error_handler.with_key("path"));
+            let package =
+                config_value.get_as_str_or_none("package", &error_handler.with_key("package"));
             let absolute_path = path.starts_with('/');
 
             if let Some(package) = package {
                 if absolute_path {
-                    on_error(ConfigErrorKind::UnsupportedValueInContext {
-                        key: format!("{}.package", error_key),
-                        actual: config_value.get("package").unwrap().as_serde_yaml(),
-                    });
+                    error_handler
+                        .with_key("package")
+                        .with_actual(config_value.get("package").expect("package should exist"))
+                        .error(ConfigErrorKind::UnsupportedValueInContext)
                 } else if let Some(package_path) = package_path_from_handle(&package) {
                     let mut full_path = package_path;
                     if !path.is_empty() {
@@ -151,10 +143,11 @@ impl PathEntryConfig {
                         full_path: full_path.to_str().unwrap().to_string(),
                     });
                 } else {
-                    on_error(ConfigErrorKind::InvalidPackage {
-                        key: format!("{}.package", error_key),
-                        package: package.to_string(),
-                    });
+                    error_handler
+                        .with_key("package")
+                        .with_context("package", package)
+                        .error(ConfigErrorKind::InvalidPackage);
+
                     return None;
                 }
             }
@@ -171,11 +164,11 @@ impl PathEntryConfig {
                 full_path: path,
             })
         } else {
-            on_error(ConfigErrorKind::InvalidValueType {
-                key: error_key.to_string(),
-                actual: config_value.as_serde_yaml(),
-                expected: "string or table".to_string(),
-            });
+            error_handler
+                .with_expected(vec!["string", "table"])
+                .with_actual(config_value)
+                .error(ConfigErrorKind::InvalidValueType);
+
             None
         }
     }

@@ -1,6 +1,7 @@
 use serde::Deserialize;
 use serde::Serialize;
 
+use crate::internal::config::parser::ConfigErrorHandler;
 use crate::internal::config::parser::ConfigErrorKind;
 use crate::internal::config::utils::parse_duration_or_default;
 use crate::internal::config::ConfigValue;
@@ -35,8 +36,7 @@ impl HomebrewCacheConfig {
 
     pub fn from_config_value(
         config_value: Option<ConfigValue>,
-        error_key: &str,
-        on_error: &mut impl FnMut(ConfigErrorKind),
+        error_handler: &ConfigErrorHandler,
     ) -> Self {
         let config_value = match config_value {
             Some(config_value) => config_value,
@@ -46,36 +46,31 @@ impl HomebrewCacheConfig {
         let update_expire = parse_duration_or_default(
             config_value.get("update_expire").as_ref(),
             Self::DEFAULT_UPDATE_EXPIRE,
-            &format!("{}.update_expire", error_key),
-            on_error,
+            &error_handler.with_key("update_expire"),
         );
 
         let tap_update_expire = parse_duration_or_default(
             config_value.get("tap_update_expire").as_ref(),
             Self::DEFAULT_TAP_UPDATE_EXPIRE,
-            &format!("{}.tap_update_expire", error_key),
-            on_error,
+            &error_handler.with_key("tap_update_expire"),
         );
 
         let install_update_expire = parse_duration_or_default(
             config_value.get("install_update_expire").as_ref(),
             Self::DEFAULT_INSTALL_UPDATE_EXPIRE,
-            &format!("{}.install_update_expire", error_key),
-            on_error,
+            &error_handler.with_key("install_update_expire"),
         );
 
         let install_check_expire = parse_duration_or_default(
             config_value.get("install_check_expire").as_ref(),
             Self::DEFAULT_INSTALL_CHECK_EXPIRE,
-            &format!("{}.install_check_expire", error_key),
-            on_error,
+            &error_handler.with_key("install_check_expire"),
         );
 
         let cleanup_after = parse_duration_or_default(
             config_value.get("cleanup_after").as_ref(),
             Self::DEFAULT_CLEANUP_AFTER,
-            &format!("{}.cleanup_after", error_key),
-            on_error,
+            &error_handler.with_key("cleanup_after"),
         );
 
         Self {

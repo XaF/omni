@@ -16,6 +16,7 @@ use crate::internal::cache::CargoInstallOperationCache;
 use crate::internal::cache::CargoInstallVersions;
 use crate::internal::config::config;
 use crate::internal::config::global_config;
+use crate::internal::config::parser::ConfigErrorHandler;
 use crate::internal::config::parser::ConfigErrorKind;
 use crate::internal::config::up::mise_tool_path;
 use crate::internal::config::up::utils::cleanup_path;
@@ -72,15 +73,12 @@ impl Serialize for UpConfigCargoInstalls {
 impl UpConfigCargoInstalls {
     pub fn from_config_value(
         config_value: Option<&ConfigValue>,
-        error_key: &str,
-        on_error: &mut impl FnMut(ConfigErrorKind),
+        error_handler: &ConfigErrorHandler,
     ) -> Self {
         let config_value = match config_value {
             Some(config_value) => config_value,
             None => {
-                on_error(ConfigErrorKind::EmptyKey {
-                    key: error_key.to_string(),
-                });
+                error_handler.error(ConfigErrorKind::EmptyKey);
                 return Self::default();
             }
         };
@@ -89,8 +87,7 @@ impl UpConfigCargoInstalls {
             return Self {
                 crates: vec![UpConfigCargoInstall::from_config_value(
                     Some(config_value),
-                    error_key,
-                    on_error,
+                    error_handler,
                 )],
             };
         }
@@ -103,8 +100,7 @@ impl UpConfigCargoInstalls {
                     .map(|(idx, config_value)| {
                         UpConfigCargoInstall::from_config_value(
                             Some(config_value),
-                            &format!("{}[{}]", error_key, idx),
-                            on_error,
+                            &error_handler.with_index(idx),
                         )
                     })
                     .collect(),
@@ -118,8 +114,7 @@ impl UpConfigCargoInstalls {
                 return Self {
                     crates: vec![UpConfigCargoInstall::from_config_value(
                         Some(config_value),
-                        error_key,
-                        on_error,
+                        error_handler,
                     )],
                 };
             }
@@ -129,9 +124,9 @@ impl UpConfigCargoInstalls {
             // we want to go over them in lexico-graphical order to ensure that
             // the order is consistent
             let mut crates = Vec::new();
-            for crate_name in table.keys().sorted() {
-                let value = table.get(crate_name).expect("crate config not found");
-                let crate_name = match ConfigValue::from_str(crate_name) {
+            for crate_name_str in table.keys().sorted() {
+                let value = table.get(crate_name_str).expect("crate config not found");
+                let crate_name = match ConfigValue::from_str(crate_name_str) {
                     Ok(value) => value,
                     Err(_) => continue,
                 };
@@ -153,25 +148,21 @@ impl UpConfigCargoInstalls {
                 crate_config.insert("crate".to_string(), crate_name.clone());
                 crates.push(UpConfigCargoInstall::from_table(
                     &crate_config,
-                    &format!("{}.{}", error_key, crate_name),
-                    on_error,
+                    &error_handler.with_key(crate_name_str),
                 ));
             }
 
             if crates.is_empty() {
-                on_error(ConfigErrorKind::EmptyKey {
-                    key: error_key.to_string(),
-                });
+                error_handler.error(ConfigErrorKind::EmptyKey);
             }
 
             return Self { crates };
         }
 
-        on_error(ConfigErrorKind::InvalidValueType {
-            key: error_key.to_string(),
-            expected: "string, array, or table".to_string(),
-            actual: config_value.as_serde_yaml(),
-        });
+        error_handler
+            .with_expected("string, array, or table")
+            .with_actual(config_value)
+            .error(ConfigErrorKind::InvalidValueType);
 
         UpConfigCargoInstalls::default()
     }
@@ -532,8 +523,7 @@ impl Default for UpConfigCargoInstall {
 impl UpConfigCargoInstall {
     pub fn from_config_value(
         config_value: Option<&ConfigValue>,
-        error_key: &str,
-        on_error: &mut impl FnMut(ConfigErrorKind),
+        error_handler: &ConfigErrorHandler,
     ) -> Self {
         let config_value = match config_value {
             Some(config_value) => config_value,
@@ -546,16 +536,16 @@ impl UpConfigCargoInstall {
         };
 
         if let Some(table) = config_value.as_table() {
-            Self::from_table(&table, error_key, on_error)
+            Self::from_table(&table, error_handler)
         } else if let Some(crate_name) = config_value.as_str_forced() {
             let (crate_name, version) = match parse_cargo_crate_name(&crate_name) {
                 Ok((crate_name, version)) => (crate_name, version),
                 Err(err) => {
-                    on_error(ConfigErrorKind::ParsingError {
-                        key: error_key.to_string(),
-                        actual: serde_yaml::Value::String(crate_name.to_string()),
-                        error: err.to_string(),
-                    });
+                    error_handler
+                        .with_context("error", err.to_string())
+                        .with_actual(crate_name.clone())
+                        .error(ConfigErrorKind::ParsingError);
+
                     return Self {
                         crate_name: crate_name.to_string(),
                         config_error: Some(err.to_string()),
@@ -583,8 +573,7 @@ impl UpConfigCargoInstall {
 
     fn from_table(
         table: &HashMap<String, ConfigValue>,
-        error_key: &str,
-        on_error: &mut impl FnMut(ConfigErrorKind),
+        error_handler: &ConfigErrorHandler,
     ) -> Self {
         let config_value = ConfigValue::from_table(table.clone());
 
@@ -593,11 +582,10 @@ impl UpConfigCargoInstall {
                 if let Some(crate_name) = crate_name.as_str_forced() {
                     crate_name.to_string()
                 } else {
-                    on_error(ConfigErrorKind::InvalidValueType {
-                        key: format!("{}.crate", error_key),
-                        expected: "string".to_string(),
-                        actual: serde_yaml::Value::String(crate_name.to_string()),
-                    });
+                    error_handler
+                        .with_expected("string")
+                        .with_actual(crate_name)
+                        .error(ConfigErrorKind::InvalidValueType);
                     return UpConfigCargoInstall {
                         config_error: Some("crate_name must be a string".to_string()),
                         ..Default::default()
@@ -618,11 +606,7 @@ impl UpConfigCargoInstall {
                     {
                         let mut crate_name_config = table.clone();
                         crate_name_config.insert("crate_name".to_string(), crate_name_config_value);
-                        return UpConfigCargoInstall::from_table(
-                            &crate_name_config,
-                            error_key,
-                            on_error,
-                        );
+                        return UpConfigCargoInstall::from_table(&crate_name_config, error_handler);
                     } else if let (true, Ok(crate_name_config_value)) =
                         (value.is_null(), ConfigValue::from_str(key))
                     {
@@ -630,17 +614,14 @@ impl UpConfigCargoInstall {
                             "crate".to_string(),
                             crate_name_config_value,
                         )]);
-                        return UpConfigCargoInstall::from_table(
-                            &crate_name_config,
-                            error_key,
-                            on_error,
-                        );
+                        return UpConfigCargoInstall::from_table(&crate_name_config, error_handler);
                     }
                 }
-                on_error(ConfigErrorKind::NotExactlyOneKeyInTable {
-                    key: error_key.to_string(),
-                    actual: config_value.as_serde_yaml(),
-                });
+
+                error_handler
+                    .with_actual(config_value)
+                    .error(ConfigErrorKind::NotExactlyOneKeyInTable);
+
                 return UpConfigCargoInstall {
                     config_error: Some("crate is required".to_string()),
                     ..Default::default()
@@ -651,11 +632,11 @@ impl UpConfigCargoInstall {
         let (crate_name, version) = match parse_cargo_crate_name(&crate_name) {
             Ok((crate_name, version)) => (crate_name, version),
             Err(err) => {
-                on_error(ConfigErrorKind::ParsingError {
-                    key: format!("{}.crate", error_key),
-                    actual: serde_yaml::Value::String(crate_name.to_string()),
-                    error: err.to_string(),
-                });
+                error_handler
+                    .with_context("error", err.to_string())
+                    .with_actual(crate_name.clone())
+                    .error(ConfigErrorKind::ParsingError);
+
                 return UpConfigCargoInstall {
                     crate_name,
                     config_error: Some(err.to_string()),
@@ -668,11 +649,12 @@ impl UpConfigCargoInstall {
             Some(value) => match value.as_bool_forced() {
                 Some(exact) => exact,
                 None => {
-                    on_error(ConfigErrorKind::InvalidValueType {
-                        key: format!("{}.exact", error_key),
-                        expected: "bool".to_string(),
-                        actual: value.as_serde_yaml(),
-                    });
+                    error_handler
+                        .with_key("exact")
+                        .with_expected("bool")
+                        .with_actual(value)
+                        .error(ConfigErrorKind::InvalidValueType);
+
                     version.is_some()
                 }
             },
@@ -688,10 +670,10 @@ impl UpConfigCargoInstall {
         {
             Some(version_field) => {
                 if version.is_some() {
-                    on_error(ConfigErrorKind::UnsupportedValueInContext {
-                        key: format!("{}.version", error_key),
-                        actual: serde_yaml::Value::String(version_field.to_string()),
-                    });
+                    error_handler
+                        .with_key("version")
+                        .with_actual(version_field)
+                        .error(ConfigErrorKind::UnsupportedValueInContext);
 
                     return UpConfigCargoInstall {
                         crate_name,
@@ -710,21 +692,15 @@ impl UpConfigCargoInstall {
         let upgrade = config_value.get_as_bool_or_default(
             "upgrade",
             false,
-            &format!("{}.upgrade", error_key),
-            on_error,
+            &error_handler.with_key("upgrade"),
         );
         let prerelease = config_value.get_as_bool_or_default(
             "prerelease",
             false,
-            &format!("{}.prerelease", error_key),
-            on_error,
+            &error_handler.with_key("prerelease"),
         );
-        let build = config_value.get_as_bool_or_default(
-            "build",
-            false,
-            &format!("{}.build", error_key),
-            on_error,
-        );
+        let build =
+            config_value.get_as_bool_or_default("build", false, &error_handler.with_key("build"));
 
         UpConfigCargoInstall {
             crate_name,

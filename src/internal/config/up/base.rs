@@ -5,6 +5,7 @@ use serde::Serialize;
 use crate::internal::cache::up_environments::UpEnvironment;
 use crate::internal::cache::utils::Empty;
 use crate::internal::cache::UpEnvironmentsCache;
+use crate::internal::config::parser::ConfigErrorHandler;
 use crate::internal::config::parser::ConfigErrorKind;
 use crate::internal::config::up::utils::cleanup_path;
 use crate::internal::config::up::utils::reshim;
@@ -49,8 +50,7 @@ impl Serialize for UpConfig {
 impl UpConfig {
     pub fn from_config_value(
         config_value: Option<ConfigValue>,
-        error_key: &str,
-        on_error: &mut impl FnMut(ConfigErrorKind),
+        error_handler: &ConfigErrorHandler,
     ) -> Option<Self> {
         let config_value = match config_value {
             Some(config_value) => config_value,
@@ -60,11 +60,10 @@ impl UpConfig {
         let config_array = match config_value.as_array() {
             Some(config_array) => config_array,
             None => {
-                on_error(ConfigErrorKind::InvalidValueType {
-                    key: error_key.to_string(),
-                    actual: config_value.as_serde_yaml(),
-                    expected: "array".to_string(),
-                });
+                error_handler
+                    .with_expected("array")
+                    .with_actual(config_value)
+                    .error(ConfigErrorKind::InvalidValueType);
 
                 return None;
             }
@@ -73,12 +72,13 @@ impl UpConfig {
         let mut up_errors = Vec::new();
         let mut steps = Vec::new();
         for (value, index) in config_array.iter().zip(0..) {
+            let step_error_handler = error_handler.with_index(index);
+
             if let Some(table) = value.as_table() {
                 if table.len() != 1 {
-                    on_error(ConfigErrorKind::NotExactlyOneKeyInTable {
-                        key: format!("{}[{}]", error_key, index),
-                        actual: value.as_serde_yaml(),
-                    });
+                    step_error_handler
+                        .with_actual(value)
+                        .error(ConfigErrorKind::NotExactlyOneKeyInTable);
                     up_errors.push(UpError::Config(format!(
                         "invalid config for step {}: {}",
                         index + 1,
@@ -88,11 +88,11 @@ impl UpConfig {
                 }
 
                 let (up_name, config_value) = table.iter().next().unwrap();
+
                 if let Some(up_config) = UpConfigTool::from_config_value(
                     up_name,
                     Some(config_value),
-                    &format!("{}[{}].{}", error_key, index, up_name),
-                    on_error,
+                    &step_error_handler.with_key(up_name),
                 ) {
                     steps.push(up_config);
                 } else {
@@ -107,8 +107,7 @@ impl UpConfig {
                 if let Some(up_config) = UpConfigTool::from_config_value(
                     &up_name,
                     None,
-                    &format!("{}[{}].{}", error_key, index, up_name),
-                    on_error,
+                    &step_error_handler.with_key(&up_name),
                 ) {
                     steps.push(up_config);
                 } else {
@@ -119,11 +118,10 @@ impl UpConfig {
                     )));
                 }
             } else {
-                on_error(ConfigErrorKind::InvalidValueType {
-                    key: format!("{}[{}]", error_key, index),
-                    actual: value.as_serde_yaml(),
-                    expected: "string or table".to_string(),
-                });
+                step_error_handler
+                    .with_expected("string or table")
+                    .with_actual(value)
+                    .error(ConfigErrorKind::InvalidValueType);
                 up_errors.push(UpError::Config(format!(
                     "invalid config for step {}: {}",
                     index + 1,

@@ -7,6 +7,7 @@ use tokio::process::Command as TokioCommand;
 use crate::internal::cache::up_environments::UpEnvironment;
 use crate::internal::commands::utils::abs_path;
 use crate::internal::config::global_config;
+use crate::internal::config::parser::ConfigErrorHandler;
 use crate::internal::config::parser::ConfigErrorKind;
 use crate::internal::config::up::utils::run_progress;
 use crate::internal::config::up::utils::ProgressHandler;
@@ -39,8 +40,7 @@ impl UpConfigBundler {
 
     pub fn from_config_value(
         config_value: Option<&ConfigValue>,
-        error_key: &str,
-        on_error: &mut impl FnMut(ConfigErrorKind),
+        error_handler: &ConfigErrorHandler,
     ) -> Self {
         let config_value = match config_value {
             Some(config_value) => config_value,
@@ -48,16 +48,12 @@ impl UpConfigBundler {
         };
 
         if config_value.is_table() {
-            let gemfile = config_value.get_as_str_or_none(
-                "gemfile",
-                &format!("{}.gemfile", error_key),
-                on_error,
-            );
+            let gemfile =
+                config_value.get_as_str_or_none("gemfile", &error_handler.with_key("gemfile"));
             let path = Some(config_value.get_as_str_or_default(
                 "path",
                 Self::DEFAULT_PATH,
-                &format!("{}.path", error_key),
-                on_error,
+                &error_handler.with_key("path"),
             ));
 
             Self { gemfile, path }
@@ -67,11 +63,10 @@ impl UpConfigBundler {
                 ..Self::default()
             }
         } else {
-            on_error(ConfigErrorKind::InvalidValueType {
-                key: error_key.to_string(),
-                expected: "table or string".to_string(),
-                actual: config_value.as_serde_yaml(),
-            });
+            error_handler
+                .with_expected("table or string")
+                .with_actual(config_value)
+                .error(ConfigErrorKind::InvalidValueType);
 
             Self::default()
         }

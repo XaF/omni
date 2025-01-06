@@ -1,6 +1,7 @@
 use serde::Deserialize;
 use serde::Serialize;
 
+use crate::internal::config::parser::errors::ConfigErrorHandler;
 use crate::internal::config::parser::errors::ConfigErrorKind;
 use crate::internal::config::ConfigScope;
 use crate::internal::config::ConfigValue;
@@ -29,8 +30,7 @@ impl AskPassConfig {
 
     pub(super) fn from_config_value(
         config_value: Option<ConfigValue>,
-        error_key: &str,
-        on_error: &mut impl FnMut(ConfigErrorKind),
+        error_handler: &ConfigErrorHandler,
     ) -> Self {
         let config_value = match config_value {
             Some(config_value) => config_value,
@@ -43,11 +43,11 @@ impl AskPassConfig {
         };
 
         if !config_value.is_table() {
-            on_error(ConfigErrorKind::InvalidValueType {
-                key: error_key.to_string(),
-                expected: "table".to_string(),
-                actual: config_value.as_serde_yaml(),
-            });
+            error_handler
+                .with_expected("table")
+                .with_actual(config_value)
+                .error(ConfigErrorKind::InvalidValueType);
+
             return Self::default();
         }
 
@@ -55,20 +55,17 @@ impl AskPassConfig {
             enabled: config_value.get_as_bool_or_default(
                 "enabled",
                 Self::DEFAULT_ENABLED,
-                &format!("{}.enabled", error_key),
-                on_error,
+                &error_handler.with_key("enabled"),
             ),
             enable_gui: config_value.get_as_bool_or_default(
                 "enable_gui",
                 Self::DEFAULT_ENABLE_GUI,
-                &format!("{}.enable_gui", error_key),
-                on_error,
+                &error_handler.with_key("enable_gui"),
             ),
             prefer_gui: config_value.get_as_bool_or_default(
                 "prefer_gui",
                 Self::DEFAULT_PREFER_GUI,
-                &format!("{}.prefer_gui", error_key),
-                on_error,
+                &error_handler.with_key("prefer_gui"),
             ),
         }
     }

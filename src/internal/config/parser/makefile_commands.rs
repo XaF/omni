@@ -1,6 +1,7 @@
 use serde::Deserialize;
 use serde::Serialize;
 
+use crate::internal::config::parser::errors::ConfigErrorHandler;
 use crate::internal::config::parser::errors::ConfigErrorKind;
 use crate::internal::config::ConfigValue;
 
@@ -28,8 +29,7 @@ impl MakefileCommandsConfig {
 
     pub(super) fn from_config_value(
         config_value: Option<ConfigValue>,
-        error_key: &str,
-        on_error: &mut impl FnMut(ConfigErrorKind),
+        error_handler: &ConfigErrorHandler,
     ) -> Self {
         let config_value = match config_value {
             Some(config_value) => config_value,
@@ -39,22 +39,19 @@ impl MakefileCommandsConfig {
         let enabled = config_value.get_as_bool_or_default(
             "enabled",
             Self::DEFAULT_ENABLED,
-            &format!("{}.enabled", error_key),
-            on_error,
+            &error_handler.with_key("enabled"),
         );
 
         let split_on_dash = config_value.get_as_bool_or_default(
             "split_on_dash",
             Self::DEFAULT_SPLIT_ON_DASH,
-            &format!("{}.split_on_dash", error_key),
-            on_error,
+            &error_handler.with_key("split_on_dash"),
         );
 
         let split_on_slash = config_value.get_as_bool_or_default(
             "split_on_slash",
             Self::DEFAULT_SPLIT_ON_SLASH,
-            &format!("{}.split_on_slash", error_key),
-            on_error,
+            &error_handler.with_key("split_on_slash"),
         );
 
         Self {

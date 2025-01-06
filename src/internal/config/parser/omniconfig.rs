@@ -5,13 +5,14 @@ use serde::Deserialize;
 use serde::Serialize;
 
 use crate::internal::cache::utils::Empty;
-use crate::internal::config::parser::errors::ConfigErrorKind;
 use crate::internal::config::parser::AskPassConfig;
 use crate::internal::config::parser::CacheConfig;
 use crate::internal::config::parser::CdConfig;
 use crate::internal::config::parser::CloneConfig;
 use crate::internal::config::parser::CommandDefinition;
 use crate::internal::config::parser::ConfigCommandsConfig;
+use crate::internal::config::parser::ConfigErrorHandler;
+use crate::internal::config::parser::ConfigErrorKind;
 use crate::internal::config::parser::EnvConfig;
 use crate::internal::config::parser::GithubConfig;
 use crate::internal::config::parser::MakefileCommandsConfig;
@@ -93,27 +94,26 @@ impl OmniConfig {
 
     pub fn from_config_value(
         config_value: &ConfigValue,
-        on_error: &mut impl FnMut(ConfigErrorKind),
+        error_handler: &ConfigErrorHandler,
     ) -> Self {
         let mut commands_config = HashMap::new();
         if let Some(value) = config_value.get("commands") {
+            let commands_error_handler = error_handler.with_key("commands");
             if let Some(table) = value.as_table() {
                 for (key, value) in table {
                     commands_config.insert(
                         key.to_string(),
                         CommandDefinition::from_config_value(
                             &value,
-                            &format!("commands.{}", key),
-                            on_error,
+                            &commands_error_handler.with_key(&key),
                         ),
                     );
                 }
             } else {
-                on_error(ConfigErrorKind::InvalidValueType {
-                    key: "commands".to_string(),
-                    expected: "table".to_string(),
-                    actual: value.as_serde_yaml(),
-                });
+                commands_error_handler
+                    .with_expected("table")
+                    .with_actual(value.as_serde_yaml())
+                    .error(ConfigErrorKind::InvalidValueType);
             }
         }
 
@@ -125,86 +125,95 @@ impl OmniConfig {
             if let Some(value) = value.reject_scope(&ConfigScope::Workdir) {
                 if let Some(array) = value.as_array() {
                     for value in array.iter() {
-                        // TODO
+                        // TODO: handle errors
                         org_config.push(OrgConfig::from_config_value(value));
                     }
                 } else {
-                    on_error(ConfigErrorKind::InvalidValueType {
-                        key: "org".to_string(),
-                        expected: "array".to_string(),
-                        actual: value.as_serde_yaml(),
-                    });
+                    error_handler
+                        .with_key("org")
+                        .with_expected("array")
+                        .with_actual(value.as_serde_yaml())
+                        .error(ConfigErrorKind::InvalidValueType);
                 }
             }
         }
 
-        let askpass =
-            AskPassConfig::from_config_value(config_value.get("askpass"), "askpass", on_error);
-        let cache = CacheConfig::from_config_value(config_value.get("cache"), "cache", on_error);
-        let cd = CdConfig::from_config_value(config_value.get("cd"), "cd", on_error);
-        let clone = CloneConfig::from_config_value(config_value.get("clone"), "clone", on_error);
+        let askpass = AskPassConfig::from_config_value(
+            config_value.get("askpass"),
+            &error_handler.with_key("askpass"),
+        );
+        let cache = CacheConfig::from_config_value(
+            config_value.get("cache"),
+            &error_handler.with_key("cache"),
+        );
+        let cd = CdConfig::from_config_value(config_value.get("cd"), &error_handler.with_key("cd"));
+        let clone = CloneConfig::from_config_value(
+            config_value.get("clone"),
+            &error_handler.with_key("clone"),
+        );
         let command_match_min_score = config_value.get_as_float_or_default(
             "command_match_min_score",
             Self::DEFAULT_COMMAND_MATCH_MIN_SCORE,
-            "command_match_min_score",
-            on_error,
+            &error_handler.with_key("command_match_min_score"),
         );
         let command_match_skip_prompt_if = MatchSkipPromptIfConfig::from_config_value(
             config_value.get("command_match_skip_prompt_if"),
-            "command_match_skip_prompt_if",
-            on_error,
+            &error_handler.with_key("command_match_skip_prompt_if"),
         );
         let config_commands = ConfigCommandsConfig::from_config_value(
             config_value.get("config_commands"),
-            "config_commands",
-            on_error,
+            &error_handler.with_key("config_commands"),
         );
-        let env = EnvConfig::from_config_value(config_value.get("env"), "env", on_error);
-        let github =
-            GithubConfig::from_config_value(config_value.get("github"), "github", on_error);
+        let env =
+            EnvConfig::from_config_value(config_value.get("env"), &error_handler.with_key("env"));
+        let github = GithubConfig::from_config_value(
+            config_value.get("github"),
+            &error_handler.with_key("github"),
+        );
         let makefile_commands = MakefileCommandsConfig::from_config_value(
             config_value.get("makefile_commands"),
-            "makefile_commands",
-            on_error,
+            &error_handler.with_key("makefile_commands"),
         );
-        let path = PathConfig::from_config_value(config_value.get("path"), "path", on_error);
+        let path = PathConfig::from_config_value(
+            config_value.get("path"),
+            &error_handler.with_key("path"),
+        );
         let path_repo_updates = PathRepoUpdatesConfig::from_config_value(
             config_value.get("path_repo_updates"),
-            "path_repo_updates",
-            on_error,
+            &error_handler.with_key("path_repo_updates"),
         );
-        let prompts =
-            PromptsConfig::from_config_value(config_value.get("prompts"), "prompts", on_error);
+        let prompts = PromptsConfig::from_config_value(
+            config_value.get("prompts"),
+            &error_handler.with_key("prompts"),
+        );
         let repo_path_format = config_value.get_as_str_or_default(
             "repo_path_format",
             Self::DEFAULT_REPO_PATH_FORMAT,
-            "repo_path_format",
-            on_error,
+            &error_handler.with_key("repo_path_format"),
         );
         let shell_aliases = ShellAliasesConfig::from_config_value(
             config_value.get("shell_aliases"),
-            "shell_aliases",
-            on_error,
+            &error_handler.with_key("shell_aliases"),
         );
         let suggest_clone = SuggestCloneConfig::from_config_value(
             config_value.get("suggest_clone"),
-            "suggest_clone",
-            on_error,
+            &error_handler.with_key("suggest_clone"),
         );
         let suggest_config = SuggestConfig::from_config_value(
             config_value.get("suggest_config"),
-            "suggest_config",
-            on_error,
+            &error_handler.with_key("suggest_config"),
         );
-        let up = UpConfig::from_config_value(config_value.get("up"), "up", on_error);
+        let up = UpConfig::from_config_value(config_value.get("up"), &error_handler.with_key("up"));
         let up_command = UpCommandConfig::from_config_value(
             config_value.get("up_command"),
-            "up_command",
-            on_error,
+            &error_handler.with_key("up_command"),
         );
 
-        let worktree =
-            config_value.get_as_str_or_default("worktree", &DEFAULT_WORKTREE, "worktree", on_error);
+        let worktree = config_value.get_as_str_or_default(
+            "worktree",
+            &DEFAULT_WORKTREE,
+            &error_handler.with_key("worktree"),
+        );
 
         Self {
             askpass,
@@ -287,7 +296,7 @@ impl OmniConfig {
 
 impl From<ConfigValue> for OmniConfig {
     fn from(config_value: ConfigValue) -> Self {
-        OmniConfig::from_config_value(&config_value, &mut |_| ())
+        OmniConfig::from_config_value(&config_value, &ConfigErrorHandler::noop())
     }
 }
 

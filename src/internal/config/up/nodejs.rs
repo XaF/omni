@@ -10,6 +10,7 @@ use tokio::process::Command as TokioCommand;
 
 use crate::internal::cache::up_environments::UpEnvironment;
 use crate::internal::cache::utils as cache_utils;
+use crate::internal::config::parser::ConfigErrorHandler;
 use crate::internal::config::parser::ConfigErrorKind;
 use crate::internal::config::up::mise::PostInstallFuncArgs;
 use crate::internal::config::up::utils::data_path_dir_hash;
@@ -55,24 +56,21 @@ impl UpConfigNodejsParams {
 
     pub fn from_config_value(
         config_value: Option<&ConfigValue>,
-        error_key: &str,
-        on_error: &mut impl FnMut(ConfigErrorKind),
+        error_handler: &ConfigErrorHandler,
     ) -> Self {
         let mut params = Self::default();
 
         if let Some(config_value) = &config_value {
             if let Some(value) = config_value.get_as_bool_or_none(
                 "install_engines",
-                &format!("{}.install_engines", error_key),
-                on_error,
+                &error_handler.with_key("install_engines"),
             ) {
                 params.install_engines = value;
             }
 
             if let Some(value) = config_value.get_as_bool_or_none(
                 "install_packages",
-                &format!("{}.install_packages", error_key),
-                on_error,
+                &error_handler.with_key("install_packages"),
             ) {
                 params.install_packages = value;
             }
@@ -115,16 +113,14 @@ impl Serialize for UpConfigNodejs {
 impl UpConfigNodejs {
     pub fn from_config_value(
         config_value: Option<&ConfigValue>,
-        error_key: &str,
-        on_error: &mut impl FnMut(ConfigErrorKind),
+        error_handler: &ConfigErrorHandler,
     ) -> Self {
-        let mut backend =
-            UpConfigMise::from_config_value("nodejs", config_value, error_key, on_error);
+        let mut backend = UpConfigMise::from_config_value("nodejs", config_value, error_handler);
         backend.add_detect_version_func(detect_version_from_package_json);
         backend.add_detect_version_func(detect_version_from_nvmrc);
         backend.add_post_install_func(setup_individual_npm_prefix);
 
-        let params = UpConfigNodejsParams::from_config_value(config_value, error_key, on_error);
+        let params = UpConfigNodejsParams::from_config_value(config_value, error_handler);
 
         Self { backend, params }
     }
@@ -260,8 +256,10 @@ fn setup_individual_npm_prefix(
         }
     };
 
-    let params =
-        UpConfigNodejsParams::from_config_value(args.config_value.as_ref(), "", &mut |_| ());
+    let params = UpConfigNodejsParams::from_config_value(
+        args.config_value.as_ref(),
+        &ConfigErrorHandler::noop(),
+    );
     if !params.install_engines && !params.install_packages {
         // Exit early if we don't need to install engines or packages
         return Ok(());

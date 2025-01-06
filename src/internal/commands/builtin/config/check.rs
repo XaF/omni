@@ -10,6 +10,8 @@ use crate::internal::commands::base::BuiltinCommand;
 use crate::internal::commands::frompath::PathCommand;
 use crate::internal::commands::utils::abs_or_rel_path;
 use crate::internal::commands::Command;
+use crate::internal::config::parser::ConfigError;
+use crate::internal::config::parser::ConfigErrorHandler;
 use crate::internal::config::parser::ConfigErrorKind;
 use crate::internal::config::parser::ParseArgsValue;
 use crate::internal::config::utils::check_allowed;
@@ -250,7 +252,7 @@ impl BuiltinCommand for ConfigCheckCommand {
                 .expect("should have args to parse"),
         );
 
-        let mut errors = vec![];
+        let error_handler = ConfigErrorHandler::new();
 
         let wd = workdir(".");
         let wd_root = wd.root();
@@ -281,9 +283,10 @@ impl BuiltinCommand for ConfigCheckCommand {
 
         for (file, scope) in config_files {
             let loader = ConfigLoader::new_from_file(&file, scope);
-            let _config = OmniConfig::from_config_value(&loader.raw_config, &mut |e| {
-                errors.push(ErrorFormatter::new_from_error(Some(file.clone()), e))
-            });
+            let _config = OmniConfig::from_config_value(
+                &loader.raw_config,
+                &error_handler.with_file(file.clone()),
+            );
         }
 
         // Now go over all the paths in the omnipath, so we can report:
@@ -355,39 +358,32 @@ impl BuiltinCommand for ConfigCheckCommand {
                 if path.exists() {
                     Some(entry.to_string())
                 } else {
-                    errors.push(ErrorFormatter::new(
-                        Some(entry.to_string()),
-                        None,
-                        "P001",
-                        "Path not found",
-                    ));
+                    error_handler
+                        .with_file(entry.to_string())
+                        .error(ConfigErrorKind::OmniPathNotFound);
+
                     None
                 }
             })
             .collect::<Vec<_>>();
 
         for path in paths {
-            for command in PathCommand::aggregate_with_errors(&[path.clone()], &mut |e| {
-                errors.push(ErrorFormatter::new_from_error(Some(path.clone()), e))
-            }) {
-                // Load the file details
-                for err in command.errors().iter() {
-                    errors.push(ErrorFormatter::new_from_error(
-                        Some(command.source().to_string()),
-                        err.clone(),
-                    ));
-                }
+            let path_error_handler = error_handler.with_file(path.clone());
+            for command in PathCommand::aggregate_with_errors(&[path.clone()], &path_error_handler)
+            {
+                command.check_errors(&path_error_handler);
             }
         }
 
         // Filter and sort the errors
-        let errors = errors
-            .iter()
+        let errors = error_handler
+            .errors()
+            .into_iter()
             .filter(|e| {
                 args.include_packages || !PathBuf::from(e.file()).starts_with(package_root_path())
             })
             .filter(|e| check_allowed(&e.file(), &args.patterns))
-            .filter(|e| e.selected(&args.select_errors, &args.ignore_errors))
+            .filter(|e| check_selected(&e, &args.select_errors, &args.ignore_errors))
             .filter(|e| !is_path_gitignored(e.file()).unwrap_or(false))
             .sorted()
             .collect::<Vec<_>>();
@@ -410,127 +406,39 @@ impl BuiltinCommand for ConfigCheckCommand {
     }
 }
 
-#[derive(PartialEq, Eq, Debug, Serialize)]
-struct ErrorFormatter {
-    #[serde(skip_serializing_if = "Option::is_none")]
-    file: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    lineno: Option<usize>,
-    errorcode: String,
-    message: String,
-    #[serde(skip)]
-    default_ignored: bool,
-}
+fn check_selected(
+    error: &ConfigError,
+    select_errors: &HashSet<String>,
+    ignore_errors: &HashSet<String>,
+) -> bool {
+    // Filter according to the error code
+    let errorcode = error.errorcode().to_uppercase();
 
-impl ErrorFormatter {
-    fn new(file: Option<String>, lineno: Option<usize>, errorcode: &str, message: &str) -> Self {
-        Self {
-            file,
-            lineno,
-            errorcode: errorcode.to_string(),
-            message: message.to_string(),
-            default_ignored: false,
-        }
+    // Get the longest selected entry from which the error starts with
+    let selected_level: i8 = select_errors
+        .iter()
+        .filter(|e| errorcode.starts_with(e.to_uppercase().as_str()))
+        .map(|e| e.len() as i8)
+        .max()
+        .unwrap_or(if select_errors.is_empty() { 0 } else { -1 });
+
+    // Skip this error if the selected_level < 0
+    if selected_level < 0 || (error.default_ignored() && selected_level < 4) {
+        return false;
     }
 
-    fn new_from_error(file: Option<String>, error: ConfigErrorKind) -> Self {
-        let file = match error.path() {
-            Some(path) => Some(path.to_string()),
-            None => file,
-        };
-        let lineno = error.lineno();
-        let errorcode = error.errorcode().to_string();
-        let default_ignored = matches!(error, ConfigErrorKind::MetadataHeaderMissingSyntax);
+    // Get the longest ignored entry from which the error starts with
+    let ignored_level: i8 = ignore_errors
+        .iter()
+        .filter(|e| errorcode.starts_with(e.to_uppercase().as_str()))
+        .map(|e| e.len() as i8)
+        .max()
+        .unwrap_or(-1);
 
-        let message = match error {
-            ConfigErrorKind::OmniPathFileNotExecutable { .. } => "Not executable".to_string(),
-            _ => error.to_string(),
-        };
-
-        Self {
-            file,
-            lineno,
-            errorcode,
-            message,
-            default_ignored,
-        }
+    // Skip this error if the ignored_level >= selected_level
+    if ignored_level >= selected_level {
+        return false;
     }
 
-    fn file(&self) -> String {
-        match &self.file {
-            Some(file) => file.clone(),
-            None => "<unknown>".to_string(),
-        }
-    }
-
-    fn errorcode(&self) -> &str {
-        &self.errorcode
-    }
-
-    fn selected(&self, select_errors: &HashSet<String>, ignore_errors: &HashSet<String>) -> bool {
-        // Filter according to the error code
-        let errorcode = self.errorcode().to_uppercase();
-
-        // Get the longest selected entry from which the error starts with
-        let selected_level: i8 = select_errors
-            .iter()
-            .filter(|e| errorcode.starts_with(e.to_uppercase().as_str()))
-            .map(|e| e.len() as i8)
-            .max()
-            .unwrap_or(if select_errors.is_empty() { 0 } else { -1 });
-
-        // Skip this error if the selected_level < 0
-        if selected_level < 0 || (self.default_ignored && selected_level < 4) {
-            return false;
-        }
-
-        // Get the longest ignored entry from which the error starts with
-        let ignored_level: i8 = ignore_errors
-            .iter()
-            .filter(|e| errorcode.starts_with(e.to_uppercase().as_str()))
-            .map(|e| e.len() as i8)
-            .max()
-            .unwrap_or(-1);
-
-        // Skip this error if the ignored_level >= selected_level
-        if ignored_level >= selected_level {
-            return false;
-        }
-
-        true
-    }
-}
-
-impl Ord for ErrorFormatter {
-    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
-        self.file
-            .cmp(&other.file)
-            .then(self.lineno.cmp(&other.lineno))
-            .then(self.errorcode.cmp(&other.errorcode))
-            .then(self.message.cmp(&other.message))
-    }
-}
-
-impl PartialOrd for ErrorFormatter {
-    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-        Some(self.cmp(other))
-    }
-}
-
-impl std::fmt::Display for ErrorFormatter {
-    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        let mut parts = vec![];
-
-        let path = abs_or_rel_path(&self.file());
-        parts.push(path.light_blue());
-        parts.push(self.errorcode().red());
-
-        if let Some(lineno) = &self.lineno {
-            parts.push(format!("{}", lineno).light_green());
-        }
-
-        parts.push(self.message.clone());
-
-        write!(f, "{}", parts.join(":"))
-    }
+    true
 }

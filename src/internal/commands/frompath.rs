@@ -19,6 +19,7 @@ use crate::internal::commands::utils::SplitOnSeparators;
 use crate::internal::config;
 use crate::internal::config::config_loader;
 use crate::internal::config::parser::parse_arg_name;
+use crate::internal::config::parser::ConfigErrorHandler;
 use crate::internal::config::parser::ConfigErrorKind;
 use crate::internal::config::utils::is_executable;
 use crate::internal::config::CommandSyntax;
@@ -41,14 +42,14 @@ pub struct PathCommand {
 
 impl PathCommand {
     pub fn all() -> Vec<Self> {
-        Self::aggregate_commands_from_path(&omnipath(), &mut |_| ())
+        Self::aggregate_commands_from_path(&omnipath(), &ConfigErrorHandler::noop())
     }
 
     pub fn aggregate_with_errors(
         paths: &[String],
-        on_error: &mut impl FnMut(ConfigErrorKind),
+        error_handler: &ConfigErrorHandler,
     ) -> Vec<Self> {
-        Self::aggregate_commands_from_path(paths, on_error)
+        Self::aggregate_commands_from_path(paths, error_handler)
     }
 
     pub fn local() -> Vec<Self> {
@@ -117,12 +118,12 @@ impl PathCommand {
             })
             .collect::<Vec<String>>();
 
-        Self::aggregate_commands_from_path(&local_paths, &mut |_| ())
+        Self::aggregate_commands_from_path(&local_paths, &ConfigErrorHandler::noop())
     }
 
     fn aggregate_commands_from_path(
         paths: &[String],
-        on_error: &mut impl FnMut(ConfigErrorKind),
+        error_handler: &ConfigErrorHandler,
     ) -> Vec<Self> {
         let mut all_commands: Vec<PathCommand> = Vec::new();
         let mut known_sources: HashMap<String, usize> = HashMap::new();
@@ -139,9 +140,10 @@ impl PathCommand {
                 }
 
                 if !is_executable(filepath) {
-                    on_error(ConfigErrorKind::OmniPathFileNotExecutable {
-                        path: filepath.to_string_lossy().to_string(),
-                    });
+                    error_handler
+                        .with_file(filepath.to_string_lossy().to_string())
+                        .error(ConfigErrorKind::OmniPathFileNotExecutable);
+
                     continue;
                 }
 
@@ -307,18 +309,16 @@ impl PathCommand {
 
     fn file_details(&self) -> Option<&PathCommandFileDetails> {
         self.file_details
-            .get_or_init(|| PathCommandFileDetails::from_file(&self.source, &mut |_| ()))
+            .get_or_init(|| {
+                PathCommandFileDetails::from_file(&self.source, &ConfigErrorHandler::noop())
+            })
             .as_ref()
     }
 
-    pub fn errors(&self) -> Vec<ConfigErrorKind> {
-        let mut errors = vec![];
-        if PathCommandFileDetails::from_file(&self.source, &mut |err| errors.push(err)).is_none() {
-            errors.push(ConfigErrorKind::OmniPathFileFailedToLoadMetadata {
-                path: self.source.clone(),
-            });
+    pub fn check_errors(&self, error_handler: &ConfigErrorHandler) {
+        if PathCommandFileDetails::from_file(&self.source, error_handler).is_none() {
+            error_handler.error(ConfigErrorKind::OmniPathFileFailedToLoadMetadata);
         }
-        errors
     }
 }
 
@@ -337,14 +337,14 @@ impl<'de> Deserialize<'de> for PathCommandFileDetails {
     where
         D: serde::Deserializer<'de>,
     {
-        Self::deserialize_with_errors(deserializer, &mut |_| ())
+        Self::deserialize_with_errors(deserializer, &ConfigErrorHandler::noop())
     }
 }
 
 impl<'de> PathCommandFileDetails {
     fn deserialize_with_errors<D>(
         deserializer: D,
-        on_error: &mut impl FnMut(ConfigErrorKind),
+        error_handler: &ConfigErrorHandler,
     ) -> Result<Self, D::Error>
     where
         D: serde::Deserializer<'de>,
@@ -358,11 +358,12 @@ impl<'de> PathCommandFileDetails {
                 .map_or(false, |v| match bool::deserialize(v.clone()) {
                     Ok(b) => b,
                     Err(_err) => {
-                        on_error(ConfigErrorKind::InvalidValueType {
-                            key: "autocompletion".to_string(),
-                            expected: "boolean".to_string(),
-                            actual: v.to_owned(),
-                        });
+                        error_handler
+                            .with_key("autocompletion")
+                            .with_expected("boolean")
+                            .with_actual(v.to_owned())
+                            .error(ConfigErrorKind::InvalidValueType);
+
                         false
                     }
                 });
@@ -371,11 +372,12 @@ impl<'de> PathCommandFileDetails {
                 .map_or(false, |v| match bool::deserialize(v.clone()) {
                     Ok(b) => b,
                     Err(_err) => {
-                        on_error(ConfigErrorKind::InvalidValueType {
-                            key: "sync_update".to_string(),
-                            expected: "boolean".to_string(),
-                            actual: v.to_owned(),
-                        });
+                        error_handler
+                            .with_key("sync_update")
+                            .with_expected("boolean")
+                            .with_actual(v.to_owned())
+                            .error(ConfigErrorKind::InvalidValueType);
+
                         false
                     }
                 });
@@ -384,11 +386,12 @@ impl<'de> PathCommandFileDetails {
                 .map_or(false, |v| match bool::deserialize(v.clone()) {
                     Ok(b) => b,
                     Err(_err) => {
-                        on_error(ConfigErrorKind::InvalidValueType {
-                            key: "argparser".to_string(),
-                            expected: "boolean".to_string(),
-                            actual: v.to_owned(),
-                        });
+                        error_handler
+                            .with_key("argparser")
+                            .with_expected("boolean")
+                            .with_actual(v.to_owned())
+                            .error(ConfigErrorKind::InvalidValueType);
+
                         false
                     }
                 });
@@ -399,11 +402,12 @@ impl<'de> PathCommandFileDetails {
                 .and_then(|v| match String::deserialize(v.clone()) {
                     Ok(s) => Some(s),
                     Err(_err) => {
-                        on_error(ConfigErrorKind::InvalidValueType {
-                            key: "help".to_string(),
-                            expected: "string".to_string(),
-                            actual: v.to_owned(),
-                        });
+                        error_handler
+                            .with_key("help")
+                            .with_expected("string")
+                            .with_actual(v.to_owned())
+                            .error(ConfigErrorKind::InvalidValueType);
+
                         None
                     }
                 });
@@ -426,31 +430,35 @@ impl<'de> PathCommandFileDetails {
                                     serde_yaml::Value::Number(n) => Some(n.to_string()),
                                     serde_yaml::Value::Bool(b) => Some(b.to_string()),
                                     _ => {
-                                        on_error(ConfigErrorKind::InvalidValueType {
-                                            key: format!("category[{}]", idx),
-                                            expected: "string".to_string(),
-                                            actual: entry.to_owned(),
-                                        });
+                                        error_handler
+                                            .with_key("category")
+                                            .with_index(idx)
+                                            .with_expected("string")
+                                            .with_actual(entry.to_owned())
+                                            .error(ConfigErrorKind::InvalidValueType);
+
                                         None
                                     }
                                 })
                                 .collect::<Vec<String>>(),
                         ),
                         _ => {
-                            on_error(ConfigErrorKind::InvalidValueType {
-                                key: "category".to_string(),
-                                expected: "string or sequence".to_string(),
-                                actual: value.to_owned(),
-                            });
+                            error_handler
+                                .with_key("category")
+                                .with_expected(vec!["string", "sequence"])
+                                .with_actual(value.to_owned())
+                                .error(ConfigErrorKind::InvalidValueType);
+
                             None
                         }
                     },
                     Err(_err) => {
-                        on_error(ConfigErrorKind::InvalidValueType {
-                            key: "category".to_string(),
-                            expected: "string or sequence".to_string(),
-                            actual: v.to_owned(),
-                        });
+                        error_handler
+                            .with_key("category")
+                            .with_expected(vec!["string", "sequence"])
+                            .with_actual(v.to_owned())
+                            .error(ConfigErrorKind::InvalidValueType);
+
                         None
                     }
                 });
@@ -459,14 +467,15 @@ impl<'de> PathCommandFileDetails {
             let syntax = map
                 .remove(serde_yaml::Value::String("syntax".to_string()))
                 .and_then(
-                    |v| match CommandSyntax::deserialize(v.clone(), "syntax", on_error) {
+                    |v| match CommandSyntax::deserialize(v.clone(), error_handler) {
                         Ok(s) => Some(s),
                         Err(_err) => {
-                            on_error(ConfigErrorKind::InvalidValueType {
-                                key: "syntax".to_string(),
-                                expected: "map".to_string(),
-                                actual: v.to_owned(),
-                            });
+                            error_handler
+                                .with_key("syntax")
+                                .with_expected("table")
+                                .with_actual(v.to_owned())
+                                .error(ConfigErrorKind::InvalidValueType);
+
                             None
                         }
                     },
@@ -481,33 +490,30 @@ impl<'de> PathCommandFileDetails {
                 syntax,
             })
         } else {
-            on_error(ConfigErrorKind::InvalidValueType {
-                key: ".".to_string(),
-                expected: "map".to_string(),
-                actual: value,
-            });
+            error_handler
+                .with_expected("table")
+                .with_actual(value)
+                .error(ConfigErrorKind::InvalidValueType);
+
             Ok(Self::default())
         }
     }
 }
 
 impl PathCommandFileDetails {
-    pub fn from_file(path: &str, on_error: &mut impl FnMut(ConfigErrorKind)) -> Option<Self> {
-        if let Some(details) = Self::from_metadata_file(path, on_error) {
+    pub fn from_file(path: &str, error_handler: &ConfigErrorHandler) -> Option<Self> {
+        if let Some(details) = Self::from_metadata_file(path, error_handler) {
             return Some(details);
         }
 
-        if let Some(details) = Self::from_source_file(path, on_error) {
+        if let Some(details) = Self::from_source_file(path, error_handler) {
             return Some(details);
         }
 
         None
     }
 
-    pub fn from_metadata_file(
-        path: &str,
-        on_error: &mut impl FnMut(ConfigErrorKind),
-    ) -> Option<Self> {
+    pub fn from_metadata_file(path: &str, error_handler: &ConfigErrorHandler) -> Option<Self> {
         // The metadata file for `file.ext` can be either
         // `file.ext.metadata.yaml` or `file.metadata.yaml`
         let mut metadata_files = vec![format!("{}.metadata.yaml", path)];
@@ -525,7 +531,10 @@ impl PathCommandFileDetails {
 
             if let Ok(file) = File::open(path) {
                 let deserializer = serde_yaml::Deserializer::from_reader(file);
-                if let Ok(mut md) = Self::deserialize_with_errors(deserializer, on_error) {
+                if let Ok(mut md) = Self::deserialize_with_errors(
+                    deserializer,
+                    &error_handler.with_file(metadata_file),
+                ) {
                     // If the help is not empty, split it into lines
                     if let Some(help) = &mut md.help {
                         *help = handle_color_codes(help.clone());
@@ -542,7 +551,7 @@ impl PathCommandFileDetails {
     fn parse_header_group(
         group_name: &str,
         value: &str,
-        on_error: &mut impl FnMut(ConfigErrorKind),
+        error_handler: &ConfigErrorHandler,
     ) -> Option<SyntaxGroup> {
         if group_name.is_empty() {
             return None;
@@ -559,9 +568,9 @@ impl PathCommandFileDetails {
         while let Some(part) = value_parts.next() {
             let part = part.trim();
             if part.is_empty() {
-                on_error(ConfigErrorKind::MetadataHeaderGroupEmptyPart {
-                    group: group_name.to_string(),
-                });
+                error_handler
+                    .with_context("group", group_name)
+                    .error(ConfigErrorKind::MetadataHeaderGroupEmptyPart);
                 continue;
             }
 
@@ -570,10 +579,11 @@ impl PathCommandFileDetails {
                 let key = kv[0].to_lowercase();
                 if !key.contains(' ') {
                     if !kv.len() == 2 {
-                        on_error(ConfigErrorKind::MetadataHeaderGroupInvalidPart {
-                            group: group_name.to_string(),
-                            part: part.to_string(),
-                        });
+                        error_handler
+                            .with_context("group", group_name)
+                            .with_context("part", part)
+                            .error(ConfigErrorKind::MetadataHeaderGroupInvalidPart);
+
                         continue;
                     }
 
@@ -595,10 +605,10 @@ impl PathCommandFileDetails {
                             }
                         }
                         _ => {
-                            on_error(ConfigErrorKind::MetadataHeaderGroupUnknownConfigKey {
-                                group: group_name.to_string(),
-                                key: key.clone(),
-                            });
+                            error_handler
+                                .with_context("group", group_name)
+                                .with_context("config_key", key)
+                                .error(ConfigErrorKind::MetadataHeaderGroupUnknownConfigKey);
                         }
                     }
 
@@ -615,12 +625,12 @@ impl PathCommandFileDetails {
                 .iter()
                 .map(|s| s.to_string())
                 .collect();
+        }
 
-            if parameters.is_empty() {
-                on_error(ConfigErrorKind::MetadataHeaderGroupMissingParameters {
-                    group: group_name.to_string(),
-                });
-            }
+        if parameters.is_empty() {
+            error_handler
+                .with_context("group", group_name)
+                .error(ConfigErrorKind::MetadataHeaderGroupMissingParameters);
         }
 
         Some(SyntaxGroup {
@@ -637,7 +647,7 @@ impl PathCommandFileDetails {
         required: bool,
         arg_name: &str,
         value: &str,
-        on_error: &mut impl FnMut(ConfigErrorKind),
+        error_handler: &ConfigErrorHandler,
     ) -> Option<SyntaxOptArg> {
         if arg_name.is_empty() {
             return None;
@@ -675,9 +685,10 @@ impl PathCommandFileDetails {
         while let Some(part) = value_parts.next() {
             let part = part.trim();
             if part.is_empty() {
-                on_error(ConfigErrorKind::MetadataHeaderParameterEmptyPart {
-                    parameter: arg_name.to_string(),
-                });
+                error_handler
+                    .with_context("parameter", arg_name)
+                    .error(ConfigErrorKind::MetadataHeaderParameterEmptyPart);
+
                 continue;
             }
 
@@ -686,10 +697,11 @@ impl PathCommandFileDetails {
                 let key = kv[0].to_lowercase();
                 if !key.contains(' ') {
                     if !kv.len() == 2 {
-                        on_error(ConfigErrorKind::MetadataHeaderParameterInvalidPart {
-                            parameter: arg_name.to_string(),
-                            part: part.to_string(),
-                        });
+                        error_handler
+                            .with_context("parameter", arg_name)
+                            .with_context("part", part)
+                            .error(ConfigErrorKind::MetadataHeaderParameterInvalidPart);
+
                         continue;
                     }
 
@@ -703,8 +715,7 @@ impl PathCommandFileDetails {
                         "num_values" => {
                             if let Some(num) = SyntaxOptArgNumValues::from_str(
                                 value,
-                                &format!("{}.num_values", arg_name),
-                                on_error,
+                                &error_handler.with_key("num_values"),
                             ) {
                                 num_values = Some(num)
                             }
@@ -713,11 +724,11 @@ impl PathCommandFileDetails {
                             if value.len() == 1 {
                                 value_delimiter = Some(value.chars().next().unwrap());
                             } else {
-                                on_error(ConfigErrorKind::MetadataHeaderParameterInvalidKeyValue {
-                                    parameter: arg_name.to_string(),
-                                    key: key.clone(),
-                                    value: value.to_string(),
-                                });
+                                error_handler
+                                    .with_context("parameter", arg_name)
+                                    .with_context("key", key)
+                                    .with_context("value", value)
+                                    .error(ConfigErrorKind::MetadataHeaderParameterInvalidKeyValue);
                             }
                         }
                         "last" => last_arg_double_hyphen = str_to_bool(value).unwrap_or(false),
@@ -782,18 +793,18 @@ impl PathCommandFileDetails {
                                     }
                                 }
                             } else {
-                                on_error(ConfigErrorKind::MetadataHeaderParameterInvalidKeyValue {
-                                    parameter: arg_name.to_string(),
-                                    key: key.clone(),
-                                    value: value.to_string(),
-                                });
+                                error_handler
+                                    .with_context("parameter", arg_name)
+                                    .with_context("key", key)
+                                    .with_context("value", value)
+                                    .error(ConfigErrorKind::MetadataHeaderParameterInvalidKeyValue);
                             }
                         }
                         _ => {
-                            on_error(ConfigErrorKind::MetadataHeaderParameterUnknownConfigKey {
-                                parameter: arg_name.to_string(),
-                                key: key.clone(),
-                            });
+                            error_handler
+                                .with_context("parameter", arg_name)
+                                .with_context("config_key", key)
+                                .error(ConfigErrorKind::MetadataHeaderParameterUnknownConfigKey);
                         }
                     }
 
@@ -808,9 +819,9 @@ impl PathCommandFileDetails {
 
         description = description.trim().to_string();
         let desc = if description.is_empty() {
-            on_error(ConfigErrorKind::MetadataHeaderParameterMissingDescription {
-                parameter: arg_name.to_string(),
-            });
+            error_handler
+                .with_context("parameter", arg_name)
+                .error(ConfigErrorKind::MetadataHeaderParameterMissingDescription);
 
             None
         } else {
@@ -818,9 +829,8 @@ impl PathCommandFileDetails {
             Some(description)
         };
 
-        let arg_type =
-            SyntaxOptArgType::from_str(&arg_type, &format!("{}.arg_type", arg_name), on_error)
-                .unwrap_or(SyntaxOptArgType::String);
+        let arg_type = SyntaxOptArgType::from_str(&arg_type, &error_handler.with_key("arg_type"))
+            .unwrap_or(SyntaxOptArgType::String);
 
         Some(SyntaxOptArg {
             names,
@@ -849,7 +859,7 @@ impl PathCommandFileDetails {
 
     fn from_source_file_header<R: BufRead>(
         reader: &mut R,
-        on_error: &mut impl FnMut(ConfigErrorKind),
+        error_handler: &ConfigErrorHandler,
     ) -> Option<Self> {
         let mut autocompletion = false;
         let mut sync_update = false;
@@ -893,13 +903,14 @@ impl PathCommandFileDetails {
                 let (subkey, value) = match key.as_str() {
                     "opt" | "arg" | "arggroup" => {
                         let mut subparts = value.splitn(2, ':');
-                        let subkey = match subparts.next() {
-                            Some(subkey) => subkey.trim().to_string(),
-                            None => {
-                                on_error(ConfigErrorKind::MetadataHeaderMissingSubkey {
-                                    key: key.clone(),
-                                    lineno,
-                                });
+                        let subkey = match subparts.next().map(|s| s.trim()) {
+                            Some(subkey) if !subkey.is_empty() => subkey.to_string(),
+                            _ => {
+                                error_handler
+                                    .with_lineno(lineno)
+                                    .with_context("key", key)
+                                    .error(ConfigErrorKind::MetadataHeaderMissingSubkey);
+
                                 continue;
                             }
                         };
@@ -915,7 +926,10 @@ impl PathCommandFileDetails {
                 "+" => match current_key {
                     Some((ref key, ref subkey)) => (key.clone(), subkey.clone()),
                     None => {
-                        on_error(ConfigErrorKind::MetadataHeaderContinueWithoutKey { lineno });
+                        error_handler
+                            .with_lineno(lineno)
+                            .error(ConfigErrorKind::MetadataHeaderContinueWithoutKey);
+
                         continue;
                     }
                 },
@@ -927,7 +941,7 @@ impl PathCommandFileDetails {
 
             match (key.as_str(), value) {
                 ("category", value) => {
-                    key_tracker.handle_seen_key(&key, lineno, true, on_error);
+                    key_tracker.handle_seen_key(&key, lineno, true, error_handler);
 
                     let handled_value = value
                         .split(',')
@@ -939,19 +953,55 @@ impl PathCommandFileDetails {
                     }
                 }
                 ("autocompletion", value) => {
-                    key_tracker.handle_seen_key(&key, lineno, false, on_error);
-                    autocompletion = str_to_bool(&value).unwrap_or(false);
+                    key_tracker.handle_seen_key(&key, lineno, false, error_handler);
+                    autocompletion = match str_to_bool(&value) {
+                        Some(b) => b,
+                        None => {
+                            error_handler
+                                .with_lineno(lineno)
+                                .with_context("key", key)
+                                .with_context("value", value)
+                                .with_expected("boolean")
+                                .error(ConfigErrorKind::MetadataHeaderInvalidValueType);
+
+                            false
+                        }
+                    };
                 }
                 ("sync_update", value) => {
-                    key_tracker.handle_seen_key(&key, lineno, false, on_error);
-                    sync_update = str_to_bool(&value).unwrap_or(false);
+                    key_tracker.handle_seen_key(&key, lineno, false, error_handler);
+                    sync_update = match str_to_bool(&value) {
+                        Some(b) => b,
+                        None => {
+                            error_handler
+                                .with_lineno(lineno)
+                                .with_context("key", key)
+                                .with_context("value", value)
+                                .with_expected("boolean")
+                                .error(ConfigErrorKind::MetadataHeaderInvalidValueType);
+
+                            false
+                        }
+                    };
                 }
                 ("argparser", value) => {
-                    key_tracker.handle_seen_key(&key, lineno, false, on_error);
-                    argparser = str_to_bool(&value).unwrap_or(false);
+                    key_tracker.handle_seen_key(&key, lineno, false, error_handler);
+                    argparser = match str_to_bool(&value) {
+                        Some(b) => b,
+                        None => {
+                            error_handler
+                                .with_lineno(lineno)
+                                .with_context("key", key)
+                                .with_context("value", value)
+                                .with_expected("boolean")
+                                .error(ConfigErrorKind::MetadataHeaderInvalidValueType);
+
+                            false
+                        }
+                    };
                 }
                 ("help", value) => {
-                    key_tracker.handle_seen_key(&key, lineno, true, on_error);
+                    key_tracker.handle_seen_key(&key, lineno, true, error_handler);
 
                     help_lines.push(value);
                 }
@@ -961,7 +1011,7 @@ impl PathCommandFileDetails {
                         &format!("{}:{}", key, subkey),
                         lineno,
                         true,
-                        on_error,
+                        error_handler,
                     );
 
                     match current_obj {
@@ -990,7 +1040,10 @@ impl PathCommandFileDetails {
                     }
                 }
                 _ if !key_tracker.is_empty() => {
-                    on_error(ConfigErrorKind::MetadataHeaderUnknownKey { key, lineno });
+                    error_handler
+                        .with_lineno(lineno)
+                        .with_context("key", key)
+                        .error(ConfigErrorKind::MetadataHeaderUnknownKey);
                 }
                 _ => {}
             }
@@ -1013,7 +1066,7 @@ impl PathCommandFileDetails {
             .iter()
             .flat_map(|(key, arg_name, value)| {
                 let is_required = key == "arg";
-                Self::parse_header_arg(is_required, arg_name, value, on_error)
+                Self::parse_header_arg(is_required, arg_name, value, error_handler)
             })
             .map(|mut param| {
                 if let Some(desc) = &param.desc {
@@ -1025,11 +1078,11 @@ impl PathCommandFileDetails {
 
         let groups = group_data
             .iter()
-            .flat_map(|(grp_name, value)| Self::parse_header_group(grp_name, value, on_error))
+            .flat_map(|(grp_name, value)| Self::parse_header_group(grp_name, value, error_handler))
             .collect::<Vec<SyntaxGroup>>();
 
         let syntax = if parameters.is_empty() && groups.is_empty() {
-            on_error(ConfigErrorKind::MetadataHeaderMissingSyntax);
+            error_handler.error(ConfigErrorKind::MetadataHeaderMissingSyntax);
 
             None
         } else {
@@ -1041,7 +1094,7 @@ impl PathCommandFileDetails {
         };
 
         let help = if help_lines.is_empty() {
-            on_error(ConfigErrorKind::MetadataHeaderMissingHelp);
+            error_handler.error(ConfigErrorKind::MetadataHeaderMissingHelp);
 
             None
         } else {
@@ -1059,10 +1112,7 @@ impl PathCommandFileDetails {
         })
     }
 
-    pub fn from_source_file(
-        path: &str,
-        on_error: &mut impl FnMut(ConfigErrorKind),
-    ) -> Option<Self> {
+    pub fn from_source_file(path: &str, error_handler: &ConfigErrorHandler) -> Option<Self> {
         let file = File::open(path);
         if file.is_err() {
             return None;
@@ -1071,7 +1121,7 @@ impl PathCommandFileDetails {
 
         let mut reader = BufReader::new(file);
 
-        Self::from_source_file_header(&mut reader, on_error)
+        Self::from_source_file_header(&mut reader, error_handler)
     }
 }
 
@@ -1093,15 +1143,15 @@ impl MetadataKeyTracker {
         key: &str,
         lineno: usize,
         allow_repeat: bool,
-        on_error: &mut dyn FnMut(ConfigErrorKind),
+        error_handler: &ConfigErrorHandler,
     ) {
         if let Some(prev_lineno) = self.seen_keys.get(key) {
             if !allow_repeat || key != self.last_key {
-                on_error(ConfigErrorKind::MetadataHeaderDuplicateKey {
-                    key: key.to_string(),
-                    lineno,
-                    prev_lineno: *prev_lineno,
-                });
+                error_handler
+                    .with_lineno(lineno)
+                    .with_context("key", key)
+                    .with_context("prev_lineno", *prev_lineno)
+                    .error(ConfigErrorKind::MetadataHeaderDuplicateKey);
             }
         } else {
             self.seen_keys.insert(key.to_string(), lineno);
@@ -2492,6 +2542,254 @@ mod tests {
                     ..Default::default()
                 }
             );
+        }
+
+        mod error_handling {
+            use super::*;
+
+            #[test]
+            fn test_invalid_value_type_boolean() {
+                let mut errors = Vec::new();
+                let mut reader = BufReader::new("# autocompletion: not_a_bool\n".as_bytes());
+                let _ = PathCommandFileDetails::from_source_file_header(&mut reader, &mut |err| {
+                    errors.push(err);
+                });
+
+                assert!(errors.iter().any(|err| matches!(
+                    err,
+                    ConfigErrorKind::MetadataHeaderInvalidValueType {
+                        key,
+                        value,
+                        expected,
+                        lineno,
+                    } if key == "autocompletion" && expected == "boolean" && value == "not_a_bool" && *lineno == 1
+                )), "Did not find expected error, found: {:?}", errors);
+            }
+
+            #[test]
+            fn test_metadata_header_missing_help() {
+                let mut errors = Vec::new();
+                let mut reader = BufReader::new("# category: test\n".as_bytes());
+                let _ = PathCommandFileDetails::from_source_file_header(&mut reader, &mut |err| {
+                    errors.push(err);
+                });
+
+                assert!(
+                    errors
+                        .iter()
+                        .any(|err| matches!(err, ConfigErrorKind::MetadataHeaderMissingHelp)),
+                    "Did not find expected error, found: {:?}",
+                    errors
+                );
+            }
+
+            #[test]
+            fn test_metadata_header_missing_syntax() {
+                let mut errors = Vec::new();
+                let mut reader = BufReader::new("# help: test help\n".as_bytes());
+                let _ = PathCommandFileDetails::from_source_file_header(&mut reader, &mut |err| {
+                    errors.push(err);
+                });
+
+                assert!(errors
+                    .iter()
+                    .any(|err| matches!(err, ConfigErrorKind::MetadataHeaderMissingSyntax)));
+            }
+
+            #[test]
+            fn test_metadata_header_duplicate_key() {
+                let mut errors = Vec::new();
+                let mut reader =
+                    BufReader::new("# autocompletion: true\n# autocompletion: false\n".as_bytes());
+                let _ = PathCommandFileDetails::from_source_file_header(&mut reader, &mut |err| {
+                    errors.push(err);
+                });
+
+                assert!(errors.iter().any(|err| matches!(
+                    err,
+                    ConfigErrorKind::MetadataHeaderDuplicateKey {
+                        key,
+                        lineno: 2,
+                        prev_lineno: 1,
+                    } if key == "autocompletion"
+                )));
+            }
+
+            #[test]
+            fn test_metadata_header_unknown_key() {
+                let mut errors = Vec::new();
+                let mut reader =
+                    BufReader::new("# category: test\n# unknown_key: value\n".as_bytes());
+                let _ = PathCommandFileDetails::from_source_file_header(&mut reader, &mut |err| {
+                    errors.push(err);
+                });
+
+                assert!(errors.iter().any(|err| matches!(
+                    err,
+                    ConfigErrorKind::MetadataHeaderUnknownKey {
+                        key,
+                        lineno: 2,
+                    } if key == "unknown_key"
+                )));
+            }
+
+            #[test]
+            fn test_metadata_header_group_empty_part() {
+                let mut errors = Vec::new();
+                let mut reader = BufReader::new("# arggroup: test_group: :\n".as_bytes());
+                let _ = PathCommandFileDetails::from_source_file_header(&mut reader, &mut |err| {
+                    errors.push(err);
+                });
+
+                assert!(errors.iter().any(|err| matches!(
+                    err,
+                    ConfigErrorKind::MetadataHeaderGroupEmptyPart {
+                        group,
+                    } if group == "test_group"
+                )));
+            }
+
+            #[test]
+            fn test_metadata_header_group_unknown_config_key() {
+                let mut errors = Vec::new();
+                let mut reader =
+                    BufReader::new("# arggroup: test_group: unknown_key=value\n".as_bytes());
+                let _ = PathCommandFileDetails::from_source_file_header(&mut reader, &mut |err| {
+                    errors.push(err);
+                });
+
+                assert!(errors.iter().any(|err| matches!(
+                    err,
+                    ConfigErrorKind::MetadataHeaderGroupUnknownConfigKey {
+                        group,
+                        key,
+                    } if group == "test_group" && key == "unknown_key"
+                )));
+            }
+
+            #[test]
+            fn test_metadata_header_group_missing_parameters() {
+                let mut errors = Vec::new();
+                let mut reader = BufReader::new("# arggroup: test_group:\n".as_bytes());
+                let _ = PathCommandFileDetails::from_source_file_header(&mut reader, &mut |err| {
+                    errors.push(err);
+                });
+
+                assert!(
+                    errors.iter().any(|err| matches!(
+                        err,
+                        ConfigErrorKind::MetadataHeaderGroupMissingParameters {
+                            group,
+                        } if group == "test_group"
+                    )),
+                    "Did not find expected error, found: {:?}",
+                    errors
+                );
+            }
+
+            #[test]
+            fn test_metadata_header_parameter_empty_part() {
+                let mut errors = Vec::new();
+                let mut reader = BufReader::new("# arg: test_param: :\n".as_bytes());
+                let _ = PathCommandFileDetails::from_source_file_header(&mut reader, &mut |err| {
+                    errors.push(err);
+                });
+
+                assert!(errors.iter().any(|err| matches!(
+                    err,
+                    ConfigErrorKind::MetadataHeaderParameterEmptyPart {
+                        parameter,
+                    } if parameter == "test_param"
+                )));
+            }
+
+            #[test]
+            fn test_metadata_header_parameter_invalid_key_value() {
+                let mut errors = Vec::new();
+                let mut reader =
+                    BufReader::new("# arg: test_param: delimiter=invalid\n".as_bytes());
+                let _ = PathCommandFileDetails::from_source_file_header(&mut reader, &mut |err| {
+                    errors.push(err);
+                });
+
+                assert!(errors.iter().any(|err| matches!(
+                    err,
+                    ConfigErrorKind::MetadataHeaderParameterInvalidKeyValue {
+                        parameter,
+                        key,
+                        value,
+                    } if parameter == "test_param" && key == "delimiter" && value == "invalid"
+                )));
+            }
+
+            #[test]
+            fn test_metadata_header_parameter_unknown_config_key() {
+                let mut errors = Vec::new();
+                let mut reader =
+                    BufReader::new("# arg: test_param: unknown_key=value\n".as_bytes());
+                let _ = PathCommandFileDetails::from_source_file_header(&mut reader, &mut |err| {
+                    errors.push(err);
+                });
+
+                assert!(errors.iter().any(|err| matches!(
+                    err,
+                    ConfigErrorKind::MetadataHeaderParameterUnknownConfigKey {
+                        parameter,
+                        key,
+                    } if parameter == "test_param" && key == "unknown_key"
+                )));
+            }
+
+            #[test]
+            fn test_metadata_header_parameter_missing_description() {
+                let mut errors = Vec::new();
+                let mut reader = BufReader::new("# arg: test_param:\n".as_bytes());
+                let _ = PathCommandFileDetails::from_source_file_header(&mut reader, &mut |err| {
+                    errors.push(err);
+                });
+
+                assert!(errors.iter().any(|err| matches!(
+                    err,
+                    ConfigErrorKind::MetadataHeaderParameterMissingDescription {
+                        parameter,
+                    } if parameter == "test_param"
+                )));
+            }
+
+            #[test]
+            fn test_metadata_header_continue_without_key() {
+                let mut errors = Vec::new();
+                let mut reader = BufReader::new("# +: continued value\n".as_bytes());
+                let _ = PathCommandFileDetails::from_source_file_header(&mut reader, &mut |err| {
+                    errors.push(err);
+                });
+
+                assert!(errors.iter().any(|err| matches!(
+                    err,
+                    ConfigErrorKind::MetadataHeaderContinueWithoutKey { lineno: 1 }
+                )));
+            }
+
+            #[test]
+            fn test_metadata_header_missing_subkey() {
+                let mut errors = Vec::new();
+                let mut reader = BufReader::new("# arg:\n".as_bytes());
+                let _ = PathCommandFileDetails::from_source_file_header(&mut reader, &mut |err| {
+                    errors.push(err);
+                });
+
+                assert!(
+                    errors.iter().any(|err| matches!(
+                        err,
+                        ConfigErrorKind::MetadataHeaderMissingSubkey {
+                            key,
+                            lineno: 1,
+                        } if key == "arg"
+                    )),
+                    "Did not find expected error, found: {:?}",
+                    errors
+                );
+            }
         }
     }
 }

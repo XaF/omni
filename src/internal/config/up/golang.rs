@@ -13,6 +13,7 @@ use serde::Serialize;
 use crate::internal::cache::up_environments::UpEnvironment;
 use crate::internal::cache::utils as cache_utils;
 use crate::internal::commands::utils::abs_path;
+use crate::internal::config::parser::ConfigErrorHandler;
 use crate::internal::config::parser::ConfigErrorKind;
 use crate::internal::config::up::mise::PostInstallFuncArgs;
 use crate::internal::config::up::utils::data_path_dir_hash;
@@ -89,8 +90,7 @@ impl UpConfigGolang {
 
     pub fn from_config_value(
         config_value: Option<&ConfigValue>,
-        error_key: &str,
-        on_error: &mut impl FnMut(ConfigErrorKind),
+        error_handler: &ConfigErrorHandler,
     ) -> Self {
         let mut version = None;
         let mut version_file = None;
@@ -105,22 +105,18 @@ impl UpConfigGolang {
             } else if let Some(value) = config_value.as_integer() {
                 version = Some(value.to_string());
             } else {
-                if let Some(value) = config_value.get_as_str_or_none(
-                    "version",
-                    &format!("{}.version", error_key),
-                    on_error,
-                ) {
+                if let Some(value) =
+                    config_value.get_as_str_or_none("version", &error_handler.with_key("version"))
+                {
                     version = Some(value.to_string());
-                } else if let Some(value) = config_value.get_as_str_or_none(
-                    "version_file",
-                    &format!("{}.version_file", error_key),
-                    on_error,
-                ) {
+                } else if let Some(value) = config_value
+                    .get_as_str_or_none("version_file", &error_handler.with_key("version_file"))
+                {
                     version_file = Some(value.to_string());
                 }
 
                 let list_dirs =
-                    config_value.get_as_str_array("dir", &format!("{}.dir", error_key), on_error);
+                    config_value.get_as_str_array("dir", &error_handler.with_key("dir"));
                 for value in list_dirs {
                     dirs.insert(
                         PathBuf::from(value)
@@ -130,11 +126,9 @@ impl UpConfigGolang {
                     );
                 }
 
-                if let Some(value) = config_value.get_as_bool_or_none(
-                    "upgrade",
-                    &format!("{}.upgrade", error_key),
-                    on_error,
-                ) {
+                if let Some(value) =
+                    config_value.get_as_bool_or_none("upgrade", &error_handler.with_key("upgrade"))
+                {
                     upgrade = value;
                 }
             }

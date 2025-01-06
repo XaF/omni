@@ -3,6 +3,7 @@ use std::collections::HashMap;
 use serde::Deserialize;
 use serde::Serialize;
 
+use crate::internal::config::parser::ConfigErrorHandler;
 use crate::internal::config::parser::ConfigErrorKind;
 use crate::internal::config::utils::parse_duration_or_default;
 use crate::internal::config::ConfigValue;
@@ -55,8 +56,7 @@ impl PathRepoUpdatesConfig {
 
     pub(super) fn from_config_value(
         config_value: Option<ConfigValue>,
-        error_key: &str,
-        on_error: &mut impl FnMut(ConfigErrorKind),
+        error_handler: &ConfigErrorHandler,
     ) -> Self {
         let config_value = match config_value {
             Some(config_value) => config_value,
@@ -70,8 +70,7 @@ impl PathRepoUpdatesConfig {
                     key.to_string(),
                     PathRepoUpdatesPerRepoConfig::from_config_value(
                         &value,
-                        &format!("{}.per_repo_config.{}", error_key, key),
-                        on_error,
+                        &error_handler.with_key("per_repo_config").with_key(key),
                     ),
                 );
             }
@@ -80,20 +79,17 @@ impl PathRepoUpdatesConfig {
         let pre_auth_timeout = parse_duration_or_default(
             config_value.get("pre_auth_timeout").as_ref(),
             Self::DEFAULT_PRE_AUTH_TIMEOUT,
-            &format!("{}.pre_auth_timeout", error_key),
-            on_error,
+            &error_handler.with_key("pre_auth_timeout"),
         );
         let background_updates_timeout = parse_duration_or_default(
             config_value.get("background_updates_timeout").as_ref(),
             Self::DEFAULT_BACKGROUND_UPDATES_TIMEOUT,
-            &format!("{}.background_updates_timeout", error_key),
-            on_error,
+            &error_handler.with_key("background_updates_timeout"),
         );
         let interval = parse_duration_or_default(
             config_value.get("interval").as_ref(),
             Self::DEFAULT_INTERVAL,
-            &format!("{}.interval", error_key),
-            on_error,
+            &error_handler.with_key("interval"),
         );
 
         let self_update = if let Some(value) = config_value.get("self_update") {
@@ -105,11 +101,12 @@ impl PathRepoUpdatesConfig {
             } else if let Some(value) = value.as_integer() {
                 PathRepoUpdatesSelfUpdateEnum::from_int(value)
             } else {
-                on_error(ConfigErrorKind::InvalidValueType {
-                    key: format!("{}.self_update", error_key),
-                    expected: "boolean, string, or integer".to_string(),
-                    actual: value.as_serde_yaml(),
-                });
+                error_handler
+                    .with_key("self_update")
+                    .with_expected(vec!["boolean", "string", "integer"])
+                    .with_actual(value)
+                    .error(ConfigErrorKind::InvalidValueType);
+
                 PathRepoUpdatesSelfUpdateEnum::default()
             }
         } else {
@@ -125,11 +122,12 @@ impl PathRepoUpdatesConfig {
             } else if let Some(value) = value.as_integer() {
                 PathRepoUpdatesOnCommandNotFoundEnum::from_int(value)
             } else {
-                on_error(ConfigErrorKind::InvalidValueType {
-                    key: format!("{}.on_command_not_found", error_key),
-                    expected: "boolean, string, or integer".to_string(),
-                    actual: value.as_serde_yaml(),
-                });
+                error_handler
+                    .with_key("on_command_not_found")
+                    .with_expected(vec!["boolean", "string", "integer"])
+                    .with_actual(value)
+                    .error(ConfigErrorKind::InvalidValueType);
+
                 PathRepoUpdatesOnCommandNotFoundEnum::default()
             }
         } else {
@@ -140,11 +138,12 @@ impl PathRepoUpdatesConfig {
             if let Some(value) = value.as_str() {
                 value.to_string()
             } else {
-                on_error(ConfigErrorKind::InvalidValueType {
-                    key: format!("{}.ref_type", error_key),
-                    expected: "string".to_string(),
-                    actual: value.as_serde_yaml(),
-                });
+                error_handler
+                    .with_key("ref_type")
+                    .with_expected("string")
+                    .with_actual(value)
+                    .error(ConfigErrorKind::InvalidValueType);
+
                 Self::DEFAULT_REF_TYPE.to_string()
             }
         } else {
@@ -155,11 +154,12 @@ impl PathRepoUpdatesConfig {
             if let Some(value) = value.as_str() {
                 Some(value.to_string())
             } else {
-                on_error(ConfigErrorKind::InvalidValueType {
-                    key: format!("{}.ref_match", error_key),
-                    expected: "string".to_string(),
-                    actual: value.as_serde_yaml(),
-                });
+                error_handler
+                    .with_key("ref_match")
+                    .with_expected("string")
+                    .with_actual(value)
+                    .error(ConfigErrorKind::InvalidValueType);
+
                 None
             }
         } else {
@@ -170,23 +170,20 @@ impl PathRepoUpdatesConfig {
             enabled: config_value.get_as_bool_or_default(
                 "enabled",
                 Self::DEFAULT_ENABLED,
-                &format!("{}.enabled", error_key),
-                on_error,
+                &error_handler.with_key("enabled"),
             ),
             self_update,
             on_command_not_found,
             pre_auth: config_value.get_as_bool_or_default(
                 "pre_auth",
                 Self::DEFAULT_PRE_AUTH,
-                &format!("{}.pre_auth", error_key),
-                on_error,
+                &error_handler.with_key("pre_auth"),
             ),
             pre_auth_timeout,
             background_updates: config_value.get_as_bool_or_default(
                 "background_updates",
                 Self::DEFAULT_BACKGROUND_UPDATES,
-                &format!("{}.background_updates", error_key),
-                on_error,
+                &error_handler.with_key("background_updates"),
             ),
             background_updates_timeout,
             interval,
@@ -342,28 +339,22 @@ pub struct PathRepoUpdatesPerRepoConfig {
 impl PathRepoUpdatesPerRepoConfig {
     pub(super) fn from_config_value(
         config_value: &ConfigValue,
-        error_key: &str,
-        on_error: &mut impl FnMut(ConfigErrorKind),
+        error_handler: &ConfigErrorHandler,
     ) -> Self {
         let enabled = config_value.get_as_bool_or_default(
             "enabled",
             true,
-            &format!("{}.enabled", error_key),
-            on_error,
+            &error_handler.with_key("enabled"),
         );
 
         let ref_type = config_value.get_as_str_or_default(
             "ref_type",
             "branch",
-            &format!("{}.ref_type", error_key),
-            on_error,
+            &error_handler.with_key("ref_type"),
         );
 
-        let ref_match = config_value.get_as_str_or_none(
-            "ref_match",
-            &format!("{}.ref_match", error_key),
-            on_error,
-        );
+        let ref_match =
+            config_value.get_as_str_or_none("ref_match", &error_handler.with_key("ref_match"));
 
         Self {
             enabled,

@@ -1,6 +1,7 @@
 use serde::Deserialize;
 use serde::Serialize;
 
+use crate::internal::config::parser::errors::ConfigErrorHandler;
 use crate::internal::config::parser::errors::ConfigErrorKind;
 use crate::internal::config::utils::parse_duration_or_default;
 use crate::internal::config::ConfigValue;
@@ -29,8 +30,7 @@ impl UpEnvironmentCacheConfig {
 
     pub fn from_config_value(
         config_value: Option<ConfigValue>,
-        error_key: &str,
-        on_error: &mut impl FnMut(ConfigErrorKind),
+        error_handler: &ConfigErrorHandler,
     ) -> Self {
         let config_value = match config_value {
             Some(config_value) => config_value,
@@ -40,19 +40,19 @@ impl UpEnvironmentCacheConfig {
         let retention = parse_duration_or_default(
             config_value.get("retention").as_ref(),
             Self::DEFAULT_RETENTION,
-            &format!("{}.retention", error_key),
-            on_error,
+            &error_handler.with_key("retention"),
         );
 
         let max_per_workdir = match config_value.get("max_per_workdir") {
             Some(v) => match v.as_unsigned_integer() {
                 Some(v) => Some(v as usize),
                 None => {
-                    on_error(ConfigErrorKind::InvalidValueType {
-                        key: format!("{}.max_per_workdir", error_key),
-                        expected: "unsigned integer".to_string(),
-                        actual: v.as_serde_yaml(),
-                    });
+                    error_handler
+                        .with_key("max_per_workdir")
+                        .with_expected("unsigned integer")
+                        .with_actual(v)
+                        .error(ConfigErrorKind::InvalidValueType);
+
                     None
                 }
             },
@@ -63,11 +63,12 @@ impl UpEnvironmentCacheConfig {
             Some(v) => match v.as_unsigned_integer() {
                 Some(v) => Some(v as usize),
                 None => {
-                    on_error(ConfigErrorKind::InvalidValueType {
-                        key: format!("{}.max_total", error_key),
-                        expected: "unsigned integer".to_string(),
-                        actual: v.as_serde_yaml(),
-                    });
+                    error_handler
+                        .with_key("max_total")
+                        .with_expected("unsigned integer")
+                        .with_actual(v)
+                        .error(ConfigErrorKind::InvalidValueType);
+
                     None
                 }
             },

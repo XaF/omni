@@ -8,6 +8,7 @@ use tokio::process::Command as TokioCommand;
 use crate::internal::cache::up_environments::UpEnvVar;
 use crate::internal::cache::up_environments::UpEnvironment;
 use crate::internal::config::global_config;
+use crate::internal::config::parser::ConfigErrorHandler;
 use crate::internal::config::parser::ConfigErrorKind;
 use crate::internal::config::parser::EnvOperationEnum;
 use crate::internal::config::up::utils::data_path_dir_hash;
@@ -56,33 +57,29 @@ impl UpConfigCustom {
 
     pub fn from_config_value(
         config_value: Option<&ConfigValue>,
-        error_key: &str,
-        on_error: &mut impl FnMut(ConfigErrorKind),
+        error_handler: &ConfigErrorHandler,
     ) -> Self {
         let config_value = match config_value {
             Some(config_value) => config_value,
             None => {
-                on_error(ConfigErrorKind::MissingKey {
-                    key: format!("{}.meet", error_key),
-                });
+                error_handler.error(ConfigErrorKind::EmptyKey);
                 return Self::default();
             }
         };
 
         let meet = config_value
-            .get_as_str_or_none("meet", &format!("{}.meet", error_key), on_error)
+            .get_as_str_or_none("meet", &error_handler.with_key("meet"))
             .unwrap_or_else(|| {
-                on_error(ConfigErrorKind::MissingKey {
-                    key: format!("{}.meet", error_key),
-                });
+                error_handler
+                    .with_key("meet")
+                    .error(ConfigErrorKind::MissingKey);
+
                 Self::DEFAULT_MEET.to_string()
             });
-        let met = config_value.get_as_str_or_none("met", &format!("{}.met", error_key), on_error);
-        let unmeet =
-            config_value.get_as_str_or_none("unmeet", &format!("{}.unmeet", error_key), on_error);
-        let name =
-            config_value.get_as_str_or_none("name", &format!("{}.name", error_key), on_error);
-        let dir = config_value.get_as_str_or_none("dir", &format!("{}.dir", error_key), on_error);
+        let met = config_value.get_as_str_or_none("met", &error_handler.with_key("met"));
+        let unmeet = config_value.get_as_str_or_none("unmeet", &error_handler.with_key("unmeet"));
+        let name = config_value.get_as_str_or_none("name", &error_handler.with_key("name"));
+        let dir = config_value.get_as_str_or_none("dir", &error_handler.with_key("dir"));
 
         UpConfigCustom {
             meet,

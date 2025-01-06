@@ -5,6 +5,7 @@ use std::path::Path;
 use serde::Deserialize;
 use serde::Serialize;
 
+use crate::internal::config::parser::ConfigErrorHandler;
 use crate::internal::config::parser::ConfigErrorKind;
 use crate::internal::config::parser::PathEntryConfig;
 use crate::internal::config::utils::sort_serde_yaml;
@@ -625,18 +626,16 @@ impl ConfigValue {
     pub fn get_as_str_or_none(
         &self,
         key: &str,
-        error_key: &str,
-        on_error: &mut impl FnMut(ConfigErrorKind),
+        error_handler: &ConfigErrorHandler,
     ) -> Option<String> {
         if let Some(value) = self.get(key) {
             match value.as_str_forced() {
                 Some(value) => Some(value),
                 None => {
-                    on_error(ConfigErrorKind::InvalidValueType {
-                        key: error_key.to_string(),
-                        expected: "string".to_string(),
-                        actual: value.as_serde_yaml(),
-                    });
+                    error_handler
+                        .with_expected("string")
+                        .with_actual(value)
+                        .error(ConfigErrorKind::InvalidValueType);
                     None
                 }
             }
@@ -649,18 +648,16 @@ impl ConfigValue {
         &self,
         key: &str,
         default: &str,
-        error_key: &str,
-        on_error: &mut impl FnMut(ConfigErrorKind),
+        error_handler: &ConfigErrorHandler,
     ) -> String {
         if let Some(value) = self.get(key) {
             match value.as_str_forced() {
                 Some(value) => value,
                 None => {
-                    on_error(ConfigErrorKind::InvalidValueType {
-                        key: error_key.to_string(),
-                        expected: "string".to_string(),
-                        actual: value.as_serde_yaml(),
-                    });
+                    error_handler
+                        .with_expected("string")
+                        .with_actual(value)
+                        .error(ConfigErrorKind::InvalidValueType);
                     default.to_string()
                 }
             }
@@ -669,12 +666,7 @@ impl ConfigValue {
         }
     }
 
-    pub fn get_as_str_array(
-        &self,
-        key: &str,
-        error_key: &str,
-        on_error: &mut impl FnMut(ConfigErrorKind),
-    ) -> Vec<String> {
+    pub fn get_as_str_array(&self, key: &str, error_handler: &ConfigErrorHandler) -> Vec<String> {
         let mut output = Vec::new();
 
         if let Some(value) = self.get(key) {
@@ -685,19 +677,18 @@ impl ConfigValue {
                     if let Some(value) = value.as_str_forced() {
                         output.push(value.to_string());
                     } else {
-                        on_error(ConfigErrorKind::InvalidValueType {
-                            key: format!("{}[{}]", error_key, idx),
-                            actual: value.as_serde_yaml(),
-                            expected: "string".to_string(),
-                        });
+                        error_handler
+                            .with_index(idx)
+                            .with_expected("string")
+                            .with_actual(value)
+                            .error(ConfigErrorKind::InvalidValueType);
                     }
                 }
             } else {
-                on_error(ConfigErrorKind::InvalidValueType {
-                    key: error_key.to_string(),
-                    actual: value.as_serde_yaml(),
-                    expected: "string or array of strings".to_string(),
-                });
+                error_handler
+                    .with_expected("string or array of strings")
+                    .with_actual(value)
+                    .error(ConfigErrorKind::InvalidValueType);
             }
         }
 
@@ -721,18 +712,16 @@ impl ConfigValue {
     pub fn get_as_bool_or_none(
         &self,
         key: &str,
-        error_key: &str,
-        on_error: &mut impl FnMut(ConfigErrorKind),
+        error_handler: &ConfigErrorHandler,
     ) -> Option<bool> {
         if let Some(value) = self.get(key) {
             match value.as_bool_forced() {
                 Some(value) => Some(value),
                 None => {
-                    on_error(ConfigErrorKind::InvalidValueType {
-                        key: error_key.to_string(),
-                        expected: "bool".to_string(),
-                        actual: value.as_serde_yaml(),
-                    });
+                    error_handler
+                        .with_expected("bool")
+                        .with_actual(value)
+                        .error(ConfigErrorKind::InvalidValueType);
                     None
                 }
             }
@@ -745,18 +734,16 @@ impl ConfigValue {
         &self,
         key: &str,
         default: bool,
-        error_key: &str,
-        on_error: &mut impl FnMut(ConfigErrorKind),
+        error_handler: &ConfigErrorHandler,
     ) -> bool {
         if let Some(value) = self.get(key) {
             match value.as_bool_forced() {
                 Some(value) => value,
                 None => {
-                    on_error(ConfigErrorKind::InvalidValueType {
-                        key: error_key.to_string(),
-                        expected: "bool".to_string(),
-                        actual: value.as_serde_yaml(),
-                    });
+                    error_handler
+                        .with_expected("bool")
+                        .with_actual(value)
+                        .error(ConfigErrorKind::InvalidValueType);
                     default
                 }
             }
@@ -775,18 +762,16 @@ impl ConfigValue {
     pub fn get_as_float_or_none(
         &self,
         key: &str,
-        error_key: &str,
-        on_error: &mut impl FnMut(ConfigErrorKind),
+        error_handler: &ConfigErrorHandler,
     ) -> Option<f64> {
         if let Some(value) = self.get(key) {
             match value.as_float() {
                 Some(value) => Some(value),
                 None => {
-                    on_error(ConfigErrorKind::InvalidValueType {
-                        key: error_key.to_string(),
-                        expected: "float".to_string(),
-                        actual: value.as_serde_yaml(),
-                    });
+                    error_handler
+                        .with_expected("float")
+                        .with_actual(value)
+                        .error(ConfigErrorKind::InvalidValueType);
                     None
                 }
             }
@@ -799,18 +784,16 @@ impl ConfigValue {
         &self,
         key: &str,
         default: f64,
-        error_key: &str,
-        on_error: &mut impl FnMut(ConfigErrorKind),
+        error_handler: &ConfigErrorHandler,
     ) -> f64 {
         if let Some(value) = self.get(key) {
             match value.as_float() {
                 Some(value) => value,
                 None => {
-                    on_error(ConfigErrorKind::InvalidValueType {
-                        key: error_key.to_string(),
-                        expected: "float".to_string(),
-                        actual: value.as_serde_yaml(),
-                    });
+                    error_handler
+                        .with_expected("float")
+                        .with_actual(value)
+                        .error(ConfigErrorKind::InvalidValueType);
                     default
                 }
             }
@@ -829,18 +812,16 @@ impl ConfigValue {
     pub fn get_as_integer_or_none(
         &self,
         key: &str,
-        error_key: &str,
-        on_error: &mut impl FnMut(ConfigErrorKind),
+        error_handler: &ConfigErrorHandler,
     ) -> Option<i64> {
         if let Some(value) = self.get(key) {
             match value.as_integer() {
                 Some(value) => Some(value),
                 None => {
-                    on_error(ConfigErrorKind::InvalidValueType {
-                        key: error_key.to_string(),
-                        expected: "integer".to_string(),
-                        actual: value.as_serde_yaml(),
-                    });
+                    error_handler
+                        .with_expected("integer")
+                        .with_actual(value)
+                        .error(ConfigErrorKind::InvalidValueType);
                     None
                 }
             }
@@ -1244,5 +1225,17 @@ impl ConfigValue {
 
     pub fn set_value(&mut self, value: Option<Box<ConfigData>>) {
         self.value = value;
+    }
+}
+
+impl From<ConfigValue> for serde_yaml::Value {
+    fn from(value: ConfigValue) -> Self {
+        value.as_serde_yaml()
+    }
+}
+
+impl From<&ConfigValue> for serde_yaml::Value {
+    fn from(value: &ConfigValue) -> Self {
+        value.as_serde_yaml()
     }
 }

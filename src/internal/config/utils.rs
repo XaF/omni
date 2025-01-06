@@ -4,6 +4,7 @@ use std::os::unix::fs::PermissionsExt;
 
 use humantime::parse_duration;
 
+use crate::internal::config::parser::ConfigErrorHandler;
 use crate::internal::config::parser::ConfigErrorKind;
 use crate::internal::config::ConfigValue;
 
@@ -31,8 +32,7 @@ pub fn sort_serde_yaml(value: &serde_yaml::Value) -> serde_yaml::Value {
 pub fn parse_duration_or_default(
     value: Option<&ConfigValue>,
     default: u64,
-    error_key: &str,
-    on_error: &mut impl FnMut(ConfigErrorKind),
+    error_handler: &ConfigErrorHandler,
 ) -> u64 {
     if let Some(value) = value {
         if let Some(value) = value.as_unsigned_integer() {
@@ -41,18 +41,16 @@ pub fn parse_duration_or_default(
             if let Ok(value) = parse_duration(&value) {
                 return value.as_secs();
             } else {
-                on_error(ConfigErrorKind::InvalidValueType {
-                    key: error_key.to_string(),
-                    expected: "duration".to_string(),
-                    actual: serde_yaml::Value::String(value.to_string()),
-                });
+                error_handler
+                    .with_expected("duration")
+                    .with_actual(value)
+                    .error(ConfigErrorKind::InvalidValueType);
             }
         } else {
-            on_error(ConfigErrorKind::InvalidValueType {
-                key: error_key.to_string(),
-                expected: "duration".to_string(),
-                actual: value.as_serde_yaml(),
-            });
+            error_handler
+                .with_expected("duration")
+                .with_actual(value)
+                .error(ConfigErrorKind::InvalidValueType);
         }
     }
     default

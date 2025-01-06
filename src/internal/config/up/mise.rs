@@ -22,6 +22,7 @@ use crate::internal::cache::CacheManagerError;
 use crate::internal::cache::MiseOperationCache;
 use crate::internal::config;
 use crate::internal::config::global_config;
+use crate::internal::config::parser::ConfigErrorHandler;
 use crate::internal::config::parser::ConfigErrorKind;
 use crate::internal::config::up::homebrew::HomebrewInstall;
 use crate::internal::config::up::utils::data_path_dir_hash;
@@ -1168,15 +1169,13 @@ impl UpConfigMise {
     pub fn from_config_value(
         tool: &str,
         config_value: Option<&ConfigValue>,
-        error_key: &str,
-        on_error: &mut impl FnMut(ConfigErrorKind),
+        error_handler: &ConfigErrorHandler,
     ) -> Self {
         Self::from_config_value_with_params(
             tool,
             config_value,
             UpConfigMiseParams::default(),
-            error_key,
-            on_error,
+            error_handler,
         )
     }
 
@@ -1184,8 +1183,7 @@ impl UpConfigMise {
         tool: &str,
         config_value: Option<&ConfigValue>,
         params: UpConfigMiseParams,
-        error_key: &str,
-        on_error: &mut impl FnMut(ConfigErrorKind),
+        error_handler: &ConfigErrorHandler,
     ) -> Self {
         let mut version = "latest".to_string();
         let mut backend = None;
@@ -1209,24 +1207,20 @@ impl UpConfigMise {
             } else if let Some(value) = config_value.as_integer() {
                 version = value.to_string();
             } else {
-                if let Some(value) = config_value.get_as_str_or_none(
-                    "version",
-                    &format!("{}.version", error_key),
-                    on_error,
-                ) {
+                if let Some(value) =
+                    config_value.get_as_str_or_none("version", &error_handler.with_key("version"))
+                {
                     version = value.to_string();
                 }
 
-                if let Some(value) = config_value.get_as_str_or_none(
-                    "backend",
-                    &format!("{}.backend", error_key),
-                    on_error,
-                ) {
+                if let Some(value) =
+                    config_value.get_as_str_or_none("backend", &error_handler.with_key("backend"))
+                {
                     backend = Some(value.to_string());
                 }
 
                 let list_dirs =
-                    config_value.get_as_str_array("dir", &format!("{}.dir", error_key), on_error);
+                    config_value.get_as_str_array("dir", &error_handler.with_key("dir"));
                 for value in list_dirs {
                     dirs.insert(
                         PathBuf::from(value)
@@ -1237,16 +1231,14 @@ impl UpConfigMise {
                 }
 
                 if let Some(url) =
-                    config_value.get_as_str_or_none("url", &format!("{}.url", error_key), on_error)
+                    config_value.get_as_str_or_none("url", &error_handler.with_key("url"))
                 {
                     override_tool_url = Some(url.to_string());
                 }
 
-                if let Some(value) = config_value.get_as_bool_or_none(
-                    "upgrade",
-                    &format!("{}.upgrade", error_key),
-                    on_error,
-                ) {
+                if let Some(value) =
+                    config_value.get_as_bool_or_none("upgrade", &error_handler.with_key("upgrade"))
+                {
                     upgrade = value;
                 }
             }

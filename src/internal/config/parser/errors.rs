@@ -1,153 +1,737 @@
+use std::cell::RefCell;
+use std::collections::HashMap;
 use std::fmt;
+use std::path::Path;
+use std::path::PathBuf;
+use std::rc::Rc;
 
+use serde_yaml::Value as YamlValue;
 use thiserror::Error;
 
-#[derive(Debug, Error, Clone)]
-pub enum ConfigErrorKind {
-    #[error("Value for key '{key}' should be a {expected} but found {actual:?}")]
-    InvalidValueType {
-        key: String,
-        expected: String,
-        actual: serde_yaml::Value,
+use crate::internal::commands::utils::abs_or_rel_path;
+use crate::internal::user_interface::colors::StringColor;
+
+#[derive(Clone)]
+pub enum ConfigErrorHandler {
+    Active {
+        context: HashMap<String, YamlValue>,
+        errors: Rc<RefCell<Vec<ConfigError>>>,
     },
-    #[error("Value for key '{key}' should be one of {expected:?} but found {actual:?}")]
-    InvalidValue {
-        key: String,
-        expected: Vec<String>,
-        actual: serde_yaml::Value,
-    },
-    #[error("Value for key '{key}' should define a valid range, but found [{min}, {max}[ instead")]
-    InvalidRange { key: String, min: usize, max: usize },
-    #[error("Value for key '{key}' should be a valid package, but found '{package}'")]
-    InvalidPackage { key: String, package: String },
-    #[error("Key '{key}' is missing")]
-    MissingKey { key: String },
-    #[error("Value for key '{key}' is empty")]
-    EmptyKey { key: String },
-    #[error(
-        "Value for key '{key}' should be a table with a single key-value pair but found {actual:?}"
-    )]
-    NotExactlyOneKeyInTable {
-        key: String,
-        actual: serde_yaml::Value,
-    },
-    #[error("Value {actual:?} for '{key}' is not supported in this context")]
-    UnsupportedValueInContext {
-        key: String,
-        actual: serde_yaml::Value,
-    },
-    #[error("Unable to parse value {actual:?} for key '{key}': {error}")]
-    ParsingError {
-        key: String,
-        actual: serde_yaml::Value,
-        error: String,
-    },
-    #[error("Missing subkey for key '{key}' in metadata header at line {lineno}")]
-    MetadataHeaderMissingSubkey { key: String, lineno: usize },
-    #[error("Line {lineno} in metadata header is a 'continue' but there is no current key")]
-    MetadataHeaderContinueWithoutKey { lineno: usize },
-    #[error("Unknown key '{key}' in metadata header at line {lineno}")]
-    MetadataHeaderUnknownKey { key: String, lineno: usize },
-    #[error(
-        "Key '{key}' in metadata header at line {lineno} previously defined at line {prev_lineno}"
-    )]
-    MetadataHeaderDuplicateKey {
-        key: String,
-        lineno: usize,
-        prev_lineno: usize,
-    },
-    #[error("No syntax provided")]
-    MetadataHeaderMissingSyntax,
-    #[error("No help provided")]
-    MetadataHeaderMissingHelp,
-    #[error("Empty part in the definition of group '{group}'")]
-    MetadataHeaderGroupEmptyPart { group: String },
-    #[error("Invalid part '{part}' in the definition of group '{group}'")]
-    MetadataHeaderGroupInvalidPart { group: String, part: String },
-    #[error("Unknown configuration key '{key}' in the definition of group '{group}'")]
-    MetadataHeaderGroupUnknownConfigKey { group: String, key: String },
-    #[error("Group '{group}' does not have any parameters")]
-    MetadataHeaderGroupMissingParameters { group: String },
-    #[error("Empty part in the definition of parameter '{parameter}'")]
-    MetadataHeaderParameterEmptyPart { parameter: String },
-    #[error("Invalid part '{part}' in the definition of parameter '{parameter}'")]
-    MetadataHeaderParameterInvalidPart { parameter: String, part: String },
-    #[error("Unknown configuration key '{key}' in the definition of parameter '{parameter}'")]
-    MetadataHeaderParameterUnknownConfigKey { parameter: String, key: String },
-    #[error(
-        "Invalid value '{value}' for key '{key}' in the definition of group or parameter {parameter}"
-    )]
-    MetadataHeaderParameterInvalidKeyValue {
-        parameter: String,
-        key: String,
-        value: String,
-    },
-    #[error("Missing description for parameter '{parameter}'")]
-    MetadataHeaderParameterMissingDescription { parameter: String },
-    #[error("File '{path}' is not executable")]
-    OmniPathFileNotExecutable { path: String },
-    #[error("Failed to load metadata for file '{path}'")]
-    OmniPathFileFailedToLoadMetadata { path: String },
+    Noop,
 }
 
-impl ConfigErrorKind {
-    pub fn path(&self) -> Option<&str> {
-        match self {
-            ConfigErrorKind::OmniPathFileNotExecutable { path } => Some(path),
-            ConfigErrorKind::OmniPathFileFailedToLoadMetadata { path } => Some(path),
-            _ => None,
+impl ConfigErrorHandler {
+    pub fn new() -> Self {
+        Self::Active {
+            context: HashMap::new(),
+            errors: Rc::new(RefCell::new(Vec::new())),
         }
     }
 
-    pub fn lineno(&self) -> Option<usize> {
+    pub fn noop() -> Self {
+        Self::Noop
+    }
+
+    #[inline(always)]
+    pub fn with_context<V: Into<YamlValue>>(&self, key: &str, value: V) -> Self {
         match self {
-            ConfigErrorKind::MetadataHeaderMissingSubkey { lineno, .. } => Some(*lineno),
-            ConfigErrorKind::MetadataHeaderContinueWithoutKey { lineno } => Some(*lineno),
-            ConfigErrorKind::MetadataHeaderUnknownKey { lineno, .. } => Some(*lineno),
-            ConfigErrorKind::MetadataHeaderDuplicateKey { lineno, .. } => Some(*lineno),
-            _ => None,
+            Self::Active { context, errors } => {
+                let mut new_context = context.clone();
+                new_context.insert(key.to_string(), value.into());
+                Self::Active {
+                    context: new_context,
+                    errors: errors.clone(),
+                }
+            }
+            Self::Noop => Self::Noop,
         }
+    }
+
+    #[inline(always)]
+    pub fn with_expected<V: Into<YamlValue>>(&self, expected: V) -> Self {
+        self.with_context("expected", expected.into())
+    }
+
+    #[inline(always)]
+    pub fn with_actual<V: Into<YamlValue>>(&self, actual: V) -> Self {
+        self.with_context("actual", actual.into())
+    }
+
+    #[inline(always)]
+    pub fn with_file<P: AsRef<Path>>(&self, path: P) -> Self {
+        self.with_context(
+            "file",
+            path.as_ref().to_str().unwrap_or_default().to_string(),
+        )
+    }
+
+    #[inline(always)]
+    pub fn with_lineno(&self, lineno: usize) -> Self {
+        self.with_context("lineno", lineno as u64)
+    }
+
+    #[inline(always)]
+    pub fn with_key<S: AsRef<str>>(&self, key: S) -> Self {
+        match self {
+            Self::Active { context, errors } => {
+                // Update the key
+                let key = key.as_ref();
+                let new_key = match context.get("key") {
+                    Some(YamlValue::String(cur)) => format!("{}.{}", cur, key),
+                    Some(_) | None => key.to_string(),
+                };
+
+                // Create a new context
+                let mut new_context = context.clone();
+                new_context.insert("key".to_string(), new_key.into());
+
+                Self::Active {
+                    context: new_context,
+                    errors: errors.clone(),
+                }
+            }
+            Self::Noop => Self::Noop,
+        }
+    }
+
+    #[inline(always)]
+    pub fn with_index(&self, index: usize) -> Self {
+        match self {
+            Self::Active { context, errors } => {
+                // Update the key
+                let new_key = format!(
+                    "{}[{}]",
+                    context
+                        .get("key")
+                        .unwrap_or(&YamlValue::Null)
+                        .as_str()
+                        .unwrap_or("."),
+                    index
+                );
+
+                // Create a new context
+                let mut new_context = context.clone();
+                new_context.insert("key".to_string(), new_key.into());
+
+                Self::Active {
+                    context: new_context,
+                    errors: errors.clone(),
+                }
+            }
+            Self::Noop => Self::Noop,
+        }
+    }
+
+    #[inline(always)]
+    pub fn error(&self, kind: ConfigErrorKind) {
+        if let Self::Active { context, errors } = self {
+            match ConfigError::new_from_kind(kind, context.clone()) {
+                Ok(error) => errors.borrow_mut().push(error),
+                Err(e) => panic!("Unable to create error: {}", e),
+            }
+        }
+    }
+
+    #[inline(always)]
+    pub fn errors(&self) -> Vec<ConfigError> {
+        match self {
+            Self::Active { errors, .. } => errors.borrow().clone(),
+            Self::Noop => vec![],
+        }
+    }
+
+    #[inline(always)]
+    pub fn has_errors(&self) -> bool {
+        match self {
+            Self::Active { errors, .. } => !errors.borrow().is_empty(),
+            Self::Noop => false,
+        }
+    }
+
+    #[inline(always)]
+    pub fn last_error(&self) -> Option<ConfigError> {
+        match self {
+            Self::Active { errors, .. } => errors.borrow().last().cloned(),
+            Self::Noop => None,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Eq, PartialEq)]
+pub struct ConfigError {
+    file: String,
+    lineno: usize,
+    errorcode: String,
+    message: String,
+    default_ignored: bool,
+}
+
+impl ConfigError {
+    pub fn new_from_kind(
+        kind: ConfigErrorKind,
+        context: HashMap<String, serde_yaml::Value>,
+    ) -> Result<Self, String> {
+        let file = context
+            .get("file")
+            .ok_or("Missing 'file' key in context")?
+            .as_str()
+            .ok_or("Value for 'file' is not a string")?;
+
+        let lineno = context
+            .get("lineno")
+            .map(|v| v.as_u64())
+            .flatten()
+            .map(|v| v as usize)
+            .unwrap_or(0);
+
+        let message = match kind {
+            ConfigErrorKind::InvalidValueType => {
+                let key = context
+                    .get("key")
+                    .ok_or("Missing 'key' key in context")?
+                    .as_str()
+                    .ok_or("Value for 'key' is not a string")?;
+
+                let expected = context
+                    .get("expected")
+                    .ok_or("Missing 'expected' key in context")?;
+
+                let expected = match expected {
+                    YamlValue::String(s) => vec![s.to_string()],
+                    YamlValue::Sequence(seq) => {
+                        let mut values = Vec::new();
+                        for value in seq {
+                            if let Some(s) = value.as_str() {
+                                values.push(s.to_string());
+                            }
+                        }
+                        values
+                    }
+                    _ => {
+                        return Err("Value for 'expected' is not a string or a sequence".to_string())
+                    }
+                };
+
+                let actual = context
+                    .get("actual")
+                    .ok_or("Missing 'actual' key in context")?;
+
+                format!(
+                    "value for key '{}' should be {} but found {:?}",
+                    key,
+                    if expected.len() == 1 {
+                        format!("a '{}'", expected[0])
+                    } else {
+                        format!("any type of {:?}", expected)
+                    },
+                    actual,
+                )
+            }
+            ConfigErrorKind::InvalidValue => {
+                let key = context
+                    .get("key")
+                    .ok_or("Missing 'key' key in context")?
+                    .as_str()
+                    .ok_or("Value for 'key' is not a string")?;
+
+                let expected = context
+                    .get("expected")
+                    .ok_or("Missing 'expected' key in context")?;
+
+                let expected = match expected {
+                    YamlValue::String(s) => vec![s.to_string()],
+                    YamlValue::Sequence(seq) => {
+                        let mut values = Vec::new();
+                        for value in seq {
+                            if let Some(s) = value.as_str() {
+                                values.push(s.to_string());
+                            }
+                        }
+                        values
+                    }
+                    _ => {
+                        return Err("Value for 'expected' is not a sequence".to_string());
+                    }
+                };
+
+                let actual = context
+                    .get("actual")
+                    .ok_or("Missing 'actual' key in context")?;
+
+                format!(
+                    "value for key '{}' should be {} but found {:?}",
+                    key,
+                    if expected.len() == 1 {
+                        format!("'{}'", expected[0])
+                    } else {
+                        format!("one of {:?}", expected)
+                    },
+                    actual,
+                )
+            }
+            ConfigErrorKind::InvalidRange => {
+                let key = context
+                    .get("key")
+                    .ok_or("Missing 'key' key in context")?
+                    .as_str()
+                    .ok_or("Value for 'key' is not a string")?;
+
+                let min = context
+                    .get("min")
+                    .ok_or("Missing 'min' key in context")?
+                    .as_u64()
+                    .ok_or("Value for 'min' is not a number")?;
+
+                let max = context
+                    .get("max")
+                    .ok_or("Missing 'max' key in context")?
+                    .as_u64()
+                    .ok_or("Value for 'max' is not a number")?;
+
+                format!(
+                    "value for key '{}' should define a valid range, but found [{}, {}[ instead",
+                    key, min, max
+                )
+            }
+            ConfigErrorKind::InvalidPackage => {
+                let key = context
+                    .get("key")
+                    .ok_or("Missing 'key' key in context")?
+                    .as_str()
+                    .ok_or("Value for 'key' is not a string")?;
+
+                let package = context
+                    .get("package")
+                    .ok_or("Missing 'package' key in context")?
+                    .as_str()
+                    .ok_or("Value for 'package' is not a string")?;
+
+                format!(
+                    "value for key '{}' should be a valid package, but found '{}'",
+                    key, package
+                )
+            }
+            ConfigErrorKind::MissingKey => {
+                let key = context
+                    .get("key")
+                    .ok_or("Missing 'key' key in context")?
+                    .as_str()
+                    .ok_or("Value for 'key' is not a string")?;
+
+                format!("key '{}' is missing", key)
+            }
+            ConfigErrorKind::EmptyKey => {
+                let key = context
+                    .get("key")
+                    .ok_or("Missing 'key' key in context")?
+                    .as_str()
+                    .ok_or("Value for 'key' is not a string")?;
+
+                format!("value for key '{}' is empty", key)
+            }
+            ConfigErrorKind::NotExactlyOneKeyInTable => {
+                let key = context
+                    .get("key")
+                    .ok_or("Missing 'key' key in context")?
+                    .as_str()
+                    .ok_or("Value for 'key' is not a string")?;
+
+                let actual = context
+                    .get("actual")
+                    .ok_or("Missing 'actual' key in context")?;
+
+                format!(
+                    "value for key '{}' should be a table with a single key-value pair but found {:?}",
+                    key, actual
+                )
+            }
+            ConfigErrorKind::UnsupportedValueInContext => {
+                let key = context
+                    .get("key")
+                    .ok_or("Missing 'key' key in context")?
+                    .as_str()
+                    .ok_or("Value for 'key' is not a string")?;
+
+                let actual = context
+                    .get("actual")
+                    .ok_or("Missing 'actual' key in context")?;
+
+                format!(
+                    "value {:?} for '{}' is not supported in this context",
+                    actual, key
+                )
+            }
+            ConfigErrorKind::ParsingError => {
+                let key = context
+                    .get("key")
+                    .ok_or("Missing 'key' key in context")?
+                    .as_str()
+                    .ok_or("Value for 'key' is not a string")?;
+
+                let actual = context
+                    .get("actual")
+                    .ok_or("Missing 'actual' key in context")?;
+
+                let error = context
+                    .get("error")
+                    .ok_or("Missing 'error' key in context")?
+                    .as_str()
+                    .ok_or("Value for 'error' is not a string")?;
+
+                format!(
+                    "unable to parse value {:?} for key '{}': {}",
+                    actual, key, error
+                )
+            }
+            ConfigErrorKind::MetadataHeaderMissingSubkey => {
+                let key = context
+                    .get("key")
+                    .ok_or("Missing 'key' key in context")?
+                    .as_str()
+                    .ok_or("Value for 'key' is not a string")?;
+
+                format!("missing subkey for key '{}'", key)
+            }
+            ConfigErrorKind::MetadataHeaderContinueWithoutKey => {
+                "found a 'continue' ('+') line, but there is no current key".to_string()
+            }
+            ConfigErrorKind::MetadataHeaderUnknownKey => {
+                let key = context
+                    .get("key")
+                    .ok_or("Missing 'key' key in context")?
+                    .as_str()
+                    .ok_or("Value for 'key' is not a string")?;
+
+                format!("unknown key '{}'", key)
+            }
+            ConfigErrorKind::MetadataHeaderDuplicateKey => {
+                let key = context
+                    .get("key")
+                    .ok_or("Missing 'key' key in context")?
+                    .as_str()
+                    .ok_or("Value for 'key' is not a string")?;
+
+                let prev_lineno = context
+                    .get("prev_lineno")
+                    .ok_or("Missing 'prev_lineno' key in context")?
+                    .as_u64()
+                    .ok_or("Value for 'prev_lineno' is not a number")?;
+
+                format!("key '{}' previously defined at line {}", key, prev_lineno)
+            }
+            ConfigErrorKind::MetadataHeaderMissingSyntax => {
+                "missing syntax for the command".to_string()
+            }
+            ConfigErrorKind::MetadataHeaderMissingHelp => {
+                "missing help for the command".to_string()
+            }
+            ConfigErrorKind::MetadataHeaderInvalidValueType => {
+                let key = context
+                    .get("key")
+                    .ok_or("Missing 'key' key in context")?
+                    .as_str()
+                    .ok_or("Value for 'key' is not a string")?;
+
+                let value = context
+                    .get("value")
+                    .ok_or("Missing 'value' key in context")?
+                    .as_str()
+                    .ok_or("Value for 'value' is not a string")?;
+
+                let expected = context
+                    .get("expected")
+                    .ok_or("Missing 'expected' key in context")?
+                    .as_str()
+                    .ok_or("Value for 'expected' is not a string")?;
+
+                format!(
+                    "invalid value '{}' for key '{}', expected {}",
+                    value, key, expected,
+                )
+            }
+            ConfigErrorKind::MetadataHeaderGroupEmptyPart => {
+                let group = context
+                    .get("group")
+                    .ok_or("Missing 'group' key in context")?
+                    .as_str()
+                    .ok_or("Value for 'group' is not a string")?;
+
+                format!("empty part in the definition of group '{}'", group)
+            }
+            ConfigErrorKind::MetadataHeaderGroupInvalidPart => {
+                let group = context
+                    .get("group")
+                    .ok_or("Missing 'group' key in context")?
+                    .as_str()
+                    .ok_or("Value for 'group' is not a string")?;
+
+                let part = context
+                    .get("part")
+                    .ok_or("Missing 'part' key in context")?
+                    .as_str()
+                    .ok_or("Value for 'part' is not a string")?;
+
+                format!(
+                    "invalid part '{}' in the definition of group '{}'",
+                    part, group
+                )
+            }
+            ConfigErrorKind::MetadataHeaderGroupUnknownConfigKey => {
+                let group = context
+                    .get("group")
+                    .ok_or("Missing 'group' key in context")?
+                    .as_str()
+                    .ok_or("Value for 'group' is not a string")?;
+
+                let key = context
+                    .get("key")
+                    .ok_or("Missing 'key' key in context")?
+                    .as_str()
+                    .ok_or("Value for 'key' is not a string")?;
+
+                format!(
+                    "unknown configuration key '{}' in the definition of group '{}'",
+                    key, group
+                )
+            }
+            ConfigErrorKind::MetadataHeaderGroupMissingParameters => {
+                let group = context
+                    .get("group")
+                    .ok_or("Missing 'group' key in context")?
+                    .as_str()
+                    .ok_or("Value for 'group' is not a string")?;
+
+                format!("group '{}' does not have any parameters", group)
+            }
+            ConfigErrorKind::MetadataHeaderParameterEmptyPart => {
+                let parameter = context
+                    .get("parameter")
+                    .ok_or("Missing 'parameter' key in context")?
+                    .as_str()
+                    .ok_or("Value for 'parameter' is not a string")?;
+
+                format!("empty part in the definition of parameter '{}'", parameter)
+            }
+            ConfigErrorKind::MetadataHeaderParameterInvalidPart => {
+                let parameter = context
+                    .get("parameter")
+                    .ok_or("Missing 'parameter' key in context")?
+                    .as_str()
+                    .ok_or("Value for 'parameter' is not a string")?;
+
+                let part = context
+                    .get("part")
+                    .ok_or("Missing 'part' key in context")?
+                    .as_str()
+                    .ok_or("Value for 'part' is not a string")?;
+
+                format!(
+                    "invalid part '{}' in the definition of parameter '{}'",
+                    part, parameter
+                )
+            }
+            ConfigErrorKind::MetadataHeaderParameterUnknownConfigKey => {
+                let parameter = context
+                    .get("parameter")
+                    .ok_or("Missing 'parameter' key in context")?
+                    .as_str()
+                    .ok_or("Value for 'parameter' is not a string")?;
+
+                let key = context
+                    .get("key")
+                    .ok_or("Missing 'key' key in context")?
+                    .as_str()
+                    .ok_or("Value for 'key' is not a string")?;
+
+                format!(
+                    "unknown configuration key '{}' in the definition of parameter '{}'",
+                    key, parameter
+                )
+            }
+            ConfigErrorKind::MetadataHeaderParameterInvalidKeyValue => {
+                let parameter = context
+                    .get("parameter")
+                    .ok_or("Missing 'parameter' key in context")?
+                    .as_str()
+                    .ok_or("Value for 'parameter' is not a string")?;
+
+                let key = context
+                    .get("key")
+                    .ok_or("Missing 'key' key in context")?
+                    .as_str()
+                    .ok_or("Value for 'key' is not a string")?;
+
+                let value = context
+                    .get("value")
+                    .ok_or("Missing 'value' key in context")?
+                    .as_str()
+                    .ok_or("Value for 'value' is not a string")?;
+
+                format!(
+                    "invalid value '{}' for key '{}' in the definition of parameter {}",
+                    value, key, parameter
+                )
+            }
+            ConfigErrorKind::MetadataHeaderParameterMissingDescription => {
+                let parameter = context
+                    .get("parameter")
+                    .ok_or("Missing 'parameter' key in context")?
+                    .as_str()
+                    .ok_or("Value for 'parameter' is not a string")?;
+
+                format!("missing description for parameter '{}'", parameter)
+            }
+            ConfigErrorKind::OmniPathNotFound => "path not found".to_string(),
+            ConfigErrorKind::OmniPathFileNotExecutable => "file is not executable".to_string(),
+            ConfigErrorKind::OmniPathFileFailedToLoadMetadata => {
+                "failed to load metadata for file".to_string()
+            }
+        };
+
+        let default_ignored = kind.default_ignored();
+
+        Ok(Self {
+            file: file.to_string(),
+            lineno,
+            errorcode: kind.to_string(),
+            message,
+            default_ignored,
+        })
+    }
+
+    pub fn file(&self) -> &str {
+        &self.file
+    }
+
+    pub fn lineno(&self) -> usize {
+        self.lineno
     }
 
     pub fn errorcode(&self) -> &str {
-        match self {
-            //  Cxxx for configuration errors
-            //    C0xx for key errors
-            ConfigErrorKind::MissingKey { .. } => "C001",
-            ConfigErrorKind::EmptyKey { .. } => "C002",
-            ConfigErrorKind::NotExactlyOneKeyInTable { .. } => "C003",
-            //    C1xx for value errors
-            ConfigErrorKind::InvalidValueType { .. } => "C101",
-            ConfigErrorKind::InvalidValue { .. } => "C102",
-            ConfigErrorKind::InvalidRange { .. } => "C103",
-            ConfigErrorKind::InvalidPackage { .. } => "C104",
-            ConfigErrorKind::UnsupportedValueInContext { .. } => "C110",
-            ConfigErrorKind::ParsingError { .. } => "C120",
-            //  MDxx for metadata errors
-            //    MD0x for larger missing errors
-            ConfigErrorKind::MetadataHeaderMissingHelp => "MD01",
-            ConfigErrorKind::MetadataHeaderMissingSyntax => "MD02",
-            //    MD1x for key or subkey errors
-            ConfigErrorKind::MetadataHeaderContinueWithoutKey { .. } => "MD12",
-            ConfigErrorKind::MetadataHeaderDuplicateKey { .. } => "MD13",
-            ConfigErrorKind::MetadataHeaderMissingSubkey { .. } => "MD11",
-            ConfigErrorKind::MetadataHeaderUnknownKey { .. } => "MD10",
-            //    MD2x for group errors
-            ConfigErrorKind::MetadataHeaderGroupEmptyPart { .. } => "MD28",
-            ConfigErrorKind::MetadataHeaderGroupInvalidPart { .. } => "MD27",
-            ConfigErrorKind::MetadataHeaderGroupMissingParameters { .. } => "MD21",
-            ConfigErrorKind::MetadataHeaderGroupUnknownConfigKey { .. } => "MD29",
-            //    MD3x for parameter errors
-            ConfigErrorKind::MetadataHeaderParameterEmptyPart { .. } => "MD38",
-            ConfigErrorKind::MetadataHeaderParameterInvalidKeyValue { .. } => "MD31",
-            ConfigErrorKind::MetadataHeaderParameterInvalidPart { .. } => "MD37",
-            ConfigErrorKind::MetadataHeaderParameterMissingDescription { .. } => "MD32",
-            ConfigErrorKind::MetadataHeaderParameterUnknownConfigKey { .. } => "MD39",
-            //  Pxxx for path errors
-            //    P001 is "Path not found"
-            ConfigErrorKind::OmniPathFileNotExecutable { .. } => "P002",
-            ConfigErrorKind::OmniPathFileFailedToLoadMetadata { .. } => "P003",
-        }
+        &self.errorcode
+    }
+
+    pub fn message(&self) -> &str {
+        &self.message
+    }
+
+    pub fn default_ignored(&self) -> bool {
+        self.default_ignored
+    }
+
+    pub fn printable(&self) -> String {
+        let colon = ":".light_black();
+        format!(
+            "{file}{colon}{lineno}{colon}{errorcode}{colon}{message}",
+            colon = colon,
+            file = abs_or_rel_path(&self.file).light_blue(),
+            lineno = self.lineno.light_green(),
+            errorcode = self.errorcode.red(),
+            message = self.message,
+        )
+    }
+}
+
+impl Ord for ConfigError {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        self.file
+            .cmp(&other.file)
+            .then(self.lineno.cmp(&other.lineno))
+            .then(self.errorcode.cmp(&other.errorcode))
+            .then(self.message.cmp(&other.message))
+    }
+}
+
+impl PartialOrd for ConfigError {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl std::fmt::Display for ConfigError {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        write!(f, "{}", self.printable())
+    }
+}
+
+#[derive(Debug, Error, Clone)]
+pub enum ConfigErrorKind {
+    //  Cxxx for configuration errors
+    //    C0xx for key errors
+    #[error("C001")]
+    MissingKey,
+    #[error("C002")]
+    EmptyKey,
+    #[error("C003")]
+    NotExactlyOneKeyInTable,
+
+    //    C1xx for value errors
+    #[error("C101")]
+    InvalidValueType,
+    #[error("C102")]
+    InvalidValue,
+    #[error("C103")]
+    InvalidRange,
+    #[error("C104")]
+    InvalidPackage,
+    #[error("C110")]
+    UnsupportedValueInContext,
+    #[error("C120")]
+    ParsingError,
+
+    //  Mxxx for metadata errors
+    //    Mx0x for larger missing errors
+    #[error("M001")]
+    MetadataHeaderMissingHelp,
+    #[error("M002")]
+    MetadataHeaderMissingSyntax,
+    #[error("M003")]
+    MetadataHeaderInvalidValueType,
+
+    //    M1xx for key or subkey errors
+    #[error("M100")]
+    MetadataHeaderUnknownKey,
+    #[error("M101")]
+    MetadataHeaderMissingSubkey,
+    #[error("M102")]
+    MetadataHeaderContinueWithoutKey,
+    #[error("M103")]
+    MetadataHeaderDuplicateKey,
+
+    //    M2xx for group errors
+    #[error("M201")]
+    MetadataHeaderGroupMissingParameters,
+    #[error("M207")]
+    MetadataHeaderGroupInvalidPart,
+    #[error("M208")]
+    MetadataHeaderGroupEmptyPart,
+    #[error("M209")]
+    MetadataHeaderGroupUnknownConfigKey,
+
+    //    M3xx for parameter errors
+    #[error("M301")]
+    MetadataHeaderParameterInvalidKeyValue,
+    #[error("M302")]
+    MetadataHeaderParameterMissingDescription,
+    #[error("M307")]
+    MetadataHeaderParameterInvalidPart,
+    #[error("M308")]
+    MetadataHeaderParameterEmptyPart,
+    #[error("M309")]
+    MetadataHeaderParameterUnknownConfigKey,
+
+    //  Pxxx for path errors
+    #[error("P001")]
+    OmniPathNotFound,
+    #[error("P002")]
+    OmniPathFileNotExecutable,
+    #[error("P003")]
+    OmniPathFileFailedToLoadMetadata,
+}
+
+impl ConfigErrorKind {
+    pub fn default_ignored(&self) -> bool {
+        matches!(self, ConfigErrorKind::MetadataHeaderMissingSyntax)
     }
 }
 

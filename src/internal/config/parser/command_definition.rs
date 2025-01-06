@@ -10,6 +10,7 @@ use serde::Serialize;
 use crate::internal::cache::utils as cache_utils;
 use crate::internal::commands::utils::str_to_bool;
 use crate::internal::commands::HelpCommand;
+use crate::internal::config::parser::ConfigErrorHandler;
 use crate::internal::config::parser::ConfigErrorKind;
 use crate::internal::config::parser::ParseArgsErrorKind;
 use crate::internal::config::parser::ParseArgsValue;
@@ -44,61 +45,57 @@ pub struct CommandDefinition {
 impl CommandDefinition {
     pub(super) fn from_config_value(
         config_value: &ConfigValue,
-        error_key: &str,
-        on_error: &mut impl FnMut(ConfigErrorKind),
+        error_handler: &ConfigErrorHandler,
     ) -> Self {
-        let desc =
-            config_value.get_as_str_or_none("desc", &format!("{}.desc", error_key), on_error);
+        let desc = config_value.get_as_str_or_none("desc", &error_handler.with_key("desc"));
 
         let run = config_value
-            .get_as_str_or_none("run", &format!("{}.run", error_key), on_error)
+            .get_as_str_or_none("run", &error_handler.with_key("run"))
             .unwrap_or_else(|| {
-                on_error(ConfigErrorKind::MissingKey {
-                    key: format!("{}.run", error_key),
-                });
+                error_handler
+                    .with_key("run")
+                    .error(ConfigErrorKind::MissingKey);
                 "true".to_string()
             });
 
-        let aliases =
-            config_value.get_as_str_array("aliases", &format!("{}.aliases", error_key), on_error);
+        let aliases = config_value.get_as_str_array("aliases", &error_handler.with_key("aliases"));
 
         let syntax = match config_value.get("syntax") {
             Some(value) => {
-                CommandSyntax::from_config_value(&value, &format!("{}.syntax", error_key), on_error)
+                CommandSyntax::from_config_value(&value, &error_handler.with_key("syntax"))
             }
             None => None,
         };
 
         let category =
-            config_value.get_as_str_array("category", &format!("{}.category", error_key), on_error);
+            config_value.get_as_str_array("category", &error_handler.with_key("category"));
         let category = if category.is_empty() {
             None
         } else {
             Some(category)
         };
 
-        let dir = config_value.get_as_str_or_none("dir", &format!("{}.dir", error_key), on_error);
+        let dir = config_value.get_as_str_or_none("dir", &error_handler.with_key("dir"));
 
         let subcommands = match config_value.get("subcommands") {
             Some(value) => {
                 let mut subcommands = HashMap::new();
+                let subcommands_error_handler = error_handler.with_key("subcommands");
                 if let Some(table) = value.as_table() {
                     for (key, value) in table {
                         subcommands.insert(
                             key.to_string(),
                             CommandDefinition::from_config_value(
                                 &value,
-                                &format!("{}.{}", error_key, key),
-                                on_error,
+                                &subcommands_error_handler.with_key(key),
                             ),
                         );
                     }
                 } else {
-                    on_error(ConfigErrorKind::InvalidValueType {
-                        key: format!("{}.subcommands", error_key),
-                        actual: value.as_serde_yaml(),
-                        expected: "table".to_string(),
-                    });
+                    subcommands_error_handler
+                        .with_expected("table")
+                        .with_actual(value)
+                        .error(ConfigErrorKind::InvalidValueType);
                 }
                 Some(subcommands)
             }
@@ -108,8 +105,7 @@ impl CommandDefinition {
         let argparser = config_value.get_as_bool_or_default(
             "argparser",
             false, // Disable argparser by default
-            &format!("{}.argparser", error_key),
-            on_error,
+            &error_handler.with_key("argparser"),
         );
 
         Self {
@@ -146,16 +142,14 @@ impl CommandSyntax {
 
     pub fn deserialize<'de, D>(
         deserializer: D,
-        error_key: &str,
-        on_error: &mut impl FnMut(ConfigErrorKind),
+        error_handler: &ConfigErrorHandler,
     ) -> Result<Self, D::Error>
     where
         D: serde::Deserializer<'de>,
     {
         let value = serde_yaml::Value::deserialize(deserializer)?;
         let config_value = ConfigValue::from_value(ConfigSource::Null, ConfigScope::Null, value);
-        if let Some(command_syntax) =
-            CommandSyntax::from_config_value(&config_value, error_key, on_error)
+        if let Some(command_syntax) = CommandSyntax::from_config_value(&config_value, error_handler)
         {
             Ok(command_syntax)
         } else {
@@ -165,8 +159,7 @@ impl CommandSyntax {
 
     pub(super) fn from_config_value(
         config_value: &ConfigValue,
-        error_key: &str,
-        on_error: &mut impl FnMut(ConfigErrorKind),
+        error_handler: &ConfigErrorHandler,
     ) -> Option<Self> {
         let mut usage = None;
         let mut parameters = vec![];
@@ -174,12 +167,7 @@ impl CommandSyntax {
 
         if let Some(array) = config_value.as_array() {
             parameters.extend(array.iter().enumerate().filter_map(|(idx, value)| {
-                SyntaxOptArg::from_config_value(
-                    value,
-                    None,
-                    &format!("{}[{}]", error_key, idx),
-                    on_error,
-                )
+                SyntaxOptArg::from_config_value(value, None, &error_handler.with_index(idx))
             }));
         } else if let Some(table) = config_value.as_table() {
             let keys = [
@@ -193,6 +181,7 @@ impl CommandSyntax {
 
             for (key, required) in keys {
                 if let Some(value) = table.get(key) {
+                    let param_error_handler = error_handler.with_key(key);
                     if let Some(value) = value.as_array() {
                         let arguments = value
                             .iter()
@@ -201,56 +190,47 @@ impl CommandSyntax {
                                 SyntaxOptArg::from_config_value(
                                     value,
                                     required,
-                                    &format!("{}.{}[{}]", error_key, key, idx),
-                                    on_error,
+                                    &param_error_handler.with_index(idx),
                                 )
                             })
                             .collect::<Vec<SyntaxOptArg>>();
                         parameters.extend(arguments);
-                    } else if let Some(arg) = SyntaxOptArg::from_config_value(
-                        value,
-                        required,
-                        &format!("{}.{}", error_key, key),
-                        on_error,
-                    ) {
+                    } else if let Some(arg) =
+                        SyntaxOptArg::from_config_value(value, required, &param_error_handler)
+                    {
                         parameters.push(arg);
                     } else {
-                        on_error(ConfigErrorKind::InvalidValueType {
-                            key: format!("{}.{}", error_key, key),
-                            actual: value.as_serde_yaml(),
-                            expected: "array or table".to_string(),
-                        });
+                        param_error_handler
+                            .with_expected("array or table")
+                            .with_actual(value)
+                            .error(ConfigErrorKind::InvalidValueType);
                     }
                 }
             }
 
             if let Some(value) = table.get("groups") {
-                groups = SyntaxGroup::from_config_value_multi(
-                    value,
-                    &format!("{}.groups", error_key),
-                    on_error,
-                );
+                groups =
+                    SyntaxGroup::from_config_value_multi(value, &error_handler.with_key("groups"));
             }
 
             if let Some(value) = table.get("usage") {
                 if let Some(value) = value.as_str_forced() {
                     usage = Some(value.to_string());
                 } else {
-                    on_error(ConfigErrorKind::InvalidValueType {
-                        key: format!("{}.usage", error_key),
-                        actual: value.as_serde_yaml(),
-                        expected: "string".to_string(),
-                    });
+                    error_handler
+                        .with_key("usage")
+                        .with_expected("string")
+                        .with_actual(value)
+                        .error(ConfigErrorKind::InvalidValueType);
                 }
             }
         } else if let Some(value) = config_value.as_str_forced() {
             usage = Some(value.to_string());
         } else {
-            on_error(ConfigErrorKind::InvalidValueType {
-                key: error_key.to_string(),
-                actual: config_value.as_serde_yaml(),
-                expected: "string, array or table".to_string(),
-            });
+            error_handler
+                .with_expected("array, table or string")
+                .with_actual(config_value)
+                .error(ConfigErrorKind::InvalidValueType);
         }
 
         if parameters.is_empty() && groups.is_empty() && usage.is_none() {
@@ -827,8 +807,7 @@ impl SyntaxOptArg {
     pub(super) fn from_config_value(
         config_value: &ConfigValue,
         required: Option<bool>,
-        error_key: &str,
-        on_error: &mut impl FnMut(ConfigErrorKind),
+        error_handler: &ConfigErrorHandler,
     ) -> Option<Self> {
         let mut names;
         let mut arg_type;
@@ -861,11 +840,11 @@ impl SyntaxOptArg {
                     (names, arg_type, placeholders, leftovers) = parse_arg_name(&name_value);
                     value_for_details = Some(config_value.clone());
                 } else {
-                    on_error(ConfigErrorKind::InvalidValueType {
-                        key: format!("{}.name", error_key),
-                        actual: name_value.as_serde_yaml(),
-                        expected: "string".to_string(),
-                    });
+                    error_handler
+                        .with_key("name")
+                        .with_expected("string")
+                        .with_actual(name_value)
+                        .error(ConfigErrorKind::InvalidValueType);
                     return None;
                 }
             } else if table.len() == 1 {
@@ -876,9 +855,9 @@ impl SyntaxOptArg {
                     return None;
                 }
             } else {
-                on_error(ConfigErrorKind::MissingKey {
-                    key: format!("{}.name", error_key),
-                });
+                error_handler
+                    .with_key("name")
+                    .error(ConfigErrorKind::MissingKey);
                 return None;
             }
 
@@ -886,133 +865,102 @@ impl SyntaxOptArg {
                 if let Some(value_str) = value_for_details.as_str() {
                     desc = Some(value_str.to_string());
                 } else if let Some(value_table) = value_for_details.as_table() {
-                    desc = value_for_details.get_as_str_or_none(
-                        "desc",
-                        &format!("{}.desc", error_key),
-                        on_error,
-                    );
-                    dest = value_for_details.get_as_str_or_none(
-                        "dest",
-                        &format!("{}.dest", error_key),
-                        on_error,
-                    );
+                    desc = value_for_details
+                        .get_as_str_or_none("desc", &error_handler.with_key("desc"));
+                    dest = value_for_details
+                        .get_as_str_or_none("dest", &error_handler.with_key("dest"));
 
                     if required.is_none() {
                         required = Some(value_for_details.get_as_bool_or_default(
                             "required",
                             false,
-                            &format!("{}.required", error_key),
-                            on_error,
+                            &error_handler.with_key("required"),
                         ));
                     }
 
                     // Try to load the placeholders from the placeholders key,
                     // if not found, try to load it from the placeholder key
                     for key in &["placeholders", "placeholder"] {
-                        let ph = value_for_details.get_as_str_array(
-                            key,
-                            &format!("{}.{}", error_key, key),
-                            on_error,
-                        );
+                        let ph =
+                            value_for_details.get_as_str_array(key, &error_handler.with_key(key));
                         if !ph.is_empty() {
                             placeholders = ph;
                             break;
                         }
                     }
 
-                    default = value_for_details.get_as_str_or_none(
-                        "default",
-                        &format!("{}.default", error_key),
-                        on_error,
-                    );
+                    default = value_for_details
+                        .get_as_str_or_none("default", &error_handler.with_key("default"));
                     default_missing_value = value_for_details.get_as_str_or_none(
                         "default_missing_value",
-                        &format!("{}.default_missing_value", error_key),
-                        on_error,
+                        &error_handler.with_key("default_missing_value"),
                     );
                     num_values = SyntaxOptArgNumValues::from_config_value(
                         value_table.get("num_values"),
-                        &format!("{}.num_values", error_key),
-                        on_error,
+                        &error_handler.with_key("num_values"),
                     );
                     value_delimiter = value_for_details
-                        .get_as_str_or_none(
-                            "delimiter",
-                            &format!("{}.delimiter", error_key),
-                            on_error,
-                        )
+                        .get_as_str_or_none("delimiter", &error_handler.with_key("delimiter"))
                         .and_then(|value| {
                             value.chars().next().or_else(|| {
-                                on_error(ConfigErrorKind::InvalidValueType {
-                                    key: format!("{}.delimiter", error_key),
-                                    actual: serde_yaml::Value::String(value),
-                                    expected: "non-empty string".to_string(),
-                                });
+                                error_handler
+                                    .with_key("delimiter")
+                                    .with_expected("non-empty string")
+                                    .with_actual(value)
+                                    .error(ConfigErrorKind::InvalidValueType);
                                 None
                             })
                         });
                     last_arg_double_hyphen = value_for_details.get_as_bool_or_default(
                         "last",
                         false,
-                        &format!("{}.last", error_key),
-                        on_error,
+                        &error_handler.with_key("last"),
                     );
                     leftovers = value_for_details.get_as_bool_or_default(
                         "leftovers",
                         false,
-                        &format!("{}.leftovers", error_key),
-                        on_error,
+                        &error_handler.with_key("leftovers"),
                     );
                     allow_hyphen_values = value_for_details.get_as_bool_or_default(
                         "allow_hyphen_values",
                         false,
-                        &format!("{}.allow_hyphen_values", error_key),
-                        on_error,
+                        &error_handler.with_key("allow_hyphen_values"),
                     );
                     allow_negative_numbers = value_for_details.get_as_bool_or_default(
                         "allow_negative_numbers",
                         false,
-                        &format!("{}.allow_negative_numbers", error_key),
-                        on_error,
+                        &error_handler.with_key("allow_negative_numbers"),
                     );
                     group_occurrences = value_for_details.get_as_bool_or_default(
                         "group_occurrences",
                         false,
-                        &format!("{}.group_occurrences", error_key),
-                        on_error,
+                        &error_handler.with_key("group_occurrences"),
                     );
 
                     arg_type = SyntaxOptArgType::from_config_value(
                         value_table.get("type"),
                         value_table.get("values"),
                         value_delimiter,
-                        &format!("{}.type", error_key),
-                        on_error,
+                        &error_handler.with_key("type"),
                     )
                     .unwrap_or(SyntaxOptArgType::String);
 
-                    requires = value_for_details.get_as_str_array(
-                        "requires",
-                        &format!("{}.requires", error_key),
-                        on_error,
-                    );
+                    requires = value_for_details
+                        .get_as_str_array("requires", &error_handler.with_key("requires"));
 
                     conflicts_with = value_for_details.get_as_str_array(
                         "conflicts_with",
-                        &format!("{}.conflicts_with", error_key),
-                        on_error,
+                        &error_handler.with_key("conflicts_with"),
                     );
 
                     required_without = value_for_details.get_as_str_array(
                         "required_without",
-                        &format!("{}.required_without", error_key),
-                        on_error,
+                        &error_handler.with_key("required_without"),
                     );
 
                     required_without_all = value_for_details.get_as_str_array(
                         "required_without_all",
-                        &format!("{}.required_without_all", error_key),
-                        on_error,
+                        &error_handler.with_key("required_without_all"),
                     );
 
                     if let Some(required_if_eq_value) = value_table.get("required_if_eq") {
@@ -1021,19 +969,20 @@ impl SyntaxOptArg {
                                 if let Some(value) = value.as_str_forced() {
                                     required_if_eq.insert(key.to_string(), value.to_string());
                                 } else {
-                                    on_error(ConfigErrorKind::InvalidValueType {
-                                        key: format!("{}.required_if_eq.{}", error_key, key),
-                                        actual: value.as_serde_yaml(),
-                                        expected: "string".to_string(),
-                                    });
+                                    error_handler
+                                        .with_key("required_if_eq")
+                                        .with_key(key)
+                                        .with_expected("string")
+                                        .with_actual(value)
+                                        .error(ConfigErrorKind::InvalidValueType);
                                 }
                             }
                         } else {
-                            on_error(ConfigErrorKind::InvalidValueType {
-                                key: format!("{}.required_if_eq", error_key),
-                                actual: required_if_eq_value.as_serde_yaml(),
-                                expected: "table".to_string(),
-                            });
+                            error_handler
+                                .with_key("required_if_eq")
+                                .with_expected("table")
+                                .with_actual(required_if_eq_value)
+                                .error(ConfigErrorKind::InvalidValueType);
                         }
                     }
 
@@ -1043,38 +992,35 @@ impl SyntaxOptArg {
                                 if let Some(value) = value.as_str_forced() {
                                     required_if_eq_all.insert(key.to_string(), value.to_string());
                                 } else {
-                                    on_error(ConfigErrorKind::InvalidValueType {
-                                        key: format!("{}.required_if_eq_all.{}", error_key, key),
-                                        actual: value.as_serde_yaml(),
-                                        expected: "string".to_string(),
-                                    });
+                                    error_handler
+                                        .with_key("required_if_eq_all")
+                                        .with_key(key)
+                                        .with_expected("string")
+                                        .with_actual(value)
+                                        .error(ConfigErrorKind::InvalidValueType);
                                 }
                             }
                         } else {
-                            on_error(ConfigErrorKind::InvalidValueType {
-                                key: format!("{}.required_if_eq_all", error_key),
-                                actual: required_if_eq_all_value.as_serde_yaml(),
-                                expected: "table".to_string(),
-                            });
+                            error_handler
+                                .with_key("required_if_eq_all")
+                                .with_expected("table")
+                                .with_actual(required_if_eq_all_value)
+                                .error(ConfigErrorKind::InvalidValueType);
                         }
                     }
 
-                    let aliases = value_for_details.get_as_str_array(
-                        "aliases",
-                        &format!("{}.aliases", error_key),
-                        on_error,
-                    );
+                    let aliases = value_for_details
+                        .get_as_str_array("aliases", &error_handler.with_key("aliases"));
                     names.extend(aliases);
                 }
             }
         } else if let Some(value) = config_value.as_str() {
             (names, arg_type, placeholders, leftovers) = parse_arg_name(&value);
         } else {
-            on_error(ConfigErrorKind::InvalidValueType {
-                key: error_key.to_string(),
-                actual: config_value.as_serde_yaml(),
-                expected: "string or table".to_string(),
-            });
+            error_handler
+                .with_expected("string or table")
+                .with_actual(config_value)
+                .error(ConfigErrorKind::InvalidValueType);
             return None;
         }
 
@@ -2020,11 +1966,7 @@ impl From<usize> for SyntaxOptArgNumValues {
 }
 
 impl SyntaxOptArgNumValues {
-    pub fn from_str(
-        value: &str,
-        error_key: &str,
-        on_error: &mut impl FnMut(ConfigErrorKind),
-    ) -> Option<Self> {
+    pub fn from_str(value: &str, error_handler: &ConfigErrorHandler) -> Option<Self> {
         let value = value.trim();
 
         if value.contains("..") {
@@ -2043,11 +1985,10 @@ impl SyntaxOptArgNumValues {
                 value => match value.parse::<usize>() {
                     Ok(value) => Some(value),
                     Err(_) => {
-                        on_error(ConfigErrorKind::InvalidValueType {
-                            key: error_key.to_string(),
-                            actual: serde_yaml::Value::String(value.to_string()),
-                            expected: "positive integer".to_string(),
-                        });
+                        error_handler
+                            .with_expected("positive integer")
+                            .with_actual(value)
+                            .error(ConfigErrorKind::InvalidValueType);
                         return None;
                     }
                 },
@@ -2058,11 +1999,10 @@ impl SyntaxOptArgNumValues {
                 value => match value.parse::<usize>() {
                     Ok(value) => Some(value),
                     Err(_) => {
-                        on_error(ConfigErrorKind::InvalidValueType {
-                            key: error_key.to_string(),
-                            actual: serde_yaml::Value::String(value.to_string()),
-                            expected: "positive integer".to_string(),
-                        });
+                        error_handler
+                            .with_expected("positive integer")
+                            .with_actual(value)
+                            .error(ConfigErrorKind::InvalidValueType);
                         return None;
                     }
                 },
@@ -2075,11 +2015,10 @@ impl SyntaxOptArgNumValues {
                     if max > 0 {
                         Some(Self::AtMost(max - 1))
                     } else {
-                        on_error(ConfigErrorKind::InvalidRange {
-                            key: error_key.to_string(),
-                            min: 0,
-                            max: 0,
-                        });
+                        error_handler
+                            .with_context("min", 0)
+                            .with_context("max", 0)
+                            .error(ConfigErrorKind::InvalidRange);
                         None
                     }
                 }
@@ -2088,11 +2027,10 @@ impl SyntaxOptArgNumValues {
                     if min <= max {
                         Some(Self::Between(min, max))
                     } else {
-                        on_error(ConfigErrorKind::InvalidRange {
-                            key: error_key.to_string(),
-                            min,
-                            max: max + 1,
-                        });
+                        error_handler
+                            .with_context("min", min)
+                            .with_context("max", max + 1)
+                            .error(ConfigErrorKind::InvalidRange);
                         None
                     }
                 }
@@ -2100,11 +2038,10 @@ impl SyntaxOptArgNumValues {
                     if min < max {
                         Some(Self::Between(min, max - 1))
                     } else {
-                        on_error(ConfigErrorKind::InvalidRange {
-                            key: error_key.to_string(),
-                            min,
-                            max,
-                        });
+                        error_handler
+                            .with_context("min", min)
+                            .with_context("max", max)
+                            .error(ConfigErrorKind::InvalidRange);
                         None
                     }
                 }
@@ -2113,11 +2050,10 @@ impl SyntaxOptArgNumValues {
             let value = match value.parse::<usize>() {
                 Ok(value) => Some(value),
                 Err(_) => {
-                    on_error(ConfigErrorKind::InvalidValueType {
-                        key: error_key.to_string(),
-                        actual: serde_yaml::Value::String(value.to_string()),
-                        expected: "positive integer".to_string(),
-                    });
+                    error_handler
+                        .with_expected("positive integer")
+                        .with_actual(value)
+                        .error(ConfigErrorKind::InvalidValueType);
                     None
                 }
             }?;
@@ -2127,21 +2063,19 @@ impl SyntaxOptArgNumValues {
 
     fn from_config_value(
         config_value: Option<&ConfigValue>,
-        error_key: &str,
-        on_error: &mut impl FnMut(ConfigErrorKind),
+        error_handler: &ConfigErrorHandler,
     ) -> Option<Self> {
         let config_value = config_value?;
 
         if let Some(value) = config_value.as_integer() {
             Some(Self::Exactly(value as usize))
         } else if let Some(value) = config_value.as_str_forced() {
-            Self::from_str(&value, error_key, on_error)
+            Self::from_str(&value, error_handler)
         } else {
-            on_error(ConfigErrorKind::InvalidValueType {
-                key: error_key.to_string(),
-                actual: config_value.as_serde_yaml(),
-                expected: "string or integer".to_string(),
-            });
+            error_handler
+                .with_expected("positive integer or range")
+                .with_actual(config_value)
+                .error(ConfigErrorKind::InvalidValueType);
             None
         }
     }
@@ -2223,22 +2157,19 @@ impl SyntaxOptArgType {
         config_value_type: Option<&ConfigValue>,
         config_value_values: Option<&ConfigValue>,
         value_delimiter: Option<char>,
-        error_key: &str,
-        on_error: &mut impl FnMut(ConfigErrorKind),
+        error_handler: &ConfigErrorHandler,
     ) -> Option<Self> {
         let config_value_type = config_value_type?;
 
         let obj = Self::from_str(
             &config_value_type.as_str_forced().or_else(|| {
-                on_error(ConfigErrorKind::InvalidValueType {
-                    key: error_key.to_string(),
-                    actual: config_value_type.as_serde_yaml(),
-                    expected: "string".to_string(),
-                });
+                error_handler
+                    .with_expected("string")
+                    .with_actual(config_value_type)
+                    .error(ConfigErrorKind::InvalidValueType);
                 None
             })?,
-            error_key,
-            on_error,
+            error_handler,
         )?;
 
         match obj {
@@ -2262,6 +2193,7 @@ impl SyntaxOptArgType {
                         }
                     }
                 }
+                // TODO: add error for empty enum
             }
             _ => return Some(obj),
         }
@@ -2269,11 +2201,7 @@ impl SyntaxOptArgType {
         None
     }
 
-    pub fn from_str(
-        value: &str,
-        error_key: &str,
-        on_error: &mut impl FnMut(ConfigErrorKind),
-    ) -> Option<Self> {
+    pub fn from_str(value: &str, error_handler: &ConfigErrorHandler) -> Option<Self> {
         let mut is_array = false;
 
         let normalized = value.trim().to_lowercase();
@@ -2317,20 +2245,10 @@ impl SyntaxOptArgType {
 
                     Self::Enum(values)
                 } else {
-                    on_error(ConfigErrorKind::InvalidValue {
-                        key: error_key.to_string(),
-                        actual: serde_yaml::Value::String(value.to_string()),
-                        expected: vec![
-                            "int".to_string(),
-                            "float".to_string(),
-                            "bool".to_string(),
-                            "flag".to_string(),
-                            "count".to_string(),
-                            "str".to_string(),
-                            "enum or enum(xx, yy, zz)".to_string(),
-                            "array/<type>".to_string(),
-                        ],
-                    });
+                    error_handler
+                        .with_expected("int, float, bool, flag, count, str, enum or array/<type>")
+                        .with_actual(value)
+                        .error(ConfigErrorKind::InvalidValue);
 
                     return None;
                 }
@@ -2432,20 +2350,16 @@ impl SyntaxGroup {
     /// The ConfigValue object received is the contents of the `groups` key in the config file.
     pub(super) fn from_config_value_multi(
         config_value: &ConfigValue,
-        error_key: &str,
-        on_error: &mut impl FnMut(ConfigErrorKind),
+        error_handler: &ConfigErrorHandler,
     ) -> Vec<Self> {
         let mut groups = vec![];
 
         if let Some(array) = config_value.as_array() {
             // If this is an array, we can simply iterate over it and create the groups
             for (idx, value) in array.iter().enumerate() {
-                if let Some(group) = Self::from_config_value(
-                    value,
-                    None,
-                    &format!("{}[{}]", error_key, idx),
-                    on_error,
-                ) {
+                if let Some(group) =
+                    Self::from_config_value(value, None, &error_handler.with_index(idx))
+                {
                     groups.push(group);
                 }
             }
@@ -2455,18 +2369,16 @@ impl SyntaxGroup {
                 if let Some(group) = Self::from_config_value(
                     &value,
                     Some(name.to_string()),
-                    &format!("{}.{}", error_key, name),
-                    on_error,
+                    &error_handler.with_key(name),
                 ) {
                     groups.push(group);
                 }
             }
         } else {
-            on_error(ConfigErrorKind::InvalidValueType {
-                key: error_key.to_string(),
-                actual: config_value.as_serde_yaml(),
-                expected: "array or table".to_string(),
-            });
+            error_handler
+                .with_expected("array or table")
+                .with_actual(config_value)
+                .error(ConfigErrorKind::InvalidValueType);
         }
 
         groups
@@ -2475,33 +2387,31 @@ impl SyntaxGroup {
     pub(super) fn from_config_value(
         config_value: &ConfigValue,
         name: Option<String>,
-        error_key: &str,
-        on_error: &mut impl FnMut(ConfigErrorKind),
+        error_handler: &ConfigErrorHandler,
     ) -> Option<Self> {
         // Exit early if the value is not a table
         let table = if let Some(table) = config_value.as_table() {
             // Exit early if the table is empty
             if table.is_empty() {
-                on_error(ConfigErrorKind::MissingKey {
-                    key: format!("{}.name", error_key),
-                });
-                on_error(ConfigErrorKind::MissingKey {
-                    key: format!("{}.parameters", error_key),
-                });
+                error_handler
+                    .with_key("name")
+                    .error(ConfigErrorKind::MissingKey);
+                error_handler
+                    .with_key("parameters")
+                    .error(ConfigErrorKind::MissingKey);
                 return None;
             }
             table
         } else {
-            on_error(ConfigErrorKind::InvalidValueType {
-                key: error_key.to_string(),
-                actual: config_value.as_serde_yaml(),
-                expected: "table".to_string(),
-            });
+            error_handler
+                .with_expected("table")
+                .with_actual(config_value)
+                .error(ConfigErrorKind::InvalidValueType);
             return None;
         };
 
         let mut config_value = config_value;
-        let mut error_key = error_key.to_string();
+        let mut error_handler = error_handler.clone();
 
         // Handle the group name
         let name = match name {
@@ -2513,51 +2423,47 @@ impl SyntaxGroup {
 
                     // Change the config to be the value of the key, this will be the group's config
                     config_value = table.get(&key)?;
-                    error_key = format!("{}.{}", error_key, key);
+                    error_handler = error_handler.with_key(&key);
 
                     // Exit early if the value is not a table
                     if !config_value.is_table() {
-                        on_error(ConfigErrorKind::InvalidValueType {
-                            key: error_key,
-                            actual: config_value.as_serde_yaml(),
-                            expected: "table".to_string(),
-                        });
+                        error_handler
+                            .with_expected("table")
+                            .with_actual(config_value)
+                            .error(ConfigErrorKind::InvalidValueType);
                         return None;
                     }
 
                     // Return the key as the name of the group
                     key
-                } else if let Some(name) = config_value.get("name") {
-                    if let Some(name) = name.as_str_forced() {
+                } else if let Some(name_config_value) = config_value.get("name") {
+                    if let Some(name) = name_config_value.as_str_forced() {
                         name.to_string()
                     } else {
-                        on_error(ConfigErrorKind::InvalidValueType {
-                            key: format!("{}.name", error_key),
-                            actual: name.as_serde_yaml(),
-                            expected: "string".to_string(),
-                        });
+                        error_handler
+                            .with_key("name")
+                            .with_expected("string")
+                            .with_actual(name_config_value)
+                            .error(ConfigErrorKind::InvalidValueType);
                         return None;
                     }
                 } else {
-                    on_error(ConfigErrorKind::MissingKey {
-                        key: format!("{}.name", error_key),
-                    });
+                    error_handler
+                        .with_key("name")
+                        .error(ConfigErrorKind::MissingKey);
                     return None;
                 }
             }
         };
 
         // Handle the group parameters
-        let parameters = config_value.get_as_str_array(
-            "parameters",
-            &format!("{}.parameters", error_key),
-            on_error,
-        );
+        let parameters =
+            config_value.get_as_str_array("parameters", &error_handler.with_key("parameters"));
         // No parameters, skip this group
         if parameters.is_empty() {
-            on_error(ConfigErrorKind::MissingKey {
-                key: format!("{}.parameters", error_key),
-            });
+            error_handler
+                .with_key("parameters")
+                .error(ConfigErrorKind::MissingKey);
             return None;
         }
 
@@ -2565,25 +2471,20 @@ impl SyntaxGroup {
         let multiple = config_value.get_as_bool_or_default(
             "multiple",
             false,
-            &format!("{}.multiple", error_key),
-            on_error,
+            &error_handler.with_key("multiple"),
         );
 
         let required = config_value.get_as_bool_or_default(
             "required",
             false,
-            &format!("{}.required", error_key),
-            on_error,
+            &error_handler.with_key("required"),
         );
 
         let requires =
-            config_value.get_as_str_array("requires", &format!("{}.requires", error_key), on_error);
+            config_value.get_as_str_array("requires", &error_handler.with_key("requires"));
 
-        let conflicts_with = config_value.get_as_str_array(
-            "conflicts_with",
-            &format!("{}.conflicts_with", error_key),
-            on_error,
-        );
+        let conflicts_with = config_value
+            .get_as_str_array("conflicts_with", &error_handler.with_key("conflicts_with"));
 
         Some(Self {
             name,

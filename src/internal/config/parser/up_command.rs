@@ -3,6 +3,7 @@ use std::collections::HashMap;
 use serde::Deserialize;
 use serde::Serialize;
 
+use crate::internal::config::parser::errors::ConfigErrorHandler;
 use crate::internal::config::parser::errors::ConfigErrorKind;
 use crate::internal::config::utils::check_allowed;
 use crate::internal::config::ConfigScope;
@@ -44,8 +45,7 @@ impl UpCommandConfig {
 
     pub(super) fn from_config_value(
         config_value: Option<ConfigValue>,
-        error_key: &str,
-        on_error: &mut impl FnMut(ConfigErrorKind),
+        error_handler: &ConfigErrorHandler,
     ) -> Self {
         let config_value = match config_value {
             Some(config_value) => config_value,
@@ -60,49 +60,42 @@ impl UpCommandConfig {
         let auto_bootstrap = config_value_global.get_as_bool_or_default(
             "auto_bootstrap",
             Self::DEFAULT_AUTO_BOOTSTRAP,
-            &format!("{}.auto_bootstrap", error_key),
-            on_error,
+            &error_handler.with_key("auto_bootstrap"),
         );
 
         let notify_workdir_config_updated = config_value_global.get_as_bool_or_default(
             "notify_workdir_config_updated",
             Self::DEFAULT_NOTIFY_WORKDIR_CONFIG_UPDATED,
-            &format!("{}.notify_workdir_config_updated", error_key),
-            on_error,
+            &error_handler.with_key("notify_workdir_config_updated"),
         );
 
         let notify_workdir_config_available = config_value_global.get_as_bool_or_default(
             "notify_workdir_config_available",
             Self::DEFAULT_NOTIFY_WORKDIR_CONFIG_AVAILABLE,
-            &format!("{}.notify_workdir_config_available", error_key),
-            on_error,
+            &error_handler.with_key("notify_workdir_config_available"),
         );
 
         let preferred_tools = config_value_global.get_as_str_array(
             "preferred_tools",
-            &format!("{}.preferred_tools", error_key),
-            on_error,
+            &error_handler.with_key("preferred_tools"),
         );
 
         let mise_version = config_value_global.get_as_str_or_default(
             "mise_version",
             Self::DEFAULT_MISE_VERSION,
-            &format!("{}.mise_version", error_key),
-            on_error,
+            &error_handler.with_key("mise_version"),
         );
 
         // For upgrade, we allow overriding in the workdir
         let upgrade = config_value.get_as_bool_or_default(
             "upgrade",
             Self::DEFAULT_UPGRADE,
-            &format!("{}.upgrade", error_key),
-            on_error,
+            &error_handler.with_key("upgrade"),
         );
 
         let operations = UpCommandOperationConfig::from_config_value(
             config_value.get("operations"),
-            &format!("{}.operations", error_key),
-            on_error,
+            &error_handler.with_key("operations"),
         );
 
         Self {
@@ -181,8 +174,7 @@ impl UpCommandOperationConfig {
 
     fn from_config_value(
         config_value: Option<ConfigValue>,
-        error_key: &str,
-        on_error: &mut impl FnMut(ConfigErrorKind),
+        error_handler: &ConfigErrorHandler,
     ) -> Self {
         let config_value = match config_value {
             Some(config_value) => config_value,
@@ -193,40 +185,30 @@ impl UpCommandOperationConfig {
             .reject_scope(&ConfigScope::Workdir)
             .unwrap_or_default();
 
-        let allowed = config_value_global.get_as_str_array(
-            "allowed",
-            &format!("{}.allowed", error_key),
-            on_error,
-        );
+        let allowed =
+            config_value_global.get_as_str_array("allowed", &error_handler.with_key("allowed"));
 
-        let sources = config_value_global.get_as_str_array(
-            "sources",
-            &format!("{}.sources", error_key),
-            on_error,
-        );
+        let sources =
+            config_value_global.get_as_str_array("sources", &error_handler.with_key("sources"));
 
         let mise = UpCommandOperationMiseConfig::from_config_value(
             config_value.get("mise"),
-            &format!("{}.mise", error_key),
-            on_error,
+            &error_handler.with_key("mise"),
         );
 
         let cargo_install = UpCommandOperationCargoInstallConfig::from_config_value(
             config_value.get("cargo-install"),
-            &format!("{}.cargo-install", error_key),
-            on_error,
+            &error_handler.with_key("cargo-install"),
         );
 
         let go_install = UpCommandOperationGoInstallConfig::from_config_value(
             config_value.get("go-install"),
-            &format!("{}.go-install", error_key),
-            on_error,
+            &error_handler.with_key("go-install"),
         );
 
         let github_release = UpCommandOperationGithubReleaseConfig::from_config_value(
             config_value.get("github-release"),
-            &format!("{}.github-release", error_key),
-            on_error,
+            &error_handler.with_key("github-release"),
         );
 
         Self {
@@ -250,8 +232,7 @@ pub(crate) struct UpCommandOperationMiseConfig {
 impl UpCommandOperationMiseConfig {
     fn from_config_value(
         config_value: Option<ConfigValue>,
-        error_key: &str,
-        on_error: &mut impl FnMut(ConfigErrorKind),
+        error_handler: &ConfigErrorHandler,
     ) -> Self {
         let config_value = match config_value {
             Some(config_value) => config_value,
@@ -262,17 +243,11 @@ impl UpCommandOperationMiseConfig {
             .reject_scope(&ConfigScope::Workdir)
             .unwrap_or_default();
 
-        let backends = config_value_global.get_as_str_array(
-            "backends",
-            &format!("{}.backends", error_key),
-            on_error,
-        );
+        let backends =
+            config_value_global.get_as_str_array("backends", &error_handler.with_key("backends"));
 
-        let sources = config_value_global.get_as_str_array(
-            "sources",
-            &format!("{}.sources", error_key),
-            on_error,
-        );
+        let sources =
+            config_value_global.get_as_str_array("sources", &error_handler.with_key("sources"));
 
         let default_plugin_sources =
             if let Some(value) = config_value_global.get("default_plugin_sources") {
@@ -282,22 +257,23 @@ impl UpCommandOperationMiseConfig {
                         .filter_map(|(key, value)| match value.as_str_forced() {
                             Some(value) => Some((key.to_string(), value.to_string())),
                             None => {
-                                on_error(ConfigErrorKind::InvalidValueType {
-                                    key: format!("{}.default_plugin_sources.{}", error_key, key),
-                                    expected: "string".to_string(),
-                                    actual: value.as_serde_yaml(),
-                                });
+                                error_handler
+                                    .with_key("default_plugin_sources")
+                                    .with_key(key)
+                                    .with_expected("string")
+                                    .with_actual(value)
+                                    .error(ConfigErrorKind::InvalidValueType);
 
                                 None
                             }
                         })
                         .collect()
                 } else {
-                    on_error(ConfigErrorKind::InvalidValueType {
-                        key: format!("{}.default_plugin_sources", error_key),
-                        expected: "table".to_string(),
-                        actual: value.as_serde_yaml(),
-                    });
+                    error_handler
+                        .with_key("default_plugin_sources")
+                        .with_expected("table")
+                        .with_actual(value)
+                        .error(ConfigErrorKind::InvalidValueType);
 
                     HashMap::new()
                 }
@@ -327,8 +303,7 @@ pub(crate) struct UpCommandOperationCargoInstallConfig {
 impl UpCommandOperationCargoInstallConfig {
     fn from_config_value(
         config_value: Option<ConfigValue>,
-        error_key: &str,
-        on_error: &mut impl FnMut(ConfigErrorKind),
+        error_handler: &ConfigErrorHandler,
     ) -> Self {
         let config_value = match config_value {
             Some(config_value) => config_value,
@@ -339,11 +314,8 @@ impl UpCommandOperationCargoInstallConfig {
             .reject_scope(&ConfigScope::Workdir)
             .unwrap_or_default();
 
-        let crates = config_value_global.get_as_str_array(
-            "crates",
-            &format!("{}.crates", error_key),
-            on_error,
-        );
+        let crates =
+            config_value_global.get_as_str_array("crates", &error_handler.with_key("crates"));
 
         Self { crates }
     }
@@ -361,8 +333,7 @@ pub struct UpCommandOperationGoInstallConfig {
 impl UpCommandOperationGoInstallConfig {
     fn from_config_value(
         config_value: Option<ConfigValue>,
-        error_key: &str,
-        on_error: &mut impl FnMut(ConfigErrorKind),
+        error_handler: &ConfigErrorHandler,
     ) -> Self {
         let config_value = match config_value {
             Some(config_value) => config_value,
@@ -373,11 +344,8 @@ impl UpCommandOperationGoInstallConfig {
             .reject_scope(&ConfigScope::Workdir)
             .unwrap_or_default();
 
-        let sources = config_value_global.get_as_str_array(
-            "sources",
-            &format!("{}.sources", error_key),
-            on_error,
-        );
+        let sources =
+            config_value_global.get_as_str_array("sources", &error_handler.with_key("sources"));
 
         Self { sources }
     }
@@ -395,8 +363,7 @@ pub struct UpCommandOperationGithubReleaseConfig {
 impl UpCommandOperationGithubReleaseConfig {
     fn from_config_value(
         config_value: Option<ConfigValue>,
-        error_key: &str,
-        on_error: &mut impl FnMut(ConfigErrorKind),
+        error_handler: &ConfigErrorHandler,
     ) -> Self {
         let config_value = match config_value {
             Some(config_value) => config_value,
@@ -407,11 +374,8 @@ impl UpCommandOperationGithubReleaseConfig {
             .reject_scope(&ConfigScope::Workdir)
             .unwrap_or_default();
 
-        let repositories = config_value_global.get_as_str_array(
-            "repositories",
-            &format!("{}.repositories", error_key),
-            on_error,
-        );
+        let repositories = config_value_global
+            .get_as_str_array("repositories", &error_handler.with_key("repositories"));
 
         Self { repositories }
     }

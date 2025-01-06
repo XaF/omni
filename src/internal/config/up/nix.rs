@@ -12,6 +12,7 @@ use tokio::process::Command as TokioCommand;
 use crate::internal::cache::up_environments::UpEnvironment;
 use crate::internal::commands::utils::abs_path;
 use crate::internal::config::global_config;
+use crate::internal::config::parser::ConfigErrorHandler;
 use crate::internal::config::parser::ConfigErrorKind;
 use crate::internal::config::parser::EnvOperationEnum;
 use crate::internal::config::up::utils::get_command_output;
@@ -107,15 +108,12 @@ impl UpConfigNix {
     /// ```
     pub fn from_config_value(
         config_value: Option<&ConfigValue>,
-        error_key: &str,
-        on_error: &mut impl FnMut(ConfigErrorKind),
+        error_handler: &ConfigErrorHandler,
     ) -> Self {
         let config_value = match config_value {
             Some(config_value) => config_value,
             None => {
-                on_error(ConfigErrorKind::MissingKey {
-                    key: format!("{}.packages", error_key),
-                });
+                error_handler.error(ConfigErrorKind::EmptyKey);
                 return Self::default();
             }
         };
@@ -128,15 +126,13 @@ impl UpConfigNix {
                         ..Self::default()
                     };
                 } else {
-                    on_error(ConfigErrorKind::InvalidValueType {
-                        key: format!("{}.file", error_key),
-                        actual: nixfile.as_serde_yaml(),
-                        expected: "string".to_string(),
-                    });
+                    error_handler
+                        .with_key("file")
+                        .with_expected("string")
+                        .with_actual(nixfile)
+                        .error(ConfigErrorKind::InvalidValueType);
                 }
-            }
-
-            if let Some(packages) = table.get("packages") {
+            } else if let Some(packages) = table.get("packages") {
                 if let Some(pkg_array) = packages.as_array() {
                     return Self {
                         packages: pkg_array
@@ -146,17 +142,18 @@ impl UpConfigNix {
                         ..Self::default()
                     };
                 } else {
-                    on_error(ConfigErrorKind::InvalidValueType {
-                        key: format!("{}.packages", error_key),
-                        actual: packages.as_serde_yaml(),
-                        expected: "array".to_string(),
-                    });
+                    error_handler
+                        .with_key("packages")
+                        .with_expected("array")
+                        .with_actual(packages)
+                        .error(ConfigErrorKind::InvalidValueType);
                 }
+            } else {
+                error_handler
+                    .with_key("packages")
+                    .error(ConfigErrorKind::MissingKey);
             }
 
-            on_error(ConfigErrorKind::MissingKey {
-                key: format!("{}.packages", error_key),
-            });
             Self::default()
         } else if let Some(pkg_array) = config_value.as_array() {
             Self {
@@ -166,11 +163,12 @@ impl UpConfigNix {
                     .filter_map(|(idx, value)| match value.as_str_forced() {
                         Some(pkg) => Some(pkg.to_string()),
                         None => {
-                            on_error(ConfigErrorKind::InvalidValueType {
-                                key: format!("{}[{}]", error_key, idx),
-                                actual: value.as_serde_yaml(),
-                                expected: "string".to_string(),
-                            });
+                            error_handler
+                                .with_index(idx)
+                                .with_expected("string")
+                                .with_actual(value)
+                                .error(ConfigErrorKind::InvalidValueType);
+
                             None
                         }
                     })
@@ -183,11 +181,10 @@ impl UpConfigNix {
                 ..Self::default()
             }
         } else {
-            on_error(ConfigErrorKind::InvalidValueType {
-                key: error_key.to_string(),
-                actual: config_value.as_serde_yaml(),
-                expected: "string, array or table".to_string(),
-            });
+            error_handler
+                .with_expected("string, array or table")
+                .with_actual(config_value)
+                .error(ConfigErrorKind::InvalidValueType);
 
             Self::default()
         }

@@ -1,6 +1,7 @@
 use serde::Deserialize;
 use serde::Serialize;
 
+use crate::internal::config::parser::ConfigErrorHandler;
 use crate::internal::config::parser::ConfigErrorKind;
 use crate::internal::config::ConfigValue;
 
@@ -29,28 +30,24 @@ impl MatchSkipPromptIfConfig {
 
     pub(super) fn from_config_value(
         config_value: Option<ConfigValue>,
-        error_key: &str,
-        on_error: &mut impl FnMut(ConfigErrorKind),
+        error_handler: &ConfigErrorHandler,
     ) -> Self {
         match config_value {
             Some(config_value) => Self {
                 enabled: config_value.get_as_bool_or_default(
                     "enabled",
                     Self::DEFAULT_ENABLED,
-                    &format!("{}.enabled", error_key),
-                    on_error,
+                    &error_handler.with_key("enabled"),
                 ),
                 first_min: config_value.get_as_float_or_default(
                     "first_min",
                     Self::DEFAULT_FIRST_MIN,
-                    &format!("{}.first_min", error_key),
-                    on_error,
+                    &error_handler.with_key("first_min"),
                 ),
                 second_max: config_value.get_as_float_or_default(
                     "second_max",
                     Self::DEFAULT_SECOND_MAX,
-                    &format!("{}.second_max", error_key),
-                    on_error,
+                    &error_handler.with_key("second_max"),
                 ),
             },
             None => Self::default(),
