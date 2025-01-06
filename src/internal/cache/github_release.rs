@@ -466,16 +466,26 @@ pub struct GithubReleases {
 }
 
 impl GithubReleases {
-    pub fn from_json(json: &str) -> Result<Self, String> {
+    pub fn new() -> Self {
+        Self {
+            releases: vec![],
+            fetched_at: OffsetDateTime::now_utc(),
+        }
+    }
+
+    pub fn add_json(&mut self, json: &str) -> Result<bool, String> {
         let releases: Vec<GithubReleaseVersion> = match serde_json::from_str(json) {
             Ok(releases) => releases,
             Err(err) => return Err(format!("failed to parse releases: {}", err)),
         };
 
-        Ok(Self {
-            releases,
-            fetched_at: OffsetDateTime::now_utc(),
-        })
+        // TODO: Check if we need to continue fetching more releases, i.e. if we
+        //       added all the releases we just fetched, or if we hit the releases
+        //       we already had in the cache (i.e. at least one release was not new)
+        self.releases.extend(releases);
+        self.fetched_at = OffsetDateTime::now_utc();
+
+        Ok(true)
     }
 
     pub fn is_fresh(&self) -> bool {
