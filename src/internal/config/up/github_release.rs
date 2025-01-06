@@ -175,7 +175,7 @@ impl UpConfigGithubReleases {
         }
 
         error_handler
-            .with_expected("string, array, or table")
+            .with_expected(vec!["string", "array", "table"])
             .with_actual(config_value)
             .error(ConfigErrorKind::InvalidValueType);
 
@@ -1925,8 +1925,10 @@ mod tests {
         fn empty() {
             let yaml = "";
             let config_value = ConfigValue::from_str(yaml).expect("failed to create config value");
-            let config =
-                UpConfigGithubReleases::from_config_value(Some(&config_value), "", &mut |_| {});
+            let config = UpConfigGithubReleases::from_config_value(
+                Some(&config_value),
+                &ConfigErrorHandler::noop(),
+            );
             assert_eq!(config.releases.len(), 0);
         }
 
@@ -1934,8 +1936,10 @@ mod tests {
         fn str() {
             let yaml = "owner/repo";
             let config_value = ConfigValue::from_str(yaml).expect("failed to create config value");
-            let config =
-                UpConfigGithubReleases::from_config_value(Some(&config_value), "", &mut |_| {});
+            let config = UpConfigGithubReleases::from_config_value(
+                Some(&config_value),
+                &ConfigErrorHandler::noop(),
+            );
             assert_eq!(config.releases.len(), 1);
             assert_eq!(config.releases[0].repository, "owner/repo");
             assert_eq!(config.releases[0].version, None);
@@ -1949,8 +1953,10 @@ mod tests {
         fn object_single() {
             let yaml = r#"{"repository": "owner/repo"}"#;
             let config_value = ConfigValue::from_str(yaml).expect("failed to create config value");
-            let config =
-                UpConfigGithubReleases::from_config_value(Some(&config_value), "", &mut |_| {});
+            let config = UpConfigGithubReleases::from_config_value(
+                Some(&config_value),
+                &ConfigErrorHandler::noop(),
+            );
             assert_eq!(config.releases.len(), 1);
             assert_eq!(config.releases[0].repository, "owner/repo");
             assert_eq!(config.releases[0].version, None);
@@ -1964,8 +1970,10 @@ mod tests {
         fn object_multi() {
             let yaml = r#"{"owner/repo": "1.2.3", "owner2/repo2": {"version": "2.3.4", "prerelease": true, "build": true, "binary": false, "api_url": "https://gh.example.com"}, "owner3/repo3": {}}"#;
             let config_value = ConfigValue::from_str(yaml).expect("failed to create config value");
-            let config =
-                UpConfigGithubReleases::from_config_value(Some(&config_value), "", &mut |_| {});
+            let config = UpConfigGithubReleases::from_config_value(
+                Some(&config_value),
+                &ConfigErrorHandler::noop(),
+            );
             assert_eq!(config.releases.len(), 3);
 
             assert_eq!(config.releases[0].repository, "owner/repo");
@@ -1997,8 +2005,10 @@ mod tests {
         fn list_multi() {
             let yaml = r#"["owner/repo", {"repository": "owner2/repo2", "version": "2.3.4", "prerelease": true, "build": true, "binary": false, "api_url": "https://gh.example.com"}, {"owner3/repo3": "3.4.5"}, {"owner4/repo4": {"version": "4.5.6"}}]"#;
             let config_value = ConfigValue::from_str(yaml).expect("failed to create config value");
-            let config =
-                UpConfigGithubReleases::from_config_value(Some(&config_value), "", &mut |_| {});
+            let config = UpConfigGithubReleases::from_config_value(
+                Some(&config_value),
+                &ConfigErrorHandler::noop(),
+            );
             assert_eq!(config.releases.len(), 4);
 
             assert_eq!(config.releases[0].repository, "owner/repo");
@@ -2041,8 +2051,10 @@ mod tests {
         fn str() {
             let yaml = "owner/repo";
             let config_value = ConfigValue::from_str(yaml).expect("failed to create config value");
-            let config =
-                UpConfigGithubRelease::from_config_value(Some(&config_value), "", &mut |_| {});
+            let config = UpConfigGithubRelease::from_config_value(
+                Some(&config_value),
+                &ConfigErrorHandler::noop(),
+            );
             assert_eq!(config.repository, "owner/repo");
             assert_eq!(config.version, None);
             assert!(!config.prerelease);
@@ -2055,8 +2067,10 @@ mod tests {
         fn object() {
             let yaml = r#"{"repository": "owner/repo"}"#;
             let config_value = ConfigValue::from_str(yaml).expect("failed to create config value");
-            let config =
-                UpConfigGithubRelease::from_config_value(Some(&config_value), "", &mut |_| {});
+            let config = UpConfigGithubRelease::from_config_value(
+                Some(&config_value),
+                &ConfigErrorHandler::noop(),
+            );
             assert_eq!(config.repository, "owner/repo");
             assert_eq!(config.version, None);
             assert!(!config.prerelease);
@@ -2069,8 +2083,10 @@ mod tests {
         fn object_repo_alias() {
             let yaml = r#"{"repo": "owner/repo"}"#;
             let config_value = ConfigValue::from_str(yaml).expect("failed to create config value");
-            let config =
-                UpConfigGithubRelease::from_config_value(Some(&config_value), "", &mut |_| {});
+            let config = UpConfigGithubRelease::from_config_value(
+                Some(&config_value),
+                &ConfigErrorHandler::noop(),
+            );
             assert_eq!(config.repository, "owner/repo");
             assert_eq!(config.version, None);
             assert!(!config.prerelease);
@@ -2083,8 +2099,10 @@ mod tests {
         fn with_all_values() {
             let yaml = r#"{"repository": "owner/repo", "version": "1.2.3", "prerelease": true, "build": true, "binary": false, "api_url": "https://gh.example.com"}"#;
             let config_value = ConfigValue::from_str(yaml).expect("failed to create config value");
-            let config =
-                UpConfigGithubRelease::from_config_value(Some(&config_value), "", &mut |_| {});
+            let config = UpConfigGithubRelease::from_config_value(
+                Some(&config_value),
+                &ConfigErrorHandler::noop(),
+            );
             assert_eq!(config.repository, "owner/repo");
             assert_eq!(config.version, Some("1.2.3".to_string()));
             assert!(config.prerelease);

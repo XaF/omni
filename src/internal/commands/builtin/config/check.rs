@@ -4,11 +4,9 @@ use std::path::PathBuf;
 use std::process::exit;
 
 use itertools::Itertools;
-use serde::Serialize;
 
 use crate::internal::commands::base::BuiltinCommand;
 use crate::internal::commands::frompath::PathCommand;
-use crate::internal::commands::utils::abs_or_rel_path;
 use crate::internal::commands::Command;
 use crate::internal::config::parser::ConfigError;
 use crate::internal::config::parser::ConfigErrorHandler;
@@ -359,7 +357,7 @@ impl BuiltinCommand for ConfigCheckCommand {
                     Some(entry.to_string())
                 } else {
                     error_handler
-                        .with_file(entry.to_string())
+                        .with_file(entry)
                         .error(ConfigErrorKind::OmniPathNotFound);
 
                     None
@@ -382,8 +380,8 @@ impl BuiltinCommand for ConfigCheckCommand {
             .filter(|e| {
                 args.include_packages || !PathBuf::from(e.file()).starts_with(package_root_path())
             })
-            .filter(|e| check_allowed(&e.file(), &args.patterns))
-            .filter(|e| check_selected(&e, &args.select_errors, &args.ignore_errors))
+            .filter(|e| check_allowed(e.file(), &args.patterns))
+            .filter(|e| check_selected(e, &args.select_errors, &args.ignore_errors))
             .filter(|e| !is_path_gitignored(e.file()).unwrap_or(false))
             .sorted()
             .collect::<Vec<_>>();

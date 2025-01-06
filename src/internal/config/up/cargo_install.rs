@@ -160,7 +160,7 @@ impl UpConfigCargoInstalls {
         }
 
         error_handler
-            .with_expected("string, array, or table")
+            .with_expected(vec!["string", "array", "table"])
             .with_actual(config_value)
             .error(ConfigErrorKind::InvalidValueType);
 

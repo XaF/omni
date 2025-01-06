@@ -23,7 +23,6 @@ use crate::internal::cache::MiseOperationCache;
 use crate::internal::config;
 use crate::internal::config::global_config;
 use crate::internal::config::parser::ConfigErrorHandler;
-use crate::internal::config::parser::ConfigErrorKind;
 use crate::internal::config::up::homebrew::HomebrewInstall;
 use crate::internal::config::up::utils::data_path_dir_hash;
 use crate::internal::config::up::utils::force_remove_dir_all;

@@ -2,7 +2,6 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 use std::fmt;
 use std::path::Path;
-use std::path::PathBuf;
 use std::rc::Rc;
 
 use serde_yaml::Value as YamlValue;
@@ -18,6 +17,12 @@ pub enum ConfigErrorHandler {
         errors: Rc<RefCell<Vec<ConfigError>>>,
     },
     Noop,
+}
+
+impl Default for ConfigErrorHandler {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl ConfigErrorHandler {
@@ -161,9 +166,8 @@ impl ConfigErrorHandler {
 pub struct ConfigError {
     file: String,
     lineno: usize,
-    errorcode: String,
-    message: String,
-    default_ignored: bool,
+    kind: ConfigErrorKind,
+    context: HashMap<String, YamlValue>,
 }
 
 impl ConfigError {
@@ -179,12 +183,178 @@ impl ConfigError {
 
         let lineno = context
             .get("lineno")
-            .map(|v| v.as_u64())
-            .flatten()
+            .and_then(|v| v.as_u64())
             .map(|v| v as usize)
             .unwrap_or(0);
 
-        let message = match kind {
+        Ok(Self {
+            file: file.to_string(),
+            lineno,
+            kind,
+            context,
+        })
+    }
+
+    pub fn file(&self) -> &str {
+        &self.file
+    }
+
+    pub fn lineno(&self) -> usize {
+        self.lineno
+    }
+
+    pub fn errorcode(&self) -> String {
+        self.kind.to_string()
+    }
+
+    pub fn kind(&self) -> &ConfigErrorKind {
+        &self.kind
+    }
+
+    pub fn message(&self) -> String {
+        self.kind
+            .message_from_context(&self.context)
+            .unwrap_or("<error generating message from error context>".to_string())
+    }
+
+    pub fn default_ignored(&self) -> bool {
+        self.kind.default_ignored()
+    }
+
+    pub fn printable(&self) -> String {
+        format!(
+            "{file}{colon}{lineno}{colon}{errorcode}{colon}{message}",
+            colon = ":".light_black(),
+            file = abs_or_rel_path(self.file()).light_blue(),
+            lineno = self.lineno().light_green(),
+            errorcode = self.errorcode().red(),
+            message = self.message(),
+        )
+    }
+
+    #[cfg(test)]
+    pub fn context_str(&self, key: &str) -> String {
+        self.context
+            .get(key)
+            .map(|v| v.as_str().unwrap_or_default().to_string())
+            .unwrap_or_default()
+    }
+
+    #[cfg(test)]
+    pub fn context_usize(&self, key: &str) -> usize {
+        self.context
+            .get(key)
+            .map(|v| v.as_u64().unwrap_or(0) as usize)
+            .unwrap_or(0)
+    }
+}
+
+impl Ord for ConfigError {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        self.file
+            .cmp(&other.file)
+            .then(self.lineno.cmp(&other.lineno))
+            .then(self.errorcode().cmp(&other.errorcode()))
+    }
+}
+
+impl PartialOrd for ConfigError {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl std::fmt::Display for ConfigError {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        write!(f, "{}", self.printable())
+    }
+}
+
+#[derive(Debug, Error, Clone, Eq, PartialEq)]
+pub enum ConfigErrorKind {
+    //  Cxxx for configuration errors
+    //    C0xx for key errors
+    #[error("C001")]
+    MissingKey,
+    #[error("C002")]
+    EmptyKey,
+    #[error("C003")]
+    NotExactlyOneKeyInTable,
+
+    //    C1xx for value errors
+    #[error("C101")]
+    InvalidValueType,
+    #[error("C102")]
+    InvalidValue,
+    #[error("C103")]
+    InvalidRange,
+    #[error("C104")]
+    InvalidPackage,
+    #[error("C110")]
+    UnsupportedValueInContext,
+    #[error("C120")]
+    ParsingError,
+
+    //  Mxxx for metadata errors
+    //    Mx0x for larger missing errors
+    #[error("M001")]
+    MetadataHeaderMissingHelp,
+    #[error("M002")]
+    MetadataHeaderMissingSyntax,
+    #[error("M003")]
+    MetadataHeaderInvalidValueType,
+
+    //    M1xx for key or subkey errors
+    #[error("M100")]
+    MetadataHeaderUnknownKey,
+    #[error("M101")]
+    MetadataHeaderMissingSubkey,
+    #[error("M102")]
+    MetadataHeaderContinueWithoutKey,
+    #[error("M103")]
+    MetadataHeaderDuplicateKey,
+
+    //    M2xx for group errors
+    #[error("M201")]
+    MetadataHeaderGroupMissingParameters,
+    #[error("M207")]
+    MetadataHeaderGroupInvalidPart,
+    #[error("M208")]
+    MetadataHeaderGroupEmptyPart,
+    #[error("M209")]
+    MetadataHeaderGroupUnknownConfigKey,
+
+    //    M3xx for parameter errors
+    #[error("M301")]
+    MetadataHeaderParameterInvalidKeyValue,
+    #[error("M302")]
+    MetadataHeaderParameterMissingDescription,
+    #[error("M307")]
+    MetadataHeaderParameterInvalidPart,
+    #[error("M308")]
+    MetadataHeaderParameterEmptyPart,
+    #[error("M309")]
+    MetadataHeaderParameterUnknownConfigKey,
+
+    //  Pxxx for path errors
+    #[error("P001")]
+    OmniPathNotFound,
+    #[error("P002")]
+    OmniPathFileNotExecutable,
+    #[error("P003")]
+    OmniPathFileFailedToLoadMetadata,
+}
+
+impl ConfigErrorKind {
+    pub fn default_ignored(&self) -> bool {
+        matches!(self, ConfigErrorKind::MetadataHeaderMissingSyntax)
+    }
+
+    pub fn message_from_context(
+        &self,
+        context: &HashMap<String, YamlValue>,
+    ) -> Result<String, String> {
+        let message = match self {
             ConfigErrorKind::InvalidValueType => {
                 let key = context
                     .get("key")
@@ -483,15 +653,15 @@ impl ConfigError {
                     .as_str()
                     .ok_or("Value for 'group' is not a string")?;
 
-                let key = context
-                    .get("key")
-                    .ok_or("Missing 'key' key in context")?
+                let config_key = context
+                    .get("config_key")
+                    .ok_or("Missing 'config_key' key in context")?
                     .as_str()
-                    .ok_or("Value for 'key' is not a string")?;
+                    .ok_or("Value for 'config_key' is not a string")?;
 
                 format!(
                     "unknown configuration key '{}' in the definition of group '{}'",
-                    key, group
+                    config_key, group,
                 )
             }
             ConfigErrorKind::MetadataHeaderGroupMissingParameters => {
@@ -537,15 +707,15 @@ impl ConfigError {
                     .as_str()
                     .ok_or("Value for 'parameter' is not a string")?;
 
-                let key = context
-                    .get("key")
-                    .ok_or("Missing 'key' key in context")?
+                let config_key = context
+                    .get("config_key")
+                    .ok_or("Missing 'config_key' key in context")?
                     .as_str()
-                    .ok_or("Value for 'key' is not a string")?;
+                    .ok_or("Value for 'config_key' is not a string")?;
 
                 format!(
                     "unknown configuration key '{}' in the definition of parameter '{}'",
-                    key, parameter
+                    config_key, parameter,
                 )
             }
             ConfigErrorKind::MetadataHeaderParameterInvalidKeyValue => {
@@ -588,150 +758,7 @@ impl ConfigError {
             }
         };
 
-        let default_ignored = kind.default_ignored();
-
-        Ok(Self {
-            file: file.to_string(),
-            lineno,
-            errorcode: kind.to_string(),
-            message,
-            default_ignored,
-        })
-    }
-
-    pub fn file(&self) -> &str {
-        &self.file
-    }
-
-    pub fn lineno(&self) -> usize {
-        self.lineno
-    }
-
-    pub fn errorcode(&self) -> &str {
-        &self.errorcode
-    }
-
-    pub fn message(&self) -> &str {
-        &self.message
-    }
-
-    pub fn default_ignored(&self) -> bool {
-        self.default_ignored
-    }
-
-    pub fn printable(&self) -> String {
-        let colon = ":".light_black();
-        format!(
-            "{file}{colon}{lineno}{colon}{errorcode}{colon}{message}",
-            colon = colon,
-            file = abs_or_rel_path(&self.file).light_blue(),
-            lineno = self.lineno.light_green(),
-            errorcode = self.errorcode.red(),
-            message = self.message,
-        )
-    }
-}
-
-impl Ord for ConfigError {
-    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
-        self.file
-            .cmp(&other.file)
-            .then(self.lineno.cmp(&other.lineno))
-            .then(self.errorcode.cmp(&other.errorcode))
-            .then(self.message.cmp(&other.message))
-    }
-}
-
-impl PartialOrd for ConfigError {
-    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-        Some(self.cmp(other))
-    }
-}
-
-impl std::fmt::Display for ConfigError {
-    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        write!(f, "{}", self.printable())
-    }
-}
-
-#[derive(Debug, Error, Clone)]
-pub enum ConfigErrorKind {
-    //  Cxxx for configuration errors
-    //    C0xx for key errors
-    #[error("C001")]
-    MissingKey,
-    #[error("C002")]
-    EmptyKey,
-    #[error("C003")]
-    NotExactlyOneKeyInTable,
-
-    //    C1xx for value errors
-    #[error("C101")]
-    InvalidValueType,
-    #[error("C102")]
-    InvalidValue,
-    #[error("C103")]
-    InvalidRange,
-    #[error("C104")]
-    InvalidPackage,
-    #[error("C110")]
-    UnsupportedValueInContext,
-    #[error("C120")]
-    ParsingError,
-
-    //  Mxxx for metadata errors
-    //    Mx0x for larger missing errors
-    #[error("M001")]
-    MetadataHeaderMissingHelp,
-    #[error("M002")]
-    MetadataHeaderMissingSyntax,
-    #[error("M003")]
-    MetadataHeaderInvalidValueType,
-
-    //    M1xx for key or subkey errors
-    #[error("M100")]
-    MetadataHeaderUnknownKey,
-    #[error("M101")]
-    MetadataHeaderMissingSubkey,
-    #[error("M102")]
-    MetadataHeaderContinueWithoutKey,
-    #[error("M103")]
-    MetadataHeaderDuplicateKey,
-
-    //    M2xx for group errors
-    #[error("M201")]
-    MetadataHeaderGroupMissingParameters,
-    #[error("M207")]
-    MetadataHeaderGroupInvalidPart,
-    #[error("M208")]
-    MetadataHeaderGroupEmptyPart,
-    #[error("M209")]
-    MetadataHeaderGroupUnknownConfigKey,
-
-    //    M3xx for parameter errors
-    #[error("M301")]
-    MetadataHeaderParameterInvalidKeyValue,
-    #[error("M302")]
-    MetadataHeaderParameterMissingDescription,
-    #[error("M307")]
-    MetadataHeaderParameterInvalidPart,
-    #[error("M308")]
-    MetadataHeaderParameterEmptyPart,
-    #[error("M309")]
-    MetadataHeaderParameterUnknownConfigKey,
-
-    //  Pxxx for path errors
-    #[error("P001")]
-    OmniPathNotFound,
-    #[error("P002")]
-    OmniPathFileNotExecutable,
-    #[error("P003")]
-    OmniPathFileFailedToLoadMetadata,
-}
-
-impl ConfigErrorKind {
-    pub fn default_ignored(&self) -> bool {
-        matches!(self, ConfigErrorKind::MetadataHeaderMissingSyntax)
+        Ok(message)
     }
 }
 
