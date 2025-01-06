@@ -112,6 +112,38 @@ impl ConfigLoader {
         Self::new_global()
     }
 
+    pub fn all_config_files() -> Vec<(String, ConfigScope)> {
+        let mut config_files = vec![];
+
+        config_files.extend(
+            Self::system_config_files("pre")
+                .into_iter()
+                .map(|f| (f, ConfigScope::System)),
+        );
+        config_files.extend(
+            Self::user_config_files()
+                .into_iter()
+                .map(|f| (f, ConfigScope::User)),
+        );
+        config_files.extend(
+            Self::system_config_files("post")
+                .into_iter()
+                .map(|f| (f, ConfigScope::System)),
+        );
+
+        let wd = workdir(".");
+        if let Some(wd_root) = wd.root() {
+            for workdir_config_file in WORKDIR_CONFIG_FILES.iter() {
+                let file = PathBuf::from(wd_root).join(workdir_config_file);
+                if file.exists() {
+                    config_files.push((file.to_string_lossy().to_string(), ConfigScope::Workdir));
+                }
+            }
+        }
+
+        config_files
+    }
+
     fn user_config_files() -> Vec<String> {
         vec![
             format!("{}/.omni.yaml", user_home()),
@@ -181,11 +213,17 @@ impl ConfigLoader {
         new_config_loader
     }
 
-    fn new_empty() -> Self {
+    pub fn new_empty() -> Self {
         Self {
             loaded_config_files: vec![],
             raw_config: ConfigValue::new_null(ConfigSource::Null, ConfigScope::Null),
         }
+    }
+
+    pub fn new_from_file(file: &str, scope: ConfigScope) -> Self {
+        let mut loader = Self::new_empty();
+        loader.import_config_file(file, scope);
+        loader
     }
 
     pub fn edit_main_user_config_file<F>(edit_fn: F) -> io::Result<()>
@@ -306,8 +344,8 @@ impl ConfigLoader {
         Ok(())
     }
 
-    // fn new_local(path: &str) -> Self {
-    // ConfigLoader::new_global().get_local(path)
+    // fn new_local_only(path: &str) -> Self {
+    // ConfigLoader::new_empty().get_local(path)
     // }
 
     pub fn get_local(&self, path: &str) -> Self {
@@ -341,13 +379,13 @@ impl ConfigLoader {
         }
     }
 
-    pub fn import_config_file(&mut self, config_file: &String, scope: ConfigScope) {
+    pub fn import_config_file(&mut self, config_file: &str, scope: ConfigScope) {
         self.import_config_file_with_strategy(config_file, scope, ConfigExtendStrategy::Default)
     }
 
     pub fn import_config_file_with_strategy(
         &mut self,
-        config_file: &String,
+        config_file: &str,
         scope: ConfigScope,
         strategy: ConfigExtendStrategy,
     ) {

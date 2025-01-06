@@ -2,6 +2,8 @@ use serde::Deserialize;
 use serde::Serialize;
 
 use crate::internal::cache::utils::Empty;
+use crate::internal::config::parser::errors::ConfigErrorHandler;
+use crate::internal::config::parser::errors::ConfigErrorKind;
 use crate::internal::config::ConfigValue;
 
 #[derive(Debug, Deserialize, Clone)]
@@ -26,15 +28,25 @@ impl Serialize for ShellAliasesConfig {
 }
 
 impl ShellAliasesConfig {
-    pub(super) fn from_config_value(config_value: Option<ConfigValue>) -> Self {
+    pub(super) fn from_config_value(
+        config_value: Option<ConfigValue>,
+        error_handler: &ConfigErrorHandler,
+    ) -> Self {
         let mut aliases = vec![];
         if let Some(config_value) = config_value {
             if let Some(array) = config_value.as_array() {
-                for value in array {
-                    if let Some(alias) = ShellAliasConfig::from_config_value(&value) {
+                for (idx, value) in array.iter().enumerate() {
+                    if let Some(alias) =
+                        ShellAliasConfig::from_config_value(value, &error_handler.with_index(idx))
+                    {
                         aliases.push(alias);
                     }
                 }
+            } else {
+                error_handler
+                    .with_expected("array")
+                    .with_actual(config_value)
+                    .error(ConfigErrorKind::InvalidValueType);
             }
         }
         Self { aliases }
@@ -50,35 +62,59 @@ pub struct ShellAliasConfig {
 }
 
 impl ShellAliasConfig {
-    pub(super) fn from_config_value(config_value: &ConfigValue) -> Option<Self> {
+    pub(super) fn from_config_value(
+        config_value: &ConfigValue,
+        error_handler: &ConfigErrorHandler,
+    ) -> Option<Self> {
         if let Some(value) = config_value.as_str() {
-            return Some(Self {
+            Some(Self {
                 alias: value.to_string(),
                 target: None,
-            });
+            })
         } else if let Some(table) = config_value.as_table() {
-            let mut alias = None;
-            if let Some(value) = table.get("alias") {
+            let alias = if let Some(value) = table.get("alias") {
                 if let Some(value) = value.as_str() {
-                    alias = Some(value.to_string());
-                }
-            }
+                    value.to_string()
+                } else {
+                    error_handler
+                        .with_key("alias")
+                        .with_expected("string")
+                        .with_actual(value)
+                        .error(ConfigErrorKind::InvalidValueType);
 
-            alias.as_ref()?;
+                    return None;
+                }
+            } else {
+                error_handler
+                    .with_key("alias")
+                    .error(ConfigErrorKind::MissingKey);
+
+                return None;
+            };
 
             let mut target = None;
             if let Some(value) = table.get("target") {
                 if let Some(value) = value.as_str() {
                     target = Some(value.to_string());
+                } else {
+                    error_handler
+                        .with_key("target")
+                        .with_expected("string")
+                        .with_actual(value)
+                        .error(ConfigErrorKind::InvalidValueType);
+
+                    return None;
                 }
             }
 
-            return Some(Self {
-                alias: alias.unwrap(),
-                target,
-            });
-        }
+            Some(Self { alias, target })
+        } else {
+            error_handler
+                .with_expected(vec!["string", "table"])
+                .with_actual(config_value)
+                .error(ConfigErrorKind::InvalidValueType);
 
-        None
+            None
+        }
     }
 }

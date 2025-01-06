@@ -11,6 +11,8 @@ use crate::internal::config::parser::CdConfig;
 use crate::internal::config::parser::CloneConfig;
 use crate::internal::config::parser::CommandDefinition;
 use crate::internal::config::parser::ConfigCommandsConfig;
+use crate::internal::config::parser::ConfigErrorHandler;
+use crate::internal::config::parser::ConfigErrorKind;
 use crate::internal::config::parser::EnvConfig;
 use crate::internal::config::parser::GithubConfig;
 use crate::internal::config::parser::MakefileCommandsConfig;
@@ -23,6 +25,7 @@ use crate::internal::config::parser::SuggestCloneConfig;
 use crate::internal::config::parser::SuggestConfig;
 use crate::internal::config::parser::UpCommandConfig;
 use crate::internal::config::up::UpConfig;
+use crate::internal::config::ConfigLoader;
 use crate::internal::config::ConfigScope;
 use crate::internal::config::ConfigValue;
 use crate::internal::config::OrgConfig;
@@ -89,14 +92,28 @@ impl OmniConfig {
     const DEFAULT_COMMAND_MATCH_MIN_SCORE: f64 = 0.12;
     const DEFAULT_REPO_PATH_FORMAT: &'static str = "%{host}/%{org}/%{repo}";
 
-    pub fn from_config_value(config_value: &ConfigValue) -> Self {
+    pub fn from_config_value(
+        config_value: &ConfigValue,
+        error_handler: &ConfigErrorHandler,
+    ) -> Self {
         let mut commands_config = HashMap::new();
         if let Some(value) = config_value.get("commands") {
-            for (key, value) in value.as_table().unwrap() {
-                commands_config.insert(
-                    key.to_string(),
-                    CommandDefinition::from_config_value(&value),
-                );
+            let commands_error_handler = error_handler.with_key("commands");
+            if let Some(table) = value.as_table() {
+                for (key, value) in table {
+                    commands_config.insert(
+                        key.to_string(),
+                        CommandDefinition::from_config_value(
+                            &value,
+                            &commands_error_handler.with_key(&key),
+                        ),
+                    );
+                }
+            } else {
+                commands_error_handler
+                    .with_expected("table")
+                    .with_actual(value.as_serde_yaml())
+                    .error(ConfigErrorKind::InvalidValueType);
             }
         }
 
@@ -107,51 +124,120 @@ impl OmniConfig {
             // by any work directory specific configuration.
             if let Some(value) = value.reject_scope(&ConfigScope::Workdir) {
                 if let Some(array) = value.as_array() {
-                    for value in array {
-                        org_config.push(OrgConfig::from_config_value(&value));
+                    for value in array.iter() {
+                        // TODO: handle errors
+                        org_config.push(OrgConfig::from_config_value(value));
                     }
+                } else {
+                    error_handler
+                        .with_key("org")
+                        .with_expected("array")
+                        .with_actual(value.as_serde_yaml())
+                        .error(ConfigErrorKind::InvalidValueType);
                 }
             }
         }
 
+        let askpass = AskPassConfig::from_config_value(
+            config_value.get("askpass"),
+            &error_handler.with_key("askpass"),
+        );
+        let cache = CacheConfig::from_config_value(
+            config_value.get("cache"),
+            &error_handler.with_key("cache"),
+        );
+        let cd = CdConfig::from_config_value(config_value.get("cd"), &error_handler.with_key("cd"));
+        let clone = CloneConfig::from_config_value(
+            config_value.get("clone"),
+            &error_handler.with_key("clone"),
+        );
+        let command_match_min_score = config_value.get_as_float_or_default(
+            "command_match_min_score",
+            Self::DEFAULT_COMMAND_MATCH_MIN_SCORE,
+            &error_handler.with_key("command_match_min_score"),
+        );
+        let command_match_skip_prompt_if = MatchSkipPromptIfConfig::from_config_value(
+            config_value.get("command_match_skip_prompt_if"),
+            &error_handler.with_key("command_match_skip_prompt_if"),
+        );
+        let config_commands = ConfigCommandsConfig::from_config_value(
+            config_value.get("config_commands"),
+            &error_handler.with_key("config_commands"),
+        );
+        let env =
+            EnvConfig::from_config_value(config_value.get("env"), &error_handler.with_key("env"));
+        let github = GithubConfig::from_config_value(
+            config_value.get("github"),
+            &error_handler.with_key("github"),
+        );
+        let makefile_commands = MakefileCommandsConfig::from_config_value(
+            config_value.get("makefile_commands"),
+            &error_handler.with_key("makefile_commands"),
+        );
+        let path = PathConfig::from_config_value(
+            config_value.get("path"),
+            &error_handler.with_key("path"),
+        );
+        let path_repo_updates = PathRepoUpdatesConfig::from_config_value(
+            config_value.get("path_repo_updates"),
+            &error_handler.with_key("path_repo_updates"),
+        );
+        let prompts = PromptsConfig::from_config_value(
+            config_value.get("prompts"),
+            &error_handler.with_key("prompts"),
+        );
+        let repo_path_format = config_value.get_as_str_or_default(
+            "repo_path_format",
+            Self::DEFAULT_REPO_PATH_FORMAT,
+            &error_handler.with_key("repo_path_format"),
+        );
+        let shell_aliases = ShellAliasesConfig::from_config_value(
+            config_value.get("shell_aliases"),
+            &error_handler.with_key("shell_aliases"),
+        );
+        let suggest_clone = SuggestCloneConfig::from_config_value(
+            config_value.get("suggest_clone"),
+            &error_handler.with_key("suggest_clone"),
+        );
+        let suggest_config = SuggestConfig::from_config_value(
+            config_value.get("suggest_config"),
+            &error_handler.with_key("suggest_config"),
+        );
+        let up = UpConfig::from_config_value(config_value.get("up"), &error_handler.with_key("up"));
+        let up_command = UpCommandConfig::from_config_value(
+            config_value.get("up_command"),
+            &error_handler.with_key("up_command"),
+        );
+
+        let worktree = config_value.get_as_str_or_default(
+            "worktree",
+            &DEFAULT_WORKTREE,
+            &error_handler.with_key("worktree"),
+        );
+
         Self {
-            askpass: AskPassConfig::from_config_value(config_value.get("askpass")),
-            cache: CacheConfig::from_config_value(config_value.get("cache")),
-            cd: CdConfig::from_config_value(config_value.get("cd")),
-            clone: CloneConfig::from_config_value(config_value.get("clone")),
-            command_match_min_score: config_value
-                .get_as_float("command_match_min_score")
-                .unwrap_or(Self::DEFAULT_COMMAND_MATCH_MIN_SCORE),
-            command_match_skip_prompt_if: MatchSkipPromptIfConfig::from_config_value(
-                config_value.get("command_match_skip_prompt_if"),
-            ),
+            askpass,
+            cache,
+            cd,
+            clone,
+            command_match_min_score,
+            command_match_skip_prompt_if,
             commands: commands_config,
-            config_commands: ConfigCommandsConfig::from_config_value(
-                config_value.get("config_commands"),
-            ),
-            env: EnvConfig::from_config_value(config_value.get("env")),
-            github: GithubConfig::from_config_value(config_value.get("github")),
-            makefile_commands: MakefileCommandsConfig::from_config_value(
-                config_value.get("makefile_commands"),
-            ),
+            config_commands,
+            env,
+            github,
+            makefile_commands,
             org: org_config,
-            path: PathConfig::from_config_value(config_value.get("path")),
-            path_repo_updates: PathRepoUpdatesConfig::from_config_value(
-                config_value.get("path_repo_updates"),
-            ),
-            prompts: PromptsConfig::from_config_value(config_value.get("prompts")),
-            repo_path_format: config_value
-                .get_as_str("repo_path_format")
-                .unwrap_or(Self::DEFAULT_REPO_PATH_FORMAT.to_string())
-                .to_string(),
-            shell_aliases: ShellAliasesConfig::from_config_value(config_value.get("shell_aliases")),
-            suggest_clone: SuggestCloneConfig::from_config_value(config_value.get("suggest_clone")),
-            suggest_config: SuggestConfig::from_config_value(config_value.get("suggest_config")),
-            up: UpConfig::from_config_value(config_value.get("up")),
-            up_command: UpCommandConfig::from_config_value(config_value.get("up_command")),
-            worktree: config_value
-                .get_as_str("worktree")
-                .unwrap_or_else(|| (*DEFAULT_WORKTREE).to_string()),
+            path,
+            path_repo_updates,
+            prompts,
+            repo_path_format,
+            shell_aliases,
+            suggest_clone,
+            suggest_config,
+            up,
+            up_command,
+            worktree,
         }
     }
 
@@ -205,5 +291,17 @@ impl OmniConfig {
         }
 
         config_hasher.finalize().to_hex()[..16].to_string()
+    }
+}
+
+impl From<ConfigValue> for OmniConfig {
+    fn from(config_value: ConfigValue) -> Self {
+        OmniConfig::from_config_value(&config_value, &ConfigErrorHandler::noop())
+    }
+}
+
+impl From<ConfigLoader> for OmniConfig {
+    fn from(config_loader: ConfigLoader) -> Self {
+        config_loader.raw_config.into()
     }
 }

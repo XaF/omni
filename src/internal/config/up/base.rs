@@ -5,6 +5,8 @@ use serde::Serialize;
 use crate::internal::cache::up_environments::UpEnvironment;
 use crate::internal::cache::utils::Empty;
 use crate::internal::cache::UpEnvironmentsCache;
+use crate::internal::config::parser::ConfigErrorHandler;
+use crate::internal::config::parser::ConfigErrorKind;
 use crate::internal::config::up::utils::cleanup_path;
 use crate::internal::config::up::utils::reshim;
 use crate::internal::config::up::utils::ProgressHandler;
@@ -46,9 +48,10 @@ impl Serialize for UpConfig {
 }
 
 impl UpConfig {
-    pub fn from_config_value(config_value: Option<ConfigValue>) -> Option<Self> {
-        config_value.as_ref()?;
-
+    pub fn from_config_value(
+        config_value: Option<ConfigValue>,
+        error_handler: &ConfigErrorHandler,
+    ) -> Option<Self> {
         let config_value = match config_value {
             Some(config_value) => config_value,
             None => return None,
@@ -56,27 +59,27 @@ impl UpConfig {
 
         let config_array = match config_value.as_array() {
             Some(config_array) => config_array,
-            None => return None,
+            None => {
+                error_handler
+                    .with_expected("array")
+                    .with_actual(config_value)
+                    .error(ConfigErrorKind::InvalidValueType);
+
+                return None;
+            }
         };
 
-        let mut errors = Vec::new();
+        let mut up_errors = Vec::new();
         let mut steps = Vec::new();
         for (value, index) in config_array.iter().zip(0..) {
-            if value.is_str() {
-                let up_name = value.as_str().unwrap();
-                if let Some(up_config) = UpConfigTool::from_config_value(&up_name, None) {
-                    steps.push(up_config);
-                } else {
-                    errors.push(UpError::Config(format!(
-                        "invalid config for step {} ({})",
-                        index + 1,
-                        up_name
-                    )));
-                }
-            } else if value.is_table() {
-                let table = value.as_table().unwrap();
+            let step_error_handler = error_handler.with_index(index);
+
+            if let Some(table) = value.as_table() {
                 if table.len() != 1 {
-                    errors.push(UpError::Config(format!(
+                    step_error_handler
+                        .with_actual(value)
+                        .error(ConfigErrorKind::NotExactlyOneKeyInTable);
+                    up_errors.push(UpError::Config(format!(
                         "invalid config for step {}: {}",
                         index + 1,
                         value
@@ -85,20 +88,41 @@ impl UpConfig {
                 }
 
                 let (up_name, config_value) = table.iter().next().unwrap();
-                if let Some(up_config) =
-                    UpConfigTool::from_config_value(up_name, Some(config_value))
-                {
+
+                if let Some(up_config) = UpConfigTool::from_config_value(
+                    up_name,
+                    Some(config_value),
+                    &step_error_handler.with_key(up_name),
+                ) {
                     steps.push(up_config);
                 } else {
-                    errors.push(UpError::Config(format!(
+                    up_errors.push(UpError::Config(format!(
                         "invalid config for step {} ({}): {}",
                         index + 1,
                         up_name,
                         config_value
                     )));
                 }
+            } else if let Some(up_name) = value.as_str_forced() {
+                if let Some(up_config) = UpConfigTool::from_config_value(
+                    &up_name,
+                    None,
+                    &step_error_handler.with_key(&up_name),
+                ) {
+                    steps.push(up_config);
+                } else {
+                    up_errors.push(UpError::Config(format!(
+                        "invalid config for step {} ({})",
+                        index + 1,
+                        up_name
+                    )));
+                }
             } else {
-                errors.push(UpError::Config(format!(
+                step_error_handler
+                    .with_expected("string or table")
+                    .with_actual(value)
+                    .error(ConfigErrorKind::InvalidValueType);
+                up_errors.push(UpError::Config(format!(
                     "invalid config for step {}: {}",
                     index + 1,
                     value
@@ -106,11 +130,14 @@ impl UpConfig {
             }
         }
 
-        if steps.is_empty() && errors.is_empty() {
+        if steps.is_empty() && up_errors.is_empty() {
             return None;
         }
 
-        Some(UpConfig { steps, errors })
+        Some(UpConfig {
+            steps,
+            errors: up_errors,
+        })
     }
 
     // pub fn steps(&self) -> Vec<UpConfigTool> {

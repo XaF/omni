@@ -9,6 +9,8 @@ use serde::Serialize;
 use crate::internal::cache::utils::Empty;
 use crate::internal::commands::utils::abs_path_from_path;
 use crate::internal::config::config_value::ConfigData;
+use crate::internal::config::parser::ConfigErrorHandler;
+use crate::internal::config::parser::ConfigErrorKind;
 use crate::internal::config::ConfigSource;
 use crate::internal::config::ConfigValue;
 
@@ -52,7 +54,10 @@ impl Empty for EnvConfig {
 }
 
 impl EnvConfig {
-    pub(super) fn from_config_value(config_value: Option<ConfigValue>) -> Self {
+    pub(super) fn from_config_value(
+        config_value: Option<ConfigValue>,
+        error_handler: &ConfigErrorHandler,
+    ) -> Self {
         let operations = if let Some(config_value) = config_value {
             let operations_array = if let Some(array) = config_value.as_array() {
                 array
@@ -73,13 +78,20 @@ impl EnvConfig {
                     })
                     .collect::<Vec<ConfigValue>>()
             } else {
-                // Unsupported type
+                error_handler
+                    .with_expected(vec!["array", "table"])
+                    .with_actual(config_value)
+                    .error(ConfigErrorKind::InvalidValueType);
+
                 vec![]
             };
 
             operations_array
                 .iter()
-                .flat_map(EnvOperationConfig::from_config_value)
+                .enumerate()
+                .flat_map(|(idx, item)| {
+                    EnvOperationConfig::from_config_value(item, &error_handler.with_index(idx))
+                })
                 .collect()
         } else {
             vec![]
@@ -101,6 +113,7 @@ impl EnvOperationConfig {
         name: &str,
         config_value: &ConfigValue,
         operation: EnvOperationEnum,
+        error_handler: &ConfigErrorHandler,
     ) -> Vec<Self> {
         if let Some(array) = config_value.as_array() {
             array
@@ -114,22 +127,23 @@ impl EnvOperationConfig {
                         table
                     }
                 })
-                .filter_map(|table| Self::from_table(name, table, operation))
+                .enumerate()
+                .filter_map(|(index, table)| {
+                    Self::from_table(name, table, operation, &error_handler.with_index(index))
+                })
                 .collect()
         } else if let Some(table) = config_value.as_table() {
-            if let Some(value) = Self::from_table(name, table, operation) {
-                vec![value]
-            } else {
-                vec![]
+            match Self::from_table(name, table, operation, &error_handler.with_key(name)) {
+                Some(value) => vec![value],
+                None => vec![],
             }
         } else {
             let mut table = HashMap::new();
             table.insert("value".to_string(), config_value.clone());
 
-            if let Some(value) = Self::from_table(name, table, operation) {
-                vec![value]
-            } else {
-                vec![]
+            match Self::from_table(name, table, operation, error_handler) {
+                Some(value) => vec![value],
+                None => vec![],
             }
         }
     }
@@ -138,14 +152,29 @@ impl EnvOperationConfig {
         name: &str,
         table: HashMap<String, ConfigValue>,
         operation: EnvOperationEnum,
+        error_handler: &ConfigErrorHandler,
     ) -> Option<Self> {
         let value_type = match table.get("type") {
             Some(value_type) => match value_type.as_str() {
-                Some(value_type) => match value_type.as_str() {
-                    "text" | "path" => value_type,
-                    _ => return None,
-                },
-                None => return None,
+                Some(vtype) if vtype == "text" || vtype == "path" => vtype.to_string(),
+                Some(_) => {
+                    error_handler
+                        .with_key("type")
+                        .with_expected(vec!["text", "path"])
+                        .with_actual(value_type)
+                        .error(ConfigErrorKind::InvalidValue);
+
+                    return None;
+                }
+                None => {
+                    error_handler
+                        .with_key("type")
+                        .with_expected("string")
+                        .with_actual(value_type)
+                        .error(ConfigErrorKind::InvalidValueType);
+
+                    return None;
+                }
             },
             None => "text".to_string(),
         };
@@ -159,7 +188,14 @@ impl EnvOperationConfig {
                     let source_path = match config_value.get_source() {
                         ConfigSource::File(path) => Some(path.to_string()),
                         ConfigSource::Package(path_entry) => Some(path_entry.to_string()),
-                        _ => None,
+                        _ => {
+                            error_handler
+                                .with_key("type")
+                                .with_actual(value.clone())
+                                .error(ConfigErrorKind::UnsupportedValueInContext);
+
+                            None
+                        }
                     };
 
                     match source_path {
@@ -181,6 +217,12 @@ impl EnvOperationConfig {
                     Some(value.to_string())
                 }
             } else {
+                error_handler
+                    .with_key("value")
+                    .with_expected("string")
+                    .with_actual(config_value)
+                    .error(ConfigErrorKind::InvalidValueType);
+
                 None
             }
         } else {
@@ -188,6 +230,10 @@ impl EnvOperationConfig {
         };
 
         if value.is_none() && operation != EnvOperationEnum::Set {
+            error_handler
+                .with_key("value")
+                .error(ConfigErrorKind::MissingKey);
+
             return None;
         }
 
@@ -198,16 +244,29 @@ impl EnvOperationConfig {
         })
     }
 
-    pub(super) fn from_config_value(config_value: &ConfigValue) -> Vec<Self> {
+    pub(super) fn from_config_value(
+        config_value: &ConfigValue,
+        error_handler: &ConfigErrorHandler,
+    ) -> Vec<Self> {
         // The config_value should be a table.
-        let table = if let Some(table) = config_value.as_table() {
-            table
-        } else {
-            return vec![];
+        let table = match config_value.as_table() {
+            Some(table) => table,
+            None => {
+                error_handler
+                    .with_expected("table")
+                    .with_actual(config_value)
+                    .error(ConfigErrorKind::InvalidValueType);
+
+                return vec![];
+            }
         };
 
         // There should be exactly one key/value pair in the table.
         if table.len() != 1 {
+            error_handler
+                .with_actual(config_value)
+                .error(ConfigErrorKind::NotExactlyOneKeyInTable);
+
             return vec![];
         }
 
@@ -218,12 +277,16 @@ impl EnvOperationConfig {
         // Now we can try and figure out how to parse the value
         if let Some(table) = value.as_table() {
             if let Some(config_value) = table.get("set") {
-                return if let Some(value) =
-                    Self::from_config_value_multi(name, config_value, EnvOperationEnum::Set).pop()
+                return match Self::from_config_value_multi(
+                    name,
+                    config_value,
+                    EnvOperationEnum::Set,
+                    &error_handler.with_key("set"),
+                )
+                .pop()
                 {
-                    vec![value]
-                } else {
-                    vec![]
+                    Some(value) => vec![value],
+                    _ => vec![],
                 };
             }
 
@@ -236,6 +299,7 @@ impl EnvOperationConfig {
                     name,
                     config_value,
                     EnvOperationEnum::Remove,
+                    &error_handler.with_key("remove"),
                 ))
             }
 
@@ -245,6 +309,7 @@ impl EnvOperationConfig {
                     name,
                     config_value,
                     EnvOperationEnum::Prepend,
+                    &error_handler.with_key("prepend"),
                 ))
             }
 
@@ -254,6 +319,7 @@ impl EnvOperationConfig {
                     name,
                     config_value,
                     EnvOperationEnum::Append,
+                    &error_handler.with_key("append"),
                 ))
             }
 
@@ -263,6 +329,7 @@ impl EnvOperationConfig {
                     name,
                     config_value,
                     EnvOperationEnum::Prefix,
+                    &error_handler.with_key("prefix"),
                 ))
             }
 
@@ -272,6 +339,7 @@ impl EnvOperationConfig {
                     name,
                     config_value,
                     EnvOperationEnum::Suffix,
+                    &error_handler.with_key("suffix"),
                 ))
             }
 
@@ -279,13 +347,12 @@ impl EnvOperationConfig {
                 return operations;
             }
 
-            if let Some(value) = Self::from_table(name, table, EnvOperationEnum::Set) {
-                vec![value]
-            } else {
-                vec![]
+            match Self::from_table(name, table, EnvOperationEnum::Set, error_handler) {
+                Some(value) => vec![value],
+                None => vec![],
             }
         } else if let Some(value) =
-            Self::from_config_value_multi(name, value, EnvOperationEnum::Set).pop()
+            Self::from_config_value_multi(name, value, EnvOperationEnum::Set, error_handler).pop()
         {
             vec![value]
         } else {

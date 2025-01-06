@@ -6,6 +6,8 @@ use tera::Context;
 use tera::Tera;
 
 use crate::internal::cache::utils::Empty;
+use crate::internal::config::parser::errors::ConfigErrorHandler;
+use crate::internal::config::parser::errors::ConfigErrorKind;
 use crate::internal::config::template::config_template_context;
 use crate::internal::config::template::render_config_template;
 use crate::internal::config::template::tera_render_error_message;
@@ -52,19 +54,22 @@ impl Serialize for SuggestConfig {
 }
 
 impl SuggestConfig {
-    pub(super) fn from_config_value(config_value: Option<ConfigValue>) -> Self {
+    pub(super) fn from_config_value(
+        config_value: Option<ConfigValue>,
+        error_handler: &ConfigErrorHandler,
+    ) -> Self {
         if let Some(config_value) = config_value {
             // We can filter by values provided by the repository, as this is only
             // a repository-scoped configuration
             if let Some(config_value) = config_value.select_scope(&ConfigScope::Workdir) {
-                return Self::parse_config_value(config_value);
+                return Self::parse_config_value(config_value, error_handler);
             }
         }
 
         Self::default()
     }
 
-    fn parse_config_value(config_value: ConfigValue) -> Self {
+    fn parse_config_value(config_value: ConfigValue, error_handler: &ConfigErrorHandler) -> Self {
         if let Some(table) = config_value.as_table() {
             if let Some(config) = table.get("config") {
                 return Self {
@@ -81,6 +86,12 @@ impl SuggestConfig {
                         template: value.to_string(),
                         template_file: "".to_string(),
                     };
+                } else {
+                    error_handler
+                        .with_key("template")
+                        .with_expected("string")
+                        .with_actual(value)
+                        .error(ConfigErrorKind::InvalidValueType);
                 }
             } else if let Some(value) = table.get("template_file") {
                 if let Some(filepath) = value.as_str_forced() {
@@ -89,6 +100,12 @@ impl SuggestConfig {
                         template: "".to_string(),
                         template_file: filepath.to_string(),
                     };
+                } else {
+                    error_handler
+                        .with_key("template_file")
+                        .with_expected("string")
+                        .with_actual(value)
+                        .error(ConfigErrorKind::InvalidValueType);
                 }
             }
         }
@@ -136,7 +153,8 @@ impl SuggestConfig {
                     match ConfigValue::from_str(&value) {
                         Ok(value) => {
                             // Parse the config value into an object of this type
-                            let suggest = Self::parse_config_value(value);
+                            let suggest =
+                                Self::parse_config_value(value, &ConfigErrorHandler::noop());
                             // In case this is recursive for some reason...
                             return suggest.config_with_context(template_context);
                         }

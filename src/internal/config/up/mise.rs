@@ -22,6 +22,7 @@ use crate::internal::cache::CacheManagerError;
 use crate::internal::cache::MiseOperationCache;
 use crate::internal::config;
 use crate::internal::config::global_config;
+use crate::internal::config::parser::ConfigErrorHandler;
 use crate::internal::config::up::homebrew::HomebrewInstall;
 use crate::internal::config::up::utils::data_path_dir_hash;
 use crate::internal::config::up::utils::force_remove_dir_all;
@@ -1164,14 +1165,24 @@ impl UpConfigMise {
         }
     }
 
-    pub fn from_config_value(tool: &str, config_value: Option<&ConfigValue>) -> Self {
-        Self::from_config_value_with_params(tool, config_value, UpConfigMiseParams::default())
+    pub fn from_config_value(
+        tool: &str,
+        config_value: Option<&ConfigValue>,
+        error_handler: &ConfigErrorHandler,
+    ) -> Self {
+        Self::from_config_value_with_params(
+            tool,
+            config_value,
+            UpConfigMiseParams::default(),
+            error_handler,
+        )
     }
 
     pub fn from_config_value_with_params(
         tool: &str,
         config_value: Option<&ConfigValue>,
         params: UpConfigMiseParams,
+        error_handler: &ConfigErrorHandler,
     ) -> Self {
         let mut version = "latest".to_string();
         let mut backend = None;
@@ -1195,58 +1206,46 @@ impl UpConfigMise {
             } else if let Some(value) = config_value.as_integer() {
                 version = value.to_string();
             } else {
-                if let Some(value) = config_value.get_as_str_forced("version") {
+                if let Some(value) =
+                    config_value.get_as_str_or_none("version", &error_handler.with_key("version"))
+                {
                     version = value.to_string();
                 }
 
-                if let Some(value) = config_value.get_as_str_forced("backend") {
+                if let Some(value) =
+                    config_value.get_as_str_or_none("backend", &error_handler.with_key("backend"))
+                {
                     backend = Some(value.to_string());
                 }
 
-                if let Some(value) = config_value.get_as_str("dir") {
+                let list_dirs =
+                    config_value.get_as_str_array("dir", &error_handler.with_key("dir"));
+                for value in list_dirs {
                     dirs.insert(
                         PathBuf::from(value)
                             .normalize()
                             .to_string_lossy()
                             .to_string(),
                     );
-                } else if let Some(array) = config_value.get_as_array("dir") {
-                    for value in array {
-                        if let Some(value) = value.as_str_forced() {
-                            dirs.insert(
-                                PathBuf::from(value)
-                                    .normalize()
-                                    .to_string_lossy()
-                                    .to_string(),
-                            );
-                        }
-                    }
                 }
 
-                if let Some(url) = config_value.get_as_str_forced("url") {
-                    let set_override = match &params.tool_url {
-                        None => true,
-                        Some(tool_url) => url != *tool_url,
-                    };
-                    if set_override {
-                        override_tool_url = Some(url.to_string());
-                    }
+                if let Some(url) =
+                    config_value.get_as_str_or_none("url", &error_handler.with_key("url"))
+                {
+                    override_tool_url = Some(url.to_string());
                 }
 
-                if let Some(value) = config_value.get_as_bool_forced("upgrade") {
+                if let Some(value) =
+                    config_value.get_as_bool_or_none("upgrade", &error_handler.with_key("upgrade"))
+                {
                     upgrade = value;
                 }
             }
         }
 
-        let tool_url = match &override_tool_url {
-            Some(url) => Some(url.to_string()),
-            None => params.tool_url.clone(),
-        };
-
         UpConfigMise {
             requested_tool: tool.to_string(),
-            tool_url,
+            tool_url: params.tool_url.clone(),
             override_tool_url,
             version,
             backend,

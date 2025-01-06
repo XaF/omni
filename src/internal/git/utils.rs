@@ -1,3 +1,4 @@
+use std::path::Path;
 use std::path::PathBuf;
 use std::time::Duration;
 
@@ -8,6 +9,7 @@ use tokio::runtime::Runtime;
 use tokio::time::timeout;
 use url::Url;
 
+use crate::internal::commands::utils::abs_path;
 use crate::internal::config::parser::PathEntryConfig;
 use crate::internal::env::data_home;
 use crate::internal::errors::GitUrlError;
@@ -174,4 +176,65 @@ pub fn path_entry_config<T: AsRef<str>>(path: T) -> PathEntryConfig {
     }
 
     path_entry_config
+}
+
+/// Checks if a given file path is ignored by Git according to .gitignore rules
+///
+/// # Arguments
+/// * `file_path` - The path to the file to check
+///
+/// # Returns
+/// * `Ok(bool)` - True if the file is ignored, false otherwise
+/// * `Err(Box<dyn Error>)` - If there's an error accessing the repository or the path
+///
+/// # Example
+/// ```rust
+/// let is_ignored = is_path_gitignored("src/temp.log")?;
+/// println!("Is file ignored: {}", is_ignored);
+/// ```
+pub fn is_path_gitignored<P: AsRef<Path>>(path: P) -> Result<bool, Box<dyn std::error::Error>> {
+    let path = path.as_ref();
+
+    // Find the directory to start the repository search from
+    let search_dir = if path.is_dir() {
+        path.to_path_buf()
+    } else {
+        // If it's a file or doesn't exist, use its parent directory
+        path.parent()
+            .ok_or("Path has no parent directory")?
+            .to_path_buf()
+    };
+
+    // Try to find the Git repository from the path's directory
+    let repo = git2::Repository::discover(search_dir)?;
+
+    // Get the absolute path
+    let abs_path = abs_path(path);
+
+    // Get the path relative to the repository root
+    let repo_path = repo
+        .workdir()
+        .ok_or("Repository has no working directory")?;
+    let rel_path = abs_path.strip_prefix(repo_path)?;
+
+    // For directories, we check if a theoretical file inside would be ignored
+    let check_path = if path.is_dir() {
+        let uuid = uuid::Uuid::new_v4();
+        rel_path.join(uuid.to_string())
+    } else {
+        rel_path.to_path_buf()
+    };
+
+    // Check if the path is ignored
+    match repo.status_file(&check_path) {
+        Ok(status) => Ok(status.contains(git2::Status::IGNORED)),
+        Err(e) => {
+            // If the path doesn't exist, we can still check if it would be ignored
+            if e.code() == git2::ErrorCode::NotFound {
+                Ok(repo.status_should_ignore(&check_path)?)
+            } else {
+                Err(e.into())
+            }
+        }
+    }
 }

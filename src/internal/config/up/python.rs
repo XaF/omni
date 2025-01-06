@@ -8,6 +8,8 @@ use tokio::process::Command as TokioCommand;
 
 use crate::internal::cache::up_environments::UpEnvironment;
 use crate::internal::commands::utils::abs_path;
+use crate::internal::config::parser::ConfigErrorHandler;
+use crate::internal::config::parser::ConfigErrorKind;
 use crate::internal::config::up::mise::FullyQualifiedToolName;
 use crate::internal::config::up::mise::PostInstallFuncArgs;
 use crate::internal::config::up::mise_tool_path;
@@ -37,7 +39,10 @@ pub struct UpConfigPythonParams {
 }
 
 impl UpConfigPythonParams {
-    pub fn from_config_value(config_value: Option<&ConfigValue>) -> Self {
+    pub fn from_config_value(
+        config_value: Option<&ConfigValue>,
+        error_handler: &ConfigErrorHandler,
+    ) -> Self {
         let mut pip_files = Vec::new();
         let mut pip_auto = false;
 
@@ -46,6 +51,11 @@ impl UpConfigPythonParams {
                 for file_path in config_value {
                     if let Some(file_path) = file_path.as_str_forced() {
                         pip_files.push(file_path.to_string());
+                    } else {
+                        error_handler
+                            .with_expected("string")
+                            .with_actual(file_path)
+                            .error(ConfigErrorKind::InvalidValueType);
                     }
                 }
             } else if let Some(file_path) = config_value.get_as_str_forced("pip") {
@@ -54,6 +64,11 @@ impl UpConfigPythonParams {
                 } else {
                     pip_files.push(file_path.to_string());
                 }
+            } else {
+                error_handler
+                    .with_expected("string or array of strings")
+                    .with_actual(config_value)
+                    .error(ConfigErrorKind::InvalidValueType);
             }
         }
 
@@ -100,12 +115,15 @@ impl Serialize for UpConfigPython {
 }
 
 impl UpConfigPython {
-    pub fn from_config_value(config_value: Option<&ConfigValue>) -> Self {
-        let mut backend = UpConfigMise::from_config_value("python", config_value);
+    pub fn from_config_value(
+        config_value: Option<&ConfigValue>,
+        error_handler: &ConfigErrorHandler,
+    ) -> Self {
+        let mut backend = UpConfigMise::from_config_value("python", config_value, error_handler);
         backend.add_post_install_func(setup_python_venv);
         backend.add_post_install_func(setup_python_pip);
 
-        let params = UpConfigPythonParams::from_config_value(config_value);
+        let params = UpConfigPythonParams::from_config_value(config_value, error_handler);
 
         Self { backend, params }
     }
@@ -291,7 +309,10 @@ fn setup_python_pip(
     progress_handler: &dyn ProgressHandler,
     args: &PostInstallFuncArgs,
 ) -> Result<(), UpError> {
-    let params = UpConfigPythonParams::from_config_value(args.config_value.as_ref());
+    let params = UpConfigPythonParams::from_config_value(
+        args.config_value.as_ref(),
+        &ConfigErrorHandler::noop(),
+    );
     let mut pip_auto = params.pip_auto;
 
     // TODO: should we default set pip_auto to true if no pip_files are specified?

@@ -8,6 +8,8 @@ use serde::Serialize;
 
 use crate::internal::cache::up_environments::UpEnvironment;
 use crate::internal::config::global_config;
+use crate::internal::config::parser::ConfigErrorHandler;
+use crate::internal::config::parser::ConfigErrorKind;
 use crate::internal::config::up::utils::UpProgressHandler;
 use crate::internal::config::up::UpConfig;
 use crate::internal::config::up::UpConfigBundler;
@@ -142,15 +144,28 @@ impl Serialize for UpConfigTool {
 }
 
 impl UpConfigTool {
-    pub fn from_config_value(up_name: &str, config_value: Option<&ConfigValue>) -> Option<Self> {
+    pub fn from_config_value(
+        up_name: &str,
+        config_value: Option<&ConfigValue>,
+        error_handler: &ConfigErrorHandler,
+    ) -> Option<Self> {
         match up_name {
             "and" | "any" | "or" => {
-                let upconfig = match UpConfig::from_config_value(config_value.cloned()) {
-                    Some(upconfig) => upconfig,
-                    None => return None,
-                };
+                if config_value.is_none() {
+                    // If there is no config value, we can't proceed
+                    error_handler.error(ConfigErrorKind::EmptyKey);
+                    return None;
+                }
+
+                let upconfig =
+                    match UpConfig::from_config_value(config_value.cloned(), error_handler) {
+                        Some(upconfig) => upconfig,
+                        None => return None,
+                    };
 
                 if upconfig.steps.is_empty() {
+                    error_handler.error(ConfigErrorKind::EmptyKey);
+
                     None
                 } else {
                     match up_name {
@@ -168,44 +183,51 @@ impl UpConfigTool {
                     UpConfigMiseParams {
                         tool_url: Some("https://github.com/xaf/asdf-bash".into()),
                     },
+                    error_handler,
                 ),
             )),
             "bundler" | "bundle" => Some(UpConfigTool::Bundler(
-                UpConfigBundler::from_config_value(config_value),
+                UpConfigBundler::from_config_value(config_value, error_handler),
             )),
             "cargo-install" | "cargo_install" | "cargoinstall" => Some(UpConfigTool::CargoInstall(
-                UpConfigCargoInstalls::from_config_value(config_value),
+                UpConfigCargoInstalls::from_config_value(config_value, error_handler),
             )),
             "custom" => Some(UpConfigTool::Custom(UpConfigCustom::from_config_value(
                 config_value,
+                error_handler,
             ))),
             "github-release" | "github_release" | "githubrelease" | "ghrelease"
             | "github-releases" | "github_releases" | "githubreleases" | "ghreleases" => {
                 Some(UpConfigTool::GithubRelease(
-                    UpConfigGithubReleases::from_config_value(config_value),
+                    UpConfigGithubReleases::from_config_value(config_value, error_handler),
                 ))
             }
             "go" | "golang" => Some(UpConfigTool::Go(UpConfigGolang::from_config_value(
                 config_value,
+                error_handler,
             ))),
             "go-install" | "go_install" | "goinstall" => Some(UpConfigTool::GoInstall(
-                UpConfigGoInstalls::from_config_value(config_value),
+                UpConfigGoInstalls::from_config_value(config_value, error_handler),
             )),
             "homebrew" | "brew" => Some(UpConfigTool::Homebrew(
-                UpConfigHomebrew::from_config_value(config_value),
+                UpConfigHomebrew::from_config_value(config_value, error_handler),
             )),
             "nix" => Some(UpConfigTool::Nix(UpConfigNix::from_config_value(
                 config_value,
+                error_handler,
             ))),
             "nodejs" | "node" => Some(UpConfigTool::Nodejs(UpConfigNodejs::from_config_value(
                 config_value,
+                error_handler,
             ))),
             "python" => Some(UpConfigTool::Python(UpConfigPython::from_config_value(
                 config_value,
+                error_handler,
             ))),
             _ => Some(UpConfigTool::Mise(UpConfigMise::from_config_value(
                 up_name,
                 config_value,
+                error_handler,
             ))),
         }
     }

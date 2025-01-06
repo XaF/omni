@@ -13,6 +13,7 @@ use serde::Serialize;
 use crate::internal::cache::up_environments::UpEnvironment;
 use crate::internal::cache::utils as cache_utils;
 use crate::internal::commands::utils::abs_path;
+use crate::internal::config::parser::ConfigErrorHandler;
 use crate::internal::config::up::mise::PostInstallFuncArgs;
 use crate::internal::config::up::utils::data_path_dir_hash;
 use crate::internal::config::up::utils::ProgressHandler;
@@ -86,7 +87,10 @@ impl UpConfigGolang {
         }
     }
 
-    pub fn from_config_value(config_value: Option<&ConfigValue>) -> Self {
+    pub fn from_config_value(
+        config_value: Option<&ConfigValue>,
+        error_handler: &ConfigErrorHandler,
+    ) -> Self {
         let mut version = None;
         let mut version_file = None;
         let mut dirs = BTreeSet::new();
@@ -100,33 +104,30 @@ impl UpConfigGolang {
             } else if let Some(value) = config_value.as_integer() {
                 version = Some(value.to_string());
             } else {
-                if let Some(value) = config_value.get_as_str_forced("version") {
+                if let Some(value) =
+                    config_value.get_as_str_or_none("version", &error_handler.with_key("version"))
+                {
                     version = Some(value.to_string());
-                } else if let Some(value) = config_value.get_as_str_forced("version_file") {
+                } else if let Some(value) = config_value
+                    .get_as_str_or_none("version_file", &error_handler.with_key("version_file"))
+                {
                     version_file = Some(value.to_string());
                 }
 
-                if let Some(value) = config_value.get_as_str("dir") {
+                let list_dirs =
+                    config_value.get_as_str_array("dir", &error_handler.with_key("dir"));
+                for value in list_dirs {
                     dirs.insert(
                         PathBuf::from(value)
                             .normalize()
                             .to_string_lossy()
                             .to_string(),
                     );
-                } else if let Some(array) = config_value.get_as_array("dir") {
-                    for value in array {
-                        if let Some(value) = value.as_str_forced() {
-                            dirs.insert(
-                                PathBuf::from(value)
-                                    .normalize()
-                                    .to_string_lossy()
-                                    .to_string(),
-                            );
-                        }
-                    }
                 }
 
-                if let Some(value) = config_value.get_as_bool_forced("upgrade") {
+                if let Some(value) =
+                    config_value.get_as_bool_or_none("upgrade", &error_handler.with_key("upgrade"))
+                {
                     upgrade = value;
                 }
             }

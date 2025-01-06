@@ -2,6 +2,8 @@ use serde::Deserialize;
 use serde::Serialize;
 
 use crate::internal::cache::utils::Empty;
+use crate::internal::config::parser::ConfigErrorHandler;
+use crate::internal::config::parser::ConfigErrorKind;
 use crate::internal::config::ConfigValue;
 
 #[derive(Debug, Serialize, Deserialize, Clone, Default)]
@@ -17,7 +19,10 @@ impl Empty for GithubConfig {
 }
 
 impl GithubConfig {
-    pub(super) fn from_config_value(config_value: Option<ConfigValue>) -> Self {
+    pub(super) fn from_config_value(
+        config_value: Option<ConfigValue>,
+        error_handler: &ConfigErrorHandler,
+    ) -> Self {
         let config_value = match config_value {
             Some(config_value) => config_value,
             None => return Self::default(),
@@ -26,6 +31,7 @@ impl GithubConfig {
         Self {
             auth_list: GithubAuthConfigWithFilters::from_config_value_multi(
                 config_value.get("auth"),
+                &error_handler.with_key("auth"),
             ),
         }
     }
@@ -63,7 +69,10 @@ impl GithubAuthConfigWithFilters {
         self.repo.matches(repo) && self.hostname.matches(api_hostname)
     }
 
-    pub(super) fn from_config_value_multi(config_value: Option<ConfigValue>) -> Vec<Self> {
+    pub(super) fn from_config_value_multi(
+        config_value: Option<ConfigValue>,
+        error_handler: &ConfigErrorHandler,
+    ) -> Vec<Self> {
         let config_value = match config_value {
             Some(config_value) => config_value,
             None => return vec![],
@@ -72,20 +81,33 @@ impl GithubAuthConfigWithFilters {
         if let Some(array) = config_value.as_array() {
             array
                 .iter()
-                .map(GithubAuthConfigWithFilters::from_config_value)
+                .enumerate()
+                .map(|(index, item)| {
+                    GithubAuthConfigWithFilters::from_config_value(
+                        item,
+                        &error_handler.with_index(index),
+                    )
+                })
                 .collect()
         } else {
             vec![GithubAuthConfigWithFilters::from_config_value(
                 &config_value,
+                error_handler,
             )]
         }
     }
 
-    fn from_config_value(config_value: &ConfigValue) -> Self {
+    fn from_config_value(config_value: &ConfigValue, error_handler: &ConfigErrorHandler) -> Self {
         Self {
-            repo: StringFilter::from_config_value(config_value.get("repo")),
-            hostname: StringFilter::from_config_value(config_value.get("hostname")),
-            auth: GithubAuthConfig::from_config_value(Some(config_value.clone())),
+            repo: StringFilter::from_config_value(
+                config_value.get("repo"),
+                &error_handler.with_key("repo"),
+            ),
+            hostname: StringFilter::from_config_value(
+                config_value.get("hostname"),
+                &error_handler.with_key("hostname"),
+            ),
+            auth: GithubAuthConfig::from_config_value(Some(config_value.clone()), error_handler),
         }
     }
 }
@@ -121,6 +143,7 @@ impl GithubAuthConfig {
 
     pub(in crate::internal::config) fn from_config_value(
         config_value: Option<ConfigValue>,
+        error_handler: &ConfigErrorHandler,
     ) -> Self {
         let config_value = match config_value {
             Some(config_value) => config_value,
@@ -142,20 +165,40 @@ impl GithubAuthConfig {
             };
         } else if let Some(table) = config_value.as_table() {
             if let Some(skip) = table.get("skip") {
-                if skip.as_bool().unwrap_or(false) {
-                    return Self::Skip(true);
-                }
+                match skip.as_bool_forced() {
+                    Some(true) => return Self::Skip(true),
+                    Some(false) => {}
+                    None => {
+                        error_handler
+                            .with_key("skip")
+                            .with_expected("bool")
+                            .with_actual(skip)
+                            .error(ConfigErrorKind::InvalidValueType);
+                    }
+                };
             }
 
             if let Some(token_env_var) = table.get("token_env_var") {
                 if let Some(token_env_var) = token_env_var.as_str_forced() {
                     return Self::TokenEnvVar(token_env_var.to_string());
+                } else {
+                    error_handler
+                        .with_key("token_env_var")
+                        .with_expected("string")
+                        .with_actual(token_env_var)
+                        .error(ConfigErrorKind::InvalidValueType);
                 }
             }
 
             if let Some(token) = table.get("token") {
                 if let Some(token) = token.as_str_forced() {
                     return Self::Token(token.to_string());
+                } else {
+                    error_handler
+                        .with_key("token")
+                        .with_expected("string")
+                        .with_actual(token)
+                        .error(ConfigErrorKind::InvalidValueType);
                 }
             }
 
@@ -172,6 +215,12 @@ impl GithubAuthConfig {
                     }
                 } else if let Some(gh_string) = gh_value.as_str_forced() {
                     hostname = Some(gh_string.to_string());
+                } else {
+                    error_handler
+                        .with_key("gh")
+                        .with_expected("string or table")
+                        .with_actual(gh_value)
+                        .error(ConfigErrorKind::InvalidValueType);
                 }
 
                 return Self::GhCli { hostname, user };
@@ -224,7 +273,10 @@ impl StringFilter {
         }
     }
 
-    pub(super) fn from_config_value(config_value: Option<ConfigValue>) -> Self {
+    pub(super) fn from_config_value(
+        config_value: Option<ConfigValue>,
+        error_handler: &ConfigErrorHandler,
+    ) -> Self {
         let config_value = match config_value {
             Some(config_value) => config_value,
             None => return Self::default(),
@@ -238,42 +290,87 @@ impl StringFilter {
                 if let Some(value) = entry.as_str_forced() {
                     StringFilter::Contains(value)
                 } else {
+                    error_handler
+                        .with_key("contains")
+                        .with_expected("string")
+                        .with_actual(entry)
+                        .error(ConfigErrorKind::InvalidValueType);
+
                     Self::default()
                 }
             } else if let Some(entry) = table.get("starts_with") {
                 if let Some(value) = entry.as_str_forced() {
                     StringFilter::StartsWith(value)
                 } else {
+                    error_handler
+                        .with_key("starts_with")
+                        .with_expected("string")
+                        .with_actual(entry)
+                        .error(ConfigErrorKind::InvalidValueType);
+
                     Self::default()
                 }
             } else if let Some(entry) = table.get("ends_with") {
                 if let Some(value) = entry.as_str_forced() {
                     StringFilter::EndsWith(value)
                 } else {
+                    error_handler
+                        .with_key("ends_with")
+                        .with_expected("string")
+                        .with_actual(entry)
+                        .error(ConfigErrorKind::InvalidValueType);
+
                     Self::default()
                 }
             } else if let Some(entry) = table.get("regex") {
                 if let Some(value) = entry.as_str_forced() {
                     StringFilter::Regex(value)
                 } else {
+                    error_handler
+                        .with_key("regex")
+                        .with_expected("string")
+                        .with_actual(entry)
+                        .error(ConfigErrorKind::InvalidValueType);
+
                     Self::default()
                 }
             } else if let Some(entry) = table.get("glob") {
                 if let Some(value) = entry.as_str_forced() {
                     StringFilter::Glob(value)
                 } else {
+                    error_handler
+                        .with_key("glob")
+                        .with_expected("string")
+                        .with_actual(entry)
+                        .error(ConfigErrorKind::InvalidValueType);
+
                     Self::default()
                 }
             } else if let Some(entry) = table.get("exact") {
                 if let Some(value) = entry.as_str_forced() {
                     StringFilter::Exact(value)
                 } else {
+                    error_handler
+                        .with_key("exact")
+                        .with_expected("string")
+                        .with_actual(entry)
+                        .error(ConfigErrorKind::InvalidValueType);
+
                     Self::default()
                 }
             } else {
+                error_handler
+                    .with_expected("exact")
+                    .error(ConfigErrorKind::MissingKey);
+
                 Self::default()
             }
         } else {
+            error_handler
+                .with_expected("string or table")
+                .with_actual(config_value)
+                .error(ConfigErrorKind::InvalidValueType);
+
             Self::default()
         }
     }

@@ -1,0 +1,48 @@
+{
+  "name": "config check",
+  "usage": "omni config check [OPTIONS]",
+  "source": "builtin",
+  "category": [
+    "General"
+  ],
+  "short_help": "Check the configuration files and commands in the omnipath for errors",
+  "help": "Check the configuration files and commands in the omnipath for errors\n\nThis allows to report any error or potential error in the configuration, or in any metadata for commands in the omnipath.\n",
+  "options": [
+    {
+      "name": "-P, --search-path <SEARCH_PATH>",
+      "desc": "Path to check for commands.\n\nCan be used multiple times. If neither this nor \u000033[1m--config-file\u000033[0m are provided, the current omnipath is checked.\n"
+    },
+    {
+      "name": "-C, --config-file <CONFIG_FILE>",
+      "desc": "Configuration file to check.\n\nCan be used multiple times. If neither this nor \u000033[1m--search-path\u000033[0m are provided, the current configuration is checked.\n"
+    },
+    {
+      "name": "-p, --include-packages",
+      "desc": "Include package errors in the check."
+    },
+    {
+      "name": "--global",
+      "desc": "Check the global configuration files and omnipath only."
+    },
+    {
+      "name": "--local",
+      "desc": "Check the local configuration files and omnipath only."
+    },
+    {
+      "name": "--ignore <IGNORE>",
+      "desc": "Error codes to ignore"
+    },
+    {
+      "name": "--select <SELECT>",
+      "desc": "Error codes to select"
+    },
+    {
+      "name": "--pattern <PATTERN>",
+      "desc": "Pattern of files to include (or exclude, if starting by '!') in the check.\n\nAllows for glob patterns to be used. If not passed, all files are included.\n"
+    },
+    {
+      "name": "-o, --output <OUTPUT>",
+      "desc": "Output format [default: plain] [possible values: json, plain]"
+    }
+  ]
+}

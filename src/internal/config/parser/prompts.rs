@@ -5,6 +5,8 @@ use tera::Tera;
 
 use crate::internal::cache::utils::Empty;
 use crate::internal::cache::PromptsCache;
+use crate::internal::config::parser::errors::ConfigErrorHandler;
+use crate::internal::config::parser::errors::ConfigErrorKind;
 use crate::internal::config::template::config_template_context;
 use crate::internal::config::template::render_config_template;
 use crate::internal::config::template::tera_render_error_message;
@@ -35,25 +37,29 @@ impl Serialize for PromptsConfig {
 }
 
 impl PromptsConfig {
-    pub fn from_config_value(config_value: Option<ConfigValue>) -> Self {
+    pub fn from_config_value(
+        config_value: Option<ConfigValue>,
+        error_handler: &ConfigErrorHandler,
+    ) -> Self {
         if let Some(config_value) = config_value {
             if let Some(array) = config_value.as_array() {
                 let prompts = array
                     .iter()
-                    // Convert into prompt config and print any errors
-                    .filter_map(|config_value| {
-                        match PromptConfig::from_config_value(config_value) {
-                            Ok(prompt_config) => Some(prompt_config),
-                            Err(err) => {
-                                omni_warning!(format!("failed to parse prompt: {}", err));
-                                None
-                            }
-                        }
+                    .enumerate()
+                    .filter_map(|(idx, config_value)| {
+                        PromptConfig::from_config_value(
+                            config_value,
+                            &error_handler.with_index(idx),
+                        )
                     })
-                    // .filter_map(|config_value| PromptConfig::from_config_value(config_value).ok())
                     .collect();
 
                 return Self { prompts };
+            } else {
+                error_handler
+                    .with_expected("array")
+                    .with_actual(config_value)
+                    .error(ConfigErrorKind::InvalidValueType);
             }
         }
 
@@ -90,28 +96,57 @@ pub struct PromptConfig {
 }
 
 impl PromptConfig {
-    pub fn from_config_value(config_value: &ConfigValue) -> Result<Self, String> {
-        let id = match config_value.get_as_str_forced("id") {
-            Some(id) => id.trim().to_string(),
-            None => return Err("prompt id is required".to_string()),
-        };
-
-        let prompt = match config_value.get_as_str_forced("prompt") {
-            Some(prompt) => prompt.trim().to_string(),
-            None => return Err("prompt message is required".to_string()),
-        };
-
+    pub fn from_config_value(
+        config_value: &ConfigValue,
+        error_handler: &ConfigErrorHandler,
+    ) -> Option<Self> {
         // We need to have an id and a prompt:
         // - id is used to identify the answer to the prompt
         // - prompt is the message that will be displayed to the user
-        if id.is_empty() || prompt.is_empty() {
-            return Err("prompt id and prompt message are required".to_string());
-        }
 
-        let prompt_type = match PromptType::from_config_value(config_value) {
-            Ok(prompt_type) => prompt_type,
-            Err(err) => return Err(err),
-        };
+        let id = match config_value
+            .get_as_str_or_none("id", &error_handler.with_key("id"))
+            .map(|id| id.trim().to_string())
+        {
+            Some(id) if id.is_empty() => {
+                error_handler
+                    .with_key("id")
+                    .error(ConfigErrorKind::EmptyKey);
+
+                None
+            }
+            Some(id) => Some(id),
+            None => {
+                error_handler
+                    .with_key("id")
+                    .error(ConfigErrorKind::MissingKey);
+
+                None
+            }
+        }?;
+
+        let prompt = match config_value
+            .get_as_str_or_none("prompt", &error_handler.with_key("prompt"))
+            .map(|prompt| prompt.trim().to_string())
+        {
+            Some(prompt) if prompt.is_empty() => {
+                error_handler
+                    .with_key("prompt")
+                    .error(ConfigErrorKind::EmptyKey);
+
+                None
+            }
+            Some(prompt) => Some(prompt),
+            None => {
+                error_handler
+                    .with_key("prompt")
+                    .error(ConfigErrorKind::MissingKey);
+
+                None
+            }
+        }?;
+
+        let prompt_type = PromptType::from_config_value(config_value, error_handler)?;
 
         // if is used to conditionally prompt the user.
         let if_condition = config_value.get_as_str_forced("if");
@@ -133,9 +168,9 @@ impl PromptConfig {
         // an organization prompt, the repository prompt will take
         // precedence and be re-asked, but won't override the organization
         // answer.
-        let scope = PromptScope::from_config_value(config_value);
+        let scope = PromptScope::from_config_value(config_value, error_handler);
 
-        Ok(Self {
+        Some(Self {
             id,
             prompt,
             default,
@@ -188,11 +223,17 @@ impl PromptConfig {
                         ))
                     }
                 };
-                match Self::from_config_value(&config_value) {
-                    Ok(prompt) => Ok(prompt),
-                    Err(err) => Err(format!(
+
+                let error_handler = ConfigErrorHandler::new();
+                match Self::from_config_value(&config_value, &error_handler) {
+                    Some(prompt) => Ok(prompt),
+                    None => Err(format!(
                         "failed to parse prompt {} from rendered template: {}",
-                        &self.id, err
+                        &self.id,
+                        error_handler
+                            .last_error()
+                            .map(|err| err.message().to_string())
+                            .unwrap_or("unknown error".to_string())
                     )),
                 }
             }
@@ -220,8 +261,12 @@ pub enum PromptScope {
 }
 
 impl PromptScope {
-    pub fn from_config_value(config_value: &ConfigValue) -> Self {
-        let scope = match config_value.get_as_str_forced("scope") {
+    pub fn from_config_value(
+        config_value: &ConfigValue,
+        error_handler: &ConfigErrorHandler,
+    ) -> Self {
+        let scope = match config_value.get_as_str_or_none("scope", &error_handler.with_key("scope"))
+        {
             Some(scope) => scope.trim().to_lowercase(),
             None => return Self::default(),
         };
@@ -229,7 +274,15 @@ impl PromptScope {
         match scope.as_str() {
             "repo" | "repository" => Self::Repository,
             "org" | "organization" => Self::Organization,
-            _ => Self::default(),
+            _ => {
+                error_handler
+                    .with_key("scope")
+                    .with_expected("repo or org")
+                    .with_actual(scope)
+                    .error(ConfigErrorKind::InvalidValue);
+
+                Self::default()
+            }
         }
     }
 
@@ -269,44 +322,80 @@ pub enum PromptType {
 }
 
 impl PromptType {
-    pub fn from_config_value(config_value: &ConfigValue) -> Result<Self, String> {
-        let prompt_type = match config_value.get_as_str_forced("type") {
-            Some(prompt_type) => prompt_type.trim().to_lowercase(),
-            None => return Ok(Self::default()),
+    pub fn from_config_value(
+        config_value: &ConfigValue,
+        error_handler: &ConfigErrorHandler,
+    ) -> Option<Self> {
+        let prompt_type = match config_value
+            .get_as_str_or_none("type", &error_handler.with_key("type"))
+            .map(|s| s.trim().to_lowercase())
+        {
+            Some(prompt_type) if prompt_type.is_empty() => {
+                error_handler
+                    .with_key("type")
+                    .error(ConfigErrorKind::EmptyKey);
+
+                return Some(Self::default());
+            }
+            Some(prompt_type) => prompt_type,
+            None => {
+                error_handler
+                    .with_key("type")
+                    .error(ConfigErrorKind::MissingKey);
+
+                return Some(Self::default());
+            }
         };
 
         match prompt_type.as_str() {
-            "text" => Ok(Self::Text),
-            "password" => Ok(Self::Password),
-            "confirm" | "boolean" => Ok(Self::Confirm),
+            "text" => Some(Self::Text),
+            "password" => Some(Self::Password),
+            "confirm" | "boolean" => Some(Self::Confirm),
             "choice" | "select" | "choices" | "multichoice" | "multiselect" => {
                 if let Some(choices) = config_value.get("choices") {
-                    let choices = PromptChoicesConfig::from_config_value(&choices)?;
+                    let choices = PromptChoicesConfig::from_config_value(
+                        &choices,
+                        &error_handler.with_key("choices"),
+                    )?;
 
                     return match prompt_type.as_str() {
-                        "choice" | "select" => Ok(Self::Choice { choices }),
+                        "choice" | "select" => Some(Self::Choice { choices }),
                         "choices" | "multichoice" | "multiselect" => {
-                            Ok(Self::MultiChoice { choices })
+                            Some(Self::MultiChoice { choices })
                         }
                         _ => unreachable!("invalid prompt type for choices"),
                     };
                 }
 
-                Err("choices is required for choice and multichoice prompts".to_string())
+                error_handler
+                    .with_key("choices")
+                    .error(ConfigErrorKind::MissingKey);
+
+                None
             }
             "int" => {
-                let min = config_value.get_as_integer("min");
-                let max = config_value.get_as_integer("max");
+                let min =
+                    config_value.get_as_integer_or_none("min", &error_handler.with_key("min"));
+                let max =
+                    config_value.get_as_integer_or_none("max", &error_handler.with_key("max"));
 
-                Ok(Self::Int { min, max })
+                Some(Self::Int { min, max })
             }
             "float" => {
-                let min = config_value.get_as_float("min");
-                let max = config_value.get_as_float("max");
+                let min = config_value.get_as_float_or_none("min", &error_handler.with_key("min"));
+                let max = config_value.get_as_float_or_none("max", &error_handler.with_key("max"));
 
-                Ok(Self::Float { min, max })
+                Some(Self::Float { min, max })
             }
-            _ => Err(format!("invalid prompt type: {}", prompt_type)),
+            _ => {
+                error_handler
+                    .with_key("type")
+                    .with_expected("text, password, confirm, choice, multichoice, int, or float")
+                    .with_actual(prompt_type)
+                    .error(ConfigErrorKind::InvalidValue);
+
+                None
+            }
         }
     }
 
@@ -665,22 +754,33 @@ pub enum PromptChoicesConfig {
 }
 
 impl PromptChoicesConfig {
-    pub fn from_config_value(config_value: &ConfigValue) -> Result<Self, String> {
+    pub fn from_config_value(
+        config_value: &ConfigValue,
+        error_handler: &ConfigErrorHandler,
+    ) -> Option<Self> {
         if let Some(array) = config_value.as_array() {
             let choices = array
                 .iter()
-                .filter_map(PromptChoiceConfig::from_config_value)
+                .enumerate()
+                .filter_map(|(idx, value)| {
+                    PromptChoiceConfig::from_config_value(value, &error_handler.with_index(idx))
+                })
                 .collect::<Vec<PromptChoiceConfig>>();
 
             if choices.is_empty() {
-                Err("choices must be a non-empty array".to_string())
+                error_handler.error(ConfigErrorKind::EmptyKey);
+                None
             } else {
-                Ok(Self::ChoicesAsArray(choices))
+                Some(Self::ChoicesAsArray(choices))
             }
         } else if let Some(string) = config_value.as_str_forced() {
-            Ok(Self::ChoicesAsString(string.to_string()))
+            Some(Self::ChoicesAsString(string.to_string()))
         } else {
-            Err("choices must be an array or a template of an array".to_string())
+            error_handler
+                .with_expected("array or template of array")
+                .with_actual(config_value)
+                .error(ConfigErrorKind::InvalidValueType);
+            None
         }
     }
 
@@ -698,7 +798,12 @@ impl PromptChoicesConfig {
 
                     let choices = choices
                         .iter()
-                        .filter_map(PromptChoiceConfig::from_config_value)
+                        .filter_map(|value| {
+                            PromptChoiceConfig::from_config_value(
+                                value,
+                                &ConfigErrorHandler::noop(),
+                            )
+                        })
                         .collect::<Vec<PromptChoiceConfig>>();
 
                     if choices.is_empty() {
@@ -732,7 +837,10 @@ pub struct PromptChoiceConfig {
 }
 
 impl PromptChoiceConfig {
-    pub fn from_config_value(config_value: &ConfigValue) -> Option<Self> {
+    pub fn from_config_value(
+        config_value: &ConfigValue,
+        error_handler: &ConfigErrorHandler,
+    ) -> Option<Self> {
         if let Some(table) = config_value.as_table() {
             let id = table.get("id").and_then(|id| id.as_str());
             let choice = table.get("choice").and_then(|choice| choice.as_str());
@@ -747,13 +855,27 @@ impl PromptChoiceConfig {
                     id: choice.clone(),
                     choice,
                 }),
-                _ => None,
+                _ => {
+                    error_handler
+                        .with_expected("id or choice")
+                        .with_actual(config_value)
+                        .error(ConfigErrorKind::MissingKey);
+
+                    None
+                }
             }
-        } else {
-            config_value.as_str_forced().map(|choice| Self {
+        } else if let Some(choice) = config_value.as_str_forced() {
+            Some(Self {
                 id: choice.to_string(),
                 choice: choice.to_string(),
             })
+        } else {
+            error_handler
+                .with_expected("table or string")
+                .with_actual(config_value)
+                .error(ConfigErrorKind::InvalidValueType);
+
+            None
         }
     }
 }

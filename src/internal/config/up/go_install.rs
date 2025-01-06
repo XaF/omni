@@ -18,6 +18,8 @@ use crate::internal::cache::GoInstallOperationCache;
 use crate::internal::cache::GoInstallVersions;
 use crate::internal::config::config;
 use crate::internal::config::global_config;
+use crate::internal::config::parser::ConfigErrorHandler;
+use crate::internal::config::parser::ConfigErrorKind;
 use crate::internal::config::up::mise_tool_path;
 use crate::internal::config::up::utils::cleanup_path;
 use crate::internal::config::up::utils::get_command_output;
@@ -73,15 +75,24 @@ impl Serialize for UpConfigGoInstalls {
 }
 
 impl UpConfigGoInstalls {
-    pub fn from_config_value(config_value: Option<&ConfigValue>) -> Self {
+    pub fn from_config_value(
+        config_value: Option<&ConfigValue>,
+        error_handler: &ConfigErrorHandler,
+    ) -> Self {
         let config_value = match config_value {
             Some(config_value) => config_value,
-            None => return Self::default(),
+            None => {
+                error_handler.error(ConfigErrorKind::EmptyKey);
+                return Self::default();
+            }
         };
 
-        if let Some(_entry) = config_value.as_str_forced() {
+        if config_value.as_str_forced().is_some() {
             return Self {
-                tools: vec![UpConfigGoInstall::from_config_value(Some(config_value))],
+                tools: vec![UpConfigGoInstall::from_config_value(
+                    Some(config_value),
+                    error_handler,
+                )],
             };
         }
 
@@ -89,7 +100,13 @@ impl UpConfigGoInstalls {
             return Self {
                 tools: array
                     .iter()
-                    .map(|config_value| UpConfigGoInstall::from_config_value(Some(config_value)))
+                    .enumerate()
+                    .map(|(idx, config_value)| {
+                        UpConfigGoInstall::from_config_value(
+                            Some(config_value),
+                            &error_handler.with_index(idx),
+                        )
+                    })
                     .collect(),
             };
         }
@@ -99,7 +116,10 @@ impl UpConfigGoInstalls {
             // path and we can just parse it and return it
             if table.contains_key("path") {
                 return Self {
-                    tools: vec![UpConfigGoInstall::from_config_value(Some(config_value))],
+                    tools: vec![UpConfigGoInstall::from_config_value(
+                        Some(config_value),
+                        error_handler,
+                    )],
                 };
             }
 
@@ -108,9 +128,9 @@ impl UpConfigGoInstalls {
             // we want to go over them in lexico-graphical order to ensure that
             // the order is consistent
             let mut tools = Vec::new();
-            for path in table.keys().sorted() {
-                let value = table.get(path).expect("path config not found");
-                let path = match ConfigValue::from_str(path) {
+            for path_str in table.keys().sorted() {
+                let value = table.get(path_str).expect("path config not found");
+                let path = match ConfigValue::from_str(path_str) {
                     Ok(value) => value,
                     Err(_) => continue,
                 };
@@ -129,14 +149,26 @@ impl UpConfigGoInstalls {
                     HashMap::new()
                 };
 
-                path_config.insert("path".to_string(), path);
-                tools.push(UpConfigGoInstall::from_table(&path_config));
+                path_config.insert("path".to_string(), path.clone());
+                tools.push(UpConfigGoInstall::from_table(
+                    &path_config,
+                    &error_handler.with_key(path_str),
+                ));
+            }
+
+            if tools.is_empty() {
+                error_handler.error(ConfigErrorKind::EmptyKey);
             }
 
             return Self { tools };
         }
 
-        UpConfigGoInstalls::default()
+        error_handler
+            .with_expected(vec!["string", "array", "table"])
+            .with_actual(config_value)
+            .error(ConfigErrorKind::InvalidValueType);
+
+        Self::default()
     }
 
     pub fn up(
@@ -493,7 +525,10 @@ impl Default for UpConfigGoInstall {
 }
 
 impl UpConfigGoInstall {
-    pub fn from_config_value(config_value: Option<&ConfigValue>) -> Self {
+    pub fn from_config_value(
+        config_value: Option<&ConfigValue>,
+        error_handler: &ConfigErrorHandler,
+    ) -> Self {
         let config_value = match config_value {
             Some(config_value) => config_value,
             None => {
@@ -505,16 +540,21 @@ impl UpConfigGoInstall {
         };
 
         if let Some(table) = config_value.as_table() {
-            Self::from_table(&table)
+            Self::from_table(&table, error_handler)
         } else if let Some(path) = config_value.as_str_forced() {
             let (path, version) = match parse_go_install_path(&path) {
                 Ok((path, version)) => (path, version),
                 Err(err) => {
+                    error_handler
+                        .with_context("error", err.to_string())
+                        .with_actual(path.clone())
+                        .error(ConfigErrorKind::ParsingError);
+
                     return Self {
                         path: path.to_string(),
                         config_error: Some(err.to_string()),
                         ..Default::default()
-                    }
+                    };
                 }
             };
 
@@ -535,12 +575,23 @@ impl UpConfigGoInstall {
         }
     }
 
-    fn from_table(table: &HashMap<String, ConfigValue>) -> Self {
+    fn from_table(
+        table: &HashMap<String, ConfigValue>,
+        error_handler: &ConfigErrorHandler,
+    ) -> Self {
+        let config_value = ConfigValue::from_table(table.clone());
+
         let path = match table.get("path") {
             Some(path) => {
                 if let Some(path) = path.as_str_forced() {
                     path.to_string()
                 } else {
+                    error_handler
+                        .with_key("path")
+                        .with_expected("string")
+                        .with_actual(path)
+                        .error(ConfigErrorKind::InvalidValueType);
+
                     return UpConfigGoInstall {
                         config_error: Some("path must be a string".to_string()),
                         ..Default::default()
@@ -561,15 +612,20 @@ impl UpConfigGoInstall {
                     {
                         let mut path_config = table.clone();
                         path_config.insert("path".to_string(), path_config_value);
-                        return UpConfigGoInstall::from_table(&path_config);
+                        return UpConfigGoInstall::from_table(&path_config, error_handler);
                     } else if let (true, Ok(path_config_value)) =
                         (value.is_null(), ConfigValue::from_str(key))
                     {
                         let path_config =
                             HashMap::from_iter(vec![("path".to_string(), path_config_value)]);
-                        return UpConfigGoInstall::from_table(&path_config);
+                        return UpConfigGoInstall::from_table(&path_config, error_handler);
                     }
                 }
+
+                error_handler
+                    .with_actual(config_value)
+                    .error(ConfigErrorKind::NotExactlyOneKeyInTable);
+
                 return UpConfigGoInstall {
                     config_error: Some("path is required".to_string()),
                     ..Default::default()
@@ -580,6 +636,11 @@ impl UpConfigGoInstall {
         let (path, version) = match parse_go_install_path(&path) {
             Ok((path, version)) => (path, version),
             Err(err) => {
+                error_handler
+                    .with_context("error", err.to_string())
+                    .with_actual(path.clone())
+                    .error(ConfigErrorKind::ParsingError);
+
                 return UpConfigGoInstall {
                     path,
                     config_error: Some(err.to_string()),
@@ -588,9 +649,20 @@ impl UpConfigGoInstall {
             }
         };
 
-        let exact = match table.get("exact").map(|v| v.as_bool_forced()) {
-            Some(Some(exact)) => exact,
-            _ => version.is_some(),
+        let exact = match table.get("exact") {
+            Some(value) => match value.as_bool_forced() {
+                Some(exact) => exact,
+                None => {
+                    error_handler
+                        .with_key("exact")
+                        .with_expected("bool")
+                        .with_actual(value)
+                        .error(ConfigErrorKind::InvalidValueType);
+
+                    version.is_some()
+                }
+            },
+            None => version.is_some(),
         };
 
         // If version is specified, and version is also specified in the path,
@@ -602,6 +674,11 @@ impl UpConfigGoInstall {
         {
             Some(version_field) => {
                 if version.is_some() {
+                    error_handler
+                        .with_key("version")
+                        .with_actual(version_field)
+                        .error(ConfigErrorKind::UnsupportedValueInContext);
+
                     return UpConfigGoInstall {
                         path,
                         config_error: Some(
@@ -616,21 +693,18 @@ impl UpConfigGoInstall {
             None => version,
         };
 
-        let upgrade = table
-            .get("upgrade")
-            .map(|v| v.as_bool_forced())
-            .unwrap_or(None)
-            .unwrap_or(false);
-        let prerelease = table
-            .get("prerelease")
-            .map(|v| v.as_bool())
-            .unwrap_or(None)
-            .unwrap_or(false);
-        let build = table
-            .get("build")
-            .map(|v| v.as_bool())
-            .unwrap_or(None)
-            .unwrap_or(false);
+        let upgrade = config_value.get_as_bool_or_default(
+            "upgrade",
+            false,
+            &error_handler.with_key("upgrade"),
+        );
+        let prerelease = config_value.get_as_bool_or_default(
+            "prerelease",
+            false,
+            &error_handler.with_key("prerelease"),
+        );
+        let build =
+            config_value.get_as_bool_or_default("build", false, &error_handler.with_key("build"));
 
         UpConfigGoInstall {
             path,

@@ -5,6 +5,8 @@ use std::path::Path;
 use serde::Deserialize;
 use serde::Serialize;
 
+use crate::internal::config::parser::ConfigErrorHandler;
+use crate::internal::config::parser::ConfigErrorKind;
 use crate::internal::config::parser::PathEntryConfig;
 use crate::internal::config::utils::sort_serde_yaml;
 use crate::internal::env::user_home;
@@ -208,6 +210,14 @@ impl ConfigValue {
             ConfigScope::Null,
             value,
         ))
+    }
+
+    pub fn from_table(table: HashMap<String, ConfigValue>) -> Self {
+        Self::new(
+            ConfigSource::Null,
+            ConfigScope::Null,
+            Some(Box::new(ConfigData::Mapping(table))),
+        )
     }
 
     pub fn reject_scope(&self, scope: &ConfigScope) -> Option<ConfigValue> {
@@ -613,6 +623,78 @@ impl ConfigValue {
         None
     }
 
+    pub fn get_as_str_or_none(
+        &self,
+        key: &str,
+        error_handler: &ConfigErrorHandler,
+    ) -> Option<String> {
+        if let Some(value) = self.get(key) {
+            match value.as_str_forced() {
+                Some(value) => Some(value),
+                None => {
+                    error_handler
+                        .with_expected("string")
+                        .with_actual(value)
+                        .error(ConfigErrorKind::InvalidValueType);
+                    None
+                }
+            }
+        } else {
+            None
+        }
+    }
+
+    pub fn get_as_str_or_default(
+        &self,
+        key: &str,
+        default: &str,
+        error_handler: &ConfigErrorHandler,
+    ) -> String {
+        if let Some(value) = self.get(key) {
+            match value.as_str_forced() {
+                Some(value) => value,
+                None => {
+                    error_handler
+                        .with_expected("string")
+                        .with_actual(value)
+                        .error(ConfigErrorKind::InvalidValueType);
+                    default.to_string()
+                }
+            }
+        } else {
+            default.to_string()
+        }
+    }
+
+    pub fn get_as_str_array(&self, key: &str, error_handler: &ConfigErrorHandler) -> Vec<String> {
+        let mut output = Vec::new();
+
+        if let Some(value) = self.get(key) {
+            if let Some(value) = value.as_str_forced() {
+                output.push(value.to_string());
+            } else if let Some(array) = value.as_array() {
+                for (idx, value) in array.iter().enumerate() {
+                    if let Some(value) = value.as_str_forced() {
+                        output.push(value.to_string());
+                    } else {
+                        error_handler
+                            .with_index(idx)
+                            .with_expected("string")
+                            .with_actual(value)
+                            .error(ConfigErrorKind::InvalidValueType);
+                    }
+                }
+            } else {
+                error_handler
+                    .with_expected("string or array of strings")
+                    .with_actual(value)
+                    .error(ConfigErrorKind::InvalidValueType);
+            }
+        }
+
+        output
+    }
+
     pub fn get_as_bool(&self, key: &str) -> Option<bool> {
         if let Some(value) = self.get(key) {
             return value.as_bool();
@@ -627,6 +709,49 @@ impl ConfigValue {
         None
     }
 
+    pub fn get_as_bool_or_none(
+        &self,
+        key: &str,
+        error_handler: &ConfigErrorHandler,
+    ) -> Option<bool> {
+        if let Some(value) = self.get(key) {
+            match value.as_bool_forced() {
+                Some(value) => Some(value),
+                None => {
+                    error_handler
+                        .with_expected("bool")
+                        .with_actual(value)
+                        .error(ConfigErrorKind::InvalidValueType);
+                    None
+                }
+            }
+        } else {
+            None
+        }
+    }
+
+    pub fn get_as_bool_or_default(
+        &self,
+        key: &str,
+        default: bool,
+        error_handler: &ConfigErrorHandler,
+    ) -> bool {
+        if let Some(value) = self.get(key) {
+            match value.as_bool_forced() {
+                Some(value) => value,
+                None => {
+                    error_handler
+                        .with_expected("bool")
+                        .with_actual(value)
+                        .error(ConfigErrorKind::InvalidValueType);
+                    default
+                }
+            }
+        } else {
+            default
+        }
+    }
+
     pub fn get_as_float(&self, key: &str) -> Option<f64> {
         if let Some(value) = self.get(key) {
             return value.as_float();
@@ -634,11 +759,75 @@ impl ConfigValue {
         None
     }
 
+    pub fn get_as_float_or_none(
+        &self,
+        key: &str,
+        error_handler: &ConfigErrorHandler,
+    ) -> Option<f64> {
+        if let Some(value) = self.get(key) {
+            match value.as_float() {
+                Some(value) => Some(value),
+                None => {
+                    error_handler
+                        .with_expected("float")
+                        .with_actual(value)
+                        .error(ConfigErrorKind::InvalidValueType);
+                    None
+                }
+            }
+        } else {
+            None
+        }
+    }
+
+    pub fn get_as_float_or_default(
+        &self,
+        key: &str,
+        default: f64,
+        error_handler: &ConfigErrorHandler,
+    ) -> f64 {
+        if let Some(value) = self.get(key) {
+            match value.as_float() {
+                Some(value) => value,
+                None => {
+                    error_handler
+                        .with_expected("float")
+                        .with_actual(value)
+                        .error(ConfigErrorKind::InvalidValueType);
+                    default
+                }
+            }
+        } else {
+            default
+        }
+    }
+
     pub fn get_as_integer(&self, key: &str) -> Option<i64> {
         if let Some(value) = self.get(key) {
             return value.as_integer();
         }
         None
+    }
+
+    pub fn get_as_integer_or_none(
+        &self,
+        key: &str,
+        error_handler: &ConfigErrorHandler,
+    ) -> Option<i64> {
+        if let Some(value) = self.get(key) {
+            match value.as_integer() {
+                Some(value) => Some(value),
+                None => {
+                    error_handler
+                        .with_expected("integer")
+                        .with_actual(value)
+                        .error(ConfigErrorKind::InvalidValueType);
+                    None
+                }
+            }
+        } else {
+            None
+        }
     }
 
     pub fn get_as_unsigned_integer(&self, key: &str) -> Option<u64> {
@@ -1036,5 +1225,17 @@ impl ConfigValue {
 
     pub fn set_value(&mut self, value: Option<Box<ConfigData>>) {
         self.value = value;
+    }
+}
+
+impl From<ConfigValue> for serde_yaml::Value {
+    fn from(value: ConfigValue) -> Self {
+        value.as_serde_yaml()
+    }
+}
+
+impl From<&ConfigValue> for serde_yaml::Value {
+    fn from(value: &ConfigValue) -> Self {
+        value.as_serde_yaml()
     }
 }
