@@ -1561,7 +1561,7 @@ impl UpConfigMise {
                     }
 
                     // Check if the entry is .gitignore'd
-                    if in_repo && matches!(is_path_gitignored(&entry_path), Ok(true)) {
+                    if in_repo && matches!(is_path_gitignored(entry_path), Ok(true)) {
                         return None;
                     }
 
