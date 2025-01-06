@@ -727,8 +727,6 @@ impl UpConfigGoInstall {
             return Err(UpError::Config(errmsg));
         }
 
-        eprintln!("HELLOOOOOOOOOOOOOOOOOOOOOOOOOOO");
-
         let installed = self.resolve_and_install_version(go_bin, options, progress_handler)?;
 
         self.update_cache(options, environment, progress_handler);
