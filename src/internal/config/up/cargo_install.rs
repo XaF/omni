@@ -1,6 +1,5 @@
 use std::collections::HashMap;
 use std::os::unix::fs::PermissionsExt;
-use std::path::Path;
 use std::path::PathBuf;
 
 use itertools::Itertools;
@@ -18,8 +17,10 @@ use crate::internal::config::config;
 use crate::internal::config::global_config;
 use crate::internal::config::parser::ConfigErrorHandler;
 use crate::internal::config::parser::ConfigErrorKind;
+use crate::internal::config::up::mise::mise_path;
 use crate::internal::config::up::mise_tool_path;
 use crate::internal::config::up::utils::cleanup_path;
+use crate::internal::config::up::utils::directory::force_remove_all;
 use crate::internal::config::up::utils::progress_handler::ProgressHandler;
 use crate::internal::config::up::utils::run_progress;
 use crate::internal::config::up::utils::RunConfig;
@@ -193,7 +194,7 @@ impl UpConfigCargoInstalls {
             return Err(UpError::Config(errmsg));
         }
 
-        let cargo_bin = self.get_cargo_bin(options, progress_handler)?;
+        let cargo_bin = CargoBin::get(options, progress_handler)?;
 
         let num = self.crates.len();
         for (idx, tool) in self.crates.iter().enumerate() {
@@ -222,35 +223,6 @@ impl UpConfigCargoInstalls {
         }
 
         Ok(())
-    }
-
-    fn get_cargo_bin(
-        &self,
-        options: &UpOptions,
-        progress_handler: &UpProgressHandler,
-    ) -> Result<PathBuf, UpError> {
-        progress_handler.progress("install dependencies".to_string());
-        let rust_tool = UpConfigTool::Mise(UpConfigMise::new_any_version("rust"));
-
-        // We create a fake environment since we do not want to add this
-        // rust version as part of it, but we want to be able to use `cargo`
-        // to call `cargo install`
-        let mut fake_env = UpEnvironment::new();
-
-        let subhandler = progress_handler.subhandler(&"rust: ".light_black());
-        rust_tool.up(options, &mut fake_env, &subhandler)?;
-
-        // Grab the tool from inside go_tool
-        let mise = match rust_tool {
-            UpConfigTool::Mise(mise) => mise,
-            _ => unreachable!("rust_tool is not a mise tool"),
-        };
-
-        let installed_version = mise.version()?;
-        let install_path = PathBuf::from(mise_tool_path("rust", &installed_version));
-        let cargo_bin = install_path.join("cargo");
-
-        Ok(cargo_bin)
     }
 
     pub fn commit(&self, options: &UpOptions, env_version_id: &str) -> Result<(), UpError> {
@@ -774,7 +746,7 @@ impl UpConfigCargoInstall {
         options: &UpOptions,
         environment: &mut UpEnvironment,
         progress_handler: &UpProgressHandler,
-        cargo_bin: &Path,
+        cargo_bin: &CargoBin,
     ) -> Result<(), UpError> {
         progress_handler.init(self.desc().light_blue());
 
@@ -861,7 +833,7 @@ impl UpConfigCargoInstall {
 
     fn resolve_and_install_version(
         &self,
-        cargo_bin: &Path,
+        cargo_bin: &CargoBin,
         options: &UpOptions,
         progress_handler: &UpProgressHandler,
     ) -> Result<bool, UpError> {
@@ -1200,7 +1172,7 @@ impl UpConfigCargoInstall {
 
     fn install_version(
         &self,
-        cargo_bin: &Path,
+        cargo_bin: &CargoBin,
         options: &UpOptions,
         version: &str,
         progress_handler: &dyn ProgressHandler,
@@ -1225,15 +1197,7 @@ impl UpConfigCargoInstall {
             })?;
         let tmp_bin_path = tmp_dir.path().join("bin");
 
-        // CARGO_HOME and RUSTUP_HOME need to be set to the cargo binary install path
-        // We need to get the parent() twice to get the cargo home directory
-        let cargo_home = cargo_bin
-            .parent()
-            .expect("cargo bin has no parent")
-            .parent()
-            .expect("cargo bin has no parent");
-
-        let mut cargo_install_cmd = TokioCommand::new(cargo_bin);
+        let mut cargo_install_cmd = cargo_bin.get_async_command();
         cargo_install_cmd.arg("install");
         cargo_install_cmd.arg(&self.crate_name);
         cargo_install_cmd.arg("--version");
@@ -1246,8 +1210,6 @@ impl UpConfigCargoInstall {
 
         // Override GO environment variables to ensure that the
         // installation is done in the temporary directory
-        cargo_install_cmd.env("CARGO_HOME", cargo_home);
-        cargo_install_cmd.env("RUSTUP_HOME", cargo_home);
         cargo_install_cmd.env("CARGO_INSTALL_ROOT", tmp_dir.path());
 
         cargo_install_cmd.stdout(std::process::Stdio::piped());
@@ -1288,14 +1250,24 @@ impl UpConfigCargoInstall {
 
         // Move the installed version to the correct crate_name
         std::fs::create_dir_all(&install_path).map_err(|err| {
-            progress_handler.error_with_message(format!("failed to create dir: {}", err));
-            UpError::Exec(format!("failed to create dir: {}", err))
+            let msg = format!("failed to create install directory: {}", err);
+            progress_handler.error_with_message(msg.clone());
+            UpError::Exec(msg)
+        })?;
+
+        // Make sure the target directory does not exist
+        let target_bin_dir = install_path.join("bin");
+        force_remove_all(&target_bin_dir).map_err(|err| {
+            let msg = format!("failed to remove target bin directory: {}", err);
+            progress_handler.error_with_message(msg.clone());
+            UpError::Exec(msg)
         })?;
 
         // Move the tmp_bin_crate_name to the install_crate_name/<bin> directory
-        std::fs::rename(&tmp_bin_path, install_path.join("bin")).map_err(|err| {
-            progress_handler.error_with_message(format!("failed to move bin: {}", err));
-            UpError::Exec(format!("failed to move bin: {}", err))
+        std::fs::rename(&tmp_bin_path, target_bin_dir).map_err(|err| {
+            let msg = format!("failed to move bin directory: {}", err);
+            progress_handler.error_with_message(msg.clone());
+            UpError::Exec(msg)
         })?;
 
         Ok(true)
@@ -1390,6 +1362,50 @@ struct CratesApiVersion {
     num: String,
     #[serde(default)]
     yanked: bool,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+struct CargoBin {
+    bin: PathBuf,
+    version: String,
+}
+
+impl CargoBin {
+    fn get(options: &UpOptions, progress_handler: &UpProgressHandler) -> Result<Self, UpError> {
+        progress_handler.progress("install dependencies".to_string());
+        let rust_tool = UpConfigTool::Mise(UpConfigMise::new_any_version("rust"));
+
+        // We create a fake environment since we do not want to add this
+        // rust version as part of it, but we want to be able to use `cargo`
+        // to call `cargo install`
+        let mut fake_env = UpEnvironment::new();
+
+        let subhandler = progress_handler.subhandler(&"rust: ".light_black());
+        rust_tool.up(options, &mut fake_env, &subhandler)?;
+
+        // Grab the tool from inside go_tool
+        let mise = match rust_tool {
+            UpConfigTool::Mise(mise) => mise,
+            _ => unreachable!("rust_tool is not a mise tool"),
+        };
+
+        let installed_version = mise.version()?;
+        let install_path = PathBuf::from(mise_tool_path("rust", &installed_version));
+        let cargo_bin = install_path.join("cargo");
+
+        Ok(Self {
+            bin: cargo_bin,
+            version: installed_version,
+        })
+    }
+
+    fn get_async_command(&self) -> TokioCommand {
+        let mut cmd = TokioCommand::new(&self.bin);
+        cmd.env("RUSTUP_HOME", format!("{}/rustup", mise_path()));
+        cmd.env("CARGO_HOME", format!("{}/cargo", mise_path()));
+        cmd.env("RUSTUP_TOOLCHAIN", &self.version);
+        cmd
+    }
 }
 
 #[cfg(test)]
@@ -1554,7 +1570,11 @@ mod tests {
 
                 // Create a temporary cargo binary for testing
                 let temp_dir = tempfile::tempdir().unwrap();
-                let cargo_bin = temp_dir.path().join("cargo");
+                let cargo_bin_path = temp_dir.path().join("cargo");
+                let cargo_bin = CargoBin {
+                    bin: cargo_bin_path.clone(),
+                    version: "1.0.0".to_string(),
+                };
                 let script = r#"#!/usr/bin/env bash
                     echo "Running mock cargo with args: $@" >&2
                     if [[ "$1" != "install" ]]; then
@@ -1591,8 +1611,8 @@ mod tests {
                     exit 0
                 "#;
 
-                std::fs::write(&cargo_bin, script).expect("failed to write cargo script");
-                std::fs::set_permissions(&cargo_bin, std::fs::Permissions::from_mode(0o755))
+                std::fs::write(&cargo_bin_path, script).expect("failed to write cargo script");
+                std::fs::set_permissions(&cargo_bin_path, std::fs::Permissions::from_mode(0o755))
                     .expect("failed to set permissions");
 
                 let options = UpOptions::default().cache_disabled();
