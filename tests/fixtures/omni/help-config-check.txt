@@ -1,0 +1,27 @@
+
+Check the configuration files and commands in the omnipath for errors
+
+This allows to report any error or potential error in the configuration, or in any metadata
+for commands in the omnipath.
+
+Usage: omni config check [OPTIONS]
+
+Options:
+  -P, --search-path <SEARCH_PATH>  Path to check for commands.  Can be used multiple times. If
+                                   not passed, worktree-defined paths are used if in a
+                                   worktree, or the omnipath otherwise.
+  -C, --config-file <CONFIG_FILE>  Configuration file to check.  Can be used multiple times.
+                                   If not passed, the default configuration files loaded by
+                                   omni are checked.
+  -p, --include-packages           Include package errors in the check.
+  --global                         Check the global configuration files and omnipath only.
+  --local                          Check the local configuration files and omnipath only.
+  --ignore <IGNORE>                Error codes to ignore
+  --select <SELECT>                Error codes to select
+  --pattern <PATTERN>              Pattern of files to include (or exclude, if starting by
+                                   '!') in the check.  Allows for glob patterns to be used. If
+                                   not passed, all files are included.
+  -o, --output <OUTPUT>            Output format [default: plain] [possible values: json,
+                                   plain]
+
+Source: builtin
