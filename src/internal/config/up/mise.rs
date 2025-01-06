@@ -45,6 +45,8 @@ use crate::internal::dynenv::update_dynamic_env_for_command_from_env;
 use crate::internal::env::cache_home;
 use crate::internal::env::data_home;
 use crate::internal::env::state_home;
+use crate::internal::git::is_path_gitignored;
+use crate::internal::git_env;
 use crate::internal::user_interface::StringColor;
 use crate::internal::workdir;
 use crate::omni_warning;
@@ -1526,6 +1528,7 @@ impl UpConfigMise {
         detect_version_funcs.push(detect_version_from_asdf_version_file);
         detect_version_funcs.push(detect_version_from_tool_version_file);
 
+        let in_repo = git_env(".").in_repo();
         for search_dir in search_dirs.iter() {
             // For safety, we remove any leading slashes from the search directory,
             // as we only want to search in the workdir
@@ -1554,6 +1557,11 @@ impl UpConfigMise {
                     if entry_path.components().any(|component| {
                         component == std::path::Component::Normal("vendor".as_ref())
                     }) {
+                        return None;
+                    }
+
+                    // Check if the entry is .gitignore'd
+                    if in_repo && matches!(is_path_gitignored(entry_path), Ok(true)) {
                         return None;
                     }
 
