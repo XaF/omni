@@ -22,6 +22,7 @@ use crate::internal::config::parser::ConfigErrorHandler;
 use crate::internal::config::parser::ConfigErrorKind;
 use crate::internal::config::up::mise_tool_path;
 use crate::internal::config::up::utils::cleanup_path;
+use crate::internal::config::up::utils::directory::force_remove_all;
 use crate::internal::config::up::utils::get_command_output;
 use crate::internal::config::up::utils::progress_handler::ProgressHandler;
 use crate::internal::config::up::utils::run_progress;
@@ -1267,16 +1268,26 @@ impl UpConfigGoInstall {
             return Err(UpError::Exec(msg));
         }
 
-        // Move the installed version to the correct path
+        // Move the installed version to the correct crate_name
         std::fs::create_dir_all(&install_path).map_err(|err| {
-            progress_handler.error_with_message(format!("failed to create dir: {}", err));
-            UpError::Exec(format!("failed to create dir: {}", err))
+            let msg = format!("failed to create install directory: {}", err);
+            progress_handler.error_with_message(msg.clone());
+            UpError::Exec(msg)
         })?;
 
-        // Move the tmp_bin_path to the install_path/<bin> directory
-        std::fs::rename(&tmp_bin_path, install_path.join("bin")).map_err(|err| {
-            progress_handler.error_with_message(format!("failed to move bin: {}", err));
-            UpError::Exec(format!("failed to move bin: {}", err))
+        // Make sure the target directory does not exist
+        let target_bin_dir = install_path.join("bin");
+        force_remove_all(&target_bin_dir).map_err(|err| {
+            let msg = format!("failed to remove target bin directory: {}", err);
+            progress_handler.error_with_message(msg.clone());
+            UpError::Exec(msg)
+        })?;
+
+        // Move the tmp_bin_crate_name to the install_crate_name/<bin> directory
+        std::fs::rename(&tmp_bin_path, target_bin_dir).map_err(|err| {
+            let msg = format!("failed to move bin directory: {}", err);
+            progress_handler.error_with_message(msg.clone());
+            UpError::Exec(msg)
         })?;
 
         Ok(true)
