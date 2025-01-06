@@ -1,0 +1,82 @@
+askpass:
+  enable_gui: 'not_a_boolean'
+  enabled: 'not_a_boolean'
+  prefer_gui: 'not_a_boolean'
+cache:
+  asdf:
+    cleanup_after: 'not_a_duration'
+    plugin_update_expire: 'not_a_duration'
+    plugin_versions_expire: 'not_a_duration'
+    update_expire: 'not_a_duration'
+  cargo_install:
+    cleanup_after: 'not_a_duration'
+    versions_expire: 'not_a_duration'
+    versions_retention: 'not_a_duration'
+  environment:
+    retention: 'not_a_duration'
+  github_release:
+    cleanup_after: 'not_a_duration'
+    versions_expire: 'not_a_duration'
+    versions_retention: 'not_a_duration'
+  go_install:
+    cleanup_after: 'not_a_duration'
+    versions_expire: 'not_a_duration'
+    versions_retention: 'not_a_duration'
+  homebrew:
+    cleanup_after: 'not_a_duration'
+    install_check_expire: 'not_a_duration'
+    install_update_expire: 'not_a_duration'
+    tap_update_expire: 'not_a_duration'
+    update_expire: 'not_a_duration'
+  path: null
+cd:
+  fast_search: 'not_a_boolean'
+  path_match_min_score: 'not_a_float'
+  path_match_skip_prompt_if:
+    enabled: 'not_a_boolean'
+    first_min: 3.4.5
+    second_max: 1.2.3
+clone:
+  auto_up: 'not_a_boolean'
+  ls_remote_timeout: false
+command_match_min_score: 'not_a_float'
+command_match_skip_prompt_if:
+  enabled: 'not_a_boolean'
+  first_min: false
+  second_max: true
+commands:
+  command-without-run:
+    desc: Command without run
+  command-with-nothing:
+  command-with-subcommands:
+    subcommands:
+      subcommand-without-run:
+        desc: Subcommand 1
+      subcommand-ok:
+        desc: Subcommand 2
+        run: echo "ok"
+config_commands:
+  split_on_dash: 'not_a_boolean'
+  split_on_slash: 'not_a_boolean'
+makefile_commands:
+  enabled: 'not_a_boolean'
+  split_on_dash: 'not_a_boolean'
+  split_on_slash: 'not_a_boolean'
+path_repo_updates:
+  background_updates: 'not_a_boolean'
+  background_updates_timeout: 'not_a_duration'
+  enabled: 'not_a_boolean'
+  interval: 'not_a_duration'
+  on_command_not_found: 'not_a_valid_value'
+  pre_auth: true
+  pre_auth_timeout: 120
+  ref_type: 'not_a_valid_value'
+  self_update: 'not_a_valid_value'
+repo_path_format:
+  not_a_valid_key: 'not_a_valid_value'
+up_command:
+  auto_bootstrap: 'not_a_boolean'
+  notify_workdir_config_available: 'not_a_boolean'
+  notify_workdir_config_updated: 'not_a_boolean'
+  upgrade: 'not_a_boolean'
+worktree: /some/path

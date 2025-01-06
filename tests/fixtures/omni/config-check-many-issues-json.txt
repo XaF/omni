@@ -1,0 +1,284 @@
+[
+  {
+    "file": "<FIXTURES_DIR>/omni/config-check-broken-input.txt",
+    "lineno": 0,
+    "errorcode": "C001",
+    "message": "key 'commands.command-with-nothing.run' is missing"
+  },
+  {
+    "file": "<FIXTURES_DIR>/omni/config-check-broken-input.txt",
+    "lineno": 0,
+    "errorcode": "C001",
+    "message": "key 'commands.command-with-subcommands.run' is missing"
+  },
+  {
+    "file": "<FIXTURES_DIR>/omni/config-check-broken-input.txt",
+    "lineno": 0,
+    "errorcode": "C001",
+    "message": "key 'commands.command-with-subcommands.subcommands.subcommand-without-run.run' is missing"
+  },
+  {
+    "file": "<FIXTURES_DIR>/omni/config-check-broken-input.txt",
+    "lineno": 0,
+    "errorcode": "C001",
+    "message": "key 'commands.command-without-run.run' is missing"
+  },
+  {
+    "file": "<FIXTURES_DIR>/omni/config-check-broken-input.txt",
+    "lineno": 0,
+    "errorcode": "C101",
+    "message": "value for key 'askpass.enable_gui' should be a 'bool' but found String(\"not_a_boolean\")"
+  },
+  {
+    "file": "<FIXTURES_DIR>/omni/config-check-broken-input.txt",
+    "lineno": 0,
+    "errorcode": "C101",
+    "message": "value for key 'askpass.enabled' should be a 'bool' but found String(\"not_a_boolean\")"
+  },
+  {
+    "file": "<FIXTURES_DIR>/omni/config-check-broken-input.txt",
+    "lineno": 0,
+    "errorcode": "C101",
+    "message": "value for key 'askpass.prefer_gui' should be a 'bool' but found String(\"not_a_boolean\")"
+  },
+  {
+    "file": "<FIXTURES_DIR>/omni/config-check-broken-input.txt",
+    "lineno": 0,
+    "errorcode": "C101",
+    "message": "value for key 'cache.cargo_install.cleanup_after' should be a 'duration' but found String(\"not_a_duration\")"
+  },
+  {
+    "file": "<FIXTURES_DIR>/omni/config-check-broken-input.txt",
+    "lineno": 0,
+    "errorcode": "C101",
+    "message": "value for key 'cache.cargo_install.versions_expire' should be a 'duration' but found String(\"not_a_duration\")"
+  },
+  {
+    "file": "<FIXTURES_DIR>/omni/config-check-broken-input.txt",
+    "lineno": 0,
+    "errorcode": "C101",
+    "message": "value for key 'cache.cargo_install.versions_retention' should be a 'duration' but found String(\"not_a_duration\")"
+  },
+  {
+    "file": "<FIXTURES_DIR>/omni/config-check-broken-input.txt",
+    "lineno": 0,
+    "errorcode": "C101",
+    "message": "value for key 'cache.environment.retention' should be a 'duration' but found String(\"not_a_duration\")"
+  },
+  {
+    "file": "<FIXTURES_DIR>/omni/config-check-broken-input.txt",
+    "lineno": 0,
+    "errorcode": "C101",
+    "message": "value for key 'cache.github_release.cleanup_after' should be a 'duration' but found String(\"not_a_duration\")"
+  },
+  {
+    "file": "<FIXTURES_DIR>/omni/config-check-broken-input.txt",
+    "lineno": 0,
+    "errorcode": "C101",
+    "message": "value for key 'cache.github_release.versions_expire' should be a 'duration' but found String(\"not_a_duration\")"
+  },
+  {
+    "file": "<FIXTURES_DIR>/omni/config-check-broken-input.txt",
+    "lineno": 0,
+    "errorcode": "C101",
+    "message": "value for key 'cache.github_release.versions_retention' should be a 'duration' but found String(\"not_a_duration\")"
+  },
+  {
+    "file": "<FIXTURES_DIR>/omni/config-check-broken-input.txt",
+    "lineno": 0,
+    "errorcode": "C101",
+    "message": "value for key 'cache.go_install.cleanup_after' should be a 'duration' but found String(\"not_a_duration\")"
+  },
+  {
+    "file": "<FIXTURES_DIR>/omni/config-check-broken-input.txt",
+    "lineno": 0,
+    "errorcode": "C101",
+    "message": "value for key 'cache.go_install.versions_expire' should be a 'duration' but found String(\"not_a_duration\")"
+  },
+  {
+    "file": "<FIXTURES_DIR>/omni/config-check-broken-input.txt",
+    "lineno": 0,
+    "errorcode": "C101",
+    "message": "value for key 'cache.go_install.versions_retention' should be a 'duration' but found String(\"not_a_duration\")"
+  },
+  {
+    "file": "<FIXTURES_DIR>/omni/config-check-broken-input.txt",
+    "lineno": 0,
+    "errorcode": "C101",
+    "message": "value for key 'cache.homebrew.cleanup_after' should be a 'duration' but found String(\"not_a_duration\")"
+  },
+  {
+    "file": "<FIXTURES_DIR>/omni/config-check-broken-input.txt",
+    "lineno": 0,
+    "errorcode": "C101",
+    "message": "value for key 'cache.homebrew.install_check_expire' should be a 'duration' but found String(\"not_a_duration\")"
+  },
+  {
+    "file": "<FIXTURES_DIR>/omni/config-check-broken-input.txt",
+    "lineno": 0,
+    "errorcode": "C101",
+    "message": "value for key 'cache.homebrew.install_update_expire' should be a 'duration' but found String(\"not_a_duration\")"
+  },
+  {
+    "file": "<FIXTURES_DIR>/omni/config-check-broken-input.txt",
+    "lineno": 0,
+    "errorcode": "C101",
+    "message": "value for key 'cache.homebrew.tap_update_expire' should be a 'duration' but found String(\"not_a_duration\")"
+  },
+  {
+    "file": "<FIXTURES_DIR>/omni/config-check-broken-input.txt",
+    "lineno": 0,
+    "errorcode": "C101",
+    "message": "value for key 'cache.homebrew.update_expire' should be a 'duration' but found String(\"not_a_duration\")"
+  },
+  {
+    "file": "<FIXTURES_DIR>/omni/config-check-broken-input.txt",
+    "lineno": 0,
+    "errorcode": "C101",
+    "message": "value for key 'cd.fast_search' should be a 'bool' but found String(\"not_a_boolean\")"
+  },
+  {
+    "file": "<FIXTURES_DIR>/omni/config-check-broken-input.txt",
+    "lineno": 0,
+    "errorcode": "C101",
+    "message": "value for key 'cd.path_match_min_score' should be a 'float' but found String(\"not_a_float\")"
+  },
+  {
+    "file": "<FIXTURES_DIR>/omni/config-check-broken-input.txt",
+    "lineno": 0,
+    "errorcode": "C101",
+    "message": "value for key 'cd.path_match_skip_prompt_if.enabled' should be a 'bool' but found String(\"not_a_boolean\")"
+  },
+  {
+    "file": "<FIXTURES_DIR>/omni/config-check-broken-input.txt",
+    "lineno": 0,
+    "errorcode": "C101",
+    "message": "value for key 'cd.path_match_skip_prompt_if.first_min' should be a 'float' but found String(\"3.4.5\")"
+  },
+  {
+    "file": "<FIXTURES_DIR>/omni/config-check-broken-input.txt",
+    "lineno": 0,
+    "errorcode": "C101",
+    "message": "value for key 'cd.path_match_skip_prompt_if.second_max' should be a 'float' but found String(\"1.2.3\")"
+  },
+  {
+    "file": "<FIXTURES_DIR>/omni/config-check-broken-input.txt",
+    "lineno": 0,
+    "errorcode": "C101",
+    "message": "value for key 'clone.auto_up' should be a 'bool' but found String(\"not_a_boolean\")"
+  },
+  {
+    "file": "<FIXTURES_DIR>/omni/config-check-broken-input.txt",
+    "lineno": 0,
+    "errorcode": "C101",
+    "message": "value for key 'clone.ls_remote_timeout' should be a 'duration' but found Bool(false)"
+  },
+  {
+    "file": "<FIXTURES_DIR>/omni/config-check-broken-input.txt",
+    "lineno": 0,
+    "errorcode": "C101",
+    "message": "value for key 'command_match_min_score' should be a 'float' but found String(\"not_a_float\")"
+  },
+  {
+    "file": "<FIXTURES_DIR>/omni/config-check-broken-input.txt",
+    "lineno": 0,
+    "errorcode": "C101",
+    "message": "value for key 'command_match_skip_prompt_if.enabled' should be a 'bool' but found String(\"not_a_boolean\")"
+  },
+  {
+    "file": "<FIXTURES_DIR>/omni/config-check-broken-input.txt",
+    "lineno": 0,
+    "errorcode": "C101",
+    "message": "value for key 'command_match_skip_prompt_if.first_min' should be a 'float' but found Bool(false)"
+  },
+  {
+    "file": "<FIXTURES_DIR>/omni/config-check-broken-input.txt",
+    "lineno": 0,
+    "errorcode": "C101",
+    "message": "value for key 'command_match_skip_prompt_if.second_max' should be a 'float' but found Bool(true)"
+  },
+  {
+    "file": "<FIXTURES_DIR>/omni/config-check-broken-input.txt",
+    "lineno": 0,
+    "errorcode": "C101",
+    "message": "value for key 'config_commands.split_on_dash' should be a 'bool' but found String(\"not_a_boolean\")"
+  },
+  {
+    "file": "<FIXTURES_DIR>/omni/config-check-broken-input.txt",
+    "lineno": 0,
+    "errorcode": "C101",
+    "message": "value for key 'config_commands.split_on_slash' should be a 'bool' but found String(\"not_a_boolean\")"
+  },
+  {
+    "file": "<FIXTURES_DIR>/omni/config-check-broken-input.txt",
+    "lineno": 0,
+    "errorcode": "C101",
+    "message": "value for key 'makefile_commands.enabled' should be a 'bool' but found String(\"not_a_boolean\")"
+  },
+  {
+    "file": "<FIXTURES_DIR>/omni/config-check-broken-input.txt",
+    "lineno": 0,
+    "errorcode": "C101",
+    "message": "value for key 'makefile_commands.split_on_dash' should be a 'bool' but found String(\"not_a_boolean\")"
+  },
+  {
+    "file": "<FIXTURES_DIR>/omni/config-check-broken-input.txt",
+    "lineno": 0,
+    "errorcode": "C101",
+    "message": "value for key 'makefile_commands.split_on_slash' should be a 'bool' but found String(\"not_a_boolean\")"
+  },
+  {
+    "file": "<FIXTURES_DIR>/omni/config-check-broken-input.txt",
+    "lineno": 0,
+    "errorcode": "C101",
+    "message": "value for key 'path_repo_updates.background_updates' should be a 'bool' but found String(\"not_a_boolean\")"
+  },
+  {
+    "file": "<FIXTURES_DIR>/omni/config-check-broken-input.txt",
+    "lineno": 0,
+    "errorcode": "C101",
+    "message": "value for key 'path_repo_updates.background_updates_timeout' should be a 'duration' but found String(\"not_a_duration\")"
+  },
+  {
+    "file": "<FIXTURES_DIR>/omni/config-check-broken-input.txt",
+    "lineno": 0,
+    "errorcode": "C101",
+    "message": "value for key 'path_repo_updates.enabled' should be a 'bool' but found String(\"not_a_boolean\")"
+  },
+  {
+    "file": "<FIXTURES_DIR>/omni/config-check-broken-input.txt",
+    "lineno": 0,
+    "errorcode": "C101",
+    "message": "value for key 'path_repo_updates.interval' should be a 'duration' but found String(\"not_a_duration\")"
+  },
+  {
+    "file": "<FIXTURES_DIR>/omni/config-check-broken-input.txt",
+    "lineno": 0,
+    "errorcode": "C101",
+    "message": "value for key 'repo_path_format' should be a 'string' but found Mapping {\"not_a_valid_key\": String(\"not_a_valid_value\")}"
+  },
+  {
+    "file": "<FIXTURES_DIR>/omni/config-check-broken-input.txt",
+    "lineno": 0,
+    "errorcode": "C101",
+    "message": "value for key 'up_command.auto_bootstrap' should be a 'bool' but found String(\"not_a_boolean\")"
+  },
+  {
+    "file": "<FIXTURES_DIR>/omni/config-check-broken-input.txt",
+    "lineno": 0,
+    "errorcode": "C101",
+    "message": "value for key 'up_command.notify_workdir_config_available' should be a 'bool' but found String(\"not_a_boolean\")"
+  },
+  {
+    "file": "<FIXTURES_DIR>/omni/config-check-broken-input.txt",
+    "lineno": 0,
+    "errorcode": "C101",
+    "message": "value for key 'up_command.notify_workdir_config_updated' should be a 'bool' but found String(\"not_a_boolean\")"
+  },
+  {
+    "file": "<FIXTURES_DIR>/omni/config-check-broken-input.txt",
+    "lineno": 0,
+    "errorcode": "C101",
+    "message": "value for key 'up_command.upgrade' should be a 'bool' but found String(\"not_a_boolean\")"
+  }
+]

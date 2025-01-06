@@ -271,6 +271,7 @@ impl Ord for ConfigError {
             .cmp(&other.file)
             .then(self.lineno.cmp(&other.lineno))
             .then(self.errorcode().cmp(&other.errorcode()))
+            .then(self.message().cmp(&other.message()))
     }
 }
 

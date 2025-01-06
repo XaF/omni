@@ -425,7 +425,7 @@ impl BuiltinCommand for ConfigCheckCommand {
         match args.output {
             ConfigCheckCommandOutput::Plain => {
                 for error in errors.iter() {
-                    eprintln!("{}", error);
+                    println!("{}", error);
                 }
             }
             ConfigCheckCommandOutput::Json => match serde_json::to_string_pretty(&errors) {

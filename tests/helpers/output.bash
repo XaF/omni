@@ -50,6 +50,16 @@ sanitize_output() {
   output=$(echo "$output" | perl -pe "s|${real_tmpdir}|<TMPDIR>|g")
   output=$(echo "$output" | perl -pe "s|${TMPDIR}|<TMPDIR>|g")
 
+  # Replace references to the fixtures directory
+  local real_fixtures_dir="$(cd -P "$FIXTURES_DIR" && pwd)"
+  output=$(echo "$output" | perl -pe "s|${real_fixtures_dir}|<FIXTURES_DIR>|g")
+  output=$(echo "$output" | perl -pe "s|${FIXTURES_DIR}|<FIXTURES_DIR>|g")
+
+  # Replace references to the project directory
+  local real_project_dir="$(cd -P "$PROJECT_DIR" && pwd)"
+  output=$(echo "$output" | perl -pe "s|${real_project_dir}|<PROJECT_DIR>|g")
+  output=$(echo "$output" | perl -pe "s|${PROJECT_DIR}|<PROJECT_DIR>|g")
+
   echo "$output"
 }
 
