@@ -1401,8 +1401,8 @@ impl CargoBin {
 
     fn get_async_command(&self) -> TokioCommand {
         let mut cmd = TokioCommand::new(&self.bin);
-        cmd.env("RUSTUP_HOME", &format!("{}/rustup", mise_path()));
-        cmd.env("CARGO_HOME", &format!("{}/cargo", mise_path()));
+        cmd.env("RUSTUP_HOME", format!("{}/rustup", mise_path()));
+        cmd.env("CARGO_HOME", format!("{}/cargo", mise_path()));
         cmd.env("RUSTUP_TOOLCHAIN", &self.version);
         cmd
     }
