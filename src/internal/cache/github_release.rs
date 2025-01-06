@@ -1,3 +1,5 @@
+use std::collections::HashSet;
+
 use globset::Glob;
 use itertools::Itertools;
 use lazy_static::lazy_static;
@@ -479,13 +481,22 @@ impl GithubReleases {
             Err(err) => return Err(format!("failed to parse releases: {}", err)),
         };
 
-        // TODO: Check if we need to continue fetching more releases, i.e. if we
-        //       added all the releases we just fetched, or if we hit the releases
-        //       we already had in the cache (i.e. at least one release was not new)
-        self.releases.extend(releases);
+        let existing_tag_names: HashSet<String> =
+            self.releases.iter().map(|r| r.tag_name.clone()).collect();
+
+        let mut dup = false;
+        for release in releases {
+            if existing_tag_names.contains(&release.tag_name) {
+                dup = true;
+                break;
+            }
+
+            self.releases.push(release);
+        }
+
         self.fetched_at = OffsetDateTime::now_utc();
 
-        Ok(true)
+        Ok(!dup)
     }
 
     pub fn is_fresh(&self) -> bool {
