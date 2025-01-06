@@ -886,6 +886,16 @@ impl UpConfigGoInstall {
                 ));
             }
 
+            let installed_versions = self.list_installed_versions(progress_handler)?;
+            if installed_versions.contains(&version) {
+                progress_handler.progress(format!(
+                    "found matching installed version {}",
+                    version.light_yellow(),
+                ));
+
+                return self.handle_installed(&version, Ok(false));
+            }
+
             match self.install_version(go_bin, options, &version, progress_handler) {
                 Ok(installed) => return self.handle_installed(&version, Ok(installed)),
                 Err(err) => {
