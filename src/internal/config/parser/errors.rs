@@ -333,8 +333,6 @@ pub enum ConfigErrorKind {
     //    M2xx for group errors
     #[error("M201")]
     MetadataHeaderGroupMissingParameters,
-    #[error("M207")]
-    MetadataHeaderGroupInvalidPart,
     #[error("M208")]
     MetadataHeaderGroupEmptyPart,
     #[error("M209")]
@@ -345,8 +343,6 @@ pub enum ConfigErrorKind {
     MetadataHeaderParameterInvalidKeyValue,
     #[error("M302")]
     MetadataHeaderParameterMissingDescription,
-    #[error("M307")]
-    MetadataHeaderParameterInvalidPart,
     #[error("M308")]
     MetadataHeaderParameterEmptyPart,
     #[error("M309")]
@@ -644,24 +640,6 @@ impl ConfigErrorKind {
 
                 format!("empty part in the definition of group '{}'", group)
             }
-            ConfigErrorKind::MetadataHeaderGroupInvalidPart => {
-                let group = context
-                    .get("group")
-                    .ok_or("Missing 'group' key in context")?
-                    .as_str()
-                    .ok_or("Value for 'group' is not a string")?;
-
-                let part = context
-                    .get("part")
-                    .ok_or("Missing 'part' key in context")?
-                    .as_str()
-                    .ok_or("Value for 'part' is not a string")?;
-
-                format!(
-                    "invalid part '{}' in the definition of group '{}'",
-                    part, group
-                )
-            }
             ConfigErrorKind::MetadataHeaderGroupUnknownConfigKey => {
                 let group = context
                     .get("group")
@@ -697,24 +675,6 @@ impl ConfigErrorKind {
                     .ok_or("Value for 'parameter' is not a string")?;
 
                 format!("empty part in the definition of parameter '{}'", parameter)
-            }
-            ConfigErrorKind::MetadataHeaderParameterInvalidPart => {
-                let parameter = context
-                    .get("parameter")
-                    .ok_or("Missing 'parameter' key in context")?
-                    .as_str()
-                    .ok_or("Value for 'parameter' is not a string")?;
-
-                let part = context
-                    .get("part")
-                    .ok_or("Missing 'part' key in context")?
-                    .as_str()
-                    .ok_or("Value for 'part' is not a string")?;
-
-                format!(
-                    "invalid part '{}' in the definition of parameter '{}'",
-                    part, parameter
-                )
             }
             ConfigErrorKind::MetadataHeaderParameterUnknownConfigKey => {
                 let parameter = context

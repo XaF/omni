@@ -65,12 +65,10 @@ omni config check --ignore M --select M0
 | `M102` | Metadata header has a continuation without a key |
 | `M103` | Metadata header has a duplicate key |
 | `M201` | Metadata header group is missing parameters |
-| `M207` | Metadata header group has an invalid part |
 | `M208` | Metadata header group has an empty part |
 | `M209` | Metadata header group has an unknown config key |
 | `M301` | Metadata header parameter has an invalid key-value pair |
 | `M302` | Metadata header parameter is missing a description |
-| `M307` | Metadata header parameter has an invalid part |
 | `M308` | Metadata header parameter has an empty part |
 | `M309` | Metadata header parameter has an unknown config key |
 

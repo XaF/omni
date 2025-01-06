@@ -574,20 +574,10 @@ impl PathCommandFileDetails {
                 continue;
             }
 
-            if part.contains('=') {
-                let kv: Vec<&str> = part.splitn(2, '=').collect();
-                let key = kv[0].to_lowercase();
+            if let Some((key, value)) = part.split_once('=') {
+                let key = key.to_lowercase();
                 if !key.contains(' ') {
-                    if !kv.len() == 2 {
-                        error_handler
-                            .with_context("group", group_name)
-                            .with_context("part", part)
-                            .error(ConfigErrorKind::MetadataHeaderGroupInvalidPart);
-
-                        continue;
-                    }
-
-                    let value = kv[1].trim();
+                    let value = value.trim();
 
                     match key.as_str() {
                         "required" => required = str_to_bool(value).unwrap_or(false),
@@ -692,20 +682,10 @@ impl PathCommandFileDetails {
                 continue;
             }
 
-            if part.contains('=') {
-                let kv: Vec<&str> = part.splitn(2, '=').collect();
-                let key = kv[0].to_lowercase();
+            if let Some((key, value)) = part.split_once('=') {
+                let key = key.to_lowercase();
                 if !key.contains(' ') {
-                    if !kv.len() == 2 {
-                        error_handler
-                            .with_context("parameter", arg_name)
-                            .with_context("part", part)
-                            .error(ConfigErrorKind::MetadataHeaderParameterInvalidPart);
-
-                        continue;
-                    }
-
-                    let value = kv[1].trim();
+                    let value = value.trim();
 
                     match key.as_str() {
                         "default" => default = Some(value.to_string()),
