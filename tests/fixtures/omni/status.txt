@@ -9,7 +9,7 @@ Worktree
   <BATS_TEST_TMPDIR>/git
 
 Git Orgs
-  - git@github.com:temporalio trusted
+  none
 
 Current omnipath
   none
