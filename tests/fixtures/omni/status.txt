@@ -4,12 +4,14 @@ Shell integration
 
 Loaded configuration files
   - <BATS_TEST_TMPDIR>/.config/omni/config.yaml
+  - /etc/omni/post.d/01-prepend-temporalio-org.yaml
+  - /etc/omni/post.d/02-supply-chain-rules.yaml
 
 Worktree
   <BATS_TEST_TMPDIR>/git
 
 Git Orgs
-  none
+  - git@github.com:temporalio trusted
 
 Current omnipath
   none

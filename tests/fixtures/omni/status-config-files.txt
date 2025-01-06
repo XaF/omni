@@ -1,1 +1,3 @@
 - <BATS_TEST_TMPDIR>/.config/omni/config.yaml
+- /etc/omni/post.d/01-prepend-temporalio-org.yaml
+- /etc/omni/post.d/02-supply-chain-rules.yaml

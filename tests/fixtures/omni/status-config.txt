@@ -52,6 +52,9 @@ makefile_commands:
   enabled: true
   split_on_dash: true
   split_on_slash: true
+org:
+- handle: git@github.com:temporalio
+  trusted: true
 path: {}
 path_repo_updates:
   background_updates: true

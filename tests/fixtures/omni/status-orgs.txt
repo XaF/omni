@@ -1,1 +1,1 @@
-none
+- git@github.com:temporalio trusted

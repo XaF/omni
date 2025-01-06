@@ -31,13 +31,13 @@ use crate::omni_error;
 struct ConfigCheckCommandArgs {
     search_paths: HashSet<String>,
     config_files: HashSet<String>,
-    ignore_errors: HashSet<String>,
-    select_errors: HashSet<String>,
-    patterns: Vec<String>,
     include_packages: bool,
     global_scope: bool,
     local_scope: bool,
     default_scope: bool,
+    ignore_errors: HashSet<String>,
+    select_errors: HashSet<String>,
+    patterns: Vec<String>,
     output: ConfigCheckCommandOutput,
 }
 
@@ -56,6 +56,21 @@ impl From<BTreeMap<String, ParseArgsValue>> for ConfigCheckCommandArgs {
             }
             _ => HashSet::new(),
         };
+
+        let include_packages = matches!(
+            args.get("include_packages"),
+            Some(ParseArgsValue::SingleBoolean(Some(true)))
+        );
+
+        let global_scope = matches!(
+            args.get("global"),
+            Some(ParseArgsValue::SingleBoolean(Some(true)))
+        );
+        let local_scope = matches!(
+            args.get("local"),
+            Some(ParseArgsValue::SingleBoolean(Some(true)))
+        );
+        let default_scope = !global_scope && !local_scope;
 
         let ignore_errors = match args.get("ignore") {
             Some(ParseArgsValue::ManyString(ignore_errors)) => {
@@ -78,21 +93,6 @@ impl From<BTreeMap<String, ParseArgsValue>> for ConfigCheckCommandArgs {
             _ => Vec::new(),
         };
 
-        let include_packages = matches!(
-            args.get("include_packages"),
-            Some(ParseArgsValue::SingleBoolean(Some(true)))
-        );
-
-        let global_scope = matches!(
-            args.get("global"),
-            Some(ParseArgsValue::SingleBoolean(Some(true)))
-        );
-        let local_scope = matches!(
-            args.get("local"),
-            Some(ParseArgsValue::SingleBoolean(Some(true)))
-        );
-        let default_scope = !global_scope && !local_scope;
-
         let output = match args.get("output") {
             Some(ParseArgsValue::SingleString(Some(value))) => match value.as_str() {
                 "json" => ConfigCheckCommandOutput::Json,
@@ -105,13 +105,13 @@ impl From<BTreeMap<String, ParseArgsValue>> for ConfigCheckCommandArgs {
         Self {
             search_paths,
             config_files,
-            ignore_errors,
-            select_errors,
-            patterns,
             include_packages,
             global_scope,
             local_scope,
             default_scope,
+            ignore_errors,
+            select_errors,
+            patterns,
             output,
         }
     }
@@ -195,6 +195,12 @@ impl BuiltinCommand for ConfigCheckCommand {
                     ..Default::default()
                 },
                 SyntaxOptArg {
+                    names: vec!["-p".to_string(), "--include-packages".to_string()],
+                    desc: Some("Include package errors in the check.".to_string()),
+                    arg_type: SyntaxOptArgType::Flag,
+                    ..Default::default()
+                },
+                SyntaxOptArg {
                     names: vec!["--global".to_string()],
                     desc: Some(
                         "Check the global configuration files and omnipath only.".to_string(),
@@ -237,12 +243,6 @@ impl BuiltinCommand for ConfigCheckCommand {
                         .to_string(),
                     ),
                     arg_type: SyntaxOptArgType::Array(Box::new(SyntaxOptArgType::String)),
-                    ..Default::default()
-                },
-                SyntaxOptArg {
-                    names: vec!["-p".to_string(), "--include-packages".to_string()],
-                    desc: Some("Include package errors in the check.".to_string()),
-                    arg_type: SyntaxOptArgType::Flag,
                     ..Default::default()
                 },
                 SyntaxOptArg {

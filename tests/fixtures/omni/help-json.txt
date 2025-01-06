@@ -7,7 +7,7 @@
         "General"
       ],
       "desc": "Provides config commands",
-      "folded": 6
+      "folded": 7
     },
     {
       "name": "help",

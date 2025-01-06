@@ -9,6 +9,13 @@
       "desc": "Bootstraps the configuration of omni"
     },
     {
+      "name": "config check",
+      "category": [
+        "General"
+      ],
+      "desc": "Check the configuration files and commands in the omnipath for errors"
+    },
+    {
       "name": "config path switch",
       "category": [
         "General"
