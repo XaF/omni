@@ -16,7 +16,7 @@ The `check` command is used to check the configuration files and commands in the
 | `--local` | no | `null` | Only validate the configuration and commands that are local to the current worktree. |
 | `--include-packages` | no | `null` | Include the packages in the validation. |
 | `--ignore` | no | `string` | Ignore the specified error codes. Can be repeated. Can be used to only specify a prefix of the error code, e.g. `--ignore=M` will ignore all metadata header errors. |
-| `--select` | no | `string` | Only validate the specified error codes. Can be repeated. Can be used to only specify a prefix of the error code, e.g. `--select=M` will only validate metadata header errors. |
+| `--select` | no | `string` | Only validate the specified error codes. Can be repeated. Can be used to only specify a prefix of the error code, e.g. `--select=M` will only validate metadata header errors. Some errors are ignored by default and need to be explicitly selected to appear in the reports. |
 | `--pattern` | no | `string` | Only validate the files that match the specified pattern. Can be repeated. The pattern can start with `!` to exclude files. The patterns are processed in order and the first match is used. |
 | `--output` | no | `plain` or `json` | Output format. Default is `plain`. |
 
@@ -41,7 +41,7 @@ omni config check --ignore M --select M0
 
 ### Configuration errors
 
-| Error code | Select | Description |
+| Error code | Selected | Description |
 |------------|--------|-------------|
 | **`C0`** | | **Key-related errors** |
 | `C001` | ✅ | Missing key in the configuration (e.g. is required but was not provided) |
@@ -57,7 +57,7 @@ omni config check --ignore M --select M0
 
 ### Metadata errors
 
-| Error code | Select | Description |
+| Error code | Selected | Description |
 |------------|--------|-------------|
 | **`M0`** | | **File-scoped metadata errors** |
 | `M001` | ✅ | Metadata header is missing the `help` key |
@@ -81,7 +81,7 @@ omni config check --ignore M --select M0
 
 ### Path errors
 
-| Error code | Select | Description |
+| Error code | Selected | Description |
 |------------|--------|-------------|
 | `P001` | ✅ | Path does not exist |
 | `P002` | ✅ | A file present in the path is not executable |
