@@ -854,6 +854,9 @@ pub struct FullyQualifiedToolName {
     /// `asdf:asdf-community/asdf-hashicorp` when installing terraform.
     fully_qualified_plugin_name: String,
 
+    /// The name to use when listing versions
+    list_name: String,
+
     /// Indicates if we need to manage the plugin installation/removal
     requires_plugin_management: bool,
 
@@ -954,7 +957,8 @@ impl FullyQualifiedToolName {
                 tool: tool.to_string(),
                 plugin_name: plugin_name.clone(),
                 backend: None,
-                fully_qualified_plugin_name: plugin_name,
+                fully_qualified_plugin_name: plugin_name.clone(),
+                list_name: plugin_name.to_string(),
                 requires_plugin_management: true,
                 bin_path,
                 normalized_plugin_name,
@@ -966,25 +970,62 @@ impl FullyQualifiedToolName {
             .find_entry(tool, backend.as_deref())
             .ok_or_else(|| UpError::Exec(format!("unable to resolve tool: {}", tool)))?;
 
-        // If the backend is 'core', remove `core:` from the
-        // fully qualified plugin name
-        let fqpn = match registry_entry.backend.as_str() {
-            "core" => registry_entry
-                .full_name
-                .strip_prefix("core:")
-                .unwrap_or(&registry_entry.full_name),
-            _ => &registry_entry.full_name,
-        };
+        match registry_entry.backend.as_str() {
+            "asdf" | "vfox" => {
+                let url = match registry_entry.repository {
+                    Some(ref repo) => repo.clone(),
+                    None => {
+                        return Err(UpError::Exec(format!(
+                            "missing repository information for {} backend",
+                            registry_entry.backend,
+                        )));
+                    }
+                };
 
-        Ok(Self {
-            tool: registry_entry.short_name.clone(),
-            plugin_name: registry_entry.clean_name.clone(),
-            backend: Some(registry_entry.backend.clone()),
-            fully_qualified_plugin_name: fqpn.to_string(),
-            requires_plugin_management: false,
-            bin_path: OnceCell::new(),
-            normalized_plugin_name: OnceCell::new(),
-        })
+                // For asdf and vfox, we need to install and manage the plugin
+                // to be able to list the versions and install the tool
+                let mut hasher = Sha256::new();
+                hasher.update(url.as_bytes());
+                let hash = format!("{:x}", hasher.finalize());
+                let short_hash = &hash[0..8];
+
+                // The plugin name will be the tool name with the hash appended
+                let plugin_name = format!("{}-{}-{}", registry_entry.backend, tool, short_hash);
+
+                let normalized_plugin_name = OnceCell::new();
+                let _ = normalized_plugin_name.set(plugin_name.clone());
+
+                Ok(Self {
+                    tool: registry_entry.short_name.clone(),
+                    plugin_name: plugin_name.clone(),
+                    backend: Some(registry_entry.backend.clone()),
+                    fully_qualified_plugin_name: plugin_name.clone(),
+                    list_name: plugin_name.clone(),
+                    requires_plugin_management: true,
+                    bin_path: OnceCell::new(),
+                    normalized_plugin_name: OnceCell::new(),
+                })
+            }
+            _ => {
+                // If the backend is 'core', remove `core:` from the
+                // fully qualified plugin name
+                let fqpn = registry_entry
+                    .full_name
+                    .strip_prefix("core:")
+                    .unwrap_or(&registry_entry.full_name);
+
+                Ok(Self {
+                    tool: registry_entry.short_name.clone(),
+                    plugin_name: registry_entry.clean_name.clone(),
+                    backend: Some(registry_entry.backend.clone()),
+                    fully_qualified_plugin_name: fqpn.to_string(),
+                    list_name: registry_entry.short_name.clone(),
+                    requires_plugin_management: false,
+                    bin_path: OnceCell::new(),
+                    normalized_plugin_name: OnceCell::new(),
+                })
+            }
+        }
     }
 
     pub fn tool(&self) -> &str {
@@ -1780,7 +1821,7 @@ impl UpConfigMise {
 
         let mut mise_list_all = mise_sync_command();
         mise_list_all.arg("ls-remote");
-        mise_list_all.arg(self.fully_qualified_plugin_name()?);
+        mise_list_all.arg(&self.fully_qualified_tool_name()?.list_name);
 
         let output = mise_list_all.output().map_err(|err| {
             UpError::Exec(format!("failed to list versions for {}: {}", tool, err))
