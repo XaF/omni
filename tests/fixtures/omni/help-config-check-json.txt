@@ -10,11 +10,11 @@
   "options": [
     {
       "name": "-P, --search-path <SEARCH_PATH>",
-      "desc": "Path to check for commands.\n\nCan be used multiple times. If not passed, worktree-defined paths are used if in a worktree, or the omnipath otherwise.\n"
+      "desc": "Path to check for commands.\n\nCan be used multiple times. If neither this nor \u000033[1m--config-file\u000033[0m are provided, the current omnipath is checked.\n"
     },
     {
       "name": "-C, --config-file <CONFIG_FILE>",
-      "desc": "Configuration file to check.\n\nCan be used multiple times. If not passed, the default configuration files loaded by omni are checked.\n"
+      "desc": "Configuration file to check.\n\nCan be used multiple times. If neither this nor \u000033[1m--search-path\u000033[0m are provided, the current configuration is checked.\n"
     },
     {
       "name": "-p, --include-packages",

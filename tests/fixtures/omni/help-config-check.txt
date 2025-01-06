@@ -8,11 +8,11 @@ Usage: omni config check [OPTIONS]
 
 Options:
   -P, --search-path <SEARCH_PATH>  Path to check for commands.  Can be used multiple times. If
-                                   not passed, worktree-defined paths are used if in a
-                                   worktree, or the omnipath otherwise.
+                                   neither this nor 33[1m--config-file33[0m are provided,
+                                   the current omnipath is checked.
   -C, --config-file <CONFIG_FILE>  Configuration file to check.  Can be used multiple times.
-                                   If not passed, the default configuration files loaded by
-                                   omni are checked.
+                                   If neither this nor 33[1m--search-path33[0m are provided,
+                                   the current configuration is checked.
   -p, --include-packages           Include package errors in the check.
   --global                         Check the global configuration files and omnipath only.
   --local                          Check the local configuration files and omnipath only.
