@@ -17,7 +17,6 @@ use crate::internal::config::CommandSyntax;
 use crate::internal::config::ConfigLoader;
 use crate::internal::config::ConfigScope;
 use crate::internal::config::OmniConfig;
-use crate::internal::config::SyntaxGroup;
 use crate::internal::config::SyntaxOptArg;
 use crate::internal::config::SyntaxOptArgType;
 use crate::internal::env::omnipath_env;
@@ -198,6 +197,11 @@ impl BuiltinCommand for ConfigCheckCommand {
                     names: vec!["-p".to_string(), "--include-packages".to_string()],
                     desc: Some("Include package errors in the check.".to_string()),
                     arg_type: SyntaxOptArgType::Flag,
+                    conflicts_with: vec![
+                        "local".to_string(),
+                        "search-path".to_string(),
+                        "config-file".to_string(),
+                    ],
                     ..Default::default()
                 },
                 SyntaxOptArg {
@@ -206,6 +210,11 @@ impl BuiltinCommand for ConfigCheckCommand {
                         "Check the global configuration files and omnipath only.".to_string(),
                     ),
                     arg_type: SyntaxOptArgType::Flag,
+                    conflicts_with: vec![
+                        "local".to_string(),
+                        "search-path".to_string(),
+                        "config-file".to_string(),
+                    ],
                     ..Default::default()
                 },
                 SyntaxOptArg {
@@ -214,6 +223,11 @@ impl BuiltinCommand for ConfigCheckCommand {
                         "Check the local configuration files and omnipath only.".to_string(),
                     ),
                     arg_type: SyntaxOptArgType::Flag,
+                    conflicts_with: vec![
+                        "global".to_string(),
+                        "search-path".to_string(),
+                        "config-file".to_string(),
+                    ],
                     ..Default::default()
                 },
                 SyntaxOptArg {
@@ -253,11 +267,6 @@ impl BuiltinCommand for ConfigCheckCommand {
                     ..Default::default()
                 },
             ],
-            groups: vec![SyntaxGroup {
-                name: "scope".to_string(),
-                parameters: vec!["--global".to_string(), "--local".to_string()],
-                ..Default::default()
-            }],
             ..Default::default()
         })
     }
@@ -284,10 +293,20 @@ impl BuiltinCommand for ConfigCheckCommand {
             exit(1);
         }
 
+        // If any of the two commands is provided, we will only check those
+        let files_from_cli = !args.config_files.is_empty() || !args.search_paths.is_empty();
+
         // Get all the available configuration files
-        let config_files: Vec<(String, ConfigScope)> = if !args.config_files.is_empty() {
+        let config_files: Vec<(String, ConfigScope)> = if files_from_cli {
             args.config_files
                 .into_iter()
+                .filter(|file| {
+                    if !PathBuf::from(file).exists() {
+                        omni_error!(format!("configuration file not found: {}", file));
+                        exit(1);
+                    }
+                    true
+                })
                 .map(|file| (file, ConfigScope::Null))
                 .collect()
         } else {
@@ -317,7 +336,7 @@ impl BuiltinCommand for ConfigCheckCommand {
         // - Errors in the metadata files (yaml)
         // - Errors in the metadata headers
 
-        let search_paths = if !args.search_paths.is_empty() {
+        let search_paths = if files_from_cli {
             args.search_paths
         } else {
             // Use the configuration files to get the paths
