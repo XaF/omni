@@ -1601,11 +1601,6 @@ impl UpConfigMise {
                         return None;
                     }
 
-                    // Check if the entry is .gitignore'd
-                    if in_repo && matches!(is_path_gitignored(entry_path), Ok(true)) {
-                        return None;
-                    }
-
                     Some(entry)
                 })
             {
@@ -1613,6 +1608,12 @@ impl UpConfigMise {
                     if let Some(detected_version) =
                         detect_version_func(fqtn.tool().to_string(), entry.path().to_path_buf())
                     {
+                        // Check if the entry is .gitignore'd, we do this now for now as it
+                        // seems less costly than evaluating all files ahead of time
+                        if in_repo && matches!(is_path_gitignored(entry.path()), Ok(true)) {
+                            continue;
+                        }
+
                         let mut dir = entry
                             .path()
                             .strip_prefix(&current_dir)
