@@ -12,6 +12,10 @@ pub(crate) use cache::CacheConfig;
 mod cd;
 pub(crate) use cd::CdConfig;
 
+mod check;
+pub(crate) use check::path_pattern_from_str;
+pub(crate) use check::CheckConfig;
+
 mod clone;
 pub(crate) use clone::CloneConfig;
 

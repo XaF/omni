@@ -27,6 +27,16 @@ impl Default for ConfigSource {
     }
 }
 
+impl ConfigSource {
+    pub fn path(&self) -> Option<String> {
+        match self {
+            Self::File(path) => Some(path.to_string()),
+            Self::Package(package) => Some(package.path.clone()),
+            _ => None,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Hash, Eq, Ord, PartialOrd)]
 pub enum ConfigScope {
     Null,

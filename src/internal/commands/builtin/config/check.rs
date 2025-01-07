@@ -8,6 +8,8 @@ use itertools::Itertools;
 use crate::internal::commands::base::BuiltinCommand;
 use crate::internal::commands::frompath::PathCommand;
 use crate::internal::commands::Command;
+use crate::internal::config::config;
+use crate::internal::config::parser::path_pattern_from_str;
 use crate::internal::config::parser::ConfigError;
 use crate::internal::config::parser::ConfigErrorHandler;
 use crate::internal::config::parser::ConfigErrorKind;
@@ -408,6 +410,26 @@ impl BuiltinCommand for ConfigCheckCommand {
             }
         }
 
+        let check_config = &config(".").check;
+        let patterns: Vec<String> = args
+            .patterns
+            .iter()
+            .map(|value| path_pattern_from_str(value, None))
+            .chain(check_config.patterns())
+            .collect();
+        let select_errors = args
+            .select_errors
+            .iter()
+            .chain(check_config.select.iter())
+            .map(|e| e.to_string())
+            .collect();
+        let ignore_errors = args
+            .ignore_errors
+            .iter()
+            .chain(check_config.ignore.iter())
+            .map(|e| e.to_string())
+            .collect();
+
         // Filter and sort the errors
         let errors = error_handler
             .errors()
@@ -415,8 +437,8 @@ impl BuiltinCommand for ConfigCheckCommand {
             .filter(|e| {
                 args.include_packages || !PathBuf::from(e.file()).starts_with(package_root_path())
             })
-            .filter(|e| check_allowed(e.file(), &args.patterns))
-            .filter(|e| check_selected(e, &args.select_errors, &args.ignore_errors))
+            .filter(|e| check_allowed(e.file(), &patterns))
+            .filter(|e| check_selected(e, &select_errors, &ignore_errors))
             .filter(|e| !is_path_gitignored(e.file()).unwrap_or(false))
             .sorted()
             .collect::<Vec<_>>();

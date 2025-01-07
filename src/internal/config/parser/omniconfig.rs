@@ -8,6 +8,7 @@ use crate::internal::cache::utils::Empty;
 use crate::internal::config::parser::AskPassConfig;
 use crate::internal::config::parser::CacheConfig;
 use crate::internal::config::parser::CdConfig;
+use crate::internal::config::parser::CheckConfig;
 use crate::internal::config::parser::CloneConfig;
 use crate::internal::config::parser::CommandDefinition;
 use crate::internal::config::parser::ConfigCommandsConfig;
@@ -56,6 +57,8 @@ pub struct OmniConfig {
     pub askpass: AskPassConfig,
     pub cache: CacheConfig,
     pub cd: CdConfig,
+    #[serde(skip_serializing_if = "CheckConfig::is_empty")]
+    pub check: CheckConfig,
     pub clone: CloneConfig,
     pub command_match_min_score: f64,
     pub command_match_skip_prompt_if: MatchSkipPromptIfConfig,
@@ -147,6 +150,10 @@ impl OmniConfig {
             &error_handler.with_key("cache"),
         );
         let cd = CdConfig::from_config_value(config_value.get("cd"), &error_handler.with_key("cd"));
+        let check = CheckConfig::from_config_value(
+            config_value.get("check"),
+            &error_handler.with_key("check"),
+        );
         let clone = CloneConfig::from_config_value(
             config_value.get("clone"),
             &error_handler.with_key("clone"),
@@ -219,6 +226,7 @@ impl OmniConfig {
             askpass,
             cache,
             cd,
+            check,
             clone,
             command_match_min_score,
             command_match_skip_prompt_if,
