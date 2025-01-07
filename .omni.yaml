@@ -89,7 +89,7 @@ commands:
       generate:
         desc: Generates the fixtures for the tests
         run: |
-          GENERATE_FIXTURES=true bats --filter-tags generate tests/
+          GENERATE_FIXTURES=true bats --filter-tags generate tests/ "$@"
 
       renumber:
         desc: Renumber the bats tests
