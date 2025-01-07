@@ -263,6 +263,10 @@ impl Command {
 
                 // Finally, we're only left with positional parameters
                 for param in params {
+                    if param.is_last() {
+                        usage += " --";
+                    }
+
                     let param_usage = format!(" {}", param.usage());
                     usage += &param_usage;
                 }

@@ -1135,6 +1135,10 @@ impl SyntaxOptArg {
         !self.name().starts_with('-')
     }
 
+    pub fn is_last(&self) -> bool {
+        self.last_arg_double_hyphen
+    }
+
     pub fn takes_value(&self) -> bool {
         if matches!(
             self.arg_type(),
