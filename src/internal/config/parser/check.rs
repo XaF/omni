@@ -90,7 +90,7 @@ impl CheckConfig {
     pub fn patterns(&self) -> Vec<String> {
         self.patterns
             .iter()
-            .map(|value| path_pattern_from_config_value(value))
+            .map(path_pattern_from_config_value)
             .collect()
     }
 }
@@ -110,8 +110,8 @@ fn path_pattern_from_config_value(value: &ConfigValue) -> String {
 }
 
 pub fn path_pattern_from_str(pattern: &str, location: Option<&str>) -> String {
-    let (negative, pattern) = if pattern.starts_with('!') {
-        (true, &pattern[1..])
+    let (negative, pattern) = if let Some(pattern) = pattern.strip_prefix('!') {
+        (true, pattern)
     } else {
         (false, pattern)
     };
