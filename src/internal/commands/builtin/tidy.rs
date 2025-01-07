@@ -277,6 +277,7 @@ impl BuiltinCommand for TidyCommand {
                     ),
                     last_arg_double_hyphen: true,
                     arg_type: SyntaxOptArgType::Array(Box::new(SyntaxOptArgType::String)),
+                    requires: vec!["up-all".to_string()],
                     ..Default::default()
                 },
             ],
