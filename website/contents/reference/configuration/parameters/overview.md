@@ -14,6 +14,7 @@ Omni configuration files accept the following parameters:
 | `askpass` | [askpass](parameters/askpass) | Configuration related to the handling of `*_ASKPASS` environment variables when doing omni operations that might require a password input |
 | `cache` | [cache](parameters/cache) | Configuration related to the cache of omni |
 | `cd` | [cd](parameters/cd) | Configuration related to the `omni cd` command |
+| `check` | [check](parameters/check) | Configuration related to the `omni config check` command |
 | `clone` | [clone](parameters/clone) | Configuration related to the `omni clone` command |
 | `command_match_min_score` | float | the minimum score to be considered when fuzzy matching a command |
 | `command_match_skip_prompt_if` | [*_skip_prompt_if](parameters/skip-prompt-if) | Configuration of prompt skipping when fuzzy matching a command |
