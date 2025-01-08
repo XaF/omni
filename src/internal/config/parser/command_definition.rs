@@ -36,6 +36,8 @@ pub struct CommandDefinition {
     pub subcommands: Option<HashMap<String, CommandDefinition>>,
     #[serde(skip_serializing_if = "cache_utils::is_false")]
     pub argparser: bool,
+    #[serde(skip_serializing_if = "BTreeMap::is_empty")]
+    pub tags: BTreeMap<String, String>,
     #[serde(skip)]
     pub source: ConfigSource,
     #[serde(skip)]
@@ -65,6 +67,34 @@ impl CommandDefinition {
                 CommandSyntax::from_config_value(&value, &error_handler.with_key("syntax"))
             }
             None => None,
+        };
+
+        let tags = match config_value.get("tags") {
+            Some(value) => {
+                let mut tags = BTreeMap::new();
+                if let Some(table) = value.as_table() {
+                    for (key, value) in table {
+                        if let Some(value) = value.as_str_forced() {
+                            tags.insert(key.to_string(), value.to_string());
+                        } else {
+                            error_handler
+                                .with_key("tags")
+                                .with_key(key)
+                                .with_expected("string")
+                                .with_actual(value)
+                                .error(ConfigErrorKind::InvalidValueType);
+                        }
+                    }
+                } else {
+                    error_handler
+                        .with_key("tags")
+                        .with_expected("table")
+                        .with_actual(value)
+                        .error(ConfigErrorKind::InvalidValueType);
+                }
+                tags
+            }
+            None => BTreeMap::new(),
         };
 
         let category =
@@ -117,6 +147,7 @@ impl CommandDefinition {
             dir,
             subcommands,
             argparser,
+            tags,
             source: config_value.get_source().clone(),
             scope: config_value.current_scope().clone(),
         }

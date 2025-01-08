@@ -202,6 +202,14 @@ impl Command {
         }
     }
 
+    pub fn tags(&self) -> BTreeMap<String, String> {
+        match self {
+            Command::FromPath(command) => command.tags(),
+            Command::FromConfig(command) => command.tags().clone(),
+            _ => BTreeMap::new(),
+        }
+    }
+
     pub fn help(&self) -> String {
         let help: Option<String> = match self {
             Command::Builtin(command) => command.help(),

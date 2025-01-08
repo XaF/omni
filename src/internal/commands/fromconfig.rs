@@ -1,3 +1,4 @@
+use std::collections::BTreeMap;
 use std::collections::HashMap;
 use std::os::unix::process::CommandExt;
 use std::path::Path;
@@ -172,6 +173,10 @@ impl ConfigCommand {
 
     pub fn argparser(&self) -> bool {
         self.details.argparser
+    }
+
+    pub fn tags(&self) -> &BTreeMap<String, String> {
+        &self.details.tags
     }
 
     pub fn exec_dir(&self) -> Result<PathBuf, String> {

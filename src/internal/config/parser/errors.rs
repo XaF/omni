@@ -162,6 +162,23 @@ impl ConfigErrorHandler {
             Self::Noop => None,
         }
     }
+
+    #[inline(always)]
+    pub fn extend(&self, other: &Self) {
+        match (self, other) {
+            (Self::Noop, _) | (_, Self::Noop) => {}
+            (
+                Self::Active { errors, .. },
+                Self::Active {
+                    errors: other_errors,
+                    ..
+                },
+            ) => {
+                let mut errors = errors.borrow_mut();
+                errors.extend_from_slice(&other_errors.borrow());
+            }
+        }
+    }
 }
 
 #[derive(Debug, Clone, Eq, PartialEq)]
@@ -313,7 +330,7 @@ pub enum ConfigErrorKind {
     ParsingError,
 
     //  Mxxx for metadata errors
-    //    Mx0x for larger missing errors
+    //    M0xx for larger missing errors
     #[error("M001")]
     MetadataHeaderMissingHelp,
     #[error("M002")]
@@ -358,6 +375,19 @@ pub enum ConfigErrorKind {
     OmniPathFileNotExecutable,
     #[error("P003")]
     OmniPathFileFailedToLoadMetadata,
+
+    //  Uxxx for user-defined errors
+    //    U1xx for path command errors
+    #[error("U101")]
+    UserDefinedPathCommandMissingTag,
+    #[error("U102")]
+    UserDefinedPathCommandInvalidTagValue,
+
+    //    U2xx for config command errors
+    #[error("U201")]
+    UserDefinedConfigCommandMissingTag,
+    #[error("U202")]
+    UserDefinedConfigCommandInvalidTagValue,
 }
 
 impl ConfigErrorKind {
@@ -377,11 +407,10 @@ impl ConfigErrorKind {
                     .as_str()
                     .ok_or("Value for 'key' is not a string")?;
 
-                let expected = context
+                let expected = match context
                     .get("expected")
-                    .ok_or("Missing 'expected' key in context")?;
-
-                let expected = match expected {
+                    .ok_or("Missing 'expected' key in context")?
+                {
                     YamlValue::String(s) => vec![s.to_string()],
                     YamlValue::Sequence(seq) => {
                         let mut values = Vec::new();
@@ -419,11 +448,10 @@ impl ConfigErrorKind {
                     .as_str()
                     .ok_or("Value for 'key' is not a string")?;
 
-                let expected = context
+                let expected = match context
                     .get("expected")
-                    .ok_or("Missing 'expected' key in context")?;
-
-                let expected = match expected {
+                    .ok_or("Missing 'expected' key in context")?
+                {
                     YamlValue::String(s) => vec![s.to_string()],
                     YamlValue::Sequence(seq) => {
                         let mut values = Vec::new();
@@ -734,6 +762,55 @@ impl ConfigErrorKind {
             ConfigErrorKind::OmniPathFileNotExecutable => "file is not executable".to_string(),
             ConfigErrorKind::OmniPathFileFailedToLoadMetadata => {
                 "failed to load metadata for file".to_string()
+            }
+            ConfigErrorKind::UserDefinedPathCommandMissingTag
+            | ConfigErrorKind::UserDefinedConfigCommandMissingTag => {
+                let tag = context
+                    .get("tag")
+                    .ok_or("Missing 'tag' key in context")?
+                    .as_str()
+                    .ok_or("Value for 'tag' is not a string")?;
+
+                let key = context
+                    .get("key")
+                    .unwrap_or(&YamlValue::Null)
+                    .as_str()
+                    .map(|s| format!(" for command '{}'", s))
+                    .unwrap_or_default();
+
+                format!("required tag '{}' is missing{}", tag, key,)
+            }
+            ConfigErrorKind::UserDefinedPathCommandInvalidTagValue
+            | ConfigErrorKind::UserDefinedConfigCommandInvalidTagValue => {
+                let tag = context
+                    .get("tag")
+                    .ok_or("Missing 'tag' key in context")?
+                    .as_str()
+                    .ok_or("Value for 'tag' is not a string")?;
+
+                let expected = context
+                    .get("expected")
+                    .ok_or("Missing 'expected' key in context")?
+                    .as_str()
+                    .ok_or("Value for 'expected' is not a string")?;
+
+                let actual = context
+                    .get("actual")
+                    .ok_or("Missing 'actual' key in context")?
+                    .as_str()
+                    .ok_or("Value for 'actual' is not a string")?;
+
+                let key = context
+                    .get("key")
+                    .unwrap_or(&YamlValue::Null)
+                    .as_str()
+                    .map(|s| format!(" for command '{}'", s))
+                    .unwrap_or_default();
+
+                format!(
+                    "invalid value '{}' for tag '{}', expected value to {}{}",
+                    actual, tag, expected, key,
+                )
             }
         };
 
