@@ -45,7 +45,7 @@ indicatif = "0.17.9"
 is-terminal = "0.4.13"
 itertools = "0.14.0"
 lazy_static = "1.4.0"
-libz-sys = { version = "1.1.19", features = ["static"] }  # So we can force static linking
+libz-sys = { version = "1.1.21", features = ["static"] }  # So we can force static linking
 machine-uid = "0.5.2"
 md-5 = "0.10.6"
 nix = "0.29.0"
