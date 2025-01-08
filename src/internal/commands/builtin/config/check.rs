@@ -118,6 +118,12 @@ impl From<BTreeMap<String, ParseArgsValue>> for ConfigCheckCommandArgs {
     }
 }
 
+impl ConfigCheckCommandArgs {
+    fn use_files_from_cli(&self) -> bool {
+        !self.config_files.is_empty() || !self.search_paths.is_empty()
+    }
+}
+
 #[derive(Debug, Clone)]
 enum ConfigCheckCommandOutput {
     Plain,
@@ -285,8 +291,6 @@ impl BuiltinCommand for ConfigCheckCommand {
                 .expect("should have args to parse"),
         );
 
-        let error_handler = ConfigErrorHandler::new();
-
         let wd = workdir(".");
         let wd_root = wd.root();
 
@@ -295,16 +299,31 @@ impl BuiltinCommand for ConfigCheckCommand {
             exit(1);
         }
 
-        // Load the command configuration
-        let check_config = &config(".").check;
+        let error_handler = ConfigErrorHandler::new();
+        self.aggregate_config_errors(&error_handler, &args);
+        self.aggregate_path_errors(&error_handler, &args);
+        self.filter_and_print_errors(&error_handler, &args);
+    }
 
-        // If any of the two commands is provided, we will only check those
-        let files_from_cli = !args.config_files.is_empty() || !args.search_paths.is_empty();
+    fn autocompletion(&self) -> bool {
+        false
+    }
 
+    fn autocomplete(&self, _comp_cword: usize, _argv: Vec<String>) -> Result<(), ()> {
+        Err(())
+    }
+}
+
+impl ConfigCheckCommand {
+    fn aggregate_config_errors(
+        &self,
+        error_handler: &ConfigErrorHandler,
+        args: &ConfigCheckCommandArgs,
+    ) {
         // Get all the available configuration files
-        let config_files: Vec<(String, ConfigScope)> = if files_from_cli {
+        let config_files: Vec<(String, ConfigScope)> = if args.use_files_from_cli() {
             args.config_files
-                .into_iter()
+                .iter()
                 .filter(|file| {
                     if !PathBuf::from(file).exists() {
                         omni_error!(format!("configuration file not found: {}", file));
@@ -312,7 +331,7 @@ impl BuiltinCommand for ConfigCheckCommand {
                     }
                     true
                 })
-                .map(|file| (file, ConfigScope::Null))
+                .map(|file| (file.clone(), ConfigScope::Null))
                 .collect()
         } else {
             ConfigLoader::all_config_files()
@@ -329,16 +348,21 @@ impl BuiltinCommand for ConfigCheckCommand {
 
         for (file, scope) in config_files {
             let loader = ConfigLoader::new_from_file(&file, scope);
-            let config = OmniConfig::from_config_value(
+            let file_config = OmniConfig::from_config_value(
                 &loader.raw_config,
                 &error_handler.with_file(file.clone()),
             );
+
+            // Load the check configuration for the location of the file,
+            // since we do not want to do local configuration checks that
+            // are not relevant to the file / work directory of the file
+            let local_check_config = config(&file).check;
 
             // Go over all the commands defined in the configuration;
             // commands can have subcommands, and subcommands can have
             // subsubcommands, etc. We want all that in a single list
             // to simplify some logic here
-            let mut commands_to_process: Vec<_> = config.commands.into_iter().collect();
+            let mut commands_to_process: Vec<_> = file_config.commands.into_iter().collect();
             let mut all_commands = vec![];
             while let Some((name, command)) = commands_to_process.pop() {
                 all_commands.push((name.clone(), command.clone()));
@@ -354,7 +378,7 @@ impl BuiltinCommand for ConfigCheckCommand {
             for (command_name, command) in all_commands {
                 // Validate the tags for the command
                 let tags = command.tags;
-                for (tag, filter) in check_config.tags.iter() {
+                for (tag, filter) in local_check_config.tags.iter() {
                     if let Some(value) = tags.get(tag) {
                         if !filter.matches(value) {
                             error_handler
@@ -375,15 +399,21 @@ impl BuiltinCommand for ConfigCheckCommand {
                 }
             }
         }
+    }
 
+    fn aggregate_path_errors(
+        &self,
+        error_handler: &ConfigErrorHandler,
+        args: &ConfigCheckCommandArgs,
+    ) {
         // Now go over all the paths in the omnipath, so we can report:
         // - Files without `chmod +x`
         // - Files with missing metadata
         // - Errors in the metadata files (yaml)
         // - Errors in the metadata headers
 
-        let search_paths = if files_from_cli {
-            args.search_paths
+        let search_paths = if args.use_files_from_cli() {
+            args.search_paths.clone()
         } else {
             // Use the configuration files to get the paths
             let config_files: Vec<_> = ConfigLoader::all_config_files()
@@ -449,12 +479,16 @@ impl BuiltinCommand for ConfigCheckCommand {
             }
 
             let path_error_handler = error_handler.with_file(&entry);
-            for command in PathCommand::aggregate_with_errors(&[entry], &path_error_handler) {
+            for command in PathCommand::aggregate_with_errors(&[entry.clone()], &path_error_handler)
+            {
                 command.check_errors(&path_error_handler);
+
+                // Load the check configuration for the location of the file
+                let local_check_config = config(&entry).check;
 
                 // Validate the tags for the command
                 let tags = command.tags();
-                for (tag, filter) in check_config.tags.iter() {
+                for (tag, filter) in local_check_config.tags.iter() {
                     if let Some(value) = tags.get(tag) {
                         if !filter.matches(value) {
                             path_error_handler
@@ -473,24 +507,17 @@ impl BuiltinCommand for ConfigCheckCommand {
                 }
             }
         }
+    }
 
-        let patterns: Vec<String> = args
+    fn filter_and_print_errors(
+        &self,
+        error_handler: &ConfigErrorHandler,
+        args: &ConfigCheckCommandArgs,
+    ) {
+        let cliarg_patterns: Vec<String> = args
             .patterns
             .iter()
             .map(|value| path_pattern_from_str(value, None))
-            .chain(check_config.patterns())
-            .collect();
-        let select_errors = args
-            .select_errors
-            .iter()
-            .chain(check_config.select.iter())
-            .map(|e| e.to_string())
-            .collect();
-        let ignore_errors = args
-            .ignore_errors
-            .iter()
-            .chain(check_config.ignore.iter())
-            .map(|e| e.to_string())
             .collect();
 
         // Filter and sort the errors
@@ -500,9 +527,49 @@ impl BuiltinCommand for ConfigCheckCommand {
             .filter(|e| {
                 args.include_packages || !PathBuf::from(e.file()).starts_with(package_root_path())
             })
-            .filter(|e| check_allowed(e.file(), &patterns))
-            .filter(|e| check_selected(e, &select_errors, &ignore_errors))
-            .filter(|e| !is_path_gitignored(e.file()).unwrap_or(false))
+            .filter(|e| {
+                // Load the check configuration for the location of the file
+                let local_check_config = config(e.file()).check;
+
+                // Get the patterns for this file
+                let patterns: Vec<String> = cliarg_patterns
+                    .iter()
+                    .chain(&local_check_config.patterns())
+                    .cloned()
+                    .collect();
+
+                // Check if the file is allowed
+                if !check_allowed(e.file(), &patterns) {
+                    return false;
+                }
+
+                // Get the selected and ignored errors
+                let select_errors = args
+                    .select_errors
+                    .iter()
+                    .chain(local_check_config.select.iter())
+                    .map(|e| e.to_string())
+                    .collect();
+
+                let ignore_errors = args
+                    .ignore_errors
+                    .iter()
+                    .chain(local_check_config.ignore.iter())
+                    .map(|e| e.to_string())
+                    .collect();
+
+                // Check if the error is selected
+                if !check_selected(e, &select_errors, &ignore_errors) {
+                    return false;
+                }
+
+                // Check if the file is gitignored
+                if is_path_gitignored(e.file()).unwrap_or(false) {
+                    return false;
+                }
+
+                true
+            })
             .sorted()
             .collect::<Vec<_>>();
 
@@ -523,14 +590,6 @@ impl BuiltinCommand for ConfigCheckCommand {
 
         // Exit with the appropriate code
         exit(if errors.is_empty() { 0 } else { 1 });
-    }
-
-    fn autocompletion(&self) -> bool {
-        false
-    }
-
-    fn autocomplete(&self, _comp_cword: usize, _argv: Vec<String>) -> Result<(), ()> {
-        Err(())
     }
 }
 

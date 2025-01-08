@@ -162,6 +162,23 @@ impl ConfigErrorHandler {
             Self::Noop => None,
         }
     }
+
+    #[inline(always)]
+    pub fn extend(&self, other: &Self) {
+        match (self, other) {
+            (Self::Noop, _) | (_, Self::Noop) => {}
+            (
+                Self::Active { errors, .. },
+                Self::Active {
+                    errors: other_errors,
+                    ..
+                },
+            ) => {
+                let mut errors = errors.borrow_mut();
+                errors.extend_from_slice(&other_errors.borrow());
+            }
+        }
+    }
 }
 
 #[derive(Debug, Clone, Eq, PartialEq)]
