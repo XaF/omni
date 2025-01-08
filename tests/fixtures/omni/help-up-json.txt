@@ -22,7 +22,7 @@
     },
     {
       "name": "--clone-suggested [CLONE_SUGGESTED]",
-      "desc": "Whether we should clone suggested repositories found in the configuration of the repository if any (yes/ask/no) [default: no] [default missing value: ask] [possible values: yes, ask, no]"
+      "desc": "Whether we should clone suggested repositories found in the configuration of the repository if any (yes/ask/no) [default missing value: ask] [possible values: yes, ask, no]"
     },
     {
       "name": "--prompt <PROMPT_ID>",
@@ -42,7 +42,7 @@
     },
     {
       "name": "--update-user-config [UPDATE_USER_CONFIG]",
-      "desc": "Whether we should handle suggestions found in the configuration of the repository if any (yes/ask/no); When using up, the suggest_config configuration will be copied to the home directory of the user to be loaded on every omni call [default: no] [default missing value: ask] [possible values: yes, ask, no]"
+      "desc": "Whether we should handle suggestions found in the configuration of the repository if any (yes/ask/no); When using up, the suggest_config configuration will be copied to the home directory of the user to be loaded on every omni call [default missing value: ask] [possible values: yes, ask, no]"
     },
     {
       "name": "--upgrade",
