@@ -1252,7 +1252,6 @@ impl BuiltinCommand for UpCommand {
                         "ask".to_string(),
                         "no".to_string(),
                     ]),
-                    default: Some("no".to_string()),
                     default_missing_value: Some("ask".to_string()),
                     ..Default::default()
                 },
@@ -1326,7 +1325,6 @@ impl BuiltinCommand for UpCommand {
                         "ask".to_string(),
                         "no".to_string(),
                     ]),
-                    default: Some("no".to_string()),
                     default_missing_value: Some("ask".to_string()),
                     ..Default::default()
                 },
