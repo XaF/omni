@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::collections::HashSet;
 use std::path::PathBuf;
 
@@ -8,6 +9,7 @@ use crate::internal::cache::utils::Empty;
 use crate::internal::commands::utils::abs_path_from_path;
 use crate::internal::config::parser::errors::ConfigErrorHandler;
 use crate::internal::config::parser::errors::ConfigErrorKind;
+use crate::internal::config::parser::github::StringFilter;
 use crate::internal::config::ConfigValue;
 
 #[derive(Debug, Serialize, Deserialize, Clone, Default)]
@@ -18,6 +20,8 @@ pub struct CheckConfig {
     pub ignore: HashSet<String>,
     #[serde(skip_serializing_if = "HashSet::is_empty")]
     pub select: HashSet<String>,
+    #[serde(skip_serializing_if = "HashMap::is_empty")]
+    pub tags: HashMap<String, StringFilter>,
 }
 
 impl Empty for CheckConfig {
@@ -80,10 +84,62 @@ impl CheckConfig {
             .into_iter()
             .collect();
 
+        let tags = if let Some(value) = config_value.get("tags") {
+            if let Some(table) = value.as_table() {
+                table
+                    .into_iter()
+                    .map(|(key, value)| {
+                        let filter = StringFilter::from_config_value(
+                            Some(value),
+                            &error_handler.with_key("tags").with_key(&key),
+                        );
+                        (key.clone(), filter)
+                    })
+                    .collect()
+            } else if let Some(array) = value.as_array() {
+                let mut tags = HashMap::new();
+                for (idx, value) in array.iter().enumerate() {
+                    if let Some(value) = value.as_str_forced() {
+                        tags.insert(value.to_string(), StringFilter::default());
+                    } else if let Some(table) = value.as_table() {
+                        for (key, value) in table {
+                            let filter = StringFilter::from_config_value(
+                                Some(value),
+                                &error_handler
+                                    .with_key("tags")
+                                    .with_index(idx)
+                                    .with_key(&key),
+                            );
+                            tags.insert(key.clone(), filter);
+                        }
+                    } else {
+                        error_handler
+                            .with_key("tags")
+                            .with_index(idx)
+                            .with_expected(vec!["string", "table"])
+                            .with_actual(value)
+                            .error(ConfigErrorKind::InvalidValueType);
+                    }
+                }
+                tags
+            } else {
+                error_handler
+                    .with_key("tags")
+                    .with_expected(vec!["table", "array"])
+                    .with_actual(value)
+                    .error(ConfigErrorKind::InvalidValueType);
+
+                HashMap::new()
+            }
+        } else {
+            HashMap::new()
+        };
+
         Self {
             patterns,
             ignore,
             select,
+            tags,
         }
     }
 

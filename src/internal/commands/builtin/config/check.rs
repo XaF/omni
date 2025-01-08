@@ -295,6 +295,9 @@ impl BuiltinCommand for ConfigCheckCommand {
             exit(1);
         }
 
+        // Load the command configuration
+        let check_config = &config(".").check;
+
         // If any of the two commands is provided, we will only check those
         let files_from_cli = !args.config_files.is_empty() || !args.search_paths.is_empty();
 
@@ -326,10 +329,51 @@ impl BuiltinCommand for ConfigCheckCommand {
 
         for (file, scope) in config_files {
             let loader = ConfigLoader::new_from_file(&file, scope);
-            let _config = OmniConfig::from_config_value(
+            let config = OmniConfig::from_config_value(
                 &loader.raw_config,
                 &error_handler.with_file(file.clone()),
             );
+
+            // Go over all the commands defined in the configuration;
+            // commands can have subcommands, and subcommands can have
+            // subsubcommands, etc. We want all that in a single list
+            // to simplify some logic here
+            let mut commands_to_process: Vec<_> = config.commands.into_iter().collect();
+            let mut all_commands = vec![];
+            while let Some((name, command)) = commands_to_process.pop() {
+                all_commands.push((name.clone(), command.clone()));
+                if let Some(subcommands) = command.subcommands {
+                    commands_to_process.extend(
+                        subcommands
+                            .into_iter()
+                            .map(|(n, c)| (format!("{} {}", name, n), c)),
+                    );
+                }
+            }
+
+            for (command_name, command) in all_commands {
+                // Validate the tags for the command
+                let tags = command.tags;
+                for (tag, filter) in check_config.tags.iter() {
+                    if let Some(value) = tags.get(tag) {
+                        if !filter.matches(value) {
+                            error_handler
+                                .with_key(&command_name)
+                                .with_file(file.clone())
+                                .with_context("tag", tag.to_string())
+                                .with_expected(filter.to_string())
+                                .with_actual(value.to_string())
+                                .error(ConfigErrorKind::UserDefinedConfigCommandInvalidTagValue);
+                        }
+                    } else {
+                        error_handler
+                            .with_key(&command_name)
+                            .with_file(file.clone())
+                            .with_context("tag", tag.to_string())
+                            .error(ConfigErrorKind::UserDefinedConfigCommandMissingTag);
+                    }
+                }
+            }
         }
 
         // Now go over all the paths in the omnipath, so we can report:
@@ -407,10 +451,29 @@ impl BuiltinCommand for ConfigCheckCommand {
             let path_error_handler = error_handler.with_file(&entry);
             for command in PathCommand::aggregate_with_errors(&[entry], &path_error_handler) {
                 command.check_errors(&path_error_handler);
+
+                // Validate the tags for the command
+                let tags = command.tags();
+                for (tag, filter) in check_config.tags.iter() {
+                    if let Some(value) = tags.get(tag) {
+                        if !filter.matches(value) {
+                            path_error_handler
+                                .with_file(command.source())
+                                .with_context("tag", tag.to_string())
+                                .with_expected(filter.to_string())
+                                .with_actual(value.to_string())
+                                .error(ConfigErrorKind::UserDefinedPathCommandInvalidTagValue);
+                        }
+                    } else {
+                        path_error_handler
+                            .with_file(command.source())
+                            .with_context("tag", tag.to_string())
+                            .error(ConfigErrorKind::UserDefinedPathCommandMissingTag);
+                    }
+                }
             }
         }
 
-        let check_config = &config(".").check;
         let patterns: Vec<String> = args
             .patterns
             .iter()

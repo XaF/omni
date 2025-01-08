@@ -259,6 +259,27 @@ impl HelpCommandPrinter for HelpCommandPlainPrinter {
             );
         }
 
+        let tags = command.tags();
+        if !tags.is_empty() {
+            eprintln!();
+
+            let taglen = tags.keys().map(|tag| tag.len()).max().unwrap_or(0) + 2;
+            for (tag, value) in tags {
+                let wrapped_value = wrap_text(&value, max_width - taglen - 2);
+                eprintln!(
+                    "{}{:<width$}{}",
+                    format!("{}:", tag).bold(),
+                    "",
+                    wrapped_value[0],
+                    width = taglen - tag.len() - 1,
+                );
+
+                wrapped_value.iter().skip(1).for_each(|line| {
+                    eprintln!("{:<width$}{}", "", line, width = taglen);
+                });
+            }
+        }
+
         let command_usage = command.usage(Some(called_as.join(" "))).bold();
         let wrapped_usage = wrap_text(&command_usage, max_width - 7); // 7 is the length of "Usage: "
 
@@ -574,6 +595,8 @@ struct SerializableCommandHelp {
     options: Vec<SerializableCommandSyntax>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
     subcommands: Vec<SerializableSubcommand>,
+    #[serde(skip_serializing_if = "BTreeMap::is_empty")]
+    tags: BTreeMap<String, String>,
 }
 
 impl Default for SerializableCommandHelp {
@@ -588,6 +611,7 @@ impl Default for SerializableCommandHelp {
             arguments: vec![],
             options: vec![],
             subcommands: vec![],
+            tags: BTreeMap::new(),
         }
     }
 }
@@ -664,6 +688,7 @@ impl HelpCommandPrinter for HelpCommandJsonPrinter {
             arguments,
             options,
             subcommands,
+            tags: command.tags(),
         };
 
         // Serialize the command help to JSON

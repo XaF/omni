@@ -1,3 +1,4 @@
+use serde::ser::SerializeMap;
 use serde::Deserialize;
 use serde::Serialize;
 
@@ -231,7 +232,7 @@ impl GithubAuthConfig {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Default)]
+#[derive(Debug, Deserialize, Clone, PartialEq, Default)]
 #[serde(rename_all = "snake_case")]
 pub enum StringFilter {
     Contains(String),
@@ -242,6 +243,56 @@ pub enum StringFilter {
     Exact(String),
     #[default]
     Any,
+}
+
+impl Serialize for StringFilter {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::ser::Serializer,
+    {
+        // Serialize `any` as null, and `glob` as a string;
+        // the rest is going to be a key: value pair in a map
+        match self {
+            StringFilter::Any => serializer.serialize_none(),
+            StringFilter::Glob(pattern) => serializer.serialize_str(pattern),
+            _ => {
+                let mut map = serializer.serialize_map(Some(1))?;
+                match self {
+                    StringFilter::Contains(pattern) => {
+                        map.serialize_entry("contains", pattern)?;
+                    }
+                    StringFilter::StartsWith(pattern) => {
+                        map.serialize_entry("starts_with", pattern)?;
+                    }
+                    StringFilter::EndsWith(pattern) => {
+                        map.serialize_entry("ends_with", pattern)?;
+                    }
+                    StringFilter::Regex(pattern) => {
+                        map.serialize_entry("regex", pattern)?;
+                    }
+                    StringFilter::Exact(pattern) => {
+                        map.serialize_entry("exact", pattern)?;
+                    }
+                    StringFilter::Any | StringFilter::Glob(_) => unreachable!(),
+                }
+                map.end()
+            }
+        }
+    }
+}
+
+impl std::fmt::Display for StringFilter {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        match self {
+            StringFilter::Contains(pattern) => write!(f, "contains \'{}\'", pattern),
+            StringFilter::StartsWith(pattern) => write!(f, "start with \'{}\'", pattern),
+            StringFilter::EndsWith(pattern) => write!(f, "end with \'{}\'", pattern),
+            StringFilter::Regex(pattern) => write!(f, "match regex \'{}\'", pattern),
+            StringFilter::Glob(pattern) => write!(f, "match \'{}\'", pattern),
+            StringFilter::Exact(pattern) => write!(f, "be \'{}\'", pattern),
+            StringFilter::Any => write!(f, "be any value"),
+        }
+    }
 }
 
 impl StringFilter {
@@ -358,6 +409,20 @@ impl StringFilter {
 
                     Self::default()
                 }
+            } else if let Some(entry) = table.get("any") {
+                if entry.is_null() {
+                    StringFilter::Any
+                } else if let Some(true) = entry.as_bool_forced() {
+                    StringFilter::Any
+                } else {
+                    error_handler
+                        .with_key("any")
+                        .with_expected(vec!["null", "bool(true)"])
+                        .with_actual(entry)
+                        .error(ConfigErrorKind::InvalidValueType);
+
+                    Self::default()
+                }
             } else {
                 error_handler
                     .with_expected("exact")
@@ -365,9 +430,11 @@ impl StringFilter {
 
                 Self::default()
             }
+        } else if config_value.is_null() {
+            StringFilter::Any
         } else {
             error_handler
-                .with_expected("string or table")
+                .with_expected(vec!["table", "string", "null"])
                 .with_actual(config_value)
                 .error(ConfigErrorKind::InvalidValueType);
 

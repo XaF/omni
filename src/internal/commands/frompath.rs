@@ -11,6 +11,7 @@ use std::process::Command as ProcessCommand;
 use once_cell::sync::OnceCell;
 use serde::Deserialize;
 use serde::Serialize;
+use serde_yaml::Value as YamlValue;
 use walkdir::WalkDir;
 
 use crate::internal::commands::path::omnipath;
@@ -263,6 +264,12 @@ impl PathCommand {
             .unwrap_or(false)
     }
 
+    pub fn tags(&self) -> BTreeMap<String, String> {
+        self.file_details()
+            .map(|details| details.tags.clone())
+            .unwrap_or_default()
+    }
+
     pub fn exec(&self, argv: Vec<String>, called_as: Option<Vec<String>>) {
         // Get the source of the command as called
         let source = called_as.map_or(self.source.clone(), |called_as| {
@@ -328,6 +335,7 @@ pub struct PathCommandFileDetails {
     help: Option<String>,
     autocompletion: bool,
     syntax: Option<CommandSyntax>,
+    tags: BTreeMap<String, String>,
     sync_update: bool,
     argparser: bool,
 }
@@ -349,12 +357,12 @@ impl<'de> PathCommandFileDetails {
     where
         D: serde::Deserializer<'de>,
     {
-        let mut value = serde_yaml::Value::deserialize(deserializer)?;
+        let mut value = YamlValue::deserialize(deserializer)?;
 
-        if let serde_yaml::Value::Mapping(ref mut map) = value {
+        if let YamlValue::Mapping(ref mut map) = value {
             // Deserialize the booleans
             let autocompletion = map
-                .remove(serde_yaml::Value::String("autocompletion".to_string()))
+                .remove(YamlValue::String("autocompletion".to_string()))
                 .map_or(false, |v| match bool::deserialize(v.clone()) {
                     Ok(b) => b,
                     Err(_err) => {
@@ -368,7 +376,7 @@ impl<'de> PathCommandFileDetails {
                     }
                 });
             let sync_update = map
-                .remove(serde_yaml::Value::String("sync_update".to_string()))
+                .remove(YamlValue::String("sync_update".to_string()))
                 .map_or(false, |v| match bool::deserialize(v.clone()) {
                     Ok(b) => b,
                     Err(_err) => {
@@ -382,7 +390,7 @@ impl<'de> PathCommandFileDetails {
                     }
                 });
             let argparser = map
-                .remove(serde_yaml::Value::String("argparser".to_string()))
+                .remove(YamlValue::String("argparser".to_string()))
                 .map_or(false, |v| match bool::deserialize(v.clone()) {
                     Ok(b) => b,
                     Err(_err) => {
@@ -398,7 +406,7 @@ impl<'de> PathCommandFileDetails {
 
             // Deserialize the help message
             let help = map
-                .remove(serde_yaml::Value::String("help".to_string()))
+                .remove(YamlValue::String("help".to_string()))
                 .and_then(|v| match String::deserialize(v.clone()) {
                     Ok(s) => Some(s),
                     Err(_err) => {
@@ -414,21 +422,21 @@ impl<'de> PathCommandFileDetails {
 
             // Deserialize the category
             let category = map
-                .remove(serde_yaml::Value::String("category".to_string()))
-                .and_then(|v| match serde_yaml::Value::deserialize(v.clone()) {
+                .remove(YamlValue::String("category".to_string()))
+                .and_then(|v| match YamlValue::deserialize(v.clone()) {
                     Ok(value) => match value {
-                        serde_yaml::Value::String(s) => Some(
+                        YamlValue::String(s) => Some(
                             s.split(',')
                                 .map(|s| s.trim().to_string())
                                 .collect::<Vec<String>>(),
                         ),
-                        serde_yaml::Value::Sequence(s) => Some(
+                        YamlValue::Sequence(s) => Some(
                             s.iter()
                                 .enumerate()
                                 .filter_map(|(idx, entry)| match entry {
-                                    serde_yaml::Value::String(s) => Some(s.trim().to_string()),
-                                    serde_yaml::Value::Number(n) => Some(n.to_string()),
-                                    serde_yaml::Value::Bool(b) => Some(b.to_string()),
+                                    YamlValue::String(s) => Some(s.trim().to_string()),
+                                    YamlValue::Number(n) => Some(n.to_string()),
+                                    YamlValue::Bool(b) => Some(b.to_string()),
                                     _ => {
                                         error_handler
                                             .with_key("category")
@@ -465,7 +473,7 @@ impl<'de> PathCommandFileDetails {
 
             // Deserialize the syntax
             let syntax = map
-                .remove(serde_yaml::Value::String("syntax".to_string()))
+                .remove(YamlValue::String("syntax".to_string()))
                 .and_then(
                     |v| match CommandSyntax::deserialize(v.clone(), error_handler) {
                         Ok(s) => Some(s),
@@ -481,6 +489,25 @@ impl<'de> PathCommandFileDetails {
                     },
                 );
 
+            // Deserialize the tags
+            let tags = map
+                .remove(YamlValue::String("tags".to_string()))
+                .and_then(
+                    |v| match BTreeMap::<String, String>::deserialize(v.clone()) {
+                        Ok(t) => Some(t),
+                        Err(_err) => {
+                            error_handler
+                                .with_key("tags")
+                                .with_expected("table")
+                                .with_actual(v.to_owned())
+                                .error(ConfigErrorKind::InvalidValueType);
+
+                            None
+                        }
+                    },
+                )
+                .unwrap_or_default();
+
             Ok(Self {
                 autocompletion,
                 sync_update,
@@ -488,6 +515,7 @@ impl<'de> PathCommandFileDetails {
                 help,
                 category,
                 syntax,
+                tags,
             })
         } else {
             error_handler
@@ -846,6 +874,7 @@ impl PathCommandFileDetails {
         let mut argparser = false;
         let mut category: Option<Vec<String>> = None;
         let mut help_lines: Vec<String> = Vec::new();
+        let mut tags: BTreeMap<String, String> = BTreeMap::new();
 
         let mut current_key: Option<(String, Option<String>)> = None;
         let mut current_obj: Option<(String, String, String)> = None;
@@ -881,7 +910,7 @@ impl PathCommandFileDetails {
                 };
 
                 let (subkey, value) = match key.as_str() {
-                    "opt" | "arg" | "arggroup" => {
+                    "opt" | "arg" | "arggroup" | "tag" => {
                         let mut subparts = value.splitn(2, ':');
                         let subkey = match subparts.next().map(|s| s.trim()) {
                             Some(subkey) if !subkey.is_empty() => subkey.to_string(),
@@ -919,8 +948,8 @@ impl PathCommandFileDetails {
                 }
             };
 
-            match (key.as_str(), value) {
-                ("category", value) => {
+            match (key.as_str(), subkey, value) {
+                ("category", None, value) => {
                     key_tracker.handle_seen_key(&key, lineno, true, error_handler);
 
                     let handled_value = value
@@ -932,7 +961,7 @@ impl PathCommandFileDetails {
                         None => category = Some(handled_value),
                     }
                 }
-                ("autocompletion", value) => {
+                ("autocompletion", None, value) => {
                     key_tracker.handle_seen_key(&key, lineno, false, error_handler);
                     autocompletion = match str_to_bool(&value) {
                         Some(b) => b,
@@ -948,7 +977,7 @@ impl PathCommandFileDetails {
                         }
                     };
                 }
-                ("sync_update", value) => {
+                ("sync_update", None, value) => {
                     key_tracker.handle_seen_key(&key, lineno, false, error_handler);
                     sync_update = match str_to_bool(&value) {
                         Some(b) => b,
@@ -964,7 +993,7 @@ impl PathCommandFileDetails {
                         }
                     };
                 }
-                ("argparser", value) => {
+                ("argparser", None, value) => {
                     key_tracker.handle_seen_key(&key, lineno, false, error_handler);
                     argparser = match str_to_bool(&value) {
                         Some(b) => b,
@@ -980,13 +1009,14 @@ impl PathCommandFileDetails {
                         }
                     };
                 }
-                ("help", value) => {
+                ("help", None, value) => {
                     key_tracker.handle_seen_key(&key, lineno, true, error_handler);
 
                     help_lines.push(value);
                 }
-                ("arg", value) | ("opt", value) | ("arggroup", value) if subkey.is_some() => {
-                    let subkey = subkey.unwrap();
+                ("arg", Some(subkey), value)
+                | ("opt", Some(subkey), value)
+                | ("arggroup", Some(subkey), value) => {
                     key_tracker.handle_seen_key(
                         &format!("{}:{}", key, subkey),
                         lineno,
@@ -1018,6 +1048,15 @@ impl PathCommandFileDetails {
                             current_obj = Some((key, subkey, value));
                         }
                     }
+                }
+                ("tag", Some(subkey), value) => {
+                    key_tracker.handle_seen_key(
+                        &format!("{}:{}", key, subkey),
+                        lineno,
+                        false,
+                        error_handler,
+                    );
+                    tags.insert(subkey.to_string(), value);
                 }
                 _ if !key_tracker.is_empty() => {
                     error_handler
@@ -1088,16 +1127,22 @@ impl PathCommandFileDetails {
             autocompletion,
             argparser,
             syntax,
+            tags,
             sync_update,
         })
     }
 
     pub fn from_source_file(path: &str, error_handler: &ConfigErrorHandler) -> Option<Self> {
-        let file = File::open(path);
-        if file.is_err() {
-            return None;
-        }
-        let file = file.unwrap();
+        let file = match File::open(path) {
+            Ok(file) => file,
+            Err(_) => {
+                error_handler
+                    .with_file(path)
+                    .error(ConfigErrorKind::OmniPathFileFailedToLoadMetadata);
+
+                return None;
+            }
+        };
 
         let mut reader = BufReader::new(file);
 
