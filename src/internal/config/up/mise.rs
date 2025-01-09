@@ -1661,6 +1661,9 @@ impl UpConfigMise {
 
         if detected_versions.is_empty() {
             progress_handler.success_with_message("no version detected".to_string());
+            self.actual_versions
+                .set(BTreeMap::new())
+                .expect("failed to set installed versions");
             return Ok(());
         }
 
