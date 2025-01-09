@@ -280,11 +280,9 @@ impl PathCommand {
         });
 
         // Execute the command
-        let mut command = ProcessCommand::new(source);
-        command.args(argv);
-        command.exec();
+        let err = ProcessCommand::new(source).args(argv).exec();
 
-        panic!("Something went wrong");
+        panic!("Something went wrong: {:?}", err);
     }
 
     pub fn autocompletion(&self) -> bool {

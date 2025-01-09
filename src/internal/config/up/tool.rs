@@ -157,11 +157,7 @@ impl UpConfigTool {
                     return None;
                 }
 
-                let upconfig =
-                    match UpConfig::from_config_value(config_value.cloned(), error_handler) {
-                        Some(upconfig) => upconfig,
-                        None => return None,
-                    };
+                let upconfig = UpConfig::from_config_value(config_value.cloned(), error_handler)?;
 
                 if upconfig.steps.is_empty() {
                     error_handler.error(ConfigErrorKind::EmptyKey);

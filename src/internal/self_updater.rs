@@ -416,7 +416,7 @@ impl OmniRelease {
                 .success_with_message(format!("updated to version {}", self.version).light_green());
 
             // Replace current process with the new binary
-            ProcessCommand::new(std::env::current_exe().unwrap())
+            let err = ProcessCommand::new(std::env::current_exe().unwrap())
                 .args(std::env::args().skip(1))
                 // We want to force the update, since by replacing the current
                 // process, we're going to skip the rest of the updates otherwise
@@ -426,7 +426,10 @@ impl OmniRelease {
                 .env("OMNI_SKIP_SELF_UPDATE", "1")
                 .exec();
 
-            panic!("Failed to replace current process with the new binary");
+            panic!(
+                "Failed to replace current process with the new binary: {:?}",
+                err
+            );
         } else {
             progress_handler.success_with_message("already up-to-date".light_black());
         }

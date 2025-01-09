@@ -52,10 +52,7 @@ impl UpConfig {
         config_value: Option<ConfigValue>,
         error_handler: &ConfigErrorHandler,
     ) -> Option<Self> {
-        let config_value = match config_value {
-            Some(config_value) => config_value,
-            None => return None,
-        };
+        let config_value = config_value?;
 
         let config_array = match config_value.as_array() {
             Some(config_array) => config_array,

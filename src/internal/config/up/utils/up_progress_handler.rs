@@ -7,7 +7,7 @@ use std::process::exit;
 use std::time::Duration as StdDuration;
 use std::time::Instant as StdInstant;
 
-use fs4::fs_std::FileExt;
+use fs4::fs_std::FileExt as Fs4FileExt;
 use once_cell::sync::OnceCell;
 use serde::Deserialize;
 use serde::Serialize;
@@ -338,7 +338,7 @@ impl SyncUpdateListener<'_> {
             }
 
             if file.try_lock_exclusive().is_ok() {
-                file.unlock()?;
+                Fs4FileExt::unlock(file)?;
 
                 // The process was completed
                 break Ok(true);
@@ -715,10 +715,7 @@ pub enum SyncUpdateProgressAction {
 
 impl SyncUpdateProgressAction {
     fn from_map(map: BTreeMap<String, String>) -> Option<SyncUpdateProgressAction> {
-        let action = match map.get("action") {
-            Some(action) => action,
-            None => return None,
-        };
+        let action = map.get("action")?;
 
         match action.as_str() {
             "progress" => map

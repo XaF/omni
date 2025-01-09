@@ -227,13 +227,13 @@ impl ConfigCommand {
             }
         }
 
-        ProcessCommand::new("bash")
+        let err = ProcessCommand::new("bash")
             .arg("-c")
             .arg(self.details.run.clone())
             .arg(self.source())
             .args(argv)
             .exec();
 
-        panic!("Something went wrong");
+        panic!("Something went wrong: {:?}", err);
     }
 }

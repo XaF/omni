@@ -78,10 +78,7 @@ impl VersionParser {
         options: &VersionParserOptions,
     ) -> Option<Self> {
         // Find the first digit in the version string
-        let first_digit = match version_string.chars().position(|c| c.is_ascii_digit()) {
-            Some(pos) => pos,
-            None => return None,
-        };
+        let first_digit = version_string.chars().position(|c| c.is_ascii_digit())?;
 
         // If the first digit is not at the beginning of the string,
         // then the prefix is the part of the string before the first digit
@@ -96,10 +93,7 @@ impl VersionParser {
         let parseable_version_string = if options.complete_version {
             // Complete the version if needed
             let reg = regex::Regex::new(Self::MAJOR_MINOR_PATCH_REGEX).unwrap();
-            let captures = match reg.captures(&parseable_version_string) {
-                Some(captures) => captures,
-                None => return None,
-            };
+            let captures = reg.captures(&parseable_version_string)?;
 
             format!(
                 "{}.{}.{}{}",

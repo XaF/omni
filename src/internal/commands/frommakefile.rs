@@ -206,13 +206,13 @@ impl MakefileCommand {
             println!("Failed to change directory to {}", makefile_dir.display());
         }
 
-        ProcessCommand::new("make")
+        let err = ProcessCommand::new("make")
             .arg("-f")
             .arg(self.source())
             .arg(self.target.clone())
             .args(argv)
             .exec();
 
-        panic!("Something went wrong");
+        panic!("Something went wrong: {:?}", err);
     }
 }
