@@ -636,6 +636,17 @@ impl DynamicEnv {
                             envsetter.prepend_to_list("PATH", &format!("{}/bin", data_path));
                         };
                     }
+                    "helm" => {
+                        envsetter.prepend_to_list("PATH", &format!("{}{}", tool_prefix, bin_path));
+
+                        // Handle the isolated HELM configuration and cache
+                        if let Some(data_path) = &toolversion.data_path {
+                            envsetter
+                                .set_value("HELM_CONFIG_HOME", &format!("{}/config", data_path));
+                            envsetter.set_value("HELM_CACHE_HOME", &format!("{}/cache", data_path));
+                            envsetter.set_value("HELM_DATA_HOME", &format!("{}/data", data_path));
+                        }
+                    }
                     _ => {
                         envsetter.prepend_to_list("PATH", &format!("{}{}", tool_prefix, bin_path));
                     }

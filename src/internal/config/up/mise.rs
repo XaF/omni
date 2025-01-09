@@ -43,6 +43,7 @@ use crate::internal::config::utils::is_executable;
 use crate::internal::config::ConfigValue;
 use crate::internal::dynenv::update_dynamic_env_for_command_from_env;
 use crate::internal::env::cache_home;
+use crate::internal::env::current_dir;
 use crate::internal::env::data_home;
 use crate::internal::env::state_home;
 use crate::internal::git::is_path_gitignored;
@@ -1505,36 +1506,7 @@ impl UpConfigMise {
                 let version = self.version()?;
 
                 self.update_cache(environment, progress_handler);
-
-                if !self.post_install_funcs.is_empty() {
-                    let post_install_versions = vec![MiseToolUpVersion {
-                        version: version.clone(),
-                        dirs: if self.dirs.is_empty() {
-                            vec!["".to_string()].into_iter().collect()
-                        } else {
-                            self.dirs.clone()
-                        },
-                    }];
-
-                    let post_install_func_args = PostInstallFuncArgs {
-                        config_value: self.config_value.clone(),
-                        fqtn,
-                        requested_version: self.version.clone(),
-                        versions: post_install_versions,
-                    };
-
-                    for func in self.post_install_funcs.iter() {
-                        if let Err(err) = func(
-                            options,
-                            environment,
-                            progress_handler,
-                            &post_install_func_args,
-                        ) {
-                            progress_handler.error_with_message(format!("error: {}", err));
-                            return Err(err);
-                        }
-                    }
-                }
+                self.run_post_install(options, environment, progress_handler)?;
 
                 let msg = if installed {
                     format!("{} {} installed", self.tool()?, version).green()
@@ -1696,34 +1668,7 @@ impl UpConfigMise {
             .set(all_versions.clone())
             .expect("failed to set installed versions");
 
-        if !self.post_install_funcs.is_empty() {
-            let post_install_versions = all_versions
-                .iter()
-                .map(|(version, dirs)| MiseToolUpVersion {
-                    version: version.clone(),
-                    dirs: dirs.clone(),
-                })
-                .collect::<Vec<MiseToolUpVersion>>();
-
-            let post_install_func_args = PostInstallFuncArgs {
-                config_value: self.config_value.clone(),
-                fqtn,
-                requested_version: self.version.clone(),
-                versions: post_install_versions,
-            };
-
-            for func in self.post_install_funcs.iter() {
-                if let Err(err) = func(
-                    options,
-                    environment,
-                    progress_handler,
-                    &post_install_func_args,
-                ) {
-                    progress_handler.error_with_message(format!("error: {}", err));
-                    return Err(err);
-                }
-            }
-        }
+        self.run_post_install(options, environment, progress_handler)?;
 
         let mut msgs = Vec::new();
 
@@ -1758,6 +1703,106 @@ impl UpConfigMise {
         }
 
         progress_handler.success_with_message(msgs.join(", "));
+
+        Ok(())
+    }
+
+    fn run_post_install(
+        &self,
+        options: &UpOptions,
+        environment: &mut UpEnvironment,
+        progress_handler: &UpProgressHandler,
+    ) -> Result<(), UpError> {
+        let fqtn = self.fully_qualified_tool_name()?;
+
+        let versions = if let Some(versions) = self.actual_versions.get() {
+            versions.clone()
+        } else if let Some(version) = self.actual_version.get() {
+            vec![(
+                version.clone(),
+                if self.dirs.is_empty() {
+                    vec!["".to_string()].into_iter().collect()
+                } else {
+                    self.dirs.clone()
+                },
+            )]
+            .into_iter()
+            .collect()
+        } else {
+            return Err(UpError::Exec("no versions to post-install".to_string()));
+        };
+
+        if !self.post_install_funcs.is_empty() {
+            let post_install_versions: Vec<MiseToolUpVersion> = versions
+                .iter()
+                .map(|(version, dirs)| MiseToolUpVersion {
+                    version: version.clone(),
+                    dirs: dirs.clone(),
+                })
+                .collect();
+
+            let post_install_func_args = PostInstallFuncArgs {
+                config_value: self.config_value.clone(),
+                fqtn,
+                requested_version: self.version.clone(),
+                versions: post_install_versions,
+            };
+
+            for func in self.post_install_funcs.iter() {
+                if let Err(err) = func(
+                    options,
+                    environment,
+                    progress_handler,
+                    &post_install_func_args,
+                ) {
+                    progress_handler.error_with_message(format!("error: {}", err));
+                    return Err(err);
+                }
+            }
+        }
+
+        // Add data paths for specific tools that depend on it but don't
+        // have their own wrapper file
+        if matches!(fqtn.tool(), "helm") {
+            // Get the data path for the work directory
+            let workdir = workdir(".");
+
+            let data_path = match workdir.data_path() {
+                Some(data_path) => data_path,
+                None => {
+                    return Err(UpError::Exec(format!(
+                        "failed to get data path for {}",
+                        current_dir().display()
+                    )));
+                }
+            };
+
+            // Add data paths
+            let normalized_name = fqtn.normalized_plugin_name()?;
+            for (version, dirs) in versions.iter() {
+                for dir in dirs.iter() {
+                    let version_dir = data_path_dir_hash(dir);
+
+                    let path = data_path
+                        .join(&normalized_name)
+                        .join(version)
+                        .join(&version_dir);
+
+                    if !environment.add_version_data_path(
+                        &normalized_name,
+                        version,
+                        dir,
+                        &path.to_string_lossy(),
+                    ) {
+                        progress_handler.progress(format!(
+                            "failed to add data path for {} {}",
+                            fqtn.tool(),
+                            version
+                        ));
+                    }
+                }
+            }
+        }
 
         Ok(())
     }
