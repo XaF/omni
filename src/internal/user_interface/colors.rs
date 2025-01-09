@@ -1,6 +1,6 @@
-use is_terminal::IsTerminal;
-use lazy_static::lazy_static;
+use std::io::IsTerminal;
 
+use lazy_static::lazy_static;
 use regex::Regex;
 
 use crate::internal::env::shell_is_interactive;
@@ -73,6 +73,8 @@ fn enable_colors() -> bool {
     if std::env::var_os("CLICOLOR_FORCE").is_some() {
         return true;
     }
+    // TODO: find an approach to not depend on the stderr check for the
+    //       PS1 colorization
     std::io::stdout().is_terminal() || std::io::stderr().is_terminal()
 }
 
