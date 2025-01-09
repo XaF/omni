@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::fs::OpenOptions;
+use std::io::IsTerminal;
 use std::io::Write;
 use std::panic::catch_unwind;
 use std::path::PathBuf;
@@ -12,7 +13,6 @@ use fs4::fs_std::FileExt;
 use gethostname::gethostname;
 use git2::Repository;
 use git_url_parse::GitUrl;
-use is_terminal::IsTerminal;
 use lazy_static::lazy_static;
 use once_cell::sync::OnceCell;
 use petname::Generator;

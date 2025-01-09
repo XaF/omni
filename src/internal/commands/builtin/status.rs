@@ -1,5 +1,6 @@
 use std::collections::BTreeMap;
 use std::collections::HashMap;
+use std::io::IsTerminal;
 use std::process::exit;
 
 use regex::Regex;
@@ -241,6 +242,13 @@ impl StatusCommand {
         if yaml_lines[0] == "---" {
             // Remove the first line if it's "---"; as it's not very useful
             yaml_lines.remove(0);
+        }
+
+        // If the output is not a terminal, return the yaml as is;
+        // this is required as usually we do not colorize when
+        // both stdout and stderr are not terminals
+        if !std::io::stdout().is_terminal() {
+            return yaml_lines.join("\n");
         }
 
         let pattern = r#"^(\s*)(\-\s*)?(("[^"]+"|([^:]|:[^ ])+)\s*:)(\s+|$)"#;
