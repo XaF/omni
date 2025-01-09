@@ -6,6 +6,8 @@ use std::panic::catch_unwind;
 use std::path::PathBuf;
 use std::process::exit;
 use std::sync::Mutex;
+use std::time::Duration as StdDuration;
+use std::time::Instant as StdInstant;
 
 use blake3::Hasher;
 use fs4::fs_std::FileExt;
@@ -19,6 +21,7 @@ use petname::Generator;
 use petname::Petnames;
 use time::OffsetDateTime;
 
+use crate::internal::config::global_config;
 use crate::internal::config::parser::PathEntryConfig;
 use crate::internal::config::up::utils::force_remove_dir_all;
 use crate::internal::config::up::utils::SyncUpdateListener;
@@ -1081,42 +1084,63 @@ impl WorkDirEnv {
             .open(sync_path)?;
 
         // Try to acquire an exclusive lock on the file
-        match file.try_lock_exclusive() {
-            Ok(_file_lock) => {
-                // Now that we have the lock, truncate the file contents
-                file.set_len(0)?;
-                file.flush()?;
+        if let Ok(_file_lock) = file.try_lock_exclusive() {
+            // Now that we have the lock, truncate the file contents
+            file.set_len(0)?;
+            file.flush()?;
 
-                Ok(Some(file))
-            }
-            Err(_) => {
-                // If we can't acquire the lock, it means that another process is updating the workdir
-                // at the same time, so we will wait on the update to finish while streaming the
-                // file contents, and return None to indicate that the update was already done
-                match listener.follow(&file) {
-                    Err(err) => match err {
-                        SyncUpdateError::MismatchedInit(actual, _expected) => {
-                            // If the init operation is mismatched, we need to wait for the lock to be released
-                            omni_info!(format!(
-                                "waiting for running {} operation to finish",
-                                actual.name().light_yellow()
-                            ));
+            return Ok(Some(file));
+        }
 
-                            // Grab the lock in a blocking way
-                            file.lock_exclusive()?;
+        // If we can't acquire the lock, it means that another process is updating the workdir
+        // at the same time, so we will wait on the update to finish while streaming the
+        // file contents, and return None to indicate that the update was already done
+        match listener.follow(&file) {
+            Ok(true) => Ok(None), // The update was done
+            Ok(false) => {
+                // We killed the running process, let's try and lock the file
+                // until we timeout, and error out if we can't
+                let timeout_duration =
+                    StdDuration::from_secs(global_config().up_command.attach_lock_timeout);
+                let start_time = StdInstant::now();
 
+                loop {
+                    match file.try_lock_exclusive() {
+                        Ok(_file_lock) => {
                             // Now that we have the lock, truncate the file contents
                             file.set_len(0)?;
                             file.flush()?;
 
-                            // Return the file
-                            Ok(Some(file))
+                            return Ok(Some(file));
                         }
-                        _ => Err(err),
-                    },
-                    Ok(_) => Ok(None),
+                        Err(_) => {
+                            if start_time.elapsed() > timeout_duration {
+                                return Err(SyncUpdateError::Timeout);
+                            }
+
+                            std::thread::sleep(StdDuration::from_millis(100));
+                        }
+                    }
                 }
             }
+            Err(SyncUpdateError::MismatchedInit(actual, _expected)) => {
+                // If the init operation is mismatched, we need to wait for the lock to be released
+                omni_info!(format!(
+                    "waiting for running {} operation to finish",
+                    actual.name().light_yellow()
+                ));
+
+                // Grab the lock in a blocking way
+                file.lock_exclusive()?;
+
+                // Now that we have the lock, truncate the file contents
+                file.set_len(0)?;
+                file.flush()?;
+
+                // Return the file
+                Ok(Some(file))
+            }
+            Err(err) => Err(err),
         }
     }
 }

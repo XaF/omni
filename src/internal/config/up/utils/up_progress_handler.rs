@@ -4,12 +4,15 @@ use std::fmt::Display;
 use std::io::BufRead;
 use std::io::Write;
 use std::process::exit;
+use std::time::Duration as StdDuration;
+use std::time::Instant as StdInstant;
 
 use fs4::fs_std::FileExt;
 use once_cell::sync::OnceCell;
 use serde::Deserialize;
 use serde::Serialize;
 
+use crate::internal::config::global_config;
 use crate::internal::config::up::utils::PrintProgressHandler;
 use crate::internal::config::up::utils::ProgressHandler;
 use crate::internal::config::up::utils::SpinnerProgressHandler;
@@ -280,6 +283,7 @@ pub struct SyncUpdateListener<'a> {
     current_handler_id: Option<String>,
     seen_init: bool,
     missing_options: bool,
+    attached_pid: Option<u32>,
 }
 
 impl SyncUpdateListener<'_> {
@@ -290,6 +294,7 @@ impl SyncUpdateListener<'_> {
             current_handler_id: None,
             seen_init: false,
             missing_options: false,
+            attached_pid: None,
         }
     }
 
@@ -298,12 +303,20 @@ impl SyncUpdateListener<'_> {
         self
     }
 
-    pub fn follow(&mut self, file: &std::fs::File) -> Result<(), SyncUpdateError> {
+    pub fn follow(&mut self, file: &std::fs::File) -> Result<bool, SyncUpdateError> {
         let mut lines = std::io::BufReader::new(file).lines();
 
         self.current_handler = None;
         self.current_handler_id = None;
 
+        // The last time we saw activity
+        let mut last_activity = StdInstant::now();
+
+        // The timeout duration after which we suggest to kill the process
+        let up_cmd_config = global_config().up_command;
+        let timeout = up_cmd_config.attach_kill_timeout;
+
+        let mut first_loop = true;
         loop {
             for line in (&mut lines).flatten() {
                 if let Err(err) = self.handle_line(&line) {
@@ -317,17 +330,77 @@ impl SyncUpdateListener<'_> {
                         }
                     }
                 }
+
+                if !first_loop {
+                    // Reset the last activity time
+                    last_activity = StdInstant::now();
+                }
             }
+
             if file.try_lock_exclusive().is_ok() {
                 file.unlock()?;
-                break Ok(());
-            } else {
-                std::thread::sleep(std::time::Duration::from_millis(100));
+
+                // The process was completed
+                break Ok(true);
             }
+
+            if let Some(pid) = self.attached_pid {
+                if shell_is_interactive() {
+                    let timeout_duration = StdDuration::from_secs(if first_loop {
+                        // During the first loop, we want to consider the file
+                        // creation time as part of the timeout too
+                        let last_modified = match file.metadata() {
+                            Ok(metadata) => match metadata.modified() {
+                                Ok(modified) => {
+                                    let now = std::time::SystemTime::now();
+                                    match now.duration_since(modified) {
+                                        Ok(duration) => duration.as_secs(),
+                                        Err(_) => 0,
+                                    }
+                                }
+                                Err(_) => 0,
+                            },
+                            Err(_) => 0,
+                        };
+
+                        timeout - last_modified
+                    } else {
+                        timeout
+                    });
+
+                    if last_activity.elapsed() > timeout_duration {
+                        // Hide the progress handler if any
+                        if let Some(handler) = &self.current_handler {
+                            handler.hide();
+                        }
+
+                        // Suggest to kill the process if it seems to be hanging
+                        if suggest_and_kill(pid) {
+                            break Ok(false);
+                        }
+
+                        // Show the progress handler again if we pursued
+                        if let Some(handler) = &self.current_handler {
+                            handler.show();
+                        }
+
+                        // Reset the last activity time
+                        last_activity = StdInstant::now();
+                    }
+                }
+            }
+
+            // Indicate that we are not in the first loop anymore
+            first_loop = false;
+
+            // Sleep for a short time before checking again
+            std::thread::sleep(StdDuration::from_millis(100));
         }
     }
 
     fn handle_line(&mut self, line: &str) -> Result<(), SyncUpdateError> {
+        // Remove any character until the first }
+        let line = line.trim_start_matches(|c| c != '{');
         // JSON deserialize the line into a SyncUpdateOperation object
         // If the line is not valid JSON, return an error
         let sync_update = serde_json::from_str::<SyncUpdateOperation>(line)?;
@@ -338,6 +411,7 @@ impl SyncUpdateListener<'_> {
                 }
 
                 self.seen_init = true;
+                self.attached_pid = init.pid();
 
                 if let Some(ref expected_init) = self.expected_init {
                     if expected_init != &init {
@@ -395,6 +469,44 @@ impl SyncUpdateListener<'_> {
     }
 }
 
+fn suggest_and_kill(pid: u32) -> bool {
+    let question = requestty::Question::confirm("suggest_and_kill_process")
+        .ask_if_answered(true)
+        .on_esc(requestty::OnEsc::Terminate)
+        .message(format!(
+            "{} attached process {} seems to be hanging; do you want to kill it?",
+            "omni:".light_cyan(),
+            format!("{}", pid).underline(),
+        ))
+        .default(true)
+        .build();
+
+    let kill_process = match requestty::prompt_one(question) {
+        Ok(answer) => match answer {
+            requestty::Answer::Bool(confirmed) => confirmed,
+            _ => false,
+        },
+        Err(err) => {
+            println!("{}", format!("[✘] {:?}", err).red());
+            false
+        }
+    };
+
+    if !kill_process {
+        return false;
+    }
+
+    // Kill the process
+    let nixpid = nix::unistd::Pid::from_raw(pid as i32);
+    if let Err(err) = nix::sys::signal::kill(nixpid, nix::sys::signal::SIGKILL) {
+        omni_error!(format!("failed to kill process {}: {}", pid, err));
+        false
+    } else {
+        omni_info!(format!("killed process {}", pid));
+        true
+    }
+}
+
 /// An operation that is sent to indicate the progress of the operation.
 /// This will allow to replicate operations happening in the main process
 /// to the attaching process, giving the same sense of progress to the user
@@ -435,22 +547,38 @@ impl SyncUpdateOperation {
 #[derive(Debug, Serialize, Deserialize, Clone)]
 #[serde(rename_all = "snake_case")]
 pub enum SyncUpdateInit {
-    Up(Option<String>, HashSet<SyncUpdateInitOption>, bool),
-    Down(bool),
+    Up {
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        commit: Option<String>,
+        #[serde(default, skip_serializing_if = "HashSet::is_empty")]
+        options: HashSet<SyncUpdateInitOption>,
+        cache: bool,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        pid: Option<u32>,
+    },
+    Down {
+        cache: bool,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        pid: Option<u32>,
+    },
 }
 
 impl SyncUpdateInit {
     pub fn name(&self) -> &str {
         match self {
-            SyncUpdateInit::Up(..) => "up",
-            SyncUpdateInit::Down(..) => "down",
+            SyncUpdateInit::Up { .. } => "up",
+            SyncUpdateInit::Down { .. } => "down",
         }
     }
 
     pub fn options(&self) -> HashSet<SyncUpdateInitOption> {
         match self {
-            SyncUpdateInit::Up(_commit, options, ..) => options.clone(),
-            SyncUpdateInit::Down(..) => HashSet::new(),
+            SyncUpdateInit::Up {
+                commit: _commit,
+                options,
+                ..
+            } => options.clone(),
+            SyncUpdateInit::Down { .. } => HashSet::new(),
         }
     }
 
@@ -460,17 +588,35 @@ impl SyncUpdateInit {
             .cloned()
             .collect()
     }
+
+    pub fn pid(&self) -> Option<u32> {
+        match self {
+            SyncUpdateInit::Up { pid, .. } => *pid,
+            SyncUpdateInit::Down { pid, .. } => *pid,
+        }
+    }
 }
 
 impl PartialEq for SyncUpdateInit {
     fn eq(&self, other: &Self) -> bool {
-        // For Up, we don't care about the options, just the commit
+        // For Up, we don't care about the options, just the commit and cache
         match (self, other) {
             (
-                SyncUpdateInit::Up(commit1, _options1, cache1),
-                SyncUpdateInit::Up(commit2, _options2, cache2),
+                SyncUpdateInit::Up {
+                    commit: commit1,
+                    cache: cache1,
+                    ..
+                },
+                SyncUpdateInit::Up {
+                    commit: commit2,
+                    cache: cache2,
+                    ..
+                },
             ) => commit1 == commit2 && cache1 == cache2,
-            (SyncUpdateInit::Down(cache1), SyncUpdateInit::Down(cache2)) => cache1 == cache2,
+            (
+                SyncUpdateInit::Down { cache: cache1, .. },
+                SyncUpdateInit::Down { cache: cache2, .. },
+            ) => cache1 == cache2,
             _ => false,
         }
     }
@@ -479,17 +625,33 @@ impl PartialEq for SyncUpdateInit {
 impl Display for SyncUpdateInit {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            SyncUpdateInit::Up(None, options, _) if options.is_empty() => write!(f, "up"),
-            SyncUpdateInit::Up(None, options, _) => {
+            SyncUpdateInit::Up {
+                commit: None,
+                options,
+                ..
+            } if options.is_empty() => write!(f, "up"),
+            SyncUpdateInit::Up {
+                commit: None,
+                options,
+                ..
+            } => {
                 write!(f, "up (options: {:?})", options)
             }
-            SyncUpdateInit::Up(Some(commit), options, _) if options.is_empty() => {
+            SyncUpdateInit::Up {
+                commit: Some(commit),
+                options,
+                ..
+            } if options.is_empty() => {
                 write!(f, "up (commit: {})", commit)
             }
-            SyncUpdateInit::Up(Some(commit), options, _) => {
+            SyncUpdateInit::Up {
+                commit: Some(commit),
+                options,
+                ..
+            } => {
                 write!(f, "up (commit: {}, options: {:?})", commit, options)
             }
-            SyncUpdateInit::Down(_) => write!(f, "down"),
+            SyncUpdateInit::Down { .. } => write!(f, "down"),
         }
     }
 }

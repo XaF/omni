@@ -17,6 +17,8 @@ pub enum SyncUpdateError {
     InvalidFormat(#[from] serde_json::Error),
     #[error("progress handler was not initialized")]
     NoProgressHandler,
+    #[error("timeout during operation")]
+    Timeout,
 }
 
 #[derive(Error, Debug)]
