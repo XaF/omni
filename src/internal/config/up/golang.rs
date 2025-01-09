@@ -160,7 +160,7 @@ impl UpConfigGolang {
     }
 
     pub fn was_upped(&self) -> bool {
-        self.backend().map_or(false, |backend| backend.was_upped())
+        self.backend().is_ok_and(|backend| backend.was_upped())
     }
 
     pub fn data_paths(&self) -> Vec<PathBuf> {

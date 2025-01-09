@@ -80,7 +80,7 @@ pub fn check_allowed(value: &str, patterns: &[String]) -> bool {
         let is_deny = pattern.starts_with('!');
         let pattern_str = if is_deny { &pattern[1..] } else { pattern };
 
-        let matches = glob::Pattern::new(pattern_str).map_or(false, |pat| pat.matches(value));
+        let matches = glob::Pattern::new(pattern_str).is_ok_and(|pat| pat.matches(value));
         if matches {
             return !is_deny; // Early return on match
         }

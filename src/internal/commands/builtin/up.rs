@@ -724,8 +724,7 @@ impl UpCommand {
 
             let repo = repo.unwrap();
 
-            if repo.clone_path.exists() || repo.package_path.as_ref().map_or(false, |p| p.exists())
-            {
+            if repo.clone_path.exists() || repo.package_path.as_ref().is_some_and(|p| p.exists()) {
                 // Skip repository if it already exists
                 continue;
             }

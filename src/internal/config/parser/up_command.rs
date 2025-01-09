@@ -518,7 +518,7 @@ impl UrlPattern {
     fn _matches_pattern(component: Option<&str>, pattern: Option<&str>) -> bool {
         match (component, pattern) {
             (_, None) => true,
-            (c, Some(p)) => glob::Pattern::new(p).map_or(false, |pat| pat.matches(c.unwrap_or(""))),
+            (c, Some(p)) => glob::Pattern::new(p).is_ok_and(|pat| pat.matches(c.unwrap_or(""))),
         }
     }
 }

@@ -1664,7 +1664,7 @@ impl SyntaxOptArg {
         let has_occurrences = self
             .num_values
             .as_ref()
-            .map_or(false, |num_values| num_values.is_many());
+            .is_some_and(|num_values| num_values.is_many());
 
         // has_multi is when an argument can be called multiple times
         let has_multi = self.arg_type().is_array();

@@ -471,7 +471,7 @@ impl NixSource {
 
                 let is_flake = nixfile
                     .file_name()
-                    .map_or(false, |file_name| file_name == "flake.nix");
+                    .is_some_and(|file_name| file_name == "flake.nix");
 
                 if is_flake {
                     Ok(Self::Flake(nixfile.clone()))

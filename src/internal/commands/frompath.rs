@@ -361,7 +361,7 @@ impl<'de> PathCommandFileDetails {
             // Deserialize the booleans
             let autocompletion = map
                 .remove(YamlValue::String("autocompletion".to_string()))
-                .map_or(false, |v| match bool::deserialize(v.clone()) {
+                .is_some_and(|v| match bool::deserialize(v.clone()) {
                     Ok(b) => b,
                     Err(_err) => {
                         error_handler
@@ -375,7 +375,7 @@ impl<'de> PathCommandFileDetails {
                 });
             let sync_update = map
                 .remove(YamlValue::String("sync_update".to_string()))
-                .map_or(false, |v| match bool::deserialize(v.clone()) {
+                .is_some_and(|v| match bool::deserialize(v.clone()) {
                     Ok(b) => b,
                     Err(_err) => {
                         error_handler
@@ -389,7 +389,7 @@ impl<'de> PathCommandFileDetails {
                 });
             let argparser = map
                 .remove(YamlValue::String("argparser".to_string()))
-                .map_or(false, |v| match bool::deserialize(v.clone()) {
+                .is_some_and(|v| match bool::deserialize(v.clone()) {
                     Ok(b) => b,
                     Err(_err) => {
                         error_handler
