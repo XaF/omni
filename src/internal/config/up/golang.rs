@@ -290,13 +290,15 @@ fn setup_individual_gopath(
         for dir in &version.dirs {
             let gopath_dir = data_path_dir_hash(dir);
 
+            let normalized_name = args.fqtn.normalized_plugin_name()?;
+
             let gopath = data_path
-                .join(args.fqtn.normalized_plugin_name()?)
+                .join(&normalized_name)
                 .join(&version.version)
                 .join(&gopath_dir);
 
             environment.add_version_data_path(
-                args.fqtn.fully_qualified_plugin_name(),
+                &normalized_name,
                 &version.version,
                 dir,
                 &gopath.to_string_lossy(),

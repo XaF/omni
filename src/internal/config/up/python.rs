@@ -258,9 +258,11 @@ fn setup_python_venv_per_dir(
         false
     };
 
+    let normalized_name = fqtn.normalized_plugin_name()?;
+
     // Only create the new venv if it doesn't exist
     if !already_setup {
-        let python_version_path = mise_tool_path(&fqtn.normalized_plugin_name()?, &version);
+        let python_version_path = mise_tool_path(&normalized_name, &version);
         let python_bin = PathBuf::from(python_version_path)
             .join("bin")
             .join("python");
@@ -294,7 +296,7 @@ fn setup_python_venv_per_dir(
 
     // Update the cache
     environment.add_version_data_path(
-        fqtn.fully_qualified_plugin_name(),
+        &normalized_name,
         &version,
         &dir,
         &venv_path.to_string_lossy(),
