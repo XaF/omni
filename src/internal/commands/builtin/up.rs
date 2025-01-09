@@ -1515,13 +1515,17 @@ impl BuiltinCommand for UpCommand {
             if suggest_clone {
                 init_options.insert(SyncUpdateInitOption::SuggestClone);
             }
-            SyncUpdateInit::Up(
-                head_commit.clone(),
-                init_options,
-                self.cli_args().cache_enabled,
-            )
+            SyncUpdateInit::Up {
+                commit: head_commit.clone(),
+                options: init_options,
+                cache: self.cli_args().cache_enabled,
+                pid: Some(std::process::id()),
+            }
         } else {
-            SyncUpdateInit::Down(self.cli_args().cache_enabled)
+            SyncUpdateInit::Down {
+                cache: self.cli_args().cache_enabled,
+                pid: Some(std::process::id()),
+            }
         };
 
         // Prepare a listener in case the operation is already running

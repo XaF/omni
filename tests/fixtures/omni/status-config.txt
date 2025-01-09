@@ -65,6 +65,8 @@ path_repo_updates:
   self_update: ask
 repo_path_format: '%{host}/%{org}/%{repo}'
 up_command:
+  attach_kill_timeout: 300
+  attach_lock_timeout: 5
   auto_bootstrap: true
   mise_version: latest
   notify_workdir_config_available: true

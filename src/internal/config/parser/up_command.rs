@@ -6,6 +6,7 @@ use serde::Serialize;
 use crate::internal::config::parser::errors::ConfigErrorHandler;
 use crate::internal::config::parser::errors::ConfigErrorKind;
 use crate::internal::config::utils::check_allowed;
+use crate::internal::config::utils::parse_duration_or_default;
 use crate::internal::config::ConfigScope;
 use crate::internal::config::ConfigValue;
 
@@ -14,6 +15,8 @@ pub struct UpCommandConfig {
     pub auto_bootstrap: bool,
     pub notify_workdir_config_updated: bool,
     pub notify_workdir_config_available: bool,
+    pub attach_kill_timeout: u64,
+    pub attach_lock_timeout: u64,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub preferred_tools: Vec<String>,
     pub mise_version: String,
@@ -25,18 +28,22 @@ pub struct UpCommandConfig {
 impl Default for UpCommandConfig {
     fn default() -> Self {
         Self {
+            attach_kill_timeout: Self::DEFAULT_ATTACH_KILL_TIMEOUT,
+            attach_lock_timeout: Self::DEFAULT_ATTACH_LOCK_TIMEOUT,
             auto_bootstrap: Self::DEFAULT_AUTO_BOOTSTRAP,
+            mise_version: Self::DEFAULT_MISE_VERSION.to_string(),
             notify_workdir_config_updated: Self::DEFAULT_NOTIFY_WORKDIR_CONFIG_UPDATED,
             notify_workdir_config_available: Self::DEFAULT_NOTIFY_WORKDIR_CONFIG_AVAILABLE,
-            preferred_tools: Vec::new(),
-            mise_version: Self::DEFAULT_MISE_VERSION.to_string(),
-            upgrade: Self::DEFAULT_UPGRADE,
             operations: UpCommandOperationConfig::default(),
+            preferred_tools: Vec::new(),
+            upgrade: Self::DEFAULT_UPGRADE,
         }
     }
 }
 
 impl UpCommandConfig {
+    const DEFAULT_ATTACH_KILL_TIMEOUT: u64 = 300; // 5 minutes
+    const DEFAULT_ATTACH_LOCK_TIMEOUT: u64 = 5; // 5 seconds
     const DEFAULT_AUTO_BOOTSTRAP: bool = true;
     const DEFAULT_NOTIFY_WORKDIR_CONFIG_UPDATED: bool = true;
     const DEFAULT_NOTIFY_WORKDIR_CONFIG_AVAILABLE: bool = true;
@@ -56,6 +63,18 @@ impl UpCommandConfig {
         let config_value_global = config_value
             .reject_scope(&ConfigScope::Workdir)
             .unwrap_or_default();
+
+        let attach_kill_timeout = parse_duration_or_default(
+            config_value.get("attach_kill_timeout").as_ref(),
+            Self::DEFAULT_ATTACH_KILL_TIMEOUT,
+            &error_handler.with_key("attach_kill_timeout"),
+        );
+
+        let attach_lock_timeout = parse_duration_or_default(
+            config_value.get("attach_lock_timeout").as_ref(),
+            Self::DEFAULT_ATTACH_LOCK_TIMEOUT,
+            &error_handler.with_key("attach_lock_timeout"),
+        );
 
         let auto_bootstrap = config_value_global.get_as_bool_or_default(
             "auto_bootstrap",
@@ -99,13 +118,15 @@ impl UpCommandConfig {
         );
 
         Self {
+            attach_kill_timeout,
+            attach_lock_timeout,
             auto_bootstrap,
-            notify_workdir_config_updated,
-            notify_workdir_config_available,
-            preferred_tools,
             mise_version,
-            upgrade,
+            notify_workdir_config_available,
+            notify_workdir_config_updated,
             operations,
+            preferred_tools,
+            upgrade,
         }
     }
 }
