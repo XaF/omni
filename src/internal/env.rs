@@ -1123,7 +1123,7 @@ impl WorkDirEnv {
                     }
                 }
             }
-            Err(SyncUpdateError::MismatchedInit(actual, _expected)) => {
+            Err(SyncUpdateError::MismatchedInit { actual, .. }) => {
                 // If the init operation is mismatched, we need to wait for the lock to be released
                 omni_info!(format!(
                     "waiting for running {} operation to finish",
