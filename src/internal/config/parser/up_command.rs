@@ -42,7 +42,7 @@ impl Default for UpCommandConfig {
 }
 
 impl UpCommandConfig {
-    const DEFAULT_ATTACH_KILL_TIMEOUT: u64 = 300; // 5 minutes
+    const DEFAULT_ATTACH_KILL_TIMEOUT: u64 = 600; // 10 minutes
     const DEFAULT_ATTACH_LOCK_TIMEOUT: u64 = 5; // 5 seconds
     const DEFAULT_AUTO_BOOTSTRAP: bool = true;
     const DEFAULT_NOTIFY_WORKDIR_CONFIG_UPDATED: bool = true;

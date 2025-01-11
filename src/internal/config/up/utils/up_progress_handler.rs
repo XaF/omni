@@ -284,6 +284,7 @@ pub struct SyncUpdateListener<'a> {
     seen_init: bool,
     missing_options: bool,
     attached_pid: Option<u32>,
+    since_modified: u64,
 }
 
 impl SyncUpdateListener<'_> {
@@ -295,6 +296,7 @@ impl SyncUpdateListener<'_> {
             seen_init: false,
             missing_options: false,
             attached_pid: None,
+            since_modified: 0,
         }
     }
 
@@ -306,33 +308,47 @@ impl SyncUpdateListener<'_> {
     pub fn follow(&mut self, file: &std::fs::File) -> Result<bool, SyncUpdateError> {
         let mut lines = std::io::BufReader::new(file).lines();
 
+        self.since_modified = file
+            .metadata()
+            .ok()
+            .and_then(|m| m.modified().ok())
+            .and_then(|t| t.elapsed().ok())
+            .map_or(0, |d| d.as_secs());
+
         self.current_handler = None;
         self.current_handler_id = None;
+
+        // The timeout duration after which we suggest to kill the process
+        let timeout_duration =
+            StdDuration::from_secs(global_config().up_command.attach_kill_timeout);
 
         // The last time we saw activity
         let mut last_activity = StdInstant::now();
 
-        // The timeout duration after which we suggest to kill the process
-        let up_cmd_config = global_config().up_command;
-        let timeout = up_cmd_config.attach_kill_timeout;
-
+        // Marker that indicates if we are in the first loop
         let mut first_loop = true;
+
         loop {
             for line in (&mut lines).flatten() {
-                if let Err(err) = self.handle_line(&line) {
-                    match err {
-                        SyncUpdateError::MismatchedInit(..)
+                match self.handle_line(&line) {
+                    Ok(true) => {}
+                    Ok(false) => {
+                        return Ok(false);
+                    }
+                    Err(err) => match err {
+                        SyncUpdateError::MismatchedInit { .. }
                         | SyncUpdateError::MissingInitOptions => {
                             return Err(err);
                         }
                         _ => {
                             omni_warning!(format!("{}", err));
                         }
-                    }
+                    },
                 }
 
                 if !first_loop {
-                    // Reset the last activity time
+                    // Reset the last activity time for each message
+                    // we read after the first loop
                     last_activity = StdInstant::now();
                 }
             }
@@ -346,28 +362,6 @@ impl SyncUpdateListener<'_> {
 
             if let Some(pid) = self.attached_pid {
                 if shell_is_interactive() {
-                    let timeout_duration = StdDuration::from_secs(if first_loop {
-                        // During the first loop, we want to consider the file
-                        // creation time as part of the timeout too
-                        let last_modified = match file.metadata() {
-                            Ok(metadata) => match metadata.modified() {
-                                Ok(modified) => {
-                                    let now = std::time::SystemTime::now();
-                                    match now.duration_since(modified) {
-                                        Ok(duration) => duration.as_secs(),
-                                        Err(_) => 0,
-                                    }
-                                }
-                                Err(_) => 0,
-                            },
-                            Err(_) => 0,
-                        };
-
-                        timeout - last_modified
-                    } else {
-                        timeout
-                    });
-
                     if last_activity.elapsed() > timeout_duration {
                         // Hide the progress handler if any
                         if let Some(handler) = &self.current_handler {
@@ -398,7 +392,7 @@ impl SyncUpdateListener<'_> {
         }
     }
 
-    fn handle_line(&mut self, line: &str) -> Result<(), SyncUpdateError> {
+    fn handle_line(&mut self, line: &str) -> Result<bool, SyncUpdateError> {
         // Remove any character until the first }
         let line = line.trim_start_matches(|c| c != '{');
         // JSON deserialize the line into a SyncUpdateOperation object
@@ -410,15 +404,26 @@ impl SyncUpdateListener<'_> {
                     return Err(SyncUpdateError::AlreadyInit);
                 }
 
+                if let Some(pid) = init.pid() {
+                    // The timeout duration after which we suggest to kill the process
+                    let timeout = global_config().up_command.attach_kill_timeout;
+
+                    // If the file last modified time is more than the configured
+                    // timeout, offer to kill the process
+                    if self.since_modified > timeout && suggest_and_kill(pid) {
+                        return Ok(false);
+                    }
+                }
+
                 self.seen_init = true;
                 self.attached_pid = init.pid();
 
                 if let Some(ref expected_init) = self.expected_init {
                     if expected_init != &init {
-                        return Err(SyncUpdateError::MismatchedInit(
-                            Box::new(init),
-                            Box::new(expected_init.clone()),
-                        ));
+                        return Err(SyncUpdateError::MismatchedInit {
+                            actual: Box::new(init),
+                            expected: Box::new(expected_init.clone()),
+                        });
                     }
                     self.missing_options = !expected_init.options_difference(&init).is_empty();
                 }
@@ -465,7 +470,7 @@ impl SyncUpdateListener<'_> {
             }
         }
 
-        Ok(())
+        Ok(true)
     }
 }
 
