@@ -361,26 +361,24 @@ impl SyncUpdateListener<'_> {
             }
 
             if let Some(pid) = self.attached_pid {
-                if shell_is_interactive() {
-                    if last_activity.elapsed() > timeout_duration {
-                        // Hide the progress handler if any
-                        if let Some(handler) = &self.current_handler {
-                            handler.hide();
-                        }
-
-                        // Suggest to kill the process if it seems to be hanging
-                        if suggest_and_kill(pid) {
-                            break Ok(false);
-                        }
-
-                        // Show the progress handler again if we pursued
-                        if let Some(handler) = &self.current_handler {
-                            handler.show();
-                        }
-
-                        // Reset the last activity time
-                        last_activity = StdInstant::now();
+                if shell_is_interactive() && last_activity.elapsed() > timeout_duration {
+                    // Hide the progress handler if any
+                    if let Some(handler) = &self.current_handler {
+                        handler.hide();
                     }
+
+                    // Suggest to kill the process if it seems to be hanging
+                    if suggest_and_kill(pid) {
+                        break Ok(false);
+                    }
+
+                    // Show the progress handler again if we pursued
+                    if let Some(handler) = &self.current_handler {
+                        handler.show();
+                    }
+
+                    // Reset the last activity time
+                    last_activity = StdInstant::now();
                 }
             }
 
@@ -410,7 +408,10 @@ impl SyncUpdateListener<'_> {
 
                     // If the file last modified time is more than the configured
                     // timeout, offer to kill the process
-                    if self.since_modified > timeout && suggest_and_kill(pid) {
+                    if shell_is_interactive()
+                        && self.since_modified > timeout
+                        && suggest_and_kill(pid)
+                    {
                         return Ok(false);
                     }
                 }
