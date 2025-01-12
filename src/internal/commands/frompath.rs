@@ -30,6 +30,7 @@ use crate::internal::config::SyntaxGroup;
 use crate::internal::config::SyntaxOptArg;
 use crate::internal::config::SyntaxOptArgNumValues;
 use crate::internal::config::SyntaxOptArgType;
+use crate::internal::git::get_main_contributor;
 use crate::internal::git::package_path_from_handle;
 use crate::internal::workdir;
 
@@ -265,9 +266,20 @@ impl PathCommand {
     }
 
     pub fn tags(&self) -> BTreeMap<String, String> {
-        self.file_details()
+        let mut tags = self
+            .file_details()
             .map(|details| details.tags.clone())
-            .unwrap_or_default()
+            .unwrap_or_default();
+
+        // Try and get the main contributor
+        if let Some((name, email)) = get_main_contributor(&self.source()) {
+            tags.insert(
+                "main contributor".to_string(),
+                format!("{} <{}>", name, email),
+            );
+        }
+
+        tags
     }
 
     pub fn exec(&self, argv: Vec<String>, called_as: Option<Vec<String>>) {

@@ -1,5 +1,7 @@
+use std::collections::HashMap;
 use std::path::Path;
 use std::path::PathBuf;
+use std::process::Command as StdCommand;
 use std::time::Duration;
 
 use git_url_parse::normalize_url;
@@ -237,4 +239,93 @@ pub fn is_path_gitignored<P: AsRef<Path>>(path: P) -> Result<bool, Box<dyn std::
             }
         }
     }
+}
+
+/// Get the main contributor to a file in a Git repository.
+///
+/// This function uses the libgit2 library to calculate the main contributor
+/// based on the number of lines contributed to the file (git blame). The
+/// main contributor is the author with the most lines in the file.
+///
+/// The function returns a tuple with the contributor's name and email.
+pub fn get_main_contributor_old(path: &str) -> Option<(String, String)> {
+    // Get the repo path
+    let gitenv = git_env(path);
+    let repo_path = gitenv.root()?;
+
+    // Open the repository
+    let repo = git2::Repository::open(repo_path).ok()?;
+
+    // Create blame options
+    let mut blame_opts = git2::BlameOptions::new();
+    blame_opts.track_copies_same_commit_moves(true);
+    blame_opts.track_copies_same_commit_copies(true);
+
+    // Get the file path relative to the repository root
+    let abs_file_path = abs_path(path);
+    let rel_file_path = abs_file_path.strip_prefix(repo_path).ok()?;
+
+    // Calculate blame information
+    let blame = repo.blame_file(rel_file_path, Some(&mut blame_opts)).ok()?;
+
+    // Track contributions by author
+    let mut contributions: HashMap<(String, String), usize> = HashMap::new();
+
+    // Process each hunk in the blame
+    for hunk_index in 0..blame.len() {
+        let hunk = match blame.get_line(hunk_index) {
+            Some(hunk) => hunk,
+            None => continue,
+        };
+
+        let signature = hunk.final_signature();
+        let (name, email) = match (signature.name(), signature.email()) {
+            (Some(name), Some(email)) => (name.to_string(), email.to_string()),
+            _ => continue,
+        };
+
+        *contributions.entry((name, email)).or_insert(0) += 1;
+    }
+
+    // Find the contributor with the most lines
+    let main_contributor = contributions
+        .into_iter()
+        .max_by_key(|&(_, lines)| lines)
+        .map(|(contributor, _)| contributor)?;
+
+    Some(main_contributor)
+}
+
+pub fn get_main_contributor(path: &str) -> Option<(String, String)> {
+    // Get the repo path
+    let gitenv = git_env(path);
+    let repo_path = gitenv.root()?;
+
+    // Get the file path relative to the repository root
+    let abs_file_path = abs_path(path);
+    let rel_file_path = abs_file_path.strip_prefix(repo_path).ok()?;
+
+    // Run git shortlog to get the top contributor
+    let output = StdCommand::new("git")
+        .current_dir(repo_path)
+        .arg("shortlog")
+        .arg("-sne") // summary, numbered, email
+        .arg("HEAD")
+        .arg("--")
+        .arg(rel_file_path)
+        .output()
+        .ok()?;
+
+    if !output.status.success() {
+        return None;
+    }
+
+    let stdout = String::from_utf8(output.stdout).ok()?;
+    let top_contributor = stdout.lines().next()?;
+
+    // Parse the shortlog output format: "  123  Author Name <email@example.com>"
+    let re = regex::Regex::new(r"^\s*(\d+)\s+(.+?)\s+<(.+?)>$").expect("Invalid regex");
+    let caps = re.captures(top_contributor)?;
+
+    Some((caps[2].to_string(), caps[3].to_string()))
 }

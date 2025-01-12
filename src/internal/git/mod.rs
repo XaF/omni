@@ -6,6 +6,7 @@ pub(crate) use org::ORG_LOADER;
 mod utils;
 pub(crate) use utils::format_path_with_template;
 pub(crate) use utils::full_git_url_parse;
+pub(crate) use utils::get_main_contributor;
 pub(crate) use utils::id_from_git_url;
 pub(crate) use utils::is_path_gitignored;
 pub(crate) use utils::package_path_from_git_url;
