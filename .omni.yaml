@@ -12,20 +12,22 @@ commands:
     run: |
       set -e
 
-      # Get the last created tag
-      last_tag=$(git describe --tags --abbrev=0 --always)
+      # We are using CalVer for versioning, so let's generate the tag
+      # prefix; we also do not want the month to be 0-padded
+      tag_prefix="v$(date +'%Y.%-m')"
 
-      # Extract the version number from the tag
-      version=$(echo "$last_tag" | sed -E 's/v([0-9]+\.[0-9]+\.[0-9]+)/\1/')
+      # Now go over the digits from 0 to find the first available digit
+      # for a version tag
+      idx=0
+      while git describe --tags "$tag_prefix.$idx" &>/dev/null; do
+        idx=$((idx + 1))
+      done
 
-      # Split the version number into its components
-      IFS='.' read -r -a version_parts <<< "$version"
+      # The new tag is the first available digit
+      new_tag="$tag_prefix.$idx"
 
-      # Increment the last component of the version number
-      next_version="${version_parts[0]}.${version_parts[1]}.$((${version_parts[2]} + 1))"
-
-      # Generate the tag name with the incremented version number
-      new_tag="v$next_version"
+      # Find the last tag by considering the highest version using `sort -V`
+      last_tag=$(git tag -l "v*" | sort -V | tail -n 1)
 
       # Generate the annotation message using git log
       changelog=$(git log --pretty=format:"- %s (%an)" "$last_tag"..HEAD)
