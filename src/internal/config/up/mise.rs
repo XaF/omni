@@ -690,7 +690,16 @@ impl MiseRegistry {
         let mut command = mise_sync_command();
         command.arg("registry");
 
-        let output = command.output().unwrap();
+        let output = match command.output() {
+            Ok(output) => output,
+            Err(err) => {
+                return Err(UpError::Exec(format!(
+                    "failed to run mise registry: {}",
+                    err
+                )));
+            }
+        };
+
         if !output.status.success() {
             return Err(UpError::Exec(format!(
                 "failed to run mise registry: {}",
@@ -1482,19 +1491,24 @@ impl UpConfigMise {
         environment: &mut UpEnvironment,
         progress_handler: &UpProgressHandler,
     ) -> Result<(), UpError> {
-        let fqtn = self.fully_qualified_tool_name()?;
+        let toolname = if is_mise_installed() {
+            self.fully_qualified_tool_name()?.tool()
+        } else {
+            &self.requested_tool
+        };
 
-        progress_handler.init(format!("{} ({}):", fqtn.tool(), self.version).light_blue());
+        progress_handler.init(format!("{} ({}):", toolname, self.version).light_blue());
+
+        // Make sure mise is installed
+        if let Err(err) = install_mise(options, progress_handler) {
+            progress_handler.error();
+            return Err(err);
+        }
 
         // Make sure that dependencies are installed
         let subhandler = progress_handler.subhandler(&"deps: ".light_black());
         self.deps().up(options, environment, &subhandler)?;
         update_dynamic_env_for_command_from_env(".", environment);
-
-        if let Err(err) = install_mise(options, progress_handler) {
-            progress_handler.error();
-            return Err(err);
-        }
 
         if let Err(err) = self.install_plugin(progress_handler) {
             progress_handler.error();
