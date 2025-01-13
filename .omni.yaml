@@ -13,7 +13,7 @@ commands:
       set -e
 
       # Do not create a new tag if the current version is tagged already
-      current_tag=$(git describe --tags --match 'v*' 2>/dev/null || true)
+      current_tag=$(git describe --tags --exact-match --match 'v*' 2>/dev/null || true)
       if [[ -n "$current_tag" ]]; then
         echo "Current commit is already tagged: $current_tag"
         exit 1
