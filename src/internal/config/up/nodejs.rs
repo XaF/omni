@@ -114,7 +114,7 @@ impl UpConfigNodejs {
         config_value: Option<&ConfigValue>,
         error_handler: &ConfigErrorHandler,
     ) -> Self {
-        let mut backend = UpConfigMise::from_config_value("nodejs", config_value, error_handler);
+        let mut backend = UpConfigMise::from_config_value("node", config_value, error_handler);
         backend.add_detect_version_func(detect_version_from_package_json);
         backend.add_detect_version_func(detect_version_from_nvmrc);
         backend.add_post_install_func(setup_individual_npm_prefix);
