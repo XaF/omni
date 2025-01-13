@@ -200,20 +200,20 @@ pub fn is_path_gitignored<P: AsRef<Path>>(path: P) -> Result<bool, Box<dyn std::
     let path = path.as_ref();
 
     // Find the directory to start the repository search from
-    let search_dir = if path.is_dir() {
-        path.to_path_buf()
-    } else {
-        // If it's a file or doesn't exist, use its parent directory
-        path.parent()
-            .ok_or("Path has no parent directory")?
-            .to_path_buf()
-    };
+    let mut search_dir = path;
+    while !search_dir.is_dir() {
+        search_dir = search_dir.parent().ok_or("Path has no parent directory")?;
+    }
+    let search_dir = search_dir.to_path_buf();
 
     // Try to find the Git repository from the path's directory
     let repo = git2::Repository::discover(search_dir)?;
 
     // Get the absolute path
-    let abs_path = abs_path(path);
+    let abs_path = match std::fs::canonicalize(path) {
+        Ok(abs_path) => abs_path,
+        Err(_) => abs_path(path),
+    };
 
     // Get the path relative to the repository root
     let repo_path = repo
@@ -544,11 +544,239 @@ mod tests {
 
     use std::fs::{self, File};
     use std::io::Write;
-    use std::path::Path;
+    use std::os::unix::fs as unix_fs;
+    use std::path::Path; // For symlink tests
 
     use tempfile::TempDir;
 
     use crate::internal::testutils::temp_dir;
+
+    mod is_path_gitignored {
+        use super::*;
+
+        fn setup_git_repo() -> TempDir {
+            let tmpdir = temp_dir();
+            let repo = git2::Repository::init(tmpdir.path()).unwrap();
+
+            // Create and commit initial .gitignore
+            let gitignore_path = tmpdir.path().join(".gitignore");
+            File::create(&gitignore_path).expect("Failed to create .gitignore");
+
+            let signature = git2::Signature::now("Test User", "test@example.com").unwrap();
+            let mut index = repo.index().expect("Failed to get index");
+            index
+                .add_path(Path::new(".gitignore"))
+                .expect("Failed to add .gitignore");
+            index.write().expect("Failed to write index");
+
+            let tree_id = index.write_tree().expect("Failed to write tree");
+            let tree = repo.find_tree(tree_id).expect("Failed to find tree");
+            repo.commit(
+                Some("HEAD"),
+                &signature,
+                &signature,
+                "Initial commit with empty .gitignore",
+                &tree,
+                &[],
+            )
+            .expect("Failed to commit");
+
+            tmpdir
+        }
+
+        fn update_gitignore(repo_dir: &Path, content: &str) {
+            let gitignore_path = repo_dir.join(".gitignore");
+            fs::write(&gitignore_path, content).expect("Failed to update .gitignore");
+        }
+
+        #[test]
+        fn test_basic_patterns() {
+            let temp_dir = setup_git_repo();
+            update_gitignore(temp_dir.path(), "*.log\n/node_modules\n");
+
+            // Test file extension pattern
+            let log_file = temp_dir.path().join("test.log");
+            File::create(&log_file).unwrap();
+            assert!(is_path_gitignored(&log_file).unwrap());
+
+            // Test exact directory pattern
+            let node_modules = temp_dir.path().join("node_modules");
+            fs::create_dir(&node_modules).unwrap();
+            assert!(is_path_gitignored(&node_modules).unwrap());
+        }
+
+        #[test]
+        fn test_nested_gitignore() {
+            let temp_dir = setup_git_repo();
+
+            // Create root .gitignore
+            update_gitignore(temp_dir.path(), "*.log\n!important/*.log\n");
+
+            // Create nested .gitignore
+            let subdir = temp_dir.path().join("important");
+            fs::create_dir(&subdir).unwrap();
+            fs::write(subdir.join(".gitignore"), "secret.log\n").unwrap();
+
+            // Test file affected by root .gitignore but negated for subdirectory
+            let important_log = subdir.join("test.log");
+            File::create(&important_log).unwrap();
+            assert!(!is_path_gitignored(&important_log).unwrap());
+
+            // Test file explicitly ignored in nested .gitignore
+            let secret_log = subdir.join("secret.log");
+            File::create(&secret_log).unwrap();
+            assert!(is_path_gitignored(&secret_log).unwrap());
+        }
+
+        #[test]
+        fn test_symlinks() {
+            let temp_dir = setup_git_repo();
+            update_gitignore(temp_dir.path(), "target/\n*.log\n");
+
+            // Create a real directory that's ignored
+            let real_dir = temp_dir.path().join("target");
+            fs::create_dir(&real_dir).unwrap();
+
+            // Create a symlink to the ignored directory
+            let symlink_dir = temp_dir.path().join("linked_target");
+            unix_fs::symlink(&real_dir, &symlink_dir).unwrap();
+
+            // Test that both real path and symlink are ignored
+            assert!(is_path_gitignored(&real_dir).unwrap());
+            assert!(is_path_gitignored(&symlink_dir).unwrap());
+        }
+
+        #[test]
+        fn test_nonexistent_paths() {
+            let temp_dir = setup_git_repo();
+            let temp_path =
+                std::fs::canonicalize(temp_dir.path()).expect("Failed to get canonical path");
+
+            update_gitignore(&temp_path, "*.log\n/build/\n");
+
+            // Test nonexistent file
+            let nonexistent = temp_path.join("nonexistent.log");
+            assert!(is_path_gitignored(&nonexistent).unwrap());
+
+            // Test nonexistent directory
+            let nonexistent_dir = temp_path.join("build/test-file");
+            assert!(is_path_gitignored(&nonexistent_dir).unwrap());
+        }
+
+        #[test]
+        fn test_complex_patterns() {
+            let temp_dir = setup_git_repo();
+            update_gitignore(
+                temp_dir.path(),
+                "# Complex patterns\n\
+                 **/node_modules/**\n\
+                 *.log\n\
+                 !important.log\n\
+                 src/**/*.test.js\n\
+                 **/temp/\n\
+                 /*.txt\n",
+            );
+
+            // Test deeply nested node_modules
+            let nested_modules = temp_dir.path().join("frontend/src/node_modules");
+            fs::create_dir_all(&nested_modules).unwrap();
+            assert!(is_path_gitignored(&nested_modules).unwrap());
+
+            // Test negated pattern
+            let important = temp_dir.path().join("important.log");
+            File::create(&important).unwrap();
+            assert!(!is_path_gitignored(&important).unwrap());
+
+            // Test pattern with multiple globs
+            let test_file = temp_dir.path().join("src/components/button.test.js");
+            fs::create_dir_all(test_file.parent().unwrap()).unwrap();
+            File::create(&test_file).unwrap();
+            assert!(is_path_gitignored(&test_file).unwrap());
+
+            // Test root-level pattern
+            let root_txt = temp_dir.path().join("root.txt");
+            File::create(&root_txt).unwrap();
+            assert!(is_path_gitignored(&root_txt).unwrap());
+        }
+
+        #[test]
+        fn test_special_paths() {
+            let temp_dir = setup_git_repo();
+            update_gitignore(
+                temp_dir.path(),
+                "# Edge cases\n\
+                 /\\\\ weird\\\\chars/*.txt\n\
+                 !/*.md\n\
+                 *.bak\n\
+                 !/\\[special\\]*.bak\n",
+            );
+
+            // Test paths with special characters
+            let weird_dir = temp_dir.path().join("\\ weird\\chars");
+            fs::create_dir_all(&weird_dir).unwrap();
+            let weird_file = weird_dir.join("test.txt");
+            File::create(&weird_file).unwrap();
+            assert!(is_path_gitignored(&weird_file).unwrap());
+
+            // Test paths with brackets
+            let special_file = temp_dir.path().join("[special]file.bak");
+            File::create(&special_file).unwrap();
+            assert!(!is_path_gitignored(&special_file).unwrap());
+        }
+
+        #[test]
+        fn test_outside_repository() {
+            let temp_dir = temp_dir();
+            let test_file = temp_dir.path().join("test.txt");
+            File::create(&test_file).expect("Failed to create file");
+            assert!(is_path_gitignored(&test_file).is_err());
+        }
+
+        #[test]
+        fn test_without_gitignore() {
+            let temp_dir = setup_git_repo();
+            let test_file = temp_dir.path().join("test.txt");
+            File::create(&test_file).expect("Failed to create file");
+            assert!(!is_path_gitignored(&test_file).unwrap());
+        }
+
+        #[test]
+        fn test_with_corrupted_gitignore() {
+            let temp_dir = setup_git_repo();
+            let invalid_content = vec![0xFF, 0xFF, 0xFF, 0xFF];
+            fs::write(temp_dir.path().join(".gitignore"), invalid_content).unwrap();
+            let test_file = temp_dir.path().join("test.txt");
+            File::create(&test_file).unwrap();
+            assert!(!is_path_gitignored(&test_file).unwrap()); // Should still work
+        }
+
+        #[test]
+        fn test_parent_dir_patterns() {
+            let temp_dir = setup_git_repo();
+            update_gitignore(
+                temp_dir.path(),
+                "foo/**/bar\n\
+                 **/baz\n\
+                 /qux/**/*.txt\n",
+            );
+
+            // Test deep nested pattern matching
+            let nested_bar = temp_dir.path().join("foo/a/b/c/bar");
+            fs::create_dir_all(&nested_bar).unwrap();
+            assert!(is_path_gitignored(&nested_bar).unwrap());
+
+            // Test pattern matching anywhere
+            let deep_baz = temp_dir.path().join("x/y/baz");
+            fs::create_dir_all(&deep_baz).unwrap();
+            assert!(is_path_gitignored(&deep_baz).unwrap());
+
+            // Test root-anchored deep pattern
+            let qux_txt = temp_dir.path().join("qux/a/b/test.txt");
+            fs::create_dir_all(qux_txt.parent().unwrap()).unwrap();
+            File::create(&qux_txt).unwrap();
+            assert!(is_path_gitignored(&qux_txt).unwrap());
+        }
+    }
 
     mod get_code_owners {
         use super::*;
