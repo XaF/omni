@@ -12,6 +12,13 @@ commands:
     run: |
       set -e
 
+      # Do not create a new tag if the current version is tagged already
+      current_tag=$(git describe --tags --match 'v*' 2>/dev/null || true)
+      if [[ -n "$current_tag" ]]; then
+        echo "Current commit is already tagged: $current_tag"
+        exit 1
+      fi
+
       # We are using CalVer for versioning, so let's generate the tag
       # prefix; we also do not want the month to be 0-padded
       tag_prefix="v$(date +'%Y.%-m')"
