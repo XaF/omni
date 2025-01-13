@@ -1,6 +1,9 @@
 cfg_if::cfg_if! {
     if #[cfg(test)] {
-        use std::sync::atomic::{AtomicUsize, Ordering};
+        use std::sync::atomic::AtomicUsize;
+        use std::sync::atomic::Ordering;
+
+        use tempfile::TempDir;
 
         use crate::internal::cache::database::cleanup_test_pool;
         use crate::internal::config::flush_config;
@@ -82,5 +85,16 @@ cfg_if::cfg_if! {
             // Make sure to flush the config after the test
             flush_config("/");
         }
+
+        pub(crate) fn temp_dir() -> TempDir {
+            let _lock = RUN_WITH_ENV_LOCK.lock().expect("failed to lock");
+
+            tempfile::Builder::new()
+                .prefix("omni_tests.")
+                .rand_bytes(12)
+                .tempdir()
+                .expect("failed to create temp dir")
+        }
+
     }
 }

@@ -30,7 +30,8 @@ use crate::internal::config::SyntaxGroup;
 use crate::internal::config::SyntaxOptArg;
 use crate::internal::config::SyntaxOptArgNumValues;
 use crate::internal::config::SyntaxOptArgType;
-use crate::internal::git::get_main_contributor;
+use crate::internal::git::get_code_owners;
+use crate::internal::git::get_top_contributors;
 use crate::internal::git::package_path_from_handle;
 use crate::internal::workdir;
 
@@ -272,11 +273,20 @@ impl PathCommand {
             .unwrap_or_default();
 
         // Try and get the main contributor
-        if let Some((name, email)) = get_main_contributor(&self.source()) {
+        if let Some(top_contributors) = get_top_contributors(&self.source(), 5) {
             tags.insert(
-                "main contributor".to_string(),
-                format!("{} <{}>", name, email),
+                "top contributors".to_string(),
+                top_contributors
+                    .iter()
+                    .map(|contributor| contributor.name.clone())
+                    .collect::<Vec<String>>()
+                    .join(", "),
             );
+        }
+
+        // Try and get the code owners
+        if let Some(code_owners) = get_code_owners(&self.source()) {
+            tags.insert("code owners".to_string(), code_owners.join(", "));
         }
 
         tags
