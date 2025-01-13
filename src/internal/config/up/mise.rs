@@ -439,7 +439,16 @@ fn list_mise_tool_versions(
         )));
     }
 
-    let stdout = String::from_utf8(output.stdout).unwrap();
+    let stdout = match String::from_utf8(output.stdout) {
+        Ok(stdout) => stdout,
+        Err(err) => {
+            return Err(UpError::Exec(format!(
+                "failed to read mise ls output: {}",
+                err
+            )));
+        }
+    };
+
     let versions: MiseLsOutput = match serde_json::from_str(&stdout) {
         Ok(versions) => versions,
         Err(err) => {
@@ -545,7 +554,12 @@ pub fn mise_where(tool: &str, version: &str) -> Result<String, UpError> {
         )));
     }
 
-    let stdout = String::from_utf8(output.stdout).unwrap();
+    let stdout = String::from_utf8(output.stdout).map_err(|err| {
+        UpError::Exec(format!(
+            "failed to read mise where output for {} {}: {}",
+            tool, version, err
+        ))
+    })?;
     let location_str = stdout.trim();
     let location = Path::new(location_str);
 
@@ -595,7 +609,12 @@ pub fn mise_env(tool: &str, version: &str) -> Result<(String, String), UpError> 
         )));
     }
 
-    let stdout = String::from_utf8(output.stdout).unwrap();
+    let stdout = String::from_utf8(output.stdout).map_err(|err| {
+        UpError::Exec(format!(
+            "failed to read mise env output for {} {}: {}",
+            tool, version, err
+        ))
+    })?;
     let env: MiseEnvOutput = match serde_json::from_str(&stdout) {
         Ok(env) => env,
         Err(err) => {
@@ -707,7 +726,9 @@ impl MiseRegistry {
             )));
         }
 
-        let stdout = String::from_utf8(output.stdout).unwrap();
+        let stdout = String::from_utf8(output.stdout).map_err(|err| {
+            UpError::Exec(format!("failed to read mise registry output: {}", err))
+        })?;
         Self::parse_output(&stdout)
     }
 
@@ -819,7 +840,7 @@ impl MiseRegistry {
     fn find_entry(&self, name: &str, backend: Option<&str>) -> Option<&MiseRegistryEntry> {
         let config = global_config().up_command.operations;
         self.entries.iter().find(|entry| {
-            (backend.is_none() || backend.unwrap() == entry.backend)
+            (backend.is_none() || backend.unwrap_or_default() == entry.backend)
                 && config.is_mise_backend_allowed(&entry.backend)
                 && match entry.repository {
                     Some(ref repo) => config.is_mise_source_allowed(repo),
@@ -1911,7 +1932,9 @@ impl UpConfigMise {
             )));
         }
 
-        let stdout = String::from_utf8(output.stdout).unwrap();
+        let stdout = String::from_utf8(output.stdout).map_err(|err| {
+            UpError::Exec(format!("failed to list versions for {}: {}", tool, err))
+        })?;
         let versions = stdout
             .lines()
             .map(|line| line.trim().to_string())
@@ -1985,7 +2008,7 @@ impl UpConfigMise {
 
         if let Ok(output) = mise_plugin_list.output() {
             if output.status.success() {
-                let stdout = String::from_utf8(output.stdout).unwrap();
+                let stdout = String::from_utf8(output.stdout).unwrap_or_default();
                 return stdout.lines().any(|line| line.trim() == plugin_name);
             }
         }
@@ -2424,7 +2447,7 @@ fn detect_version_from_mise(tool_name: String, path: PathBuf) -> Option<String> 
 /// - the version, if provided
 fn parse_mise_name(name: &str) -> (String, Option<String>, Option<String>) {
     let mut parts = name.splitn(2, '@');
-    let tool = parts.next().unwrap();
+    let tool = parts.next().unwrap_or_default();
     let version = parts.next().map(|v| v.to_string());
 
     let mut parts = tool.splitn(2, ':');
