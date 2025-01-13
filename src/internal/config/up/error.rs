@@ -19,6 +19,14 @@ pub enum UpError {
         None => format!("step '{}' failed", .0)
     })]
     StepFailed(String, Option<(usize, usize)>),
+    #[error("I/O error: {0}")]
+    IOError(String),
+}
+
+impl From<std::io::Error> for UpError {
+    fn from(error: std::io::Error) -> Self {
+        UpError::IOError(error.to_string())
+    }
 }
 
 impl UpError {
@@ -30,6 +38,7 @@ impl UpError {
             UpError::Cache(message) => message.clone(),
             UpError::HomebrewTapInUse => "tap in use".to_string(),
             UpError::StepFailed(message, _) => message.clone(),
+            UpError::IOError(message) => message.clone(),
         }
     }
 }

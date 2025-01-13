@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::os::unix::fs::symlink;
 use std::path::Path;
 use std::path::PathBuf;
 use std::str::FromStr;
@@ -12,7 +13,9 @@ use crate::internal::cache::up_environments::UpEnvironment;
 use crate::internal::cache::utils as cache_utils;
 use crate::internal::config::parser::ConfigErrorHandler;
 use crate::internal::config::up::mise::PostInstallFuncArgs;
+use crate::internal::config::up::mise_tool_path;
 use crate::internal::config::up::utils::data_path_dir_hash;
+use crate::internal::config::up::utils::directory::force_remove_all;
 use crate::internal::config::up::utils::run_progress;
 use crate::internal::config::up::utils::ProgressHandler;
 use crate::internal::config::up::utils::RunConfig;
@@ -117,6 +120,7 @@ impl UpConfigNodejs {
         let mut backend = UpConfigMise::from_config_value("node", config_value, error_handler);
         backend.add_detect_version_func(detect_version_from_package_json);
         backend.add_detect_version_func(detect_version_from_nvmrc);
+        backend.add_post_install_func(remove_mise_reshim_from_bin);
         backend.add_post_install_func(setup_individual_npm_prefix);
 
         let params = UpConfigNodejsParams::from_config_value(config_value, error_handler);
@@ -191,6 +195,56 @@ fn detect_version_from_nvmrc(_tool_name: String, path: PathBuf) -> Option<String
         Ok(version) => Some(version.trim().to_string()),
         Err(_) => None,
     }
+}
+
+fn remove_mise_reshim_from_bin(
+    _options: &UpOptions,
+    _environment: &mut UpEnvironment,
+    progress_handler: &dyn ProgressHandler,
+    args: &PostInstallFuncArgs,
+) -> Result<(), UpError> {
+    if args.fqtn.tool() != "node" {
+        panic!(
+            "remove_mise_reshim_from_bin called with wrong tool: {}",
+            args.fqtn.tool()
+        );
+    }
+
+    if !matches!(args.fqtn.backend(), Some("core")) {
+        // We only do that patch for the core plugin of mise
+        return Ok(());
+    }
+
+    // Mise rewrites the `npm` binary to wrap calling `mise reshim`
+    // after `npm` is called. This is done to ensure that any new
+    // binary installed using npm is cloned into mise shims.
+    // However, we don't want this because it requires to have the
+    // omni version of mise always configured for the users, which
+    // would conflict with a potential user-installation of mise
+
+    // Remove the `npm` file from the bin directory
+    for version in &args.versions {
+        let install_path = mise_tool_path(&args.fqtn.plugin_name(), &version.version);
+        let bin_path = PathBuf::from(install_path).join("bin");
+
+        // Check if the `npm` file is _not_ a symlink
+        let npm_bin = bin_path.join("npm");
+        if npm_bin.exists() && npm_bin.is_symlink() {
+            // Nothing to do if it's already a symlink
+            continue;
+        }
+
+        progress_handler.progress(format!("cleaning up npm binary in {}", version.version));
+
+        // Remove the `npm` file
+        force_remove_all(&npm_bin)?;
+
+        // Create a symlink to ../lib/node_modules/npm/bin/npm-cli.js
+        // relative to the bin directory
+        symlink("../lib/node_modules/npm/bin/npm-cli.js", npm_bin)?;
+    }
+
+    Ok(())
 }
 
 fn setup_individual_npm_prefix(

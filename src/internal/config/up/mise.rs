@@ -1037,6 +1037,10 @@ impl FullyQualifiedToolName {
         &self.tool
     }
 
+    pub fn backend(&self) -> Option<&str> {
+        self.backend.as_deref()
+    }
+
     pub fn plugin_name(&self) -> &str {
         &self.plugin_name
     }
