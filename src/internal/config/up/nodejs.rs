@@ -224,7 +224,7 @@ fn remove_mise_reshim_from_bin(
 
     // Remove the `npm` file from the bin directory
     for version in &args.versions {
-        let install_path = mise_tool_path(&args.fqtn.plugin_name(), &version.version);
+        let install_path = mise_tool_path(args.fqtn.plugin_name(), &version.version);
         let bin_path = PathBuf::from(install_path).join("bin");
 
         // Check if the `npm` file is _not_ a symlink
