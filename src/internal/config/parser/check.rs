@@ -180,7 +180,7 @@ pub fn path_pattern_from_str(pattern: &str, location: Option<&str>) -> String {
         || pattern == "**"
         || pattern == "*"
     {
-        return pattern.to_string();
+        return format!("{}{}", if negative { "!" } else { "" }, pattern);
     }
 
     // If we get here, convert into an absolute path
