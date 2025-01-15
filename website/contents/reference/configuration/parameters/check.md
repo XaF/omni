@@ -15,6 +15,7 @@ This is expected to be a list of objects containing the following parameters:
 | `patterns` | list of strings | Pattern of files to include (or exclude, if starting by `!`) in the check. Allows for glob patterns to be used. |
 | `ignore` | list of strings | [Error codes](/reference/builtin-commands/config/check#error-codes) to ignore. |
 | `select` | list of strings | [Error codes](/reference/builtin-commands/config/check#error-codes) to select. |
+| `tags` | list of strings or objects | Tags to include in the check, and how to validate them. The elements of the list can be a string, in which case it is assumed to be a tag name to require, or a key-value pair where the value is a [Filter](github#filter-object) object. |
 
 ## Example
 
@@ -39,4 +40,12 @@ check:
     - "C001" # Select all errors of type C001
     - "M"    # Select all errors of type M
     - "P0"   # Select all errors of type P
+
+  tags:
+    - should exist
+    - should match: 'val*'
+    - should exactly match:
+        exact: 'value'
+    - should be a number:
+        regex: '^\d+$'
 ```

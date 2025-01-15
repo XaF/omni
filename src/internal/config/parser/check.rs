@@ -10,6 +10,7 @@ use crate::internal::commands::utils::abs_path_from_path;
 use crate::internal::config::parser::errors::ConfigErrorHandler;
 use crate::internal::config::parser::errors::ConfigErrorKind;
 use crate::internal::config::parser::github::StringFilter;
+use crate::internal::config::ConfigScope;
 use crate::internal::config::ConfigValue;
 
 #[derive(Debug, Serialize, Deserialize, Clone, Default)]
@@ -159,27 +160,34 @@ fn path_pattern_from_config_value(value: &ConfigValue) -> String {
             let parent = as_path.parent().unwrap_or(&as_path);
             let as_str = parent.to_string_lossy();
 
-            path_pattern_from_str(&pattern, Some(&as_str))
+            path_pattern_from_str(
+                &pattern,
+                Some(&as_str),
+                !matches!(value.get_scope(), ConfigScope::Workdir),
+            )
         }
         None => pattern.to_string(),
     }
 }
 
-pub fn path_pattern_from_str(pattern: &str, location: Option<&str>) -> String {
+pub fn path_pattern_from_str(pattern: &str, location: Option<&str>, global: bool) -> String {
     let (negative, pattern) = if let Some(pattern) = pattern.strip_prefix('!') {
         (true, pattern)
     } else {
         (false, pattern)
     };
 
+    // If global pattern, we allow to specify absolute paths, otherwise
+    // absolute paths are from the provided location
+    let pattern = if global {
+        pattern
+    } else {
+        pattern.trim_start_matches("/")
+    };
+
     // If the pattern starts with '/' or '*', it's an absolute path
     // or a glob pattern, so we don't need to prepend the location.
-    if pattern.starts_with('/')
-        || pattern.starts_with("*/")
-        || pattern.starts_with("**/")
-        || pattern == "**"
-        || pattern == "*"
-    {
+    if pattern.starts_with('/') || pattern.starts_with("**/") || pattern == "**" {
         return format!("{}{}", if negative { "!" } else { "" }, pattern);
     }
 
@@ -192,4 +200,108 @@ pub fn path_pattern_from_str(pattern: &str, location: Option<&str>) -> String {
         if negative { "!" } else { "" },
         abs_pattern.to_string_lossy()
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    mod path_pattern_from_str {
+        use super::*;
+
+        #[test]
+        fn test_global_patterns() {
+            // Test absolute paths with global flag
+            assert_eq!(
+                path_pattern_from_str("/some/path", None, true),
+                "/some/path"
+            );
+
+            // Test relative paths with global flag
+            let current_dir = std::env::current_dir().expect("failed to get current dir");
+            assert_eq!(
+                path_pattern_from_str("some/path", None, true),
+                current_dir.join("some/path").to_string_lossy().to_string(),
+            );
+        }
+
+        #[test]
+        fn test_negative_patterns() {
+            // Test negative absolute path
+            assert_eq!(
+                path_pattern_from_str("!/some/path", None, true),
+                "!/some/path"
+            );
+
+            // Test negative relative path with location
+            assert_eq!(
+                path_pattern_from_str("!relative/path", Some("/base/dir"), false),
+                "!/base/dir/relative/path"
+            );
+        }
+
+        #[test]
+        fn test_glob_patterns() {
+            // Test basic glob pattern
+            assert_eq!(
+                path_pattern_from_str("**/file.txt", None, false),
+                "**/file.txt"
+            );
+
+            // Test double-star pattern
+            assert_eq!(path_pattern_from_str("**", None, false), "**");
+
+            // Test negative glob pattern
+            assert_eq!(
+                path_pattern_from_str("!**/file.txt", None, false),
+                "!**/file.txt"
+            );
+        }
+
+        #[test]
+        fn test_relative_paths() {
+            // Test relative path with location
+            assert_eq!(
+                path_pattern_from_str("relative/path", Some("/base/dir"), false),
+                "/base/dir/relative/path"
+            );
+
+            // Test relative path without location (should use current dir)
+            let current_dir = std::env::current_dir().expect("failed to get current dir");
+            assert_eq!(
+                path_pattern_from_str("relative/path", None, false),
+                current_dir
+                    .join("relative/path")
+                    .to_string_lossy()
+                    .to_string(),
+            );
+        }
+
+        #[test]
+        fn test_trim_leading_slash() {
+            // Test that leading slashes are trimmed for non-global patterns
+            assert_eq!(
+                path_pattern_from_str("/path/to/file", Some("/base/dir"), false),
+                "/base/dir/path/to/file"
+            );
+        }
+
+        #[test]
+        fn test_edge_cases() {
+            // Test empty pattern
+            assert_eq!(
+                path_pattern_from_str("", Some("/base/dir"), false),
+                "/base/dir"
+            );
+
+            // Test single slash
+            assert_eq!(path_pattern_from_str("/", None, true), "/");
+
+            // Test negative empty pattern
+            assert_eq!(
+                path_pattern_from_str("!", Some("/base/dir"), false),
+                "!/base/dir"
+            );
+        }
+    }
 }

@@ -517,7 +517,7 @@ impl ConfigCheckCommand {
         let cliarg_patterns: Vec<String> = args
             .patterns
             .iter()
-            .map(|value| path_pattern_from_str(value, None))
+            .map(|value| path_pattern_from_str(value, None, true))
             .collect();
 
         // Filter and sort the errors
