@@ -11,31 +11,30 @@ pub fn detect_libc() -> bool {
         return false;
     }
 
-    if Path::new("/lib64/ld-linux-x86-64.so.2").exists() || Path::new("/lib32/ld-linux.so.2").exists() {
+    if Path::new("/lib64/ld-linux-x86-64.so.2").exists()
+        || Path::new("/lib32/ld-linux.so.2").exists()
+    {
         return true;
     }
 
     // Fallback to ldd check
-    match StdCommand::new("ldd")
+    if let Ok(output) = StdCommand::new("ldd")
         .arg("--version")
         .stderr(std::process::Stdio::piped())
         .stdout(std::process::Stdio::piped())
         .output()
     {
-        Ok(output) => {
-            let output_str = String::from_utf8_lossy(&output.stdout).to_lowercase();
-            if output_str.contains("gnu") || output_str.contains("glibc") {
-                return true;
-            } else if output_str.contains("musl") {
-                return false;
-            }
-
-            let error_str = String::from_utf8_lossy(&output.stderr).to_lowercase();
-            if error_str.contains("musl") {
-                return false;
-            }
+        let output_str = String::from_utf8_lossy(&output.stdout).to_lowercase();
+        if output_str.contains("gnu") || output_str.contains("glibc") {
+            return true;
+        } else if output_str.contains("musl") {
+            return false;
         }
-        Err(_) => {},
+
+        let error_str = String::from_utf8_lossy(&output.stderr).to_lowercase();
+        if error_str.contains("musl") {
+            return false;
+        }
     }
 
     // Default to glibc if we can't determine
