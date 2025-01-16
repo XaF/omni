@@ -51,6 +51,10 @@ lazy_static! {
         Ok(dist_re) => dist_re,
         Err(err) => panic!("failed to create dist regex: {}", err),
     };
+    static ref MUSL_REGEX: Regex = match Regex::new(r"(?i)(\b|_)(musl)(\b|_)") {
+        Ok(musl_re) => musl_re,
+        Err(err) => panic!("failed to create musl regex: {}", err),
+    };
     static ref SEPARATOR_MID_REGEX: Regex = match Regex::new(r"([-_]{2,})") {
         Ok(separator_re) => separator_re,
         Err(err) => panic!("failed to create separator regex: {}", err),
@@ -171,6 +175,8 @@ pub struct GithubReleasesSelector {
     pub asset_name: Option<String>,
     pub skip_arch_matching: bool,
     pub skip_os_matching: bool,
+    pub prefer_dist: bool,
+    pub prefer_musl: bool,
     pub checksum_lookup: bool,
     pub checksum_algorithm: Option<String>,
     pub checksum_asset_name: Option<String>,
@@ -211,6 +217,16 @@ impl GithubReleasesSelector {
 
     pub fn skip_os_matching(mut self, skip_os_matching: bool) -> Self {
         self.skip_os_matching = skip_os_matching;
+        self
+    }
+
+    pub fn prefer_dist(mut self, prefer_dist: bool) -> Self {
+        self.prefer_dist = prefer_dist;
+        self
+    }
+
+    pub fn prefer_musl(mut self, prefer_musl: bool) -> Self {
+        self.prefer_musl = prefer_musl;
         self
     }
 
@@ -258,16 +274,25 @@ impl GithubReleasesSelector {
                     // We will prioritize the matching level
                     let match_level = idx as i32;
 
-                    // Lower the matching for dist releases (i.e. they contain more
-                    // files, but if there is no exact match, we will still prefer
-                    // a dist release over nothing)
-                    let is_dist = if DIST_REGEX.is_match(&asset_name) {
+                    // There's 2 modifiers, so we multiply the match level by 3 as
+                    // it's the most important
+                    let match_level = match_level * 3;
+
+                    // Add a bonus if the asset is (or not) a dist (depending on preferrence)
+                    let is_dist = if DIST_REGEX.is_match(&asset_name) == self.prefer_dist {
                         1
                     } else {
                         0
                     };
 
-                    return match_level * 2 + is_dist;
+                    // Add a bonus if the asset is (or not) a musl (depending on preferrence)
+                    let is_musl = if MUSL_REGEX.is_match(&asset_name) == self.prefer_musl {
+                        1
+                    } else {
+                        0
+                    };
+
+                    return match_level + is_dist + is_musl;
                 }
             }
             return -1;
