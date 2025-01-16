@@ -47,6 +47,10 @@ lazy_static! {
             }
         })
         .collect();
+    static ref DIST_REGEX: Regex = match Regex::new(r"(?i)(\b|_)(dist)(\b|_)") {
+        Ok(dist_re) => dist_re,
+        Err(err) => panic!("failed to create dist regex: {}", err),
+    };
     static ref SEPARATOR_MID_REGEX: Regex = match Regex::new(r"([-_]{2,})") {
         Ok(separator_re) => separator_re,
         Err(err) => panic!("failed to create separator regex: {}", err),
@@ -251,7 +255,19 @@ impl GithubReleasesSelector {
         if !self.skip_arch_matching {
             for (idx, arch_level_reg) in ARCH_REGEX_PER_LEVEL.iter().enumerate() {
                 if arch_level_reg.is_match(&asset_name) {
-                    return idx as i32;
+                    // We will prioritize the matching level
+                    let match_level = idx as i32;
+
+                    // Lower the matching for dist releases (i.e. they contain more
+                    // files, but if there is no exact match, we will still prefer
+                    // a dist release over nothing)
+                    let is_dist = if DIST_REGEX.is_match(&asset_name) {
+                        1
+                    } else {
+                        0
+                    };
+
+                    return match_level * 2 + is_dist;
                 }
             }
             return -1;
