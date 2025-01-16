@@ -17,6 +17,7 @@ use crate::internal::dynenv::update_dynamic_env_for_command;
 use crate::internal::env::current_exe;
 use crate::internal::env::data_home;
 use crate::internal::env::shims_dir;
+use crate::internal::env::tmpdir_cleanup_prefix;
 use crate::internal::user_interface::StringColor;
 
 pub fn handle_shims() {
@@ -217,7 +218,24 @@ pub fn reshim(progress_handler: &dyn ProgressHandler) -> Result<Option<String>, 
     if !shims_to_create.is_empty() || !shims_to_update.is_empty() {
         // Create the shims as a symlink to the current executable
         let target = current_exe();
-        for shim in shims_to_create.iter().chain(shims_to_update.iter()) {
+
+        let all_shims = shims_to_create
+            .iter()
+            .chain(shims_to_update.iter())
+            .collect::<Vec<_>>();
+
+        // If the filesystem is case-insensitive, we can avoid creating duplicate shims
+        let all_shims = if is_filesystem_case_insensitive().unwrap_or(false) {
+            let mut unique_shims = BTreeSet::new();
+            all_shims
+                .into_iter()
+                .filter(|shim| unique_shims.insert(shim.to_string_lossy().to_lowercase()))
+                .collect::<Vec<_>>()
+        } else {
+            all_shims.clone()
+        };
+
+        for shim in all_shims {
             progress_handler.progress(format!("creating {}", shim.display()));
             symlink(&target, shim).map_err(|err| {
                 UpError::Exec(format!(
@@ -264,4 +282,22 @@ pub fn reshim(progress_handler: &dyn ProgressHandler) -> Result<Option<String>, 
     };
 
     Ok(msg)
+}
+
+/// Check if the filesystem is case-insensitive by creating a file
+/// and checking if the same file with a different case exists.
+fn is_filesystem_case_insensitive() -> Result<bool, std::io::Error> {
+    let tmp_dir = tempfile::Builder::new()
+        .prefix(&tmpdir_cleanup_prefix("case-test"))
+        .tempdir()?;
+
+    // Create a file with a lowercase name
+    let path = tmp_dir.path().join("a");
+    fs::write(&path, "a")?;
+
+    // Check if the same file with an uppercase name exists
+    let path_upper = path.with_file_name("A");
+    let exists = path_upper.exists();
+
+    Ok(exists)
 }
