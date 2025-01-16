@@ -51,10 +51,6 @@ lazy_static! {
         Ok(dist_re) => dist_re,
         Err(err) => panic!("failed to create dist regex: {}", err),
     };
-    static ref MUSL_REGEX: Regex = match Regex::new(r"(?i)(\b|_)(musl)(\b|_)") {
-        Ok(musl_re) => musl_re,
-        Err(err) => panic!("failed to create musl regex: {}", err),
-    };
     static ref SEPARATOR_MID_REGEX: Regex = match Regex::new(r"([-_]{2,})") {
         Ok(separator_re) => separator_re,
         Err(err) => panic!("failed to create separator regex: {}", err),
@@ -176,7 +172,6 @@ pub struct GithubReleasesSelector {
     pub skip_arch_matching: bool,
     pub skip_os_matching: bool,
     pub prefer_dist: bool,
-    pub prefer_musl: bool,
     pub checksum_lookup: bool,
     pub checksum_algorithm: Option<String>,
     pub checksum_asset_name: Option<String>,
@@ -222,11 +217,6 @@ impl GithubReleasesSelector {
 
     pub fn prefer_dist(mut self, prefer_dist: bool) -> Self {
         self.prefer_dist = prefer_dist;
-        self
-    }
-
-    pub fn prefer_musl(mut self, prefer_musl: bool) -> Self {
-        self.prefer_musl = prefer_musl;
         self
     }
 
@@ -286,11 +276,10 @@ impl GithubReleasesSelector {
                     };
 
                     // Add a malus if the asset is (or not) a musl (depending on preferrence)
-                    let musl_pref_malus = if MUSL_REGEX.is_match(&asset_name) == self.prefer_musl {
-                        0
-                    } else {
-                        1
-                    };
+                    #[cfg(target_os = "linux")]
+                    let musl_pref_malus = check_musl(&asset_name);
+                    #[cfg(not(target_os = "linux"))]
+                    let musl_pref_malus = 0;
 
                     // Return final score
                     return match_level + dist_pref_malus + musl_pref_malus;
@@ -499,6 +488,23 @@ impl GithubReleasesSelector {
 
         // Return the assets
         matching_assets
+    }
+}
+
+#[cfg(target_os = "linux")]
+#[inline]
+fn check_musl(asset_name: &str) -> i32 {
+    use crate::internal::utils::detect_libc;
+    use once_cell::sync::Lazy;
+
+    static PREFER_MUSL: Lazy<bool> = Lazy::new(|| !detect_libc());
+    static MUSL_REGEX: Lazy<Regex> =
+        Lazy::new(|| Regex::new(r"(?i)(\b|_)(musl)(\b|_)").expect("failed to create musl regex"));
+
+    if MUSL_REGEX.is_match(asset_name) == *PREFER_MUSL {
+        0
+    } else {
+        1
     }
 }
 

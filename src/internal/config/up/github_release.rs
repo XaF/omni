@@ -517,14 +517,6 @@ pub struct UpConfigGithubRelease {
     )]
     pub prefer_dist: bool,
 
-    /// Whether to prefer the 'musl' assets over the 'glibc' assets.
-    /// This defaults to false to use native glibc binaries by default
-    #[serde(
-        default = "cache_utils::set_false",
-        skip_serializing_if = "cache_utils::is_false"
-    )]
-    pub prefer_musl: bool,
-
     /// The URL of the GitHub API; this is only required if downloading
     /// using Github Enterprise. By default, this is set to the public
     /// GitHub API URL (https://api.github.com). If you are using
@@ -572,7 +564,6 @@ impl Default for UpConfigGithubRelease {
             skip_os_matching: false,
             skip_arch_matching: false,
             prefer_dist: false,
-            prefer_musl: false,
             api_url: None,
             checksum: GithubReleaseChecksumConfig::default(),
             auth: GithubAuthConfig::default(),
@@ -742,11 +733,6 @@ impl UpConfigGithubRelease {
             false,
             &error_handler.with_key("prefer_dist"),
         );
-        let prefer_musl = config_value.get_as_bool_or_default(
-            "prefer_musl",
-            false,
-            &error_handler.with_key("prefer_musl"),
-        );
         let api_url =
             config_value.get_as_str_or_none("api_url", &error_handler.with_key("api_url"));
         let checksum = GithubReleaseChecksumConfig::from_config_value(
@@ -769,7 +755,6 @@ impl UpConfigGithubRelease {
             skip_os_matching,
             skip_arch_matching,
             prefer_dist,
-            prefer_musl,
             api_url,
             checksum,
             auth,
@@ -1321,7 +1306,6 @@ impl UpConfigGithubRelease {
                     .skip_os_matching(self.skip_os_matching)
                     .skip_arch_matching(self.skip_arch_matching)
                     .prefer_dist(self.prefer_dist)
-                    .prefer_musl(self.prefer_musl)
                     .checksum_lookup(self.checksum.is_enabled())
                     .checksum_algorithm(self.checksum.algorithm.clone().map(|a| a.to_string()))
                     .checksum_asset_name(self.checksum.asset_name.clone()),
