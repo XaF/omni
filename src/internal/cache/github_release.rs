@@ -275,24 +275,25 @@ impl GithubReleasesSelector {
                     let match_level = idx as i32;
 
                     // There's 2 modifiers, so we multiply the match level by 3 as
-                    // it's the most important
+                    // it's the most important factor, and the malus are just applied to that
                     let match_level = match_level * 3;
 
-                    // Add a bonus if the asset is (or not) a dist (depending on preferrence)
-                    let is_dist = if DIST_REGEX.is_match(&asset_name) == self.prefer_dist {
-                        1
-                    } else {
+                    // Add a malus if the asset is (or not) a dist (depending on preferrence)
+                    let dist_pref_malus = if DIST_REGEX.is_match(&asset_name) == self.prefer_dist {
                         0
+                    } else {
+                        1
                     };
 
-                    // Add a bonus if the asset is (or not) a musl (depending on preferrence)
-                    let is_musl = if MUSL_REGEX.is_match(&asset_name) == self.prefer_musl {
-                        1
-                    } else {
+                    // Add a malus if the asset is (or not) a musl (depending on preferrence)
+                    let musl_pref_malus = if MUSL_REGEX.is_match(&asset_name) == self.prefer_musl {
                         0
+                    } else {
+                        1
                     };
 
-                    return match_level + is_dist + is_musl;
+                    // Return final score
+                    return match_level + dist_pref_malus + musl_pref_malus;
                 }
             }
             return -1;
