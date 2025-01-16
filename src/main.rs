@@ -16,6 +16,7 @@ use internal::git::auto_update_async;
 use internal::git::auto_update_on_command_not_found;
 use internal::git::exec_update;
 use internal::git::exec_update_and_log_on_error;
+use internal::self_updater::self_update;
 use internal::StringColor;
 
 #[derive(Debug, Clone)]
@@ -43,31 +44,22 @@ impl MainArgs {
             .arg(
                 clap::Arg::new("update")
                     .long("update")
-                    .conflicts_with("args")
-                    .conflicts_with("exists")
-                    .conflicts_with("help")
-                    .conflicts_with("update-and-log-on-error")
-                    .conflicts_with("version")
                     .action(clap::ArgAction::SetTrue),
             )
             .arg(
                 clap::Arg::new("update-and-log-on-error")
                     .long("update-and-log-on-error")
-                    .conflicts_with("args")
-                    .conflicts_with("exists")
-                    .conflicts_with("help")
-                    .conflicts_with("update")
-                    .conflicts_with("version")
+                    .action(clap::ArgAction::SetTrue),
+            )
+            .arg(
+                clap::Arg::new("self-update")
+                    .long("self-update")
                     .action(clap::ArgAction::SetTrue),
             )
             .arg(
                 clap::Arg::new("exists")
                     .long("exists")
                     .short('e')
-                    .conflicts_with("help")
-                    .conflicts_with("update")
-                    .conflicts_with("update-and-log-on-error")
-                    .conflicts_with("version")
                     .action(clap::ArgAction::SetTrue),
             )
             .arg(
@@ -75,30 +67,32 @@ impl MainArgs {
                     .long("askpass")
                     .short('A')
                     .num_args(2)
-                    .value_names(["prompt", "socket path"])
-                    .conflicts_with("args")
-                    .conflicts_with("exists")
-                    .conflicts_with("help")
-                    .conflicts_with("update")
-                    .conflicts_with("update-and-log-on-error")
-                    .conflicts_with("version"),
+                    .value_names(["prompt", "socket path"]),
             )
             .arg(
                 clap::Arg::new("local")
                     .long("local")
                     .short('l')
-                    .conflicts_with("askpass")
-                    .conflicts_with("exists")
-                    .conflicts_with("help")
-                    .conflicts_with("update")
-                    .conflicts_with("update-and-log-on-error")
-                    .conflicts_with("version")
                     .action(clap::ArgAction::SetTrue),
             )
             .arg(
                 clap::Arg::new("args")
                     .action(clap::ArgAction::Append)
                     .allow_hyphen_values(true),
+            )
+            .group(
+                clap::ArgGroup::new("exclusive-flags")
+                    .args([
+                        "askpass",
+                        "exists",
+                        "help",
+                        "local",
+                        "self-update",
+                        "update",
+                        "update-and-log-on-error",
+                        "version",
+                    ])
+                    .multiple(false),
             )
             .try_get_matches_from(&parse_argv);
 
@@ -146,7 +140,10 @@ impl MainArgs {
             }
         }
 
-        if *matches.get_one::<bool>("update").unwrap_or(&false) {
+        if *matches.get_one::<bool>("self-update").unwrap_or(&false) {
+            self_update(true);
+            exit(0);
+        } else if *matches.get_one::<bool>("update").unwrap_or(&false) {
             exec_update();
         } else if *matches
             .get_one::<bool>("update-and-log-on-error")
