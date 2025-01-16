@@ -181,17 +181,19 @@ pub fn compatible_release_os() -> Vec<String> {
     }
 }
 
-pub fn self_update() {
-    // Check if OMNI_SKIP_SELF_UPDATE is set
-    if let Some(skip_self_update) = std::env::var_os("OMNI_SKIP_SELF_UPDATE") {
-        if !skip_self_update.to_str().unwrap().is_empty() {
+pub fn self_update(force: bool) {
+    if !force {
+        // Check if OMNI_SKIP_SELF_UPDATE is set
+        if let Some(skip_self_update) = std::env::var_os("OMNI_SKIP_SELF_UPDATE") {
+            if !skip_self_update.to_str().unwrap().is_empty() {
+                return;
+            }
+        }
+
+        let config = config(".");
+        if config.path_repo_updates.self_update.do_not_check() {
             return;
         }
-    }
-
-    let config = config(".");
-    if config.path_repo_updates.self_update.do_not_check() {
-        return;
     }
 
     if let Some(omni_release) = OmniRelease::latest() {

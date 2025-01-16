@@ -378,7 +378,7 @@ pub fn update(options: &UpdateOptions) -> (HashSet<PathBuf>, HashSet<PathBuf>) {
         return (HashSet::new(), HashSet::new());
     }
 
-    self_update();
+    self_update(false);
 
     // Nothing more to do if nothing is in the omnipath, or if we are running
     // as sudo since we don't want the repositories to be updated in that case
