@@ -663,12 +663,19 @@ pub struct GithubReleaseAsset {
 
 impl GithubReleaseAsset {
     const TAR_GZ_EXTS: [&'static str; 2] = [".tar.gz", ".tgz"];
+    const TAR_XZ_EXTS: [&'static str; 2] = [".tar.xz", ".txz"];
     const ZIP_EXTS: [&'static str; 1] = [".zip"];
 
     pub fn file_type(&self) -> Option<(GithubReleaseAssetType, String)> {
         for ext in Self::TAR_GZ_EXTS.iter() {
             if let Some(prefix) = self.name.strip_suffix(ext) {
                 return Some((GithubReleaseAssetType::TarGz, prefix.to_string()));
+            }
+        }
+
+        for ext in Self::TAR_XZ_EXTS.iter() {
+            if let Some(prefix) = self.name.strip_suffix(ext) {
+                return Some((GithubReleaseAssetType::TarXz, prefix.to_string()));
             }
         }
 
@@ -703,6 +710,7 @@ impl GithubReleaseAsset {
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub enum GithubReleaseAssetType {
     TarGz,
+    TarXz,
     Zip,
     Binary,
 }
@@ -714,6 +722,10 @@ impl GithubReleaseAssetType {
 
     pub fn is_tgz(&self) -> bool {
         matches!(self, Self::TarGz)
+    }
+
+    pub fn is_txz(&self) -> bool {
+        matches!(self, Self::TarXz)
     }
 
     pub fn is_binary(&self) -> bool {

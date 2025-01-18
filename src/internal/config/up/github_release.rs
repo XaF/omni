@@ -1674,6 +1674,14 @@ impl UpConfigGithubRelease {
                         progress_handler.error_with_message(errmsg.clone());
                         UpError::Exec(errmsg)
                     })?;
+                } else if asset_type.is_txz() {
+                    let tar = xz2::read::XzDecoder::new(archive_file);
+                    let mut archive = tar::Archive::new(tar);
+                    archive.unpack(&target_dir).map_err(|err| {
+                        let errmsg = format!("failed to extract {}: {}", asset_name, err);
+                        progress_handler.error_with_message(errmsg.clone());
+                        UpError::Exec(errmsg)
+                    })?;
                 } else {
                     let errmsg = format!("file extension not supported: {}", asset_name);
                     progress_handler.error_with_message(errmsg.clone());

@@ -87,6 +87,7 @@ uuid = { version = "1.12.0", features = ["v4", "fast-rng"] }
 walkdir = "2.4.0"
 which = "7.0.1"
 whoami = "1.5.2"
+xz2 = "0.1.7"
 zip-extract = "0.2.1"
 
 [package.metadata.cargo-machete]
