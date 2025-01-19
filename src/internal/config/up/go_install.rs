@@ -200,7 +200,7 @@ impl UpConfigGoInstalls {
             return Err(UpError::Config(errmsg));
         }
 
-        let go_bin = self.get_go_bin(options, progress_handler)?;
+        let go_bin = GoBin::get(options, progress_handler)?;
 
         let num = self.tools.len();
         for (idx, tool) in self.tools.iter().enumerate() {
@@ -229,35 +229,6 @@ impl UpConfigGoInstalls {
         }
 
         Ok(())
-    }
-
-    fn get_go_bin(
-        &self,
-        options: &UpOptions,
-        progress_handler: &UpProgressHandler,
-    ) -> Result<PathBuf, UpError> {
-        progress_handler.progress("install dependencies".to_string());
-        let go_tool = UpConfigTool::Go(UpConfigGolang::new_any_version());
-
-        // We create a fake environment since we do not want to add this
-        // go version as part of it, but we want to be able to use `go`
-        // to call `go list`, `go install`, etc.
-        let mut fake_env = UpEnvironment::new();
-
-        let subhandler = progress_handler.subhandler(&"go: ".light_black());
-        go_tool.up(options, &mut fake_env, &subhandler)?;
-
-        // Grab the tool from inside go_tool
-        let go = match go_tool {
-            UpConfigTool::Go(go) => go,
-            _ => unreachable!("go_tool is not a Go tool"),
-        };
-
-        let installed_version = go.version()?;
-        let install_path = PathBuf::from(mise_tool_path("go", &installed_version));
-        let go_bin = install_path.join("bin").join("go");
-
-        Ok(go_bin)
     }
 
     pub fn commit(&self, options: &UpOptions, env_version_id: &str) -> Result<(), UpError> {
@@ -778,7 +749,7 @@ impl UpConfigGoInstall {
         options: &UpOptions,
         environment: &mut UpEnvironment,
         progress_handler: &UpProgressHandler,
-        go_bin: &Path,
+        go_bin: &GoBin,
     ) -> Result<(), UpError> {
         progress_handler.init(self.desc().light_blue());
 
@@ -873,7 +844,7 @@ impl UpConfigGoInstall {
 
     fn resolve_and_install_version(
         &self,
-        go_bin: &Path,
+        go_bin: &GoBin,
         options: &UpOptions,
         progress_handler: &UpProgressHandler,
     ) -> Result<bool, UpError> {
@@ -1031,7 +1002,7 @@ impl UpConfigGoInstall {
 
     fn list_versions(
         &self,
-        go_bin: &Path,
+        go_bin: &GoBin,
         options: &UpOptions,
         progress_handler: &UpProgressHandler,
     ) -> Result<GoInstallVersions, UpError> {
@@ -1082,7 +1053,7 @@ impl UpConfigGoInstall {
 
     fn list_versions_from_go(
         &self,
-        go_bin: &Path,
+        go_bin: &GoBin,
         progress_handler: &UpProgressHandler,
     ) -> Result<GoInstallVersions, UpError> {
         // We need to:
@@ -1100,7 +1071,7 @@ impl UpConfigGoInstall {
                 break;
             }
 
-            let mut go_list_cmd = TokioCommand::new(go_bin);
+            let mut go_list_cmd = go_bin.get_async_command();
             go_list_cmd.arg("list");
             go_list_cmd.arg("-m");
             go_list_cmd.arg("-versions");
@@ -1202,7 +1173,7 @@ impl UpConfigGoInstall {
 
     fn install_version(
         &self,
-        go_bin: &Path,
+        go_bin: &GoBin,
         options: &UpOptions,
         version: &str,
         progress_handler: &dyn ProgressHandler,
@@ -1226,7 +1197,7 @@ impl UpConfigGoInstall {
             })?;
         let tmp_bin_path = tmp_dir.path().join("bin");
 
-        let mut go_install_cmd = TokioCommand::new(go_bin);
+        let mut go_install_cmd = go_bin.get_async_command();
         go_install_cmd.arg("install");
         go_install_cmd.arg("-v");
         go_install_cmd.arg(format!("{}@{}", self.path, version));
@@ -1448,6 +1419,51 @@ fn is_go_pseudo_version(version: &str) -> bool {
 
     // If we got here, this is a pseudo-version
     true
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+struct GoBin {
+    bin: PathBuf,
+    version: String,
+}
+
+impl GoBin {
+    fn get(options: &UpOptions, progress_handler: &UpProgressHandler) -> Result<Self, UpError> {
+        progress_handler.progress("install dependencies".to_string());
+        let go_tool = UpConfigTool::Go(UpConfigGolang::new_any_version());
+
+        // We create a fake environment since we do not want to add this
+        // go version as part of it, but we want to be able to use `go`
+        // to call `go list`, `go install`, etc.
+        let mut fake_env = UpEnvironment::new();
+
+        let subhandler = progress_handler.subhandler(&"go: ".light_black());
+        go_tool.up(options, &mut fake_env, &subhandler)?;
+
+        // Grab the tool from inside go_tool
+        let go = match go_tool {
+            UpConfigTool::Go(go) => go,
+            _ => unreachable!("go_tool is not a Go tool"),
+        };
+
+        let installed_version = go.version()?;
+        let install_path = PathBuf::from(mise_tool_path("go", &installed_version));
+        let go_bin = install_path.join("bin").join("go");
+
+        Ok(Self {
+            bin: go_bin,
+            version: installed_version,
+        })
+    }
+
+    fn get_async_command(&self) -> TokioCommand {
+        let tool_prefix = mise_tool_path("go", &self.version);
+
+        let mut cmd = TokioCommand::new(&self.bin);
+        cmd.env("GOROOT", &tool_prefix);
+        cmd.env("GOVERSION", &self.version);
+        cmd
+    }
 }
 
 #[cfg(test)]
