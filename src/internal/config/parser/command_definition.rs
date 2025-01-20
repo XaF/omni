@@ -1170,6 +1170,10 @@ impl SyntaxOptArg {
         self.last_arg_double_hyphen
     }
 
+    pub fn is_repeatable(&self) -> bool {
+        self.arg_type().is_array() || matches!(self.arg_type(), SyntaxOptArgType::Counter)
+    }
+
     pub fn takes_value(&self) -> bool {
         if matches!(
             self.arg_type(),
@@ -2125,13 +2129,23 @@ impl SyntaxOptArgNumValues {
         }
     }
 
-    fn max(&self) -> Option<usize> {
+    pub fn max(&self) -> Option<usize> {
         match self {
             Self::Any => None,
             Self::Exactly(value) => Some(*value),
             Self::AtLeast(_min) => None,
             Self::AtMost(max) => Some(*max),
             Self::Between(_min, max) => Some(*max),
+        }
+    }
+
+    pub fn min(&self) -> Option<usize> {
+        match self {
+            Self::Any => None,
+            Self::Exactly(value) => Some(*value),
+            Self::AtLeast(min) => Some(*min),
+            Self::AtMost(_max) => None,
+            Self::Between(min, _max) => Some(*min),
         }
     }
 }
