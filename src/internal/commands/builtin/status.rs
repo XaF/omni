@@ -7,6 +7,7 @@ use regex::Regex;
 
 use crate::internal::cache::utils::Empty;
 use crate::internal::commands::base::BuiltinCommand;
+use crate::internal::commands::base::CommandAutocompletion;
 use crate::internal::commands::path::omnipath_entries;
 use crate::internal::commands::Command;
 use crate::internal::config::config;
@@ -390,24 +391,16 @@ impl BuiltinCommand for StatusCommand {
         exit(0);
     }
 
-    fn autocompletion(&self) -> bool {
-        true
+    fn autocompletion(&self) -> CommandAutocompletion {
+        CommandAutocompletion::Null
     }
 
-    fn autocomplete(&self, _comp_cword: usize, argv: Vec<String>) -> Result<(), ()> {
-        for arg in &[
-            "--shell-integration",
-            "--config",
-            "--config-files",
-            "--worktree",
-            "--orgs",
-            "--path",
-        ] {
-            if !argv.contains(&arg.to_string()) {
-                println!("{}", arg);
-            }
-        }
-
+    fn autocomplete(
+        &self,
+        _comp_cword: usize,
+        _argv: Vec<String>,
+        _parameter: Option<String>,
+    ) -> Result<(), ()> {
         Ok(())
     }
 }

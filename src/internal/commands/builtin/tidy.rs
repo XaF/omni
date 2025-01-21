@@ -11,6 +11,7 @@ use indicatif::ProgressStyle;
 use walkdir::WalkDir;
 
 use crate::internal::commands::base::BuiltinCommand;
+use crate::internal::commands::base::CommandAutocompletion;
 use crate::internal::commands::path::global_omnipath_entries;
 use crate::internal::commands::utils::abs_path;
 use crate::internal::commands::Command;
@@ -503,20 +504,16 @@ impl BuiltinCommand for TidyCommand {
         exit(0);
     }
 
-    fn autocompletion(&self) -> bool {
-        true
+    fn autocompletion(&self) -> CommandAutocompletion {
+        CommandAutocompletion::Null
     }
 
-    fn autocomplete(&self, _comp_cword: usize, _argv: Vec<String>) -> Result<(), ()> {
-        // TODO: if the last parameter before completion is `search-path`,
-        // TODO: we should autocomplete with the file system paths
-        println!("--search-path");
-        println!("-y");
-        println!("--yes");
-        println!("--up-all");
-        println!("-h");
-        println!("--help");
-
+    fn autocomplete(
+        &self,
+        _comp_cword: usize,
+        _argv: Vec<String>,
+        _parameter: Option<String>,
+    ) -> Result<(), ()> {
         Ok(())
     }
 }

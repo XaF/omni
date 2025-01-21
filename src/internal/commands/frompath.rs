@@ -292,11 +292,19 @@ impl PathCommand {
             .unwrap_or(CommandAutocompletion::Null)
     }
 
-    pub fn autocomplete(&self, comp_cword: usize, argv: Vec<String>) -> Result<(), ()> {
+    pub fn autocomplete(
+        &self,
+        comp_cword: usize,
+        argv: Vec<String>,
+        parameter: Option<String>,
+    ) -> Result<(), ()> {
         let mut command = ProcessCommand::new(self.source.clone());
         command.arg("--complete");
         command.args(argv);
         command.env("COMP_CWORD", comp_cword.to_string());
+        if let Some(parameter) = parameter {
+            command.env("OMNI_COMP_VALUE_OF", parameter);
+        }
 
         match command.output() {
             Ok(output) => {

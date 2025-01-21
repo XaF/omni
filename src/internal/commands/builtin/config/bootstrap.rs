@@ -15,6 +15,7 @@ use serde::Deserialize;
 use serde::Serialize;
 
 use crate::internal::commands::base::BuiltinCommand;
+use crate::internal::commands::base::CommandAutocompletion;
 use crate::internal::commands::builtin::TidyGitRepo;
 use crate::internal::commands::utils::abs_path;
 use crate::internal::commands::utils::file_auto_complete;
@@ -137,16 +138,16 @@ impl BuiltinCommand for ConfigBootstrapCommand {
         exit(0);
     }
 
-    fn autocompletion(&self) -> bool {
-        true
+    fn autocompletion(&self) -> CommandAutocompletion {
+        CommandAutocompletion::Null
     }
 
-    fn autocomplete(&self, _comp_cword: usize, _argv: Vec<String>) -> Result<(), ()> {
-        println!("--organizations");
-        println!("--repo-path-format");
-        println!("--shell");
-        println!("--worktree");
-
+    fn autocomplete(
+        &self,
+        _comp_cword: usize,
+        _argv: Vec<String>,
+        _parameter: Option<String>,
+    ) -> Result<(), ()> {
         Ok(())
     }
 }

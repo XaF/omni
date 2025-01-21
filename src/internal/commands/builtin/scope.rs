@@ -2,6 +2,7 @@ use std::collections::BTreeMap;
 use std::process::exit;
 
 use crate::internal::commands::base::BuiltinCommand;
+use crate::internal::commands::base::CommandAutocompletion;
 use crate::internal::commands::command_loader;
 use crate::internal::commands::Command;
 use crate::internal::config::parser::ParseArgsValue;
@@ -280,11 +281,17 @@ impl BuiltinCommand for ScopeCommand {
         exit(1);
     }
 
-    fn autocompletion(&self) -> bool {
-        true
+    fn autocompletion(&self) -> CommandAutocompletion {
+        // TODO: convert to partial
+        CommandAutocompletion::Full
     }
 
-    fn autocomplete(&self, comp_cword: usize, argv: Vec<String>) -> Result<(), ()> {
+    fn autocomplete(
+        &self,
+        comp_cword: usize,
+        argv: Vec<String>,
+        _parameter: Option<String>,
+    ) -> Result<(), ()> {
         match comp_cword.cmp(&0) {
             std::cmp::Ordering::Equal => {
                 let repo = if !argv.is_empty() {

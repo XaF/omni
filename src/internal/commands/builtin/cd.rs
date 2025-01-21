@@ -5,6 +5,7 @@ use std::process::exit;
 use shell_escape::escape;
 
 use crate::internal::commands::base::BuiltinCommand;
+use crate::internal::commands::base::CommandAutocompletion;
 use crate::internal::commands::utils::omni_cmd;
 use crate::internal::commands::Command;
 use crate::internal::config::config;
@@ -271,11 +272,17 @@ impl BuiltinCommand for CdCommand {
         exit(0);
     }
 
-    fn autocompletion(&self) -> bool {
-        true
+    fn autocompletion(&self) -> CommandAutocompletion {
+        // TODO: convert to partial
+        CommandAutocompletion::Full
     }
 
-    fn autocomplete(&self, comp_cword: usize, argv: Vec<String>) -> Result<(), ()> {
+    fn autocomplete(
+        &self,
+        comp_cword: usize,
+        argv: Vec<String>,
+        _parameter: Option<String>,
+    ) -> Result<(), ()> {
         if comp_cword > 0 {
             return Ok(());
         }

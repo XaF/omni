@@ -1,4 +1,5 @@
 use crate::internal::commands::base::BuiltinCommand;
+use crate::internal::commands::base::CommandAutocompletion;
 use crate::internal::config::CommandSyntax;
 use crate::internal::config::SyntaxOptArg;
 
@@ -59,17 +60,16 @@ impl BuiltinCommand for HookCommand {
 
     fn exec(&self, _argv: Vec<String>) {}
 
-    fn autocompletion(&self) -> bool {
-        false
+    fn autocompletion(&self) -> CommandAutocompletion {
+        CommandAutocompletion::Null
     }
 
-    fn autocomplete(&self, comp_cword: usize, _argv: Vec<String>) -> Result<(), ()> {
-        if comp_cword == 0 {
-            println!("env");
-            println!("init");
-            println!("uuid");
-        }
-
-        Ok(())
+    fn autocomplete(
+        &self,
+        _comp_cword: usize,
+        _argv: Vec<String>,
+        _parameter: Option<String>,
+    ) -> Result<(), ()> {
+        Err(())
     }
 }

@@ -39,8 +39,13 @@ pub trait BuiltinCommand: std::fmt::Debug + Send + Sync {
     fn syntax(&self) -> Option<CommandSyntax>;
     fn category(&self) -> Option<Vec<String>>;
     fn exec(&self, argv: Vec<String>);
-    fn autocompletion(&self) -> bool;
-    fn autocomplete(&self, comp_cword: usize, argv: Vec<String>) -> Result<(), ()>;
+    fn autocompletion(&self) -> CommandAutocompletion;
+    fn autocomplete(
+        &self,
+        comp_cword: usize,
+        argv: Vec<String>,
+        parameter: Option<String>,
+    ) -> Result<(), ()>;
 }
 
 #[derive(Debug)]
@@ -484,13 +489,7 @@ impl Command {
 
     pub fn autocompletion(&self) -> CommandAutocompletion {
         let completion = match self {
-            Command::Builtin(command) => {
-                if command.autocompletion() {
-                    CommandAutocompletion::Full
-                } else {
-                    CommandAutocompletion::Null
-                }
-            }
+            Command::Builtin(command) => command.autocompletion(),
             Command::FromPath(command) => command.autocompletion(),
             Command::FromConfig(_command) => CommandAutocompletion::Null,
             Command::FromMakefile(_command) => CommandAutocompletion::Null,
@@ -505,7 +504,7 @@ impl Command {
             _ => true,
         };
 
-        let argparser = self.argparser();
+        let argparser = self.argparser() || matches!(self, Command::Builtin(_));
 
         match (completion, trusted, argparser) {
             (CommandAutocompletion::Full, true, _) => CommandAutocompletion::Full,
@@ -534,36 +533,36 @@ impl Command {
         let completion = self.autocompletion();
 
         // If no autocompletion option is available, just return an error
-        if matches!(completion, CommandAutocompletion::Null) {
+        if !completion.any() {
             return Err(());
         }
 
         // Only try to autocomplete with the argparser if the completion is either
         // disabled or partial, or if the command is not trusted
-        if matches!(
-            completion,
-            CommandAutocompletion::Argparser | CommandAutocompletion::Partial
-        ) {
+        let mut parameter = None;
+        if completion.use_argparser() {
             match self.autocomplete_with_argparser(comp_cword, &argv) {
-                Ok(true) => return Ok(()),
-                Ok(false) => {} // Continue with the autocompletion if partial
+                Ok(None) => return Ok(()),
+                Ok(Some(param)) => {
+                    // Continue with the autocompletion if partial
+                    parameter = Some(param);
+                }
                 Err(()) => return Err(()),
             }
         }
 
         // If we get here, try to do a completion with the command if
         // it is trusted and has autocompletion
-        if matches!(
-            completion,
-            CommandAutocompletion::Partial | CommandAutocompletion::Full
-        ) {
+        if completion.use_command() {
             match self {
-                Command::Builtin(command) => return command.autocomplete(comp_cword, argv),
+                Command::Builtin(command) => {
+                    return command.autocomplete(comp_cword, argv, parameter)
+                }
                 Command::FromPath(command) => {
                     // Load the dynamic environment for that command
                     update_dynamic_env_for_command(self.source_dir());
 
-                    let result = command.autocomplete(comp_cword, argv);
+                    let result = command.autocomplete(comp_cword, argv, parameter);
 
                     // Reset the dynamic environment
                     update_dynamic_env_for_command(".");
@@ -590,21 +589,23 @@ impl Command {
     /// also can suggest values for certain specific parameter types (e.g.
     /// if the parameter value is supposed to be a path, it will suggest
     /// paths available in the filesystem).
-    fn autocomplete_with_argparser(&self, comp_cword: usize, argv: &[String]) -> Result<bool, ()> {
+    fn autocomplete_with_argparser(
+        &self,
+        comp_cword: usize,
+        argv: &[String],
+    ) -> Result<Option<String>, ()> {
         let syntax = match self.syntax() {
             Some(syntax) => syntax,
             None => return Err(()),
         };
 
-        #[derive(Debug)]
-        enum AutocompleteState {
-            Parameters,
-            ValueAndParameters,
-            Value,
-        }
-
-        let mut state = AutocompleteState::Parameters;
+        let mut state = ArgparserAutocompleteState::Parameters;
         let mut parameters = syntax.parameters.clone();
+        let last_parameter = syntax
+            .parameters
+            .iter()
+            .find(|param| param.is_last())
+            .cloned();
 
         // Go over the arguments we've seen until `comp_cword` and
         // try to resolve the parameter in the syntax and the number
@@ -623,9 +624,20 @@ impl Command {
             current_arg = None;
 
             let (parameter, mut next_arg) = if arg == "--" {
-                // If we have `--`, we're done with the parameters, we cannot autocomplete
-                // anything with the argparser after that, so we can stop here
-                // TODO: allow to autocomplete 'last' value too
+                // If we have `--`, find the parameter with the 'last' flag, if any
+                match last_parameter {
+                    Some(ref parameter) => {
+                        state = ArgparserAutocompleteState::Value(parameter.name());
+                    }
+                    None => {
+                        // We do not need to autocomplete anything if we are
+                        // after the `--` and there is no parameter with the
+                        // 'last' flag
+                        return Ok(None);
+                    }
+                }
+
+                // No need to keep reading parameters
                 break;
             } else if arg == "-" {
                 // If we have `-` we just can't complete any parameter, let's just skip
@@ -656,8 +668,24 @@ impl Command {
 
                 (parameter, next_arg)
             } else {
-                // TODO: handle positional parameters
-                (None, None)
+                // Get the parameters from the list of parameters left, since for positional
+                // we need to remove them from the list as we can't identify them by name alone
+                match syntax
+                    .parameters
+                    .iter()
+                    .find(|param| param.is_positional() && parameters.contains(param))
+                {
+                    Some(parameter) => {
+                        // We need to pass the parameter itself as "next_arg" since for a
+                        // positional, the parameter itself is the value
+                        (Some(parameter), Some(arg))
+                    }
+                    None => {
+                        // If we don't have any positional parameters left, then we can't
+                        // autocomplete this, just skip it
+                        (None, None)
+                    }
+                }
             };
 
             // If the parameter is not found, skip to the next
@@ -671,6 +699,7 @@ impl Command {
             };
 
             // If the parameter is not repeatable, remove it from the list
+            // TODO: how does that work for positionals?
             if !parameter.is_repeatable() {
                 parameters.retain(|param| param != parameter);
             }
@@ -730,9 +759,9 @@ impl Command {
 
                     if current_idx == comp_cword || value.is_none() {
                         state = if value_idx > min_values {
-                            AutocompleteState::ValueAndParameters
+                            ArgparserAutocompleteState::ValueAndParameters(parameter.name())
                         } else {
-                            AutocompleteState::Value
+                            ArgparserAutocompleteState::Value(parameter.name())
                         };
                         break 'loop_args;
                     }
@@ -747,10 +776,7 @@ impl Command {
             }
         }
 
-        if matches!(
-            state,
-            AutocompleteState::Parameters | AutocompleteState::ValueAndParameters
-        ) {
+        if state.complete_parameters() {
             // If we get here, go over the parameters still in the list, filter
             // them using the value to be completed, and return their names
             let comp_value = argv.get(comp_cword).cloned().unwrap_or_default();
@@ -764,10 +790,16 @@ impl Command {
                 .for_each(|name| {
                     println!("{}", name);
                 });
+
+            // Autocomplete '--' if there is a last parameter
+            if last_parameter.is_some() && "--".starts_with(&comp_value) {
+                println!("--");
+            }
         }
 
         // TODO: add support for autocompleting paths value types
-        Ok(matches!(state, AutocompleteState::Parameters))
+
+        Ok(state.parameter())
     }
 
     fn command_type_sort_order(&self) -> usize {
@@ -797,6 +829,26 @@ impl Command {
     }
 }
 
+#[derive(Debug)]
+enum ArgparserAutocompleteState {
+    Parameters,
+    ValueAndParameters(String),
+    Value(String),
+}
+
+impl ArgparserAutocompleteState {
+    fn complete_parameters(&self) -> bool {
+        matches!(self, Self::Parameters | Self::ValueAndParameters(_))
+    }
+
+    fn parameter(&self) -> Option<String> {
+        match self {
+            Self::Value(param) | Self::ValueAndParameters(param) => Some(param.clone()),
+            _ => None,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum CommandAutocompletion {
     #[default]
@@ -804,6 +856,20 @@ pub enum CommandAutocompletion {
     Partial,
     Full,
     Argparser,
+}
+
+impl CommandAutocompletion {
+    fn any(&self) -> bool {
+        !matches!(self, Self::Null)
+    }
+
+    fn use_argparser(&self) -> bool {
+        matches!(self, Self::Argparser | Self::Partial)
+    }
+
+    fn use_command(&self) -> bool {
+        matches!(self, Self::Full | Self::Partial)
+    }
 }
 
 impl serde::Serialize for CommandAutocompletion {
