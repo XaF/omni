@@ -19,9 +19,6 @@ use sha2::Sha256;
 use sha2::Sha384;
 use sha2::Sha512;
 
-#[cfg(not(test))]
-use once_cell::sync::Lazy;
-
 use crate::internal::cache::github_release::GithubReleaseAsset;
 use crate::internal::cache::github_release::GithubReleasesSelector;
 use crate::internal::cache::up_environments::UpEnvironment;
@@ -53,11 +50,35 @@ cfg_if::cfg_if! {
         fn github_releases_bin_path() -> PathBuf {
             PathBuf::from(data_home()).join("ghreleases")
         }
+
+        fn get_github_token(_key: &str) -> Option<Option<String>> {
+            None
+        }
+
+        fn set_github_token(_key: &str, _value: Option<String>) {}
     } else {
+        use std::sync::Mutex;
+        use once_cell::sync::Lazy;
+
         static GITHUB_RELEASES_BIN_PATH: Lazy<PathBuf> = Lazy::new(|| PathBuf::from(data_home()).join("ghreleases"));
 
         fn github_releases_bin_path() -> PathBuf {
             GITHUB_RELEASES_BIN_PATH.clone()
+        }
+
+        /// The tokens read from the `gh` command for the given `hostname` and `user`;
+        /// We want to be able to update that during the runtime in a safe way
+        static GITHUB_TOKENS: Lazy<Mutex<HashMap<String, Option<String>>>> =
+            Lazy::new(|| Mutex::new(HashMap::new()));
+
+        #[inline]
+        fn get_github_token(key: &str) -> Option<Option<String>> {
+            GITHUB_TOKENS.lock().expect("failed to lock github tokens").get(key).cloned()
+        }
+
+        #[inline]
+        fn set_github_token(key: &str, value: Option<String>) {
+            GITHUB_TOKENS.lock().expect("failed to lock github tokens").insert(key.to_string(), value);
         }
     }
 }
@@ -1064,7 +1085,7 @@ impl UpConfigGithubRelease {
         }
     }
 
-    fn get_api_hostname(&self, progress_handler: &UpProgressHandler) -> String {
+    fn get_api_hostname(&self, progress_handler: &dyn ProgressHandler) -> String {
         if let Some(api_url) = &self.api_url {
             match url::Url::parse(api_url) {
                 Ok(url) => url.host_str().unwrap_or(api_url).to_string(),
@@ -1079,7 +1100,7 @@ impl UpConfigGithubRelease {
         }
     }
 
-    fn get_auth_token(&self, progress_handler: &UpProgressHandler) -> Option<String> {
+    fn get_auth_token(&self, progress_handler: &dyn ProgressHandler) -> Option<String> {
         let auth = if !self.auth.is_default() {
             self.auth.clone()
         } else {
@@ -1104,12 +1125,13 @@ impl UpConfigGithubRelease {
             return None;
         }
 
-        progress_handler.progress(format!(
-            "preparing to get auth token from {}",
-            "gh".light_yellow()
-        ));
-
         let hostname = hostname.unwrap_or_else(|| self.get_api_hostname(progress_handler));
+
+        // Try to get the token from the cache first
+        let key = format!("{}/{}", hostname, user.clone().unwrap_or("".to_string()));
+        if let Some(cached_token) = get_github_token(&key) {
+            return cached_token;
+        }
 
         progress_handler.progress(format!(
             "getting auth token from {} for hostname {}{}",
@@ -1140,37 +1162,44 @@ impl UpConfigGithubRelease {
                 "failed to get auth token: {}",
                 String::from_utf8_lossy(&output.stderr)
             ));
+
+            set_github_token(&key, None);
             return None;
         }
 
         progress_handler.progress("auth token retrieved".to_string());
 
         let token = String::from_utf8_lossy(&output.stdout).trim().to_string();
+
+        // Cache the token
+        set_github_token(&key, Some(token.clone()));
+
         Some(token)
     }
 
-    fn list_releases_from_api(
+    fn get_github_client(
         &self,
-        progress_handler: &UpProgressHandler,
-        cached_releases: Option<&GithubReleases>,
-    ) -> Result<GithubReleases, UpError> {
-        // Use https://api.github.com/repos/<owner>/<repo>/releases to
-        // list the available releases
-        let api_url = self.api_url.clone().unwrap_or(GITHUB_API_URL.to_string());
-        let releases_url = format!(
-            "{}/repos/{}/releases?per_page=100",
-            api_url, self.repository
-        );
-
+        progress_handler: &dyn ProgressHandler,
+        json: bool,
+    ) -> Result<reqwest::blocking::Client, UpError> {
         let mut headers = reqwest::header::HeaderMap::new();
-        headers.insert(
-            reqwest::header::ACCEPT,
-            reqwest::header::HeaderValue::from_static("application/vnd.github.v3+json"),
-        );
-        headers.insert(
-            reqwest::header::CONTENT_TYPE,
-            reqwest::header::HeaderValue::from_static("application/json"),
-        );
+
+        if json {
+            headers.insert(
+                reqwest::header::ACCEPT,
+                reqwest::header::HeaderValue::from_static("application/vnd.github.v3+json"),
+            );
+            headers.insert(
+                reqwest::header::CONTENT_TYPE,
+                reqwest::header::HeaderValue::from_static("application/json"),
+            );
+        } else {
+            headers.insert(
+                reqwest::header::ACCEPT,
+                reqwest::header::HeaderValue::from_static("application/octet-stream"),
+            );
+        }
+
         headers.insert(
             "X-GitHub-Api-Version",
             reqwest::header::HeaderValue::from_static("2022-11-28"),
@@ -1199,6 +1228,24 @@ impl UpConfigGithubRelease {
                 return Err(UpError::Exec(errmsg));
             }
         };
+
+        Ok(client)
+    }
+
+    fn list_releases_from_api(
+        &self,
+        progress_handler: &UpProgressHandler,
+        cached_releases: Option<&GithubReleases>,
+    ) -> Result<GithubReleases, UpError> {
+        // Use https://api.github.com/repos/<owner>/<repo>/releases to
+        // list the available releases
+        let api_url = self.api_url.clone().unwrap_or(GITHUB_API_URL.to_string());
+        let releases_url = format!(
+            "{}/repos/{}/releases?per_page=100",
+            api_url, self.repository
+        );
+
+        let client = self.get_github_client(progress_handler, true)?;
 
         let mut releases = if let Some(releases) = cached_releases {
             // If we had cached releases, we are just trying to refresh the
@@ -1396,8 +1443,10 @@ impl UpConfigGithubRelease {
     ) -> Result<std::fs::File, UpError> {
         progress_handler.progress(format!("downloading {}", asset_name.light_yellow()));
 
+        let client = self.get_github_client(progress_handler, false)?;
+
         // Download the asset
-        let mut response = reqwest::blocking::get(asset_url).map_err(|err| {
+        let mut response = client.get(asset_url).send().map_err(|err| {
             let errmsg = format!("failed to download {}: {}", asset_name, err);
             progress_handler.error_with_message(errmsg.clone());
             UpError::Exec(errmsg)
@@ -1468,7 +1517,7 @@ impl UpConfigGithubRelease {
             if !checksum_asset_path.exists() {
                 self.download_asset(
                     &checksum_asset_name,
-                    &checksum_asset.browser_download_url,
+                    &checksum_asset.url,
                     &checksum_asset_path,
                     progress_handler,
                 )?;
@@ -1606,7 +1655,7 @@ impl UpConfigGithubRelease {
             }
 
             let asset_name = asset.name.clone();
-            let asset_url = asset.browser_download_url.clone();
+            let asset_url = asset.url.clone();
             let asset_path = tmp_dir.path().join(&asset_name);
 
             // Download the asset
@@ -2374,7 +2423,7 @@ mod tests {
                         "assets": [
                             {{
                                 "name": "asset1_{arch}_{os}",
-                                "browser_download_url": "{url}/download/v2.0.0-alpha/asset1"
+                                "url": "{url}/download/v2.0.0-alpha/asset1"
                             }}
                         ]
                     }},
@@ -2386,7 +2435,7 @@ mod tests {
                         "assets": [
                             {{
                                 "name": "asset1_{arch}_{os}",
-                                "browser_download_url": "{url}/download/v1.2.3/asset1"
+                                "url": "{url}/download/v1.2.3/asset1"
                             }}
                         ]
                     }},
@@ -2398,7 +2447,7 @@ mod tests {
                         "assets": [
                             {{
                                 "name": "asset1_{arch}_{os}",
-                                "browser_download_url": "{url}/download/v1.2.2/asset1"
+                                "url": "{url}/download/v1.2.2/asset1"
                             }}
                         ]
                     }},
@@ -2410,7 +2459,7 @@ mod tests {
                         "assets": [
                             {{
                                 "name": "asset1_{arch}_{os}",
-                                "browser_download_url": "{url}/download/prefix-1.2.0/asset1"
+                                "url": "{url}/download/prefix-1.2.0/asset1"
                             }}
                         ]
                     }},
@@ -2422,7 +2471,7 @@ mod tests {
                         "assets": [
                             {{
                                 "name": "asset1_{arch}_{os}",
-                                "browser_download_url": "{url}/download/nonstandard/asset1"
+                                "url": "{url}/download/nonstandard/asset1"
                             }}
                         ]
                     }},
@@ -2441,7 +2490,7 @@ mod tests {
                         "assets": [
                             {{
                                 "name": "asset1",
-                                "browser_download_url": "{url}/download/nomatchingassets/asset1"
+                                "url": "{url}/download/nomatchingassets/asset1"
                             }}
                         ]
                     }},
@@ -2453,11 +2502,11 @@ mod tests {
                         "assets": [
                             {{
                                 "name": "asset1_{arch}_{os}",
-                                "browser_download_url": "{url}/download/twoassets/asset1"
+                                "url": "{url}/download/twoassets/asset1"
                             }},
                             {{
                                 "name": "asset2_{arch}_{os}",
-                                "browser_download_url": "{url}/download/twoassets/asset2"
+                                "url": "{url}/download/twoassets/asset2"
                             }}
                         ]
                     }},
@@ -2469,7 +2518,7 @@ mod tests {
                         "assets": [
                             {{
                                 "name": "asset1_{arch}_{os}",
-                                "browser_download_url": "{url}/download/v1.1.9/asset1"
+                                "url": "{url}/download/v1.1.9/asset1"
                             }}
                         ]
                     }}
