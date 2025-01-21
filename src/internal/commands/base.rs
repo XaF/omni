@@ -622,9 +622,10 @@ impl Command {
         'loop_args: while let Some(arg) = current_arg {
             current_arg = None;
 
-            let (parameter, next_arg) = if arg == "--" {
+            let (parameter, mut next_arg) = if arg == "--" {
                 // If we have `--`, we're done with the parameters, we cannot autocomplete
                 // anything with the argparser after that, so we can stop here
+                // TODO: allow to autocomplete 'last' value too
                 break;
             } else if arg == "-" {
                 // If we have `-` we just can't complete any parameter, let's just skip
@@ -696,8 +697,9 @@ impl Command {
                     }
 
                     value_idx += 1;
-                    let value = if next_arg.is_some() {
-                        next_arg.clone()
+                    let value = if let Some(arg) = next_arg {
+                        next_arg = None;
+                        Some(arg)
                     } else {
                         current_idx += 1;
                         args.get(current_idx).cloned()
@@ -708,18 +710,19 @@ impl Command {
                         // allowed for that parameter
                         if let Some(value_without_hyphen) = value.strip_prefix('-') {
                             if parameter.allow_hyphen_values {
-                                // All good
+                                // All good if we allow for a parameter to start with `-`
                                 continue;
                             }
 
                             if parameter.allow_negative_numbers
                                 && value_without_hyphen.parse::<f64>().is_ok()
                             {
-                                // All good
+                                // All good if we allow for negative numbers
                                 continue;
                             }
 
-                            // We've moved to another parameter
+                            // If we don't allow for hyphens, then consider this value
+                            // is actually another argument, so exit this loop
                             current_arg = Some(value.to_string());
                             break;
                         }
@@ -744,11 +747,12 @@ impl Command {
             }
         }
 
-        // If we get here, go over the parameters still in the list and return their names
         if matches!(
             state,
             AutocompleteState::Parameters | AutocompleteState::ValueAndParameters
         ) {
+            // If we get here, go over the parameters still in the list, filter
+            // them using the value to be completed, and return their names
             let comp_value = argv.get(comp_cword).cloned().unwrap_or_default();
             parameters
                 .iter()
