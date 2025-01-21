@@ -767,10 +767,7 @@ impl Command {
         }
 
         // TODO: add support for autocompleting paths value types
-        Ok(matches!(
-            state,
-            AutocompleteState::Value | AutocompleteState::ValueAndParameters
-        ))
+        Ok(matches!(state, AutocompleteState::Parameters))
     }
 
     fn command_type_sort_order(&self) -> usize {
