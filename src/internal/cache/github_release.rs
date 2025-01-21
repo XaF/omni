@@ -650,6 +650,8 @@ pub struct GithubReleaseAsset {
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub name: String,
     #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub url: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
     pub browser_download_url: String,
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub state: String,
