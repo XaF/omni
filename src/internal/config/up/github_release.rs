@@ -1180,11 +1180,11 @@ impl UpConfigGithubRelease {
     fn get_github_client(
         &self,
         progress_handler: &dyn ProgressHandler,
-        api: bool,
+        json: bool,
     ) -> Result<reqwest::blocking::Client, UpError> {
         let mut headers = reqwest::header::HeaderMap::new();
 
-        if api {
+        if json {
             headers.insert(
                 reqwest::header::ACCEPT,
                 reqwest::header::HeaderValue::from_static("application/vnd.github.v3+json"),
