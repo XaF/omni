@@ -745,6 +745,54 @@ impl Command {
                     .any(|conflict| parameter.all_names().iter().any(|name| name == conflict))
             });
 
+            // TODO: improve this logic, even more as it does not cover
+            // the case of groups conflicting with groups, and parameters
+            // declaring conflicts with groups either
+            for group in syntax
+                .groups
+                .iter()
+                .filter(|group| !group.multiple || !group.conflicts_with.is_empty())
+                .filter(|group| {
+                    group.parameters.iter().any(|name| {
+                        parameter
+                            .all_names()
+                            .iter()
+                            .any(|param_name| param_name == name)
+                    })
+                })
+            {
+                if !group.multiple {
+                    // Remove all the other parameters in the group if this
+                    // group does not allow for multiple parameters
+                    let other_params = group
+                        .parameters
+                        .iter()
+                        .filter(|name| {
+                            parameter
+                                .all_names()
+                                .iter()
+                                .all(|param_name| param_name != *name)
+                        })
+                        .collect::<Vec<_>>();
+
+                    parameters.retain(|param| {
+                        !other_params.iter().any(|name| {
+                            param
+                                .all_names()
+                                .iter()
+                                .any(|param_name| param_name == *name)
+                        })
+                    });
+                }
+
+                parameters.retain(|param| {
+                    !group
+                        .conflicts_with
+                        .iter()
+                        .any(|conflict| param.all_names().iter().any(|name| name == conflict))
+                });
+            }
+
             // Consume values as needed
             if parameter.takes_value() {
                 // How many values to consume at most?
