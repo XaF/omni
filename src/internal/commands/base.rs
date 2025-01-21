@@ -736,6 +736,15 @@ impl Command {
                 parameters.retain(|param| !param.all_names().iter().any(|name| name == conflict));
             }
 
+            // The conflicts can be declared the other way around too, so go over
+            // the parameters removing any that conflicts with the current parameter
+            parameters.retain(|param| {
+                !param
+                    .conflicts_with
+                    .iter()
+                    .any(|conflict| parameter.all_names().iter().any(|name| name == conflict))
+            });
+
             // Consume values as needed
             if parameter.takes_value() {
                 // How many values to consume at most?

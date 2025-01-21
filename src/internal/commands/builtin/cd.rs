@@ -214,6 +214,7 @@ impl BuiltinCommand for CdCommand {
                         .to_string()
                     ),
                     arg_type: SyntaxOptArgType::Flag,
+                    conflicts_with: vec!["--no-include-packages".to_string()],
                     ..Default::default()
                 },
                 SyntaxOptArg {
@@ -273,7 +274,6 @@ impl BuiltinCommand for CdCommand {
     }
 
     fn autocompletion(&self) -> CommandAutocompletion {
-        // TODO: convert to partial
         CommandAutocompletion::Partial
     }
 
