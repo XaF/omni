@@ -11,6 +11,7 @@ use crate::internal::commands::void::VoidCommand;
 use crate::internal::config::parser::ParseArgsErrorKind;
 use crate::internal::config::parser::ParseArgsValue;
 use crate::internal::config::CommandSyntax;
+use crate::internal::config::SyntaxOptArg;
 use crate::internal::dynenv::update_dynamic_env_for_command;
 use crate::internal::user_interface::colors::strip_colors;
 use crate::internal::user_interface::colors::strip_colors_if_needed;
@@ -599,7 +600,32 @@ impl Command {
             None => return Err(()),
         };
 
-        let mut state = ArgparserAutocompleteState::Parameters;
+        fn allow_value_check_hyphen(param: &SyntaxOptArg, value: &str) -> bool {
+            if let Some(value_without_hyphen) = value.strip_prefix('-') {
+                if !param.allow_hyphen_values {
+                    // All good if we allow for a parameter to start with `-`
+                    return false;
+                }
+
+                if !param.allow_negative_numbers || value_without_hyphen.parse::<f64>().is_err() {
+                    // All good if we allow for negative numbers
+                    return false;
+                }
+            }
+
+            true
+        }
+
+        let mut state = match (
+            syntax.parameters.iter().find(|param| param.is_positional()),
+            argv.get(comp_cword),
+        ) {
+            (Some(param), Some(value)) if allow_value_check_hyphen(&param, &value) => {
+                ArgparserAutocompleteState::ValueAndParameters(param.name())
+            }
+            (Some(param), None) => ArgparserAutocompleteState::ValueAndParameters(param.name()),
+            (_, _) => ArgparserAutocompleteState::Parameters,
+        };
         let mut parameters = syntax.parameters.clone();
         let last_parameter = syntax
             .parameters
@@ -735,23 +761,9 @@ impl Command {
                     };
 
                     if let Some(ref value) = value {
-                        // If the value starts with `-`, we need to check if it is
-                        // allowed for that parameter
-                        if let Some(value_without_hyphen) = value.strip_prefix('-') {
-                            if parameter.allow_hyphen_values {
-                                // All good if we allow for a parameter to start with `-`
-                                continue;
-                            }
-
-                            if parameter.allow_negative_numbers
-                                && value_without_hyphen.parse::<f64>().is_ok()
-                            {
-                                // All good if we allow for negative numbers
-                                continue;
-                            }
-
-                            // If we don't allow for hyphens, then consider this value
-                            // is actually another argument, so exit this loop
+                        if !allow_value_check_hyphen(&parameter, value) {
+                            // If the value is not allowed, then consider it
+                            // is another argument, so exit this loop
                             current_arg = Some(value.to_string());
                             break;
                         }

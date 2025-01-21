@@ -274,24 +274,21 @@ impl BuiltinCommand for CdCommand {
 
     fn autocompletion(&self) -> CommandAutocompletion {
         // TODO: convert to partial
-        CommandAutocompletion::Full
+        CommandAutocompletion::Partial
     }
 
     fn autocomplete(
         &self,
         comp_cword: usize,
         argv: Vec<String>,
-        _parameter: Option<String>,
+        parameter: Option<String>,
     ) -> Result<(), ()> {
-        if comp_cword > 0 {
+        // We only have the work directory to autocomplete
+        if parameter.unwrap_or_default() != "workdir" {
             return Ok(());
         }
 
-        let repo = if !argv.is_empty() {
-            argv[0].clone()
-        } else {
-            "".to_string()
-        };
+        let repo = argv.get(comp_cword).map_or("", String::as_str).to_string();
 
         // Figure out if this is a path, so we can avoid the expensive repository search
         let path_only = repo.starts_with('/')
