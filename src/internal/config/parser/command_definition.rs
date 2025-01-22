@@ -1686,6 +1686,12 @@ impl SyntaxOptArg {
                     has_multi,
                     self.group_occurrences,
                 );
+
+                // TODO: for Path, FilePath and RepoPath, we should
+                // add a conversion of the value to an actual path and
+                // erroring out in case of issue, so that we allow all
+                // underlying command to take advantage of those types
+                // without having to handle parsing themselves
             }
             SyntaxOptArgType::Integer => {
                 extract_value_to_typed::<i64>(

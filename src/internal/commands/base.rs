@@ -822,6 +822,7 @@ impl Command {
                 return Ok(None);
             }
 
+            // TODO: add type to autocomplete with repositories too?
             if arg_type == SyntaxOptArgType::Path {
                 path_auto_complete(&comp_value, false)
                     .iter()
