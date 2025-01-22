@@ -623,7 +623,7 @@ impl Command {
             syntax.parameters.iter().find(|param| param.is_positional()),
             argv.get(comp_cword),
         ) {
-            (Some(param), Some(value)) if allow_value_check_hyphen(&param, &value) => {
+            (Some(param), Some(value)) if allow_value_check_hyphen(param, value) => {
                 ArgparserAutocompleteState::ValueAndParameters(param.clone())
             }
             (Some(param), None) => ArgparserAutocompleteState::ValueAndParameters(param.clone()),
@@ -641,11 +641,7 @@ impl Command {
         // of values that have been passed (according to the configuration
         // of the parameter); if a given argument does not have a value,
         // consider it is a positional (if any).
-        let args = argv
-            .iter()
-            .take(comp_cword)
-            .map(|arg| arg.clone())
-            .collect::<Vec<_>>();
+        let args = argv.iter().take(comp_cword).cloned().collect::<Vec<_>>();
         let mut current_arg = args.first().cloned();
         let mut current_idx = 0;
 
@@ -761,7 +757,7 @@ impl Command {
                     };
 
                     if let Some(ref value) = value {
-                        if !allow_value_check_hyphen(&parameter, value) {
+                        if !allow_value_check_hyphen(parameter, value) {
                             // If the value is not allowed, then consider it
                             // is another argument, so exit this loop
                             current_arg = Some(value.to_string());
@@ -797,8 +793,7 @@ impl Command {
             parameters
                 .iter()
                 .filter(|param| !param.is_positional())
-                .map(|param| param.all_names())
-                .flatten()
+                .flat_map(|param| param.all_names())
                 .filter(|name| name.starts_with(&comp_value))
                 .sorted()
                 .for_each(|name| {
@@ -827,17 +822,14 @@ impl Command {
                 return Ok(None);
             }
 
-            match arg_type {
-                SyntaxOptArgType::Path => {
-                    path_auto_complete(&comp_value, false)
-                        .iter()
-                        .for_each(|s| println!("{}", s));
+            if arg_type == SyntaxOptArgType::Path {
+                path_auto_complete(&comp_value, false)
+                    .iter()
+                    .for_each(|s| println!("{}", s));
 
-                    // We offered path autocompletions, no need to delegate
-                    // to the underlying command
-                    return Ok(None);
-                }
-                _ => {}
+                // We offered path autocompletions, no need to delegate
+                // to the underlying command
+                return Ok(None);
             }
 
             Ok(Some(param.name()))

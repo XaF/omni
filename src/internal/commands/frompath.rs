@@ -1234,7 +1234,10 @@ mod tests {
             let details = details.unwrap();
             assert_eq!(details.category, None);
             assert_eq!(details.help, None);
-            assert!(!details.autocompletion);
+            assert!(matches!(
+                details.autocompletion,
+                CommandAutocompletion::Null
+            ));
             assert_eq!(details.syntax, None);
             assert!(!details.sync_update);
         }
@@ -2717,7 +2720,10 @@ mod tests {
                 Some(vec!["test cat".to_string(), "more cat".to_string()])
             );
             assert_eq!(details.help, Some("test help\nmore help".to_string()));
-            assert!(details.autocompletion);
+            assert!(matches!(
+                details.autocompletion,
+                CommandAutocompletion::Full
+            ));
             assert!(details.argparser);
             assert!(!details.sync_update);
             assert!(details.syntax.is_some(), "Syntax is not present");

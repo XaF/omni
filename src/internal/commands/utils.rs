@@ -229,7 +229,7 @@ pub fn path_auto_complete(value: &str, include_repositories: bool) -> BTreeSet<S
     // Get all the repositories per org that match the value
     if include_repositories && !path_only {
         let add_space = if Shell::current().is_fish() { " " } else { "" };
-        for match_value in ORG_LOADER.complete(&value) {
+        for match_value in ORG_LOADER.complete(value) {
             completions.insert(format!("{}{}", match_value, add_space));
         }
     }
