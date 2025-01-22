@@ -620,7 +620,7 @@ pub fn mise_env(tool: &str, version: &str) -> Result<(String, String), UpError> 
     let installs_prefix = PathBuf::from(mise_path()).join("installs");
     let location = location.strip_prefix(installs_prefix).map_err(|_| {
         UpError::Exec(format!(
-            "mise where for {} {} returned invalid location: {}",
+            "mise env for {} {} returned invalid location: {}",
             tool, version, location_str,
         ))
     })?;
