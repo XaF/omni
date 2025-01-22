@@ -823,14 +823,15 @@ impl ConfigErrorKind {
 pub enum ParseArgsErrorKind {
     ParserBuildError(String),
     ArgumentParsingError(clap::Error),
+    InvalidValue(String),
 }
 
 impl ParseArgsErrorKind {
     #[cfg(test)]
     pub fn simple(&self) -> String {
         match self {
-            ParseArgsErrorKind::ParserBuildError(e) => e.clone(),
-            ParseArgsErrorKind::ArgumentParsingError(e) => {
+            Self::ParserBuildError(e) => e.clone(),
+            Self::ArgumentParsingError(e) => {
                 // Return the first block until the first empty line
                 let err_str = e
                     .to_string()
@@ -842,6 +843,7 @@ impl ParseArgsErrorKind {
                 let err_str = err_str.trim_start_matches("error: ");
                 err_str.to_string()
             }
+            Self::InvalidValue(e) => e.clone(),
         }
     }
 }
@@ -849,13 +851,11 @@ impl ParseArgsErrorKind {
 impl PartialEq for ParseArgsErrorKind {
     fn eq(&self, other: &Self) -> bool {
         match (self, other) {
-            (ParseArgsErrorKind::ParserBuildError(a), ParseArgsErrorKind::ParserBuildError(b)) => {
-                a == b
+            (Self::ParserBuildError(a), Self::ParserBuildError(b)) => a == b,
+            (Self::ArgumentParsingError(a), Self::ArgumentParsingError(b)) => {
+                a.to_string() == b.to_string()
             }
-            (
-                ParseArgsErrorKind::ArgumentParsingError(a),
-                ParseArgsErrorKind::ArgumentParsingError(b),
-            ) => a.to_string() == b.to_string(),
+            (Self::InvalidValue(a), Self::InvalidValue(b)) => a == b,
             _ => false,
         }
     }
@@ -864,8 +864,9 @@ impl PartialEq for ParseArgsErrorKind {
 impl fmt::Display for ParseArgsErrorKind {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            ParseArgsErrorKind::ParserBuildError(e) => write!(f, "{}", e),
-            ParseArgsErrorKind::ArgumentParsingError(e) => write!(f, "{}", e),
+            Self::ParserBuildError(e) => write!(f, "{}", e),
+            Self::ArgumentParsingError(e) => write!(f, "{}", e),
+            Self::InvalidValue(e) => write!(f, "{}", e),
         }
     }
 }

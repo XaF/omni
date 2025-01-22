@@ -387,6 +387,10 @@ impl Command {
                 omni_print!(format!("{} {}", "error building parser:".red(), err));
                 exit(1);
             }
+            Err(ParseArgsErrorKind::InvalidValue(err)) => {
+                omni_print!(format!("{} {}", "error parsing arguments:".red(), err));
+                exit(1);
+            }
             Err(ParseArgsErrorKind::ArgumentParsingError(err)) => {
                 let clap_rich_error = err.render().ansi().to_string();
                 let clap_rich_error = strip_colors_if_needed(&clap_rich_error);
@@ -822,9 +826,14 @@ impl Command {
                 return Ok(None);
             }
 
-            // TODO: add type to autocomplete with repositories too?
-            if arg_type == SyntaxOptArgType::Path {
-                path_auto_complete(&comp_value, false)
+            if matches!(
+                arg_type,
+                SyntaxOptArgType::DirPath | SyntaxOptArgType::FilePath | SyntaxOptArgType::RepoPath
+            ) {
+                let include_repositories = matches!(arg_type, SyntaxOptArgType::RepoPath);
+                let include_files = matches!(arg_type, SyntaxOptArgType::FilePath);
+
+                path_auto_complete(&comp_value, include_repositories, include_files)
                     .iter()
                     .for_each(|s| println!("{}", s));
 

@@ -285,7 +285,7 @@ impl BuiltinCommand for CdCommand {
         if parameter.unwrap_or_default() == "workdir" {
             let repo = argv.get(comp_cword).map_or("", String::as_str);
 
-            path_auto_complete(repo, true)
+            path_auto_complete(repo, true, false)
                 .iter()
                 .for_each(|s| println!("{}", s));
         }

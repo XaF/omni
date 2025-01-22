@@ -19,6 +19,7 @@ use crate::internal::config::ConfigScope;
 use crate::internal::config::ConfigSource;
 use crate::internal::config::ConfigValue;
 use crate::internal::user_interface::colors::StringColor;
+use crate::internal::ORG_LOADER;
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct CommandDefinition {
@@ -726,11 +727,11 @@ impl CommandSyntax {
         let mut args = BTreeMap::new();
 
         for param in &self.parameters {
-            param.add_to_args(&mut args, &matches, None);
+            param.add_to_args(&mut args, &matches, None)?;
         }
 
         for group in &self.groups {
-            group.add_to_args(&mut args, &matches, &self.parameters);
+            group.add_to_args(&mut args, &matches, &self.parameters)?;
         }
 
         Ok(args)
@@ -1616,7 +1617,9 @@ impl SyntaxOptArg {
         // Set the action, i.e. how the values are stored when the selfeter is used
         match &self.arg_type() {
             SyntaxOptArgType::String
-            | SyntaxOptArgType::Path
+            | SyntaxOptArgType::DirPath
+            | SyntaxOptArgType::FilePath
+            | SyntaxOptArgType::RepoPath
             | SyntaxOptArgType::Integer
             | SyntaxOptArgType::Float
             | SyntaxOptArgType::Boolean
@@ -1663,7 +1666,7 @@ impl SyntaxOptArg {
         args: &mut BTreeMap<String, ParseArgsValue>,
         matches: &clap::ArgMatches,
         override_dest: Option<String>,
-    ) {
+    ) -> Result<(), ParseArgsErrorKind> {
         let dest = self.dest();
 
         // has_occurrences is when an argument can take multiple values
@@ -1678,7 +1681,11 @@ impl SyntaxOptArg {
 
         let terminal_type = &arg_type.terminal_type();
         match terminal_type {
-            SyntaxOptArgType::String | SyntaxOptArgType::Path | SyntaxOptArgType::Enum(_) => {
+            SyntaxOptArgType::String
+            | SyntaxOptArgType::DirPath
+            | SyntaxOptArgType::FilePath
+            | SyntaxOptArgType::RepoPath
+            | SyntaxOptArgType::Enum(_) => {
                 extract_value_to_typed::<String>(
                     matches,
                     &dest,
@@ -1689,15 +1696,13 @@ impl SyntaxOptArg {
                     has_multi,
                     self.group_occurrences,
                     match terminal_type {
-                        // TODO: for Path, FilePath and RepoPath, we should
-                        // add a conversion of the value to an actual path and
-                        // erroring out in case of issue, so that we allow all
-                        // underlying command to take advantage of those types
-                        // without having to handle parsing themselves
-                        SyntaxOptArgType::Path => Some(transform_path),
+                        SyntaxOptArgType::DirPath | SyntaxOptArgType::FilePath => {
+                            Some(transform_path)
+                        }
+                        SyntaxOptArgType::RepoPath => Some(transform_repo_path),
                         _ => None,
                     },
-                );
+                )?;
             }
             SyntaxOptArgType::Integer => {
                 extract_value_to_typed::<i64>(
@@ -1710,7 +1715,7 @@ impl SyntaxOptArg {
                     has_multi,
                     self.group_occurrences,
                     None,
-                );
+                )?;
             }
             SyntaxOptArgType::Counter => {
                 extract_value_to_typed::<u8>(
@@ -1723,7 +1728,7 @@ impl SyntaxOptArg {
                     has_multi,
                     self.group_occurrences,
                     None,
-                );
+                )?;
             }
             SyntaxOptArgType::Float => {
                 extract_value_to_typed::<f64>(
@@ -1736,7 +1741,7 @@ impl SyntaxOptArg {
                     has_multi,
                     self.group_occurrences,
                     None,
-                );
+                )?;
             }
             SyntaxOptArgType::Boolean | SyntaxOptArgType::Flag => {
                 let default = Some(
@@ -1754,28 +1759,48 @@ impl SyntaxOptArg {
                     has_multi,
                     self.group_occurrences,
                     None,
-                );
+                )?;
             }
             SyntaxOptArgType::Array(_) => unreachable!("array type should be handled differently"),
-        };
+        }
+
+        Ok(())
     }
 }
 
 /// If the provided value is a path, we want to return the
 /// absolute path no matter what was passed (relative, absolute, ~, etc.)
-fn transform_path(value: Option<String>) -> Option<String> {
-    let value = value?;
+fn transform_path(value: Option<String>) -> Result<Option<String>, ParseArgsErrorKind> {
+    let value = match value {
+        Some(value) => value,
+        None => return Ok(None),
+    };
+
     let path = abs_path(&value);
-    Some(path.to_string_lossy().to_string())
+    Ok(Some(path.to_string_lossy().to_string()))
 }
 
 /// If the provided value is a path to a repository, we want to return the
 /// absolute path no matter what was passed (relative, absolute, ~, etc.)
-fn transform_repo_path(value: Option<String>) -> Option<String> {
-    // TODO: implement
-    let value = value?;
-    let path = abs_path(&value);
-    Some(path.to_string_lossy().to_string())
+fn transform_repo_path(value: Option<String>) -> Result<Option<String>, ParseArgsErrorKind> {
+    let value = match value {
+        Some(value) => value,
+        None => return Ok(None),
+    };
+
+    if let Ok(path) = std::fs::canonicalize(&value) {
+        return Ok(Some(path.to_string_lossy().to_string()));
+    }
+
+    let only_worktree = false;
+    if let Some(path) = ORG_LOADER.find_repo(&value, only_worktree, false, true) {
+        return Ok(Some(path.to_string_lossy().to_string()));
+    }
+
+    Err(ParseArgsErrorKind::InvalidValue(format!(
+        "invalid repository path: {}",
+        value
+    )))
 }
 
 trait ParserExtractType<T> {
@@ -1863,8 +1888,9 @@ fn extract_value_to_typed<T>(
     has_occurrences: bool,
     has_multi: bool,
     group_occurrences: bool,
-    transform_fn: Option<fn(Option<T>) -> Option<T>>,
-) where
+    transform_fn: Option<fn(Option<T>) -> Result<Option<T>, ParseArgsErrorKind>>,
+) -> Result<(), ParseArgsErrorKind>
+where
     T: Into<ParseArgsValue> + Clone + Send + Sync + FromStr + 'static,
     ParseArgsValue: From<Option<T>>,
     ParseArgsValue: From<Vec<Option<T>>>,
@@ -1877,8 +1903,13 @@ fn extract_value_to_typed<T>(
         let value = if let Some(transform_fn) = transform_fn {
             value
                 .into_iter()
-                .map(|values| values.into_iter().map(transform_fn).collect())
-                .collect()
+                .map(|values| {
+                    values
+                        .into_iter()
+                        .map(transform_fn)
+                        .collect::<Result<_, _>>()
+                })
+                .collect::<Result<_, _>>()?
         } else {
             value
         };
@@ -1886,7 +1917,10 @@ fn extract_value_to_typed<T>(
     } else if has_multi || has_occurrences {
         let value = <Vec<Option<T>> as ParserExtractType<T>>::extract(matches, dest, default);
         let value = if let Some(transform_fn) = transform_fn {
-            value.into_iter().map(transform_fn).collect()
+            value
+                .into_iter()
+                .map(transform_fn)
+                .collect::<Result<_, _>>()?
         } else {
             value
         };
@@ -1894,7 +1928,7 @@ fn extract_value_to_typed<T>(
     } else {
         let value = <Option<T> as ParserExtractType<T>>::extract(matches, dest, default);
         let value = if let Some(transform_fn) = transform_fn {
-            transform_fn(value)
+            transform_fn(value)?
         } else {
             value
         };
@@ -1902,6 +1936,8 @@ fn extract_value_to_typed<T>(
     };
 
     args.insert(arg_dest, value);
+
+    Ok(())
 }
 
 pub fn parse_arg_name(arg_name: &str) -> (Vec<String>, SyntaxOptArgType, Vec<String>, bool) {
@@ -2207,8 +2243,12 @@ pub enum SyntaxOptArgType {
     #[default]
     #[serde(rename = "str", alias = "string")]
     String,
-    #[serde(rename = "path")]
-    Path,
+    #[serde(rename = "dir", alias = "dirpath", alias = "path")]
+    DirPath,
+    #[serde(rename = "file", alias = "filepath")]
+    FilePath,
+    #[serde(rename = "repopath")]
+    RepoPath,
     #[serde(rename = "int", alias = "integer")]
     Integer,
     #[serde(rename = "float")]
@@ -2239,7 +2279,9 @@ impl SyntaxOptArgType {
     pub fn to_str(&self) -> &'static str {
         match self {
             Self::String => "string",
-            Self::Path => "path",
+            Self::DirPath => "dir",
+            Self::FilePath => "file",
+            Self::RepoPath => "repopath",
             Self::Integer => "int",
             Self::Float => "float",
             Self::Boolean => "bool",
@@ -2248,7 +2290,9 @@ impl SyntaxOptArgType {
             Self::Enum(_) => "enum",
             Self::Array(inner) => match **inner {
                 Self::String => "array/str",
-                Self::Path => "array/path",
+                Self::DirPath => "array/dir",
+                Self::FilePath => "array/file",
+                Self::RepoPath => "array/repopath",
                 Self::Integer => "array/int",
                 Self::Float => "array/float",
                 Self::Boolean => "array/bool",
@@ -2329,7 +2373,9 @@ impl SyntaxOptArgType {
             "flag" => Self::Flag,
             "count" | "counter" => Self::Counter,
             "str" | "string" => Self::String,
-            "path" => Self::Path,
+            "dir" | "path" | "dirpath" => Self::DirPath,
+            "file" | "filepath" => Self::FilePath,
+            "repopath" => Self::RepoPath,
             "enum" => Self::Enum(vec![]),
             _ => {
                 // If the string is in format array/enum(xx, yy, zz) or enum(xx, yy, zz) or (xx, yy, zz)
@@ -2646,20 +2692,20 @@ impl SyntaxGroup {
         args: &mut BTreeMap<String, ParseArgsValue>,
         matches: &clap::ArgMatches,
         parameters: &[SyntaxOptArg],
-    ) {
+    ) -> Result<(), ParseArgsErrorKind> {
         let dest = self.dest();
 
         let param_id = match matches.get_one::<clap::Id>(&dest) {
             Some(param_id) => param_id.to_string(),
-            None => return,
+            None => return Ok(()),
         };
 
         let param = match parameters.iter().find(|param| *param.dest() == param_id) {
             Some(param) => param,
-            None => return,
+            None => return Ok(()),
         };
 
-        param.add_to_args(args, matches, Some(dest.clone()));
+        param.add_to_args(args, matches, Some(dest.clone()))
     }
 }
 

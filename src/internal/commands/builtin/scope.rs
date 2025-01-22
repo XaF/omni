@@ -250,7 +250,7 @@ impl BuiltinCommand for ScopeCommand {
         match comp_cword.cmp(&0) {
             std::cmp::Ordering::Equal => {
                 let repo = argv.first().map_or("", String::as_str);
-                path_auto_complete(repo, true)
+                path_auto_complete(repo, true, false)
                     .iter()
                     .for_each(|s| println!("{}", s));
                 Ok(())

@@ -169,7 +169,11 @@ pub fn file_auto_complete(p: String) -> Completions<String> {
     files
 }
 
-pub fn path_auto_complete(value: &str, include_repositories: bool) -> BTreeSet<String> {
+pub fn path_auto_complete(
+    value: &str,
+    include_repositories: bool,
+    include_files: bool,
+) -> BTreeSet<String> {
     // Figure out if this is a path, so we can avoid the
     // expensive repository search
     let path_only = value.starts_with('/')
@@ -199,29 +203,36 @@ pub fn path_auto_complete(value: &str, include_repositories: bool) -> BTreeSet<S
 
     if let Ok(files) = std::fs::read_dir(&list_dir) {
         for path in files.flatten() {
-            if path.path().is_dir() {
-                let path_buf;
-                let path_obj = path.path();
-                let path = if strip_path_prefix {
-                    path_obj.strip_prefix(&list_dir).unwrap()
-                } else if replace_home_prefix {
-                    if let Ok(path_obj) = path_obj.strip_prefix(user_home()) {
-                        path_buf = PathBuf::from("~").join(path_obj);
-                        path_buf.as_path()
-                    } else {
-                        path_obj.as_path()
-                    }
+            let is_dir = path.path().is_dir();
+            if !is_dir && !include_files {
+                continue;
+            }
+
+            let path_buf;
+            let path_obj = path.path();
+            let path = if strip_path_prefix {
+                path_obj.strip_prefix(&list_dir).unwrap()
+            } else if replace_home_prefix {
+                if let Ok(path_obj) = path_obj.strip_prefix(user_home()) {
+                    path_buf = PathBuf::from("~").join(path_obj);
+                    path_buf.as_path()
                 } else {
                     path_obj.as_path()
-                };
-
-                let path_str = path.to_string_lossy().to_string();
-                if !path_str.starts_with(value) {
-                    continue;
                 }
+            } else {
+                path_obj.as_path()
+            };
 
-                completions.insert(format!("{}/", path_str));
+            let path_str = path.to_string_lossy().to_string();
+            if !path_str.starts_with(value) {
+                continue;
             }
+
+            completions.insert(if is_dir {
+                format!("{}/", path_str)
+            } else {
+                path_str
+            });
         }
     }
 
