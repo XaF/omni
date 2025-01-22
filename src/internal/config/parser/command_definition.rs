@@ -1877,6 +1877,13 @@ impl<T: Into<ParseArgsValue> + Clone + FromStr + Send + Sync + 'static> ParserEx
     }
 }
 
+/// A function that can transform a value into another value of the same type
+type TransformFn<T> = fn(Option<T>) -> Result<Option<T>, ParseArgsErrorKind>;
+
+/// Extracts a value from the matches and inserts it into the args map
+/// The value is extracted based on the type of the argument and the number of values
+/// The value is then transformed if a transform function is provided
+/// The value is then inserted into the args map with the correct destination
 #[allow(clippy::too_many_arguments)]
 #[inline]
 fn extract_value_to_typed<T>(
@@ -1888,7 +1895,7 @@ fn extract_value_to_typed<T>(
     has_occurrences: bool,
     has_multi: bool,
     group_occurrences: bool,
-    transform_fn: Option<fn(Option<T>) -> Result<Option<T>, ParseArgsErrorKind>>,
+    transform_fn: Option<TransformFn<T>>,
 ) -> Result<(), ParseArgsErrorKind>
 where
     T: Into<ParseArgsValue> + Clone + Send + Sync + FromStr + 'static,
