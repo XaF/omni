@@ -249,7 +249,7 @@ impl BuiltinCommand for TidyCommand {
                         )
                         .to_string(),
                     ),
-                    arg_type: SyntaxOptArgType::Array(Box::new(SyntaxOptArgType::String)),
+                    arg_type: SyntaxOptArgType::Array(Box::new(SyntaxOptArgType::Path)),
                     ..Default::default()
                 },
                 SyntaxOptArg {

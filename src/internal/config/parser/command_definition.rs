@@ -1615,6 +1615,7 @@ impl SyntaxOptArg {
         // Set the action, i.e. how the values are stored when the selfeter is used
         match &self.arg_type() {
             SyntaxOptArgType::String
+            | SyntaxOptArgType::Path
             | SyntaxOptArgType::Integer
             | SyntaxOptArgType::Float
             | SyntaxOptArgType::Boolean
@@ -1674,7 +1675,7 @@ impl SyntaxOptArg {
         let has_multi = self.arg_type().is_array();
 
         match &self.arg_type().terminal_type() {
-            SyntaxOptArgType::String | SyntaxOptArgType::Enum(_) => {
+            SyntaxOptArgType::String | SyntaxOptArgType::Path | SyntaxOptArgType::Enum(_) => {
                 extract_value_to_typed::<String>(
                     matches,
                     &dest,
@@ -2155,6 +2156,8 @@ pub enum SyntaxOptArgType {
     #[default]
     #[serde(rename = "str", alias = "string")]
     String,
+    #[serde(rename = "path")]
+    Path,
     #[serde(rename = "int", alias = "integer")]
     Integer,
     #[serde(rename = "float")]
@@ -2185,6 +2188,7 @@ impl SyntaxOptArgType {
     pub fn to_str(&self) -> &'static str {
         match self {
             Self::String => "string",
+            Self::Path => "path",
             Self::Integer => "int",
             Self::Float => "float",
             Self::Boolean => "bool",
@@ -2193,6 +2197,7 @@ impl SyntaxOptArgType {
             Self::Enum(_) => "enum",
             Self::Array(inner) => match **inner {
                 Self::String => "array/str",
+                Self::Path => "array/path",
                 Self::Integer => "array/int",
                 Self::Float => "array/float",
                 Self::Boolean => "array/bool",
@@ -2273,6 +2278,7 @@ impl SyntaxOptArgType {
             "flag" => Self::Flag,
             "count" | "counter" => Self::Counter,
             "str" | "string" => Self::String,
+            "path" => Self::Path,
             "enum" => Self::Enum(vec![]),
             _ => {
                 // If the string is in format array/enum(xx, yy, zz) or enum(xx, yy, zz) or (xx, yy, zz)
@@ -2295,7 +2301,17 @@ impl SyntaxOptArgType {
                     Self::Enum(values)
                 } else {
                     error_handler
-                        .with_expected("int, float, bool, flag, count, str, enum or array/<type>")
+                        .with_expected(vec![
+                            "int",
+                            "float",
+                            "bool",
+                            "flag",
+                            "count",
+                            "str",
+                            "path",
+                            "enum",
+                            "array/<type>",
+                        ])
                         .with_actual(value)
                         .error(ConfigErrorKind::InvalidValue);
 

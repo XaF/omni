@@ -7,12 +7,14 @@ use crate::internal::commands::fromconfig::ConfigCommand;
 use crate::internal::commands::frommakefile::MakefileCommand;
 use crate::internal::commands::frompath::PathCommand;
 use crate::internal::commands::utils::abs_or_rel_path;
+use crate::internal::commands::utils::path_auto_complete;
 use crate::internal::commands::void::VoidCommand;
 use crate::internal::config::parser::ParseArgsErrorKind;
 use crate::internal::config::parser::ParseArgsValue;
 use crate::internal::config::CommandSyntax;
 use crate::internal::config::SyntaxGroup;
 use crate::internal::config::SyntaxOptArg;
+use crate::internal::config::SyntaxOptArgType;
 use crate::internal::dynenv::update_dynamic_env_for_command;
 use crate::internal::user_interface::colors::strip_colors;
 use crate::internal::user_interface::colors::strip_colors_if_needed;
@@ -622,9 +624,9 @@ impl Command {
             argv.get(comp_cword),
         ) {
             (Some(param), Some(value)) if allow_value_check_hyphen(&param, &value) => {
-                ArgparserAutocompleteState::ValueAndParameters(param.name())
+                ArgparserAutocompleteState::ValueAndParameters(param.clone())
             }
-            (Some(param), None) => ArgparserAutocompleteState::ValueAndParameters(param.name()),
+            (Some(param), None) => ArgparserAutocompleteState::ValueAndParameters(param.clone()),
             (_, _) => ArgparserAutocompleteState::Parameters,
         };
         let mut parameters = syntax.parameters.clone();
@@ -654,7 +656,7 @@ impl Command {
                 // If we have `--`, find the parameter with the 'last' flag, if any
                 match last_parameter {
                     Some(ref parameter) => {
-                        state = ArgparserAutocompleteState::Value(parameter.name());
+                        state = ArgparserAutocompleteState::Value(parameter.clone());
                     }
                     None => {
                         // We do not need to autocomplete anything if we are
@@ -769,9 +771,9 @@ impl Command {
 
                     if current_idx == comp_cword || value.is_none() {
                         state = if value_idx > min_values {
-                            ArgparserAutocompleteState::ValueAndParameters(parameter.name())
+                            ArgparserAutocompleteState::ValueAndParameters(parameter.clone())
                         } else {
-                            ArgparserAutocompleteState::Value(parameter.name())
+                            ArgparserAutocompleteState::Value(parameter.clone())
                         };
                         break 'loop_args;
                     }
@@ -786,10 +788,12 @@ impl Command {
             }
         }
 
+        // Grab the value to be completed, or default to the empty string
+        let comp_value = argv.get(comp_cword).cloned().unwrap_or_default();
+
         if state.complete_parameters() {
             // If we get here, go over the parameters still in the list, filter
             // them using the value to be completed, and return their names
-            let comp_value = argv.get(comp_cword).cloned().unwrap_or_default();
             parameters
                 .iter()
                 .filter(|param| !param.is_positional())
@@ -807,9 +811,39 @@ impl Command {
             }
         }
 
-        // TODO: add support for autocompleting paths value types
+        if let Some(param) = state.parameter() {
+            let arg_type = param.arg_type().terminal_type().clone();
 
-        Ok(state.parameter())
+            if let Some(possible_values) = arg_type.possible_values() {
+                possible_values
+                    .iter()
+                    .filter(|val| val.starts_with(&comp_value))
+                    .for_each(|val| {
+                        println!("{}", val);
+                    });
+
+                // We've done the whole completion for that parameter, no
+                // need to delegate to the underlying command
+                return Ok(None);
+            }
+
+            match arg_type {
+                SyntaxOptArgType::Path => {
+                    path_auto_complete(&comp_value, false)
+                        .iter()
+                        .for_each(|s| println!("{}", s));
+
+                    // We offered path autocompletions, no need to delegate
+                    // to the underlying command
+                    return Ok(None);
+                }
+                _ => {}
+            }
+
+            Ok(Some(param.name()))
+        } else {
+            Ok(None)
+        }
     }
 
     fn command_type_sort_order(&self) -> usize {
@@ -936,8 +970,8 @@ fn check_parameter_conflicts(
 #[derive(Debug)]
 enum ArgparserAutocompleteState {
     Parameters,
-    ValueAndParameters(String),
-    Value(String),
+    ValueAndParameters(SyntaxOptArg),
+    Value(SyntaxOptArg),
 }
 
 impl ArgparserAutocompleteState {
@@ -945,7 +979,7 @@ impl ArgparserAutocompleteState {
         matches!(self, Self::Parameters | Self::ValueAndParameters(_))
     }
 
-    fn parameter(&self) -> Option<String> {
+    fn parameter(&self) -> Option<SyntaxOptArg> {
         match self {
             Self::Value(param) | Self::ValueAndParameters(param) => Some(param.clone()),
             _ => None,
@@ -982,10 +1016,10 @@ impl serde::Serialize for CommandAutocompletion {
         S: serde::Serializer,
     {
         match self {
-            CommandAutocompletion::Null => serializer.serialize_bool(false),
-            CommandAutocompletion::Partial => serializer.serialize_str("partial"),
-            CommandAutocompletion::Full => serializer.serialize_bool(true),
-            CommandAutocompletion::Argparser => {
+            Self::Null => serializer.serialize_bool(false),
+            Self::Partial => serializer.serialize_str("partial"),
+            Self::Full => serializer.serialize_bool(true),
+            Self::Argparser => {
                 unreachable!("Argparser autocompletion is not serializable")
             }
         }
@@ -1006,25 +1040,25 @@ impl From<CommandAutocompletion> for bool {
 impl From<bool> for CommandAutocompletion {
     fn from(value: bool) -> Self {
         if value {
-            CommandAutocompletion::Full
+            Self::Full
         } else {
-            CommandAutocompletion::Null
+            Self::Null
         }
     }
 }
 
 impl From<String> for CommandAutocompletion {
     fn from(value: String) -> Self {
-        CommandAutocompletion::from(value.as_str())
+        Self::from(value.as_str())
     }
 }
 
 impl From<&str> for CommandAutocompletion {
     fn from(value: &str) -> Self {
         match value.to_lowercase().as_str() {
-            "full" | "true" | "1" | "on" | "enable" | "enabled" => CommandAutocompletion::Full,
-            "partial" => CommandAutocompletion::Partial,
-            _ => CommandAutocompletion::Null,
+            "full" | "true" | "1" | "on" | "enable" | "enabled" => Self::Full,
+            "partial" => Self::Partial,
+            _ => Self::Null,
         }
     }
 }

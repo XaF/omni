@@ -4,13 +4,13 @@ use std::process::exit;
 use crate::internal::commands::base::BuiltinCommand;
 use crate::internal::commands::base::CommandAutocompletion;
 use crate::internal::commands::command_loader;
+use crate::internal::commands::utils::path_auto_complete;
 use crate::internal::commands::Command;
 use crate::internal::config::parser::ParseArgsValue;
 use crate::internal::config::CommandSyntax;
 use crate::internal::config::SyntaxOptArg;
 use crate::internal::config::SyntaxOptArgType;
 use crate::internal::env::current_dir;
-use crate::internal::env::Shell;
 use crate::internal::git::ORG_LOADER;
 use crate::internal::user_interface::StringColor;
 use crate::omni_error;
@@ -61,51 +61,6 @@ pub struct ScopeCommand {}
 impl ScopeCommand {
     pub fn new() -> Self {
         Self {}
-    }
-
-    fn autocomplete_repo(&self, repo: String) -> Result<(), ()> {
-        // Figure out if this is a path, so we can avoid the expensive repository search
-        let path_only = repo.starts_with('/')
-            || repo.starts_with('.')
-            || repo.starts_with("~/")
-            || repo == "~"
-            || repo == "-";
-
-        // Print all the completion related to path completion
-        let (list_dir, strip_path_prefix) = if let Some(slash) = repo.rfind('/') {
-            (repo[..slash].to_string(), false)
-        } else {
-            (".".to_string(), true)
-        };
-        if let Ok(files) = std::fs::read_dir(&list_dir) {
-            for path in files.flatten() {
-                if path.path().is_dir() {
-                    let path_obj = path.path();
-                    let path = if strip_path_prefix {
-                        path_obj.strip_prefix(&list_dir).unwrap()
-                    } else {
-                        path_obj.as_path()
-                    };
-                    let path_str = path.to_str().unwrap();
-
-                    if !path_str.starts_with(repo.as_str()) {
-                        continue;
-                    }
-
-                    println!("{}/", path.display());
-                }
-            }
-        }
-
-        // Get all the repositories per org
-        if !path_only {
-            let add_space = if Shell::current().is_fish() { " " } else { "" };
-            for match_repo in ORG_LOADER.complete(&repo) {
-                println!("{}{}", match_repo, add_space);
-            }
-        }
-
-        Ok(())
     }
 
     fn switch_scope(
@@ -294,12 +249,11 @@ impl BuiltinCommand for ScopeCommand {
     ) -> Result<(), ()> {
         match comp_cword.cmp(&0) {
             std::cmp::Ordering::Equal => {
-                let repo = if !argv.is_empty() {
-                    argv[0].clone()
-                } else {
-                    "".to_string()
-                };
-                self.autocomplete_repo(repo)
+                let repo = argv.get(0).map_or("", String::as_str);
+                path_auto_complete(repo, true)
+                    .iter()
+                    .for_each(|s| println!("{}", s));
+                Ok(())
             }
             std::cmp::Ordering::Greater => {
                 if argv.is_empty() {
