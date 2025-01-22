@@ -514,6 +514,38 @@ impl MiseLsOutput {
     fn has_version(&self, version: &str) -> bool {
         self.versions.iter().any(|v| v.version == version)
     }
+
+    fn normalized_plugin_name(&self) -> Result<String, UpError> {
+        let installs_prefix = PathBuf::from(mise_path()).join("installs");
+
+        // Find one version that has an install_path and use that as the normalized plugin name
+        self.versions
+            .iter()
+            .find_map(|v| {
+                v.install_path.as_ref().and_then(|install_path| {
+                    let install_path = Path::new(install_path);
+
+                    // Remove mise_path from the location; error if the location
+                    // does not start with mise_path
+                    let location = install_path.strip_prefix(&installs_prefix).ok()?;
+
+                    // Remove the version from the location
+                    let location = location.parent()?;
+
+                    // If we get here, return the tool name, which should be the only
+                    // remaining part of the location, as a string
+                    Some(location.to_string_lossy().to_string())
+                })
+            })
+            .map_or_else(
+                || {
+                    Err(UpError::Exec(
+                        "mise ls does not have any install path".to_string(),
+                    ))
+                },
+                Ok,
+            )
+    }
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -521,7 +553,7 @@ struct MiseLsVersion {
     version: String,
     requested_version: Option<String>,
     source: Option<MiseLsVersionSource>,
-    // install_path: String,
+    install_path: Option<String>,
     // symlinked_to: Option<String>,
 }
 
@@ -530,60 +562,6 @@ struct MiseLsVersionSource {
     #[serde(rename = "type")]
     version_type: String,
     path: PathBuf,
-}
-
-pub fn mise_where(tool: &str, version: &str) -> Result<String, UpError> {
-    let mut command = mise_sync_command();
-    command.arg("where");
-    command.arg(tool);
-    command.arg(version);
-
-    let output = command.output().map_err(|err| {
-        UpError::Exec(format!(
-            "failed to run mise where for {} {}: {}",
-            tool, version, err
-        ))
-    })?;
-
-    if !output.status.success() {
-        return Err(UpError::Exec(format!(
-            "failed to run mise where for {} {}: {}",
-            tool,
-            version,
-            String::from_utf8_lossy(&output.stderr)
-        )));
-    }
-
-    let stdout = String::from_utf8(output.stdout).map_err(|err| {
-        UpError::Exec(format!(
-            "failed to read mise where output for {} {}: {}",
-            tool, version, err
-        ))
-    })?;
-    let location_str = stdout.trim();
-    let location = Path::new(location_str);
-
-    // Remove mise_path from the location; error if the location
-    // does not start with mise_path
-    let installs_prefix = PathBuf::from(mise_path()).join("installs");
-    let location = location.strip_prefix(installs_prefix).map_err(|_| {
-        UpError::Exec(format!(
-            "mise where for {} {} returned invalid location: {}",
-            tool, version, location_str
-        ))
-    })?;
-
-    // Remove the version from the location
-    let location = location.parent().ok_or_else(|| {
-        UpError::Exec(format!(
-            "mise where for {} {} does not contain tool name: {}",
-            tool, version, location_str
-        ))
-    })?;
-
-    // If we get here, return the tool name, which should be the only
-    // remaining part of the location, as a string
-    Ok(location.to_string_lossy().to_string())
 }
 
 pub fn mise_env(tool: &str, version: &str) -> Result<(String, String), UpError> {
@@ -1110,7 +1088,9 @@ impl FullyQualifiedToolName {
     pub fn normalized_plugin_name(&self) -> Result<String, UpError> {
         self.normalized_plugin_name
             .get_or_try_init(|| {
-                let normalized_name = mise_where(self.fully_qualified_plugin_name(), "latest")?;
+                let normalized_name =
+                    list_mise_installed_versions(self.fully_qualified_plugin_name())?
+                        .normalized_plugin_name()?;
                 Ok(normalized_name)
             })
             .cloned()
