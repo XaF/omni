@@ -254,7 +254,7 @@ jobs:
             --signature ${{ env.BUILD_FILENAME }}-keyless.sig \
             --certificate ${{ env.BUILD_FILENAME }}-keyless.pem \
             --certificate-oidc-issuer https://token.actions.githubusercontent.com \
-            --certificate-identity-regexp 'https://github.com/XaF/omni/.*' \
+            --certificate-identity-regexp 'https://github.com/[Xx]a[Ff]/omni/.*' \
             ${{ env.BUILD_FILENAME }}.tar.gz
 
       - name: Unarchive the artifact
