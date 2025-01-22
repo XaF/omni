@@ -8,6 +8,7 @@ use serde::Deserialize;
 use serde::Serialize;
 
 use crate::internal::cache::utils as cache_utils;
+use crate::internal::commands::utils::abs_path;
 use crate::internal::commands::utils::str_to_bool;
 use crate::internal::commands::HelpCommand;
 use crate::internal::config::parser::ConfigErrorHandler;
@@ -1672,9 +1673,11 @@ impl SyntaxOptArg {
             .is_some_and(|num_values| num_values.is_many());
 
         // has_multi is when an argument can be called multiple times
-        let has_multi = self.arg_type().is_array();
+        let arg_type = self.arg_type();
+        let has_multi = arg_type.is_array();
 
-        match &self.arg_type().terminal_type() {
+        let terminal_type = &arg_type.terminal_type();
+        match terminal_type {
             SyntaxOptArgType::String | SyntaxOptArgType::Path | SyntaxOptArgType::Enum(_) => {
                 extract_value_to_typed::<String>(
                     matches,
@@ -1685,13 +1688,16 @@ impl SyntaxOptArg {
                     has_occurrences,
                     has_multi,
                     self.group_occurrences,
+                    match terminal_type {
+                        // TODO: for Path, FilePath and RepoPath, we should
+                        // add a conversion of the value to an actual path and
+                        // erroring out in case of issue, so that we allow all
+                        // underlying command to take advantage of those types
+                        // without having to handle parsing themselves
+                        SyntaxOptArgType::Path => Some(transform_path),
+                        _ => None,
+                    },
                 );
-
-                // TODO: for Path, FilePath and RepoPath, we should
-                // add a conversion of the value to an actual path and
-                // erroring out in case of issue, so that we allow all
-                // underlying command to take advantage of those types
-                // without having to handle parsing themselves
             }
             SyntaxOptArgType::Integer => {
                 extract_value_to_typed::<i64>(
@@ -1703,6 +1709,7 @@ impl SyntaxOptArg {
                     has_occurrences,
                     has_multi,
                     self.group_occurrences,
+                    None,
                 );
             }
             SyntaxOptArgType::Counter => {
@@ -1715,6 +1722,7 @@ impl SyntaxOptArg {
                     has_occurrences,
                     has_multi,
                     self.group_occurrences,
+                    None,
                 );
             }
             SyntaxOptArgType::Float => {
@@ -1727,6 +1735,7 @@ impl SyntaxOptArg {
                     has_occurrences,
                     has_multi,
                     self.group_occurrences,
+                    None,
                 );
             }
             SyntaxOptArgType::Boolean | SyntaxOptArgType::Flag => {
@@ -1744,11 +1753,29 @@ impl SyntaxOptArg {
                     has_occurrences,
                     has_multi,
                     self.group_occurrences,
+                    None,
                 );
             }
             SyntaxOptArgType::Array(_) => unreachable!("array type should be handled differently"),
         };
     }
+}
+
+/// If the provided value is a path, we want to return the
+/// absolute path no matter what was passed (relative, absolute, ~, etc.)
+fn transform_path(value: Option<String>) -> Option<String> {
+    let value = value?;
+    let path = abs_path(&value);
+    Some(path.to_string_lossy().to_string())
+}
+
+/// If the provided value is a path to a repository, we want to return the
+/// absolute path no matter what was passed (relative, absolute, ~, etc.)
+fn transform_repo_path(value: Option<String>) -> Option<String> {
+    // TODO: implement
+    let value = value?;
+    let path = abs_path(&value);
+    Some(path.to_string_lossy().to_string())
 }
 
 trait ParserExtractType<T> {
@@ -1836,8 +1863,8 @@ fn extract_value_to_typed<T>(
     has_occurrences: bool,
     has_multi: bool,
     group_occurrences: bool,
+    transform_fn: Option<fn(Option<T>) -> Option<T>>,
 ) where
-    // W: ParserExtractType<T>,
     T: Into<ParseArgsValue> + Clone + Send + Sync + FromStr + 'static,
     ParseArgsValue: From<Option<T>>,
     ParseArgsValue: From<Vec<Option<T>>>,
@@ -1847,12 +1874,30 @@ fn extract_value_to_typed<T>(
 
     let value = if has_occurrences && has_multi && group_occurrences {
         let value = <Vec<Vec<Option<T>>> as ParserExtractType<T>>::extract(matches, dest, default);
+        let value = if let Some(transform_fn) = transform_fn {
+            value
+                .into_iter()
+                .map(|values| values.into_iter().map(transform_fn).collect())
+                .collect()
+        } else {
+            value
+        };
         ParseArgsValue::from(value)
     } else if has_multi || has_occurrences {
         let value = <Vec<Option<T>> as ParserExtractType<T>>::extract(matches, dest, default);
+        let value = if let Some(transform_fn) = transform_fn {
+            value.into_iter().map(transform_fn).collect()
+        } else {
+            value
+        };
         ParseArgsValue::from(value)
     } else {
         let value = <Option<T> as ParserExtractType<T>>::extract(matches, dest, default);
+        let value = if let Some(transform_fn) = transform_fn {
+            transform_fn(value)
+        } else {
+            value
+        };
         ParseArgsValue::from(value)
     };
 

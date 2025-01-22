@@ -5,7 +5,6 @@ use std::io::Write;
 use std::path::Path;
 use std::path::PathBuf;
 
-use normalize_path::NormalizePath;
 use path_clean::PathClean;
 use requestty::question::completions;
 use requestty::question::Completions;
@@ -21,7 +20,7 @@ pub fn split_name(string: &str, split_on: &str) -> Vec<String> {
 
 pub fn abs_or_rel_path(path: &str) -> String {
     let current_dir = std::env::current_dir().unwrap();
-    let path = std::path::PathBuf::from(&path).normalize();
+    let path = std::path::PathBuf::from(&path).clean();
     let path = if path.is_absolute() {
         path
     } else {
@@ -56,7 +55,7 @@ pub fn abs_path_from_path<T>(path: T, frompath: Option<T>) -> PathBuf
 where
     T: AsRef<Path>,
 {
-    let path = path.as_ref().normalize();
+    let path = path.as_ref();
 
     let absolute_path = if path.is_absolute() {
         path.to_path_buf()
