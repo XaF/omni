@@ -309,8 +309,15 @@ EOF
   if [ "$mise_where" = "true" ]; then
     # Identify the normalized path for the tool, this call does not
     # use the version as we just try to resolve the tool path
-    add_command mise where ${plugin_name} latest <<EOF
-${HOME}/.local/share/omni/mise/installs/${normalized_plugin_name}/7.8.9
+    add_command mise ls --installed --offline --json --quiet ${plugin_name} <<EOF
+[
+  {
+    "version": "7.8.9",
+    "install_path": "${HOME}/.local/share/omni/mise/installs/${normalized_plugin_name}/7.8.9",
+    "installed": true,
+    "active": false
+  }
+]
 EOF
   fi
 
