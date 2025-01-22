@@ -11,6 +11,7 @@ use crate::internal::commands::void::VoidCommand;
 use crate::internal::config::parser::ParseArgsErrorKind;
 use crate::internal::config::parser::ParseArgsValue;
 use crate::internal::config::CommandSyntax;
+use crate::internal::config::SyntaxGroup;
 use crate::internal::config::SyntaxOptArg;
 use crate::internal::dynenv::update_dynamic_env_for_command;
 use crate::internal::user_interface::colors::strip_colors;
@@ -730,68 +731,8 @@ impl Command {
                 parameters.retain(|param| param != parameter);
             }
 
-            // If the parameters has conflicting parameters, remove them
-            // from the list of parameters
-            for conflict in parameter.conflicts_with.iter() {
-                parameters.retain(|param| !param.all_names().iter().any(|name| name == conflict));
-            }
-
-            // The conflicts can be declared the other way around too, so go over
-            // the parameters removing any that conflicts with the current parameter
-            parameters.retain(|param| {
-                !param
-                    .conflicts_with
-                    .iter()
-                    .any(|conflict| parameter.all_names().iter().any(|name| name == conflict))
-            });
-
-            // TODO: improve this logic, even more as it does not cover
-            // the case of groups conflicting with groups, and parameters
-            // declaring conflicts with groups either
-            for group in syntax
-                .groups
-                .iter()
-                .filter(|group| !group.multiple || !group.conflicts_with.is_empty())
-                .filter(|group| {
-                    group.parameters.iter().any(|name| {
-                        parameter
-                            .all_names()
-                            .iter()
-                            .any(|param_name| param_name == name)
-                    })
-                })
-            {
-                if !group.multiple {
-                    // Remove all the other parameters in the group if this
-                    // group does not allow for multiple parameters
-                    let other_params = group
-                        .parameters
-                        .iter()
-                        .filter(|name| {
-                            parameter
-                                .all_names()
-                                .iter()
-                                .all(|param_name| param_name != *name)
-                        })
-                        .collect::<Vec<_>>();
-
-                    parameters.retain(|param| {
-                        !other_params.iter().any(|name| {
-                            param
-                                .all_names()
-                                .iter()
-                                .any(|param_name| param_name == *name)
-                        })
-                    });
-                }
-
-                parameters.retain(|param| {
-                    !group
-                        .conflicts_with
-                        .iter()
-                        .any(|conflict| param.all_names().iter().any(|name| name == conflict))
-                });
-            }
+            // Handle the conflicts between parameters
+            parameters.retain(|param| !check_parameter_conflicts(parameter, param, &syntax.groups));
 
             // Consume values as needed
             if parameter.takes_value() {
@@ -896,6 +837,100 @@ impl Command {
             _ => false,
         }
     }
+}
+
+#[inline]
+fn check_parameter_conflicts(
+    param1: &SyntaxOptArg,
+    param2: &SyntaxOptArg,
+    groups: &[SyntaxGroup],
+) -> bool {
+    // Get the groups for param1
+    let param1_groups = groups
+        .iter()
+        .filter(|group| {
+            group.parameters.iter().any(|name| {
+                param1
+                    .all_names()
+                    .iter()
+                    .any(|n| n.as_str() == name.as_str())
+            })
+        })
+        .collect::<Vec<_>>();
+    let param1_all = param1
+        .all_names()
+        .into_iter()
+        .chain(param1_groups.iter().map(|group| group.name.to_string()))
+        .collect::<Vec<_>>();
+
+    // Get the groups for param2
+    let param2_groups = groups
+        .iter()
+        .filter(|group| {
+            group.parameters.iter().any(|name| {
+                param2
+                    .all_names()
+                    .iter()
+                    .any(|n| n.as_str() == name.as_str())
+            })
+        })
+        .collect::<Vec<_>>();
+    let param2_all = param2
+        .all_names()
+        .into_iter()
+        .chain(param2_groups.iter().map(|group| group.name.to_string()))
+        .collect::<Vec<_>>();
+
+    // If param1 defines conflicts with param2 or any of its groups, return true
+    if param1
+        .conflicts_with
+        .iter()
+        .any(|name| param2_all.iter().any(|n| n == name))
+    {
+        return true;
+    }
+
+    // If param2 defines conflicts with param1 or any of its groups, return true
+    if param2
+        .conflicts_with
+        .iter()
+        .any(|name| param1_all.iter().any(|n| n == name))
+    {
+        return true;
+    }
+
+    // If param1 and param2 are in the same group, and that group does
+    // not allow multiple, return true
+    let common_groups = param1_groups
+        .iter()
+        .filter(|group| param2_groups.contains(group))
+        .collect::<Vec<_>>();
+    if common_groups.iter().any(|group| !group.multiple) {
+        return true;
+    }
+
+    // Check if any of the param1 groups conflicts with param2
+    if param1_groups.iter().any(|group| {
+        group
+            .conflicts_with
+            .iter()
+            .any(|name| param2_all.iter().any(|n| n == name))
+    }) {
+        return true;
+    }
+
+    // Check if any of the param2 groups conflicts with param1
+    if param2_groups.iter().any(|group| {
+        group
+            .conflicts_with
+            .iter()
+            .any(|name| param1_all.iter().any(|n| n == name))
+    }) {
+        return true;
+    }
+
+    // If we get here, there is no conflict
+    false
 }
 
 #[derive(Debug)]
