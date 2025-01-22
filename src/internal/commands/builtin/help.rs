@@ -200,7 +200,7 @@ impl BuiltinCommand for HelpCommand {
     }
 
     fn autocompletion(&self) -> CommandAutocompletion {
-        // TODO: convert to partial
+        // TODO: convert to partial so the autocompletion works for options too
         CommandAutocompletion::Full
     }
 

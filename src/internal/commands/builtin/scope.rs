@@ -177,6 +177,7 @@ impl BuiltinCommand for ScopeCommand {
                         .to_string(),
                     ),
                     required: true,
+                    arg_type: SyntaxOptArgType::RepoPath,
                     ..Default::default()
                 },
                 SyntaxOptArg {
@@ -237,7 +238,7 @@ impl BuiltinCommand for ScopeCommand {
     }
 
     fn autocompletion(&self) -> CommandAutocompletion {
-        // TODO: convert to partial
+        // TODO: convert to partial so the autocompletion work for options too
         CommandAutocompletion::Full
     }
 
