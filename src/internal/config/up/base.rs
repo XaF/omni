@@ -227,17 +227,13 @@ impl UpConfig {
 
         // Assign the version id to the workdir now that we have successfully set it up
         progress_handler.progress("associating workdir to environment".to_string());
-        let (new_env, assigned_environment) = match UpEnvironmentsCache::get().assign_environment(
-            &workdir_id,
-            options.commit_sha.clone(),
-            environment,
-        ) {
-            Ok((new_env, assigned_environment)) => (new_env, assigned_environment),
-            Err(err) => {
+        let (new_env, newly_assigned, assigned_environment) = UpEnvironmentsCache::get()
+            .assign_environment(&workdir_id, options.commit_sha.clone(), environment)
+            .map_err(|err| {
                 progress_handler.error_with_message(format!("failed to update cache: {}", err));
-                return Err(UpError::Cache(err.to_string()));
-            }
-        };
+                UpError::Cache(err.to_string())
+            })?;
+
         if assigned_environment.is_empty() {
             progress_handler.error_with_message("failed to assign environment".to_string());
             return Err(UpError::Cache("failed to assign environment".to_string()));
@@ -256,7 +252,11 @@ impl UpConfig {
             }
         }
 
-        progress_handler.success_with_message("done".light_green());
+        if newly_assigned {
+            progress_handler.success_with_message("done".light_green());
+        } else {
+            progress_handler.success_with_message("already up-to-date".light_black());
+        }
 
         Ok(())
     }

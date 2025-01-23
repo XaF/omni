@@ -71,8 +71,9 @@ impl UpEnvironmentsCache {
         workdir_id: &str,
         head_sha: Option<String>,
         environment: &mut UpEnvironment,
-    ) -> Result<(bool, String), CacheManagerError> {
-        let mut new_env = true;
+    ) -> Result<(bool, bool, String), CacheManagerError> {
+        let mut new_env: bool = true;
+        let mut replace_env: bool = true;
         let env_hash = environment.hash_string();
         let env_version_id = format!("{}%{}", workdir_id, env_hash);
         let cache_env_config = global_config().cache.environment;
@@ -105,7 +106,7 @@ impl UpEnvironmentsCache {
             }
 
             // Check if this is a new active environment for the work directory
-            let replace_env: bool = match tx.query_one::<String>(
+            replace_env = match tx.query_one::<String>(
                 include_str!("database/sql/up_environments_get_workdir_env.sql"),
                 params![&workdir_id],
             ) {
@@ -175,7 +176,7 @@ impl UpEnvironmentsCache {
             Ok(())
         })?;
 
-        Ok((new_env, env_version_id))
+        Ok((new_env, replace_env, env_version_id))
     }
 
     #[cfg(test)]
@@ -222,7 +223,7 @@ impl Hash for UpEnvironment {
 
 impl FromRow for UpEnvironment {
     fn from_row(row: &Row) -> Result<Self, CacheManagerError> {
-        let versions_json: String = row.get(0)?;
+        let versions_json: String = row.get("versions")?;
 
         let versions: Vec<UpVersion> = match serde_json::from_str(&versions_json) {
             Ok(versions) => versions,
@@ -232,16 +233,16 @@ impl FromRow for UpEnvironment {
             }
         };
 
-        let paths_json: String = row.get(1)?;
+        let paths_json: String = row.get("paths")?;
         let paths: Vec<PathBuf> = serde_json::from_str(&paths_json)?;
 
-        let env_vars_json: String = row.get(2)?;
+        let env_vars_json: String = row.get("env_vars")?;
         let env_vars: Vec<UpEnvVar> = serde_json::from_str(&env_vars_json)?;
 
-        let config_modtimes_json: String = row.get(3)?;
+        let config_modtimes_json: String = row.get("config_modtimes")?;
         let config_modtimes: BTreeMap<String, u64> = serde_json::from_str(&config_modtimes_json)?;
 
-        let config_hash: String = row.get(4)?;
+        let config_hash: String = row.get("config_hash")?;
 
         Ok(Self {
             versions,
@@ -541,10 +542,11 @@ mod tests {
                 assert!(cache.get_env(workdir_id).is_none());
 
                 // Assign environment
-                let (is_new, _env_id) = cache
+                let (is_new, newly_assigned, _env_id) = cache
                     .assign_environment(workdir_id, Some("test-sha".to_string()), &mut env)
                     .expect("Failed to assign environment");
                 assert!(is_new);
+                assert!(newly_assigned);
 
                 // Get environment and verify
                 let retrieved = cache
@@ -562,16 +564,18 @@ mod tests {
                 let mut env = UpEnvironment::new().init();
 
                 // Assign environment
-                let (is_new, _env_id) = cache
+                let (is_new, newly_assigned, _env_id) = cache
                     .assign_environment(workdir_id, Some("test-sha".to_string()), &mut env)
                     .expect("Failed to assign environment");
                 assert!(is_new);
+                assert!(newly_assigned);
 
                 // Assign environment again
-                let (is_new, _env_id) = cache
+                let (is_new, newly_assigned, _env_id) = cache
                     .assign_environment(workdir_id, Some("test-sha".to_string()), &mut env)
                     .expect("Failed to assign environment");
                 assert!(!is_new);
+                assert!(!newly_assigned);
             });
         }
 
@@ -586,7 +590,7 @@ mod tests {
                 assert!(cache.get_env(workdir_id).is_none());
 
                 // Assign environment
-                let (_is_new, _env_id) = cache
+                let (_is_new, _newly_assigned, _env_id) = cache
                     .assign_environment(workdir_id, Some("dumb".to_string()), &mut env)
                     .expect("Failed to assign environment");
 
@@ -615,7 +619,7 @@ mod tests {
                 assert!(cache.environment_ids().is_empty());
 
                 // Assign environment
-                cache
+                let (_is_new, _newly_assigned, _env_id) = cache
                     .assign_environment(workdir_id, None, &mut env)
                     .expect("Failed to assign environment");
 
@@ -633,16 +637,18 @@ mod tests {
                 let mut env = UpEnvironment::new().init();
 
                 // First assignment
-                let (is_new, env_id1) = cache
+                let (is_new, newly_assigned, env_id1) = cache
                     .assign_environment(workdir_id, Some("sha1".to_string()), &mut env)
                     .expect("Failed to assign environment");
                 assert!(is_new);
+                assert!(newly_assigned);
 
                 // Same environment, different SHA
-                let (is_new, env_id2) = cache
+                let (is_new, newly_assigned, env_id2) = cache
                     .assign_environment(workdir_id, Some("sha2".to_string()), &mut env)
                     .expect("Failed to assign environment");
                 assert!(!is_new);
+                assert!(!newly_assigned);
                 assert_eq!(env_id1, env_id2);
             });
         }
@@ -655,10 +661,11 @@ mod tests {
                 let mut env = UpEnvironment::new().init();
 
                 // Assign without SHA
-                let (is_new, _) = cache
+                let (is_new, newly_assigned, _env_id) = cache
                     .assign_environment(workdir_id, None, &mut env)
                     .expect("Failed to assign environment");
                 assert!(is_new);
+                assert!(newly_assigned);
 
                 // Verify environment exists
                 assert!(cache.get_env(workdir_id).is_some());
@@ -674,10 +681,11 @@ mod tests {
                 // Assign to multiple workdirs
                 let workdirs = ["workdir1", "workdir2", "workdir3"];
                 for workdir in workdirs {
-                    let (is_new, _) = cache
+                    let (is_new, newly_assigned, _env_id) = cache
                         .assign_environment(workdir, None, &mut env)
                         .expect("Failed to assign environment");
                     assert!(is_new);
+                    assert!(newly_assigned);
                 }
 
                 // Verify each workdir has environment
@@ -729,17 +737,19 @@ mod tests {
                 let mut env = UpEnvironment::new().init();
 
                 // Initial assignment
-                let (is_new, env_id1) = cache
+                let (is_new, newly_assigned, env_id1) = cache
                     .assign_environment(workdir_id, None, &mut env)
                     .expect("Failed to assign environment");
                 assert!(is_new);
+                assert!(newly_assigned);
 
                 // Modify environment
                 env.add_env_var("TEST_VAR", "test_value");
-                let (is_new, env_id2) = cache
+                let (is_new, newly_assigned, env_id2) = cache
                     .assign_environment(workdir_id, None, &mut env)
                     .expect("Failed to assign environment");
                 assert!(is_new);
+                assert!(newly_assigned);
                 assert_ne!(env_id1, env_id2);
 
                 // Verify modified environment

@@ -1,4 +1,5 @@
 SELECT
+    env_version_id,
     versions,
     paths,
     env_vars,
