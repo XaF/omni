@@ -71,8 +71,9 @@ impl UpEnvironmentsCache {
         workdir_id: &str,
         head_sha: Option<String>,
         environment: &mut UpEnvironment,
-    ) -> Result<(bool, String), CacheManagerError> {
-        let mut new_env = true;
+    ) -> Result<(bool, bool, String), CacheManagerError> {
+        let mut new_env: bool = true;
+        let mut replace_env: bool = true;
         let env_hash = environment.hash_string();
         let env_version_id = format!("{}%{}", workdir_id, env_hash);
         let cache_env_config = global_config().cache.environment;
@@ -105,7 +106,7 @@ impl UpEnvironmentsCache {
             }
 
             // Check if this is a new active environment for the work directory
-            let replace_env: bool = match tx.query_one::<String>(
+            replace_env = match tx.query_one::<String>(
                 include_str!("database/sql/up_environments_get_workdir_env.sql"),
                 params![&workdir_id],
             ) {
@@ -175,7 +176,7 @@ impl UpEnvironmentsCache {
             Ok(())
         })?;
 
-        Ok((new_env, env_version_id))
+        Ok((new_env, replace_env, env_version_id))
     }
 
     #[cfg(test)]
@@ -222,7 +223,7 @@ impl Hash for UpEnvironment {
 
 impl FromRow for UpEnvironment {
     fn from_row(row: &Row) -> Result<Self, CacheManagerError> {
-        let versions_json: String = row.get(0)?;
+        let versions_json: String = row.get("versions")?;
 
         let versions: Vec<UpVersion> = match serde_json::from_str(&versions_json) {
             Ok(versions) => versions,
@@ -232,16 +233,16 @@ impl FromRow for UpEnvironment {
             }
         };
 
-        let paths_json: String = row.get(1)?;
+        let paths_json: String = row.get("paths")?;
         let paths: Vec<PathBuf> = serde_json::from_str(&paths_json)?;
 
-        let env_vars_json: String = row.get(2)?;
+        let env_vars_json: String = row.get("env_vars")?;
         let env_vars: Vec<UpEnvVar> = serde_json::from_str(&env_vars_json)?;
 
-        let config_modtimes_json: String = row.get(3)?;
+        let config_modtimes_json: String = row.get("config_modtimes")?;
         let config_modtimes: BTreeMap<String, u64> = serde_json::from_str(&config_modtimes_json)?;
 
-        let config_hash: String = row.get(4)?;
+        let config_hash: String = row.get("config_hash")?;
 
         Ok(Self {
             versions,
