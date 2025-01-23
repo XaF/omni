@@ -52,6 +52,7 @@ use crate::internal::git::format_path_with_template;
 use crate::internal::git::package_path_from_git_url;
 use crate::internal::git::path_entry_config;
 use crate::internal::git::safe_git_url_parse;
+use crate::internal::git::GitRepoUpdater;
 use crate::internal::git::ORG_LOADER;
 use crate::internal::git_env;
 use crate::internal::git_env_fresh;
@@ -1084,17 +1085,12 @@ impl UpCommand {
             return true;
         }
 
-        let git_env = git_env(".");
-        let repo_id = match git_env.id() {
-            Some(repo_id) => repo_id,
-            None => {
-                omni_error!("Unable to get repository id");
-                exit(1);
-            }
+        let updater = match GitRepoUpdater::from_path(".") {
+            Some(updater) => updater,
+            None => return false,
         };
 
-        let config = config(".");
-        let updated = config.path_repo_updates.update(&repo_id);
+        let updated = updater.update(None).unwrap_or(false);
 
         if updated {
             flush_config(".");

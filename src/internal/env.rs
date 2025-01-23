@@ -838,9 +838,10 @@ impl WorkDirEnvByPath {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct WorkDirEnv {
     in_workdir: bool,
+    in_git: bool,
     root: Option<String>,
     id: OnceCell<Option<String>>,
     data_path: OnceCell<PathBuf>,
@@ -848,16 +849,12 @@ pub struct WorkDirEnv {
 
 impl WorkDirEnv {
     fn new(path: &str) -> Self {
-        let mut workdir_env = Self {
-            in_workdir: false,
-            root: None,
-            id: OnceCell::new(),
-            data_path: OnceCell::new(),
-        };
+        let mut workdir_env = Self::default();
 
         let git = git_env(path);
         if git.in_repo() {
             workdir_env.in_workdir = true;
+            workdir_env.in_git = true;
             workdir_env.root = git.root().map(|s| s.to_string());
         } else {
             // Start from `path` and go up until finding a `.omni/id` file
@@ -882,6 +879,10 @@ impl WorkDirEnv {
 
     pub fn in_workdir(&self) -> bool {
         self.in_workdir
+    }
+
+    pub fn in_git(&self) -> bool {
+        self.in_git
     }
 
     pub fn root(&self) -> Option<&str> {
@@ -947,13 +948,23 @@ impl WorkDirEnv {
     }
 
     pub fn id(&self) -> Option<String> {
-        match self.trust_id() {
-            Some(id) => match self.is_package() {
-                true => Some(format!("package#{}", id)),
-                false => Some(id),
-            },
-            None => None,
-        }
+        self.trust_id().map(|id| {
+            if self.is_package() {
+                format!("package#{}", id)
+            } else {
+                id
+            }
+        })
+    }
+
+    pub fn typed_id(&self) -> Option<String> {
+        self.trust_id().map(|id| {
+            if self.is_package() {
+                format!("package#{}", id)
+            } else {
+                format!("worktree#{}", id)
+            }
+        })
     }
 
     pub fn is_package(&self) -> bool {

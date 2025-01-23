@@ -19,6 +19,8 @@ use crate::internal::cache::OmniPathCache;
 use crate::internal::commands::base::Command;
 use crate::internal::commands::path::global_omnipath_entries;
 use crate::internal::config::global_config;
+use crate::internal::config::parser::PathEntryConfig;
+use crate::internal::config::parser::StringFilter;
 use crate::internal::config::up::utils::get_command_output;
 use crate::internal::config::up::utils::run_command_with_handler;
 use crate::internal::config::up::utils::PrintProgressHandler;
@@ -35,6 +37,7 @@ use crate::internal::git_env_flush_cache;
 use crate::internal::self_update;
 use crate::internal::user_interface::ensure_newline;
 use crate::internal::user_interface::StringColor;
+use crate::internal::workdir;
 use crate::omni_error;
 use crate::omni_info;
 use crate::omni_print;
@@ -492,13 +495,11 @@ pub fn update(options: &UpdateOptions) -> (HashSet<PathBuf>, HashSet<PathBuf>) {
                 continue;
             }
 
-            // Get the configuration for that repository
-            let (enabled, ref_type, ref_match) = config.path_repo_updates.update_config(&repo_id);
-
-            if !enabled {
-                // Skipping repository if updates are not enabled for it
-                continue;
-            }
+            // Get the updater for that repository
+            let updater = match GitRepoUpdater::from_path(&path) {
+                Some(updater) => updater,
+                None => continue,
+            };
 
             let desc = format!(
                 "Updating {} {}:",
@@ -523,13 +524,7 @@ pub fn update(options: &UpdateOptions) -> (HashSet<PathBuf>, HashSet<PathBuf>) {
             let _multiprogress = multiprogress.clone();
             let sender = sender.clone();
             threads.push(thread::spawn(move || {
-                let result = update_git_repo(
-                    &repo_id,
-                    ref_type,
-                    ref_match,
-                    Some(&repo_root.clone()),
-                    Some(progress_handler.as_ref()),
-                );
+                let result = updater.update(Some(progress_handler.as_ref()));
 
                 sender.send((repo_root, result)).unwrap();
             }));
@@ -574,7 +569,7 @@ pub fn update(options: &UpdateOptions) -> (HashSet<PathBuf>, HashSet<PathBuf>) {
                     location,
                 ));
 
-                let mut omni_up_command = std::process::Command::new(current_exe.clone());
+                let mut omni_up_command = StdCommand::new(current_exe.clone());
                 omni_up_command.arg("up");
                 omni_up_command.current_dir(repo_path);
                 omni_up_command.env_remove("OMNI_FORCE_UPDATE");
@@ -684,197 +679,369 @@ pub fn update(options: &UpdateOptions) -> (HashSet<PathBuf>, HashSet<PathBuf>) {
     (updated_paths, errored_paths)
 }
 
-pub fn update_git_repo(
-    repo_id: &str,
-    ref_type: String,
-    ref_match: Option<String>,
-    repo_path: Option<&str>,
-    progress_handler: Option<&dyn ProgressHandler>,
-) -> Result<bool, String> {
-    let desc = format!("Updating {}:", repo_id.italic().light_cyan()).light_blue();
-    let spinner;
-    let printer;
+pub enum GitRepoUpdaterRefType {
+    Branch,
+    Tag,
+}
 
-    let progress_handler: Box<&dyn ProgressHandler> =
-        if let Some(progress_handler) = progress_handler {
-            Box::new(progress_handler)
-        } else if shell_is_interactive() {
-            spinner = SpinnerProgressHandler::new(desc, None);
-            Box::new(&spinner)
-        } else {
-            printer = PrintProgressHandler::new(desc, None);
-            Box::new(&printer)
-        };
+impl GitRepoUpdaterRefType {
+    fn from_ref_type(ref_type: &str) -> Self {
+        match ref_type {
+            "branch" => Self::Branch,
+            "tag" => Self::Tag,
+            _ => unreachable!("invalid ref type: {}", ref_type),
+        }
+    }
 
-    match ref_type.as_str() {
-        "branch" => update_git_branch(repo_id, ref_match, repo_path, Some(*progress_handler)),
-        "tag" => update_git_tag(repo_id, ref_match, repo_path, Some(*progress_handler)),
-        _ => {
-            let msg = format!("invalid ref type: {}", ref_type);
-            progress_handler.error_with_message(msg.clone());
-            Err(msg)
+    fn update(
+        &self,
+        repo_path: &str,
+        ref_match: StringFilter,
+        progress_handler: &dyn ProgressHandler,
+    ) -> Result<bool, String> {
+        match self {
+            Self::Branch => update_git_branch(repo_path, ref_match, progress_handler),
+            Self::Tag => update_git_tag(repo_path, ref_match, progress_handler),
         }
     }
 }
 
-fn update_git_branch(
-    repo_id: &str,
-    ref_match: Option<String>,
-    repo_path: Option<&str>,
-    progress_handler: Option<&dyn ProgressHandler>,
-) -> Result<bool, String> {
-    let desc = format!("Updating {}:", repo_id.italic().light_cyan()).light_blue();
-    let spinner;
-    let printer;
+pub struct GitRepoUpdater {
+    repo_id: String,
+    path: String,
+    ref_type: GitRepoUpdaterRefType,
+    pattern: StringFilter,
+}
 
-    let progress_handler: Box<&dyn ProgressHandler> =
-        if let Some(progress_handler) = progress_handler {
-            Box::new(progress_handler)
-        } else if shell_is_interactive() {
-            spinner = SpinnerProgressHandler::new(desc, None);
-            Box::new(&spinner)
-        } else {
-            printer = PrintProgressHandler::new(desc, None);
-            Box::new(&printer)
+impl GitRepoUpdater {
+    pub fn from_path<T: AsRef<str>>(path: T) -> Option<Self> {
+        let config = global_config();
+        let prucfg = config.path_repo_updates;
+
+        let wd = workdir(path);
+        let wd_root = wd.root()?;
+        if !wd.in_git() {
+            return None;
+        }
+
+        let (clean_id, typed_id) = match (wd.trust_id(), wd.typed_id()) {
+            (Some(clean_id), Some(typed_id)) => (clean_id, typed_id),
+            _ => return None,
         };
 
+        for value in &prucfg.per_repo_config {
+            if value.workdir_id.matches(&clean_id) || value.workdir_id.matches(&typed_id) {
+                if !value.enabled {
+                    return None;
+                }
+
+                return Some(Self {
+                    repo_id: clean_id.to_string(),
+                    path: wd_root.to_string(),
+                    ref_type: GitRepoUpdaterRefType::from_ref_type(&value.ref_type),
+                    pattern: value.ref_match.clone(),
+                });
+            }
+        }
+
+        if !prucfg.enabled {
+            return None;
+        }
+
+        Some(Self {
+            repo_id: clean_id.to_string(),
+            path: wd_root.to_string(),
+            ref_type: GitRepoUpdaterRefType::from_ref_type(&prucfg.ref_type),
+            pattern: prucfg.ref_match.clone(),
+        })
+    }
+
+    pub fn update(&self, progress_handler: Option<&dyn ProgressHandler>) -> Result<bool, String> {
+        let desc = format!(
+            "Updating {} {}:",
+            if PathEntryConfig::from_path(&self.path).is_package() {
+                "📦"
+            } else {
+                "🌳"
+            },
+            self.repo_id.italic().light_cyan()
+        )
+        .light_blue();
+
+        let spinner;
+        let printer;
+
+        let progress_handler: Box<&dyn ProgressHandler> =
+            if let Some(progress_handler) = progress_handler {
+                Box::new(progress_handler)
+            } else if shell_is_interactive() {
+                spinner = SpinnerProgressHandler::new(desc, None);
+                Box::new(&spinner)
+            } else {
+                printer = PrintProgressHandler::new(desc, None);
+                Box::new(&printer)
+            };
+
+        self.ref_type
+            .update(&self.path, self.pattern.clone(), *progress_handler)
+    }
+}
+
+fn update_git_branch(
+    repo_path: &str,
+    ref_match: StringFilter,
+    progress_handler: &dyn ProgressHandler,
+) -> Result<bool, String> {
     progress_handler.progress("checking current branch".to_string());
 
     // Check if the currently checked out branch matches the one we want to update
-    let mut git_branch_cmd = std::process::Command::new("git");
-    if let Some(repo_path) = repo_path {
-        git_branch_cmd.current_dir(repo_path);
-    }
-    git_branch_cmd.arg("branch");
-    git_branch_cmd.arg("--show-current");
-    git_branch_cmd.stdout(std::process::Stdio::piped());
-    git_branch_cmd.stderr(std::process::Stdio::null());
+    let mut local_branch_cmd = StdCommand::new("git");
+    local_branch_cmd.arg("branch");
+    local_branch_cmd.arg("--show-current");
+    local_branch_cmd.current_dir(repo_path);
+    local_branch_cmd.stdout(std::process::Stdio::piped());
+    local_branch_cmd.stderr(std::process::Stdio::null());
 
-    let output = git_branch_cmd.output();
-    if output.is_err() || !output.as_ref().unwrap().status.success() {
+    let output = local_branch_cmd.output().map_err(|err| {
+        let msg = format!("git branch failed: {}", err);
+        progress_handler.error_with_message(msg.clone());
+        msg
+    })?;
+
+    if !output.status.success() {
         let msg = "git branch failed".to_string();
         progress_handler.error_with_message(msg.clone());
         return Err(msg);
     }
-    let git_branch = String::from_utf8(output.unwrap().stdout)
-        .unwrap()
-        .trim()
-        .to_string();
-    if git_branch.is_empty() {
+
+    let local_branch = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    if local_branch.is_empty() {
         let msg = "not currently checked out on a branch; skipping update".to_string();
         progress_handler.error_with_message(msg.clone());
         return Err(msg);
     }
 
-    let regex = match ref_match {
-        Some(ref ref_match) => regex::Regex::new(ref_match),
-        None => regex::Regex::new(".*"),
-    };
-    if regex.is_err() {
-        let msg = format!("invalid ref match: {}", ref_match.unwrap());
-        progress_handler.error_with_message(msg.clone());
-        return Err(msg);
-    }
-
-    if !regex.unwrap().is_match(&git_branch) {
+    if !ref_match.matches(&local_branch) {
         let msg = format!(
             "current branch {} does not match {}; skipping update",
-            git_branch,
-            ref_match.unwrap()
+            local_branch, ref_match,
         );
         progress_handler.error_with_message(msg.clone());
         return Err(msg);
     }
 
-    progress_handler.progress("pulling latest changes".to_string());
+    let is_package = PathEntryConfig::from_path(repo_path).is_package();
+    if is_package {
+        // If we're on a package, we can be aggressive on the update
+        // since we are the ones managing the repository
 
-    let mut git_pull_cmd = TokioCommand::new("git");
-    if let Some(repo_path) = repo_path {
-        git_pull_cmd.current_dir(repo_path);
-    }
-    git_pull_cmd.arg("pull");
-    git_pull_cmd.arg("--ff-only");
-    git_pull_cmd.stdout(std::process::Stdio::piped());
-    git_pull_cmd.stderr(std::process::Stdio::piped());
+        // Get the remote name we are tracking
+        progress_handler.progress("fetching remote".to_string());
+        let mut remote_name_cmd = StdCommand::new("git");
+        remote_name_cmd.arg("config");
+        remote_name_cmd.arg("--get");
+        remote_name_cmd.arg(format!("branch.{}.remote", local_branch));
+        remote_name_cmd.current_dir(repo_path);
+        remote_name_cmd.stdout(std::process::Stdio::piped());
+        remote_name_cmd.stderr(std::process::Stdio::null());
 
-    let output = get_command_output(&mut git_pull_cmd, RunConfig::new().with_askpass());
-
-    match output {
-        Err(err) => {
-            let msg = format!("git pull failed: {}", err);
+        let output = remote_name_cmd.output().map_err(|err| {
+            let msg = format!("git config failed: {}", err);
             progress_handler.error_with_message(msg.clone());
-            Err(msg)
+            msg
+        })?;
+        if !output.status.success() {
+            let msg = "failed to get remote name".to_string();
+            progress_handler.error_with_message(msg.clone());
+            return Err(msg);
         }
-        Ok(output) if !output.status.success() => {
+
+        let remote_name = String::from_utf8_lossy(&output.stdout).trim().to_string();
+        if remote_name.is_empty() {
+            let msg = "no remote name configured".to_string();
+            progress_handler.error_with_message(msg.clone());
+            return Err(msg);
+        }
+
+        // Get the remote branch we are tracking
+        progress_handler.progress("fetching remote branch".to_string());
+        let mut remote_branch_cmd = StdCommand::new("git");
+        remote_branch_cmd.arg("rev-parse");
+        remote_branch_cmd.arg("--abbrev-ref");
+        remote_branch_cmd.arg("@{u}");
+        remote_branch_cmd.current_dir(repo_path);
+        remote_branch_cmd.stdout(std::process::Stdio::piped());
+        remote_branch_cmd.stderr(std::process::Stdio::null());
+
+        let output = local_branch_cmd.output().map_err(|err| {
+            let msg = format!("git rev-parse failed: {}", err);
+            progress_handler.error_with_message(msg.clone());
+            msg
+        })?;
+        if !output.status.success() {
+            let msg = format!(
+                "failed to get remote branch for {}: {}",
+                local_branch,
+                String::from_utf8_lossy(&output.stderr)
+            );
+            progress_handler.error_with_message(msg.clone());
+            return Err(msg);
+        }
+
+        let remote_branch = String::from_utf8_lossy(&output.stdout).trim().to_string();
+        if remote_branch.is_empty() {
+            let msg = "no remote branch configured".to_string();
+            progress_handler.error_with_message(msg.clone());
+            return Err(msg);
+        }
+
+        let remote_branch_full = format!("{}/{}", remote_name, remote_branch);
+
+        // Fetch the updates for the remote branch
+        progress_handler.progress(format!("fetching updates for {}", remote_branch_full));
+        let mut git_fetch_cmd = TokioCommand::new("git");
+        git_fetch_cmd.arg("fetch");
+        git_fetch_cmd.arg(remote_name);
+        git_fetch_cmd.arg(remote_branch);
+        git_fetch_cmd.current_dir(repo_path);
+        git_fetch_cmd.stdout(std::process::Stdio::piped());
+        git_fetch_cmd.stderr(std::process::Stdio::piped());
+
+        let output = get_command_output(&mut git_fetch_cmd, RunConfig::new().with_askpass())
+            .map_err(|err| {
+                let msg = format!("git fetch failed: {}", err);
+                progress_handler.error_with_message(msg.clone());
+                msg
+            })?;
+        if !output.status.success() {
+            let msg = format!(
+                "failed to fetch updates for {}: {}",
+                remote_branch_full,
+                String::from_utf8_lossy(&output.stderr)
+            );
+            progress_handler.error_with_message(msg.clone());
+            return Err(msg);
+        }
+
+        // Check if there was any new contents fetched
+        let fetched_err = String::from_utf8_lossy(&output.stderr);
+
+        // Check if there is a line containing `-> <remote-branch>` in the error output
+        let remote_branch_updated = fetched_err
+            .lines()
+            .any(|line| line.contains(&format!("-> {}", remote_branch_full)));
+
+        if !remote_branch_updated {
+            progress_handler.success_with_message("already up to date".light_black());
+            return Ok(false);
+        }
+
+        // If there was new contents fetched, we need to reset to the local branch
+        // to the remote branch
+        progress_handler.progress("resetting local branch".to_string());
+        let mut git_reset_cmd = StdCommand::new("git");
+        git_reset_cmd.arg("reset");
+        git_reset_cmd.arg("--hard");
+        git_reset_cmd.arg(remote_branch_full);
+        git_reset_cmd.current_dir(repo_path);
+        git_reset_cmd.stdout(std::process::Stdio::null());
+        git_reset_cmd.stderr(std::process::Stdio::piped());
+
+        let output = git_reset_cmd.output().map_err(|err| {
+            let msg = format!("git reset failed: {}", err);
+            progress_handler.error_with_message(msg.clone());
+            msg
+        })?;
+        if !output.status.success() {
+            let msg = format!(
+                "failed to reset local branch: {}",
+                String::from_utf8_lossy(&output.stderr)
+            );
+            progress_handler.error_with_message(msg.clone());
+            return Err(msg);
+        }
+
+        // NOTE: do we want to `git clean -fdx` here?
+        //       the main concern is if we have a package generating
+        //       local binaries, we would be removing all of that
+
+        // Now we are done
+        progress_handler.success_with_message("updated".light_green());
+        git_env_flush_cache(repo_path);
+        Ok(true)
+    } else {
+        // If we are not on a package, we need to be more conservative as it could be
+        // that someone is working on this repository
+        progress_handler.progress("pulling latest changes".to_string());
+
+        let mut git_pull_cmd = TokioCommand::new("git");
+        git_pull_cmd.arg("pull");
+        git_pull_cmd.arg("--ff-only");
+        git_pull_cmd.current_dir(repo_path);
+        git_pull_cmd.stdout(std::process::Stdio::piped());
+        git_pull_cmd.stderr(std::process::Stdio::piped());
+
+        let output = get_command_output(&mut git_pull_cmd, RunConfig::new().with_askpass())
+            .map_err(|err| {
+                let msg = format!("git pull failed: {}", err);
+                progress_handler.error_with_message(msg.clone());
+                msg
+            })?;
+
+        if !output.status.success() {
             let msg = format!(
                 "git pull failed: {}",
-                String::from_utf8(output.stderr)
-                    .unwrap()
+                String::from_utf8_lossy(&output.stderr)
                     .replace('\n', " ")
                     .trim()
             );
             progress_handler.error_with_message(msg.clone());
-            Err(msg)
+            return Err(msg);
         }
-        Ok(output) => {
-            let output = String::from_utf8(output.stdout).unwrap().trim().to_string();
-            let output_lines = output.lines().collect::<Vec<&str>>();
 
-            if output_lines.len() == 1 && output_lines[0].contains("Already up to date.") {
-                progress_handler.success_with_message("already up to date".light_black());
-                Ok(false)
-            } else {
-                progress_handler.success_with_message("updated".light_green());
-                git_env_flush_cache(repo_path.unwrap_or("."));
-                Ok(true)
-            }
+        let contents = String::from_utf8_lossy(&output.stdout);
+        let lines = contents.lines().collect::<Vec<&str>>();
+
+        if lines.len() == 1 && lines[0].contains("Already up to date.") {
+            progress_handler.success_with_message("already up to date".light_black());
+            Ok(false)
+        } else {
+            progress_handler.success_with_message("updated".light_green());
+            git_env_flush_cache(repo_path);
+            Ok(true)
         }
     }
 }
 
 fn update_git_tag(
-    repo_id: &str,
-    ref_match: Option<String>,
-    repo_path: Option<&str>,
-    progress_handler: Option<&dyn ProgressHandler>,
+    repo_path: &str,
+    ref_match: StringFilter,
+    progress_handler: &dyn ProgressHandler,
 ) -> Result<bool, String> {
-    let desc = format!("Updating {}:", repo_id.italic().light_cyan()).light_blue();
-    let spinner;
-    let printer;
-
-    let progress_handler: Box<&dyn ProgressHandler> =
-        if let Some(progress_handler) = progress_handler {
-            Box::new(progress_handler)
-        } else if shell_is_interactive() {
-            spinner = SpinnerProgressHandler::new(desc, None);
-            Box::new(&spinner)
-        } else {
-            printer = PrintProgressHandler::new(desc, None);
-            Box::new(&printer)
-        };
-
     // Check if we're currently checked out on a branch
     progress_handler.progress("checking current branch".to_string());
-    let mut git_branch_cmd = std::process::Command::new("git");
-    if let Some(repo_path) = repo_path {
-        git_branch_cmd.current_dir(repo_path);
-    }
-    git_branch_cmd.arg("branch");
-    git_branch_cmd.arg("--show-current");
-    git_branch_cmd.stdout(std::process::Stdio::piped());
-    git_branch_cmd.stderr(std::process::Stdio::null());
 
-    let output = git_branch_cmd.output();
-    if output.is_err() || !output.as_ref().unwrap().status.success() {
+    let mut local_branch_cmd = StdCommand::new("git");
+    local_branch_cmd.arg("branch");
+    local_branch_cmd.arg("--show-current");
+    local_branch_cmd.current_dir(repo_path);
+    local_branch_cmd.stdout(std::process::Stdio::piped());
+    local_branch_cmd.stderr(std::process::Stdio::null());
+
+    let output = local_branch_cmd.output().map_err(|err| {
+        let msg = format!("git branch failed: {}", err);
+        progress_handler.error_with_message(msg.clone());
+        msg
+    })?;
+
+    if !output.status.success() {
         let msg = "git branch failed".to_string();
         progress_handler.error_with_message(msg.clone());
         return Err(msg);
     }
-    let git_branch = String::from_utf8(output.unwrap().stdout)
-        .unwrap()
-        .trim()
-        .to_string();
-    if !git_branch.is_empty() {
+
+    let local_branch = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    if !local_branch.is_empty() {
         let msg = "currently checked out on a branch; skipping update".to_string();
         progress_handler.error_with_message(msg.clone());
         return Err(msg);
@@ -882,27 +1049,28 @@ fn update_git_tag(
 
     // Check which tag we are currently checked out on, if any
     progress_handler.progress("checking current tag".to_string());
-    let mut git_tag_cmd = std::process::Command::new("git");
-    if let Some(repo_path) = repo_path {
-        git_tag_cmd.current_dir(repo_path);
-    }
+    let mut git_tag_cmd = StdCommand::new("git");
     git_tag_cmd.arg("tag");
     git_tag_cmd.arg("--points-at");
     git_tag_cmd.arg("HEAD");
     git_tag_cmd.arg("--sort=-creatordate");
+    git_tag_cmd.current_dir(repo_path);
     git_tag_cmd.stdout(std::process::Stdio::piped());
     git_tag_cmd.stderr(std::process::Stdio::null());
 
-    let output = git_tag_cmd.output();
-    if output.is_err() || !output.as_ref().unwrap().status.success() {
+    let output = git_tag_cmd.output().map_err(|err| {
+        let msg = format!("git tag failed: {}", err);
+        progress_handler.error_with_message(msg.clone());
+        msg
+    })?;
+
+    if !output.status.success() {
         let msg = "git tag failed".to_string();
         progress_handler.error_with_message(msg.clone());
         return Err(msg);
     }
-    let git_tag = String::from_utf8(output.unwrap().stdout)
-        .unwrap()
-        .trim()
-        .to_string();
+
+    let git_tag = String::from_utf8_lossy(&output.stdout).trim().to_string();
     if git_tag.is_empty() {
         let msg = "not currently checked out on a tag; skipping update".to_string();
         progress_handler.error_with_message(msg.clone());
@@ -915,25 +1083,28 @@ fn update_git_tag(
     // Fetch all the tags for the repository
     progress_handler.progress("fetching last tags".to_string());
     let mut git_fetch_tags_cmd = TokioCommand::new("git");
-    if let Some(repo_path) = repo_path {
-        git_fetch_tags_cmd.current_dir(repo_path);
-    }
     git_fetch_tags_cmd.arg("fetch");
     git_fetch_tags_cmd.arg("--tags");
+    git_fetch_tags_cmd.current_dir(repo_path);
     git_fetch_tags_cmd.stdout(std::process::Stdio::piped());
     git_fetch_tags_cmd.stderr(std::process::Stdio::piped());
 
-    let output = get_command_output(&mut git_fetch_tags_cmd, RunConfig::new().with_askpass());
-    if output.is_err() || !output.as_ref().unwrap().status.success() {
+    let output = get_command_output(&mut git_fetch_tags_cmd, RunConfig::new().with_askpass())
+        .map_err(|err| {
+            let msg = format!("git fetch failed: {}", err);
+            progress_handler.error_with_message(msg.clone());
+            msg
+        })?;
+
+    if !output.status.success() {
         let msg = "git fetch failed".to_string();
         progress_handler.error_with_message(msg.clone());
         return Err(msg);
     }
 
     // Check if there was any new tags fetched
-    let fetched = output.unwrap();
-    let fetched_out = String::from_utf8(fetched.stdout).unwrap();
-    let fetched_err = String::from_utf8(fetched.stderr).unwrap();
+    let fetched_out = String::from_utf8_lossy(&output.stdout);
+    let fetched_err = String::from_utf8_lossy(&output.stderr);
     if fetched_out.trim().is_empty() && fetched_err.trim().is_empty() {
         // If no new tags, nothing more to do!
         progress_handler.success_with_message("no new tags, nothing to do".light_black());
@@ -943,25 +1114,26 @@ fn update_git_tag(
     // If any new tags, we need to check what is the most recent tag
     // that matches the passed tag parameter (if any)
     progress_handler.progress("checking latest tag".to_string());
-    let mut git_tag_cmd = std::process::Command::new("git");
-    if let Some(repo_path) = repo_path {
-        git_tag_cmd.current_dir(repo_path);
-    }
+    let mut git_tag_cmd = StdCommand::new("git");
     git_tag_cmd.arg("tag");
     git_tag_cmd.arg("--sort=-creatordate");
+    git_tag_cmd.current_dir(repo_path);
     git_tag_cmd.stdout(std::process::Stdio::piped());
     git_tag_cmd.stderr(std::process::Stdio::null());
 
-    let output = git_tag_cmd.output();
-    if output.is_err() || !output.as_ref().unwrap().status.success() {
+    let output = git_tag_cmd.output().map_err(|err| {
+        let msg = format!("git tag failed: {}", err);
+        progress_handler.error_with_message(msg.clone());
+        msg
+    })?;
+
+    if !output.status.success() {
         let msg = "git tag failed".to_string();
         progress_handler.error_with_message(msg.clone());
         return Err(msg);
     }
-    let git_tags = String::from_utf8(output.unwrap().stdout)
-        .unwrap()
-        .trim()
-        .to_string();
+
+    let git_tags = String::from_utf8_lossy(&output.stdout).trim().to_string();
     if git_tags.is_empty() {
         let msg = "no tags found; skipping update".to_string();
         progress_handler.error_with_message(msg.clone());
@@ -970,24 +1142,14 @@ fn update_git_tag(
 
     // Find the most recent git tag in git_tags that matches
     // the passed tag parameter (if any)
-    let regex = match ref_match {
-        Some(ref ref_match) => regex::Regex::new(ref_match),
-        None => regex::Regex::new(".*"),
+    let target_tag = match git_tags.lines().find(|git_tag| ref_match.matches(git_tag)) {
+        Some(target_tag) => target_tag.trim().to_string(),
+        None => {
+            let msg = "no matching tags found; skipping update".to_string();
+            progress_handler.error_with_message(msg.clone());
+            return Err(msg);
+        }
     };
-    if regex.is_err() {
-        let msg = "invalid tag regex".to_string();
-        progress_handler.error_with_message(msg.clone());
-        return Err(msg);
-    }
-    let regex = regex.unwrap();
-
-    let target_tag = git_tags.lines().find(|git_tag| regex.is_match(git_tag));
-    if target_tag.is_none() {
-        let msg = "no matching tags found; skipping update".to_string();
-        progress_handler.error_with_message(msg.clone());
-        return Err(msg);
-    }
-    let target_tag = target_tag.unwrap().trim().to_string();
 
     // If the current tag is the same as the target tag, nothing more to do!
     if current_tag == target_tag {
@@ -997,25 +1159,28 @@ fn update_git_tag(
 
     // Check out the target tag
     progress_handler.progress(format!("checking out {}", target_tag.light_green()));
-    let mut git_checkout_cmd = std::process::Command::new("git");
-    if let Some(repo_path) = repo_path {
-        git_checkout_cmd.current_dir(repo_path);
-    }
+    let mut git_checkout_cmd = StdCommand::new("git");
     git_checkout_cmd.arg("checkout");
     git_checkout_cmd.arg("--no-guess");
     git_checkout_cmd.arg(&target_tag);
+    git_checkout_cmd.current_dir(repo_path);
     git_checkout_cmd.stdout(std::process::Stdio::null());
     git_checkout_cmd.stderr(std::process::Stdio::null());
 
-    let output = git_checkout_cmd.output();
-    if output.is_err() || !output.as_ref().unwrap().status.success() {
+    let output = git_checkout_cmd.output().map_err(|err| {
+        let msg = format!("git checkout failed: {}", err);
+        progress_handler.error_with_message(msg.clone());
+        msg
+    })?;
+
+    if !output.status.success() {
         let msg = "git checkout failed".to_string();
         progress_handler.error_with_message(msg.clone());
         return Err(msg);
     }
 
     progress_handler.success_with_message("updated".light_green());
-    git_env_flush_cache(repo_path.unwrap_or("."));
+    git_env_flush_cache(repo_path);
 
     Ok(true)
 }

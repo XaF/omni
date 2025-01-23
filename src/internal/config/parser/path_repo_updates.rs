@@ -1,14 +1,12 @@
-use std::collections::HashMap;
-
 use serde::Deserialize;
 use serde::Serialize;
 
 use crate::internal::config::parser::ConfigErrorHandler;
 use crate::internal::config::parser::ConfigErrorKind;
+use crate::internal::config::parser::StringFilter;
 use crate::internal::config::utils::parse_duration_or_default;
 use crate::internal::config::ConfigValue;
 use crate::internal::env::shell_is_interactive;
-use crate::internal::git::update_git_repo;
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct PathRepoUpdatesConfig {
@@ -21,10 +19,10 @@ pub struct PathRepoUpdatesConfig {
     pub background_updates_timeout: u64,
     pub interval: u64,
     pub ref_type: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub ref_match: Option<String>,
-    #[serde(skip_serializing_if = "HashMap::is_empty")]
-    pub per_repo_config: HashMap<String, PathRepoUpdatesPerRepoConfig>,
+    #[serde(skip_serializing_if = "StringFilter::is_default")]
+    pub ref_match: StringFilter,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub per_repo_config: Vec<PathRepoUpdatesPerRepoConfig>,
 }
 
 impl Default for PathRepoUpdatesConfig {
@@ -39,8 +37,8 @@ impl Default for PathRepoUpdatesConfig {
             background_updates_timeout: Self::DEFAULT_BACKGROUND_UPDATES_TIMEOUT,
             interval: Self::DEFAULT_INTERVAL,
             ref_type: Self::DEFAULT_REF_TYPE.to_string(),
-            ref_match: None,
-            per_repo_config: HashMap::new(),
+            ref_match: StringFilter::default(),
+            per_repo_config: Vec::new(),
         }
     }
 }
@@ -63,16 +61,33 @@ impl PathRepoUpdatesConfig {
             None => return Self::default(),
         };
 
-        let mut per_repo_config = HashMap::new();
+        let mut per_repo_config = Vec::new();
         if let Some(value) = config_value.get("per_repo_config") {
-            for (key, value) in value.as_table().unwrap() {
-                per_repo_config.insert(
-                    key.to_string(),
-                    PathRepoUpdatesPerRepoConfig::from_config_value(
+            // This can be either a table (old format) or a list (new format)
+            // In the case it's a table, we need to extract the repository id from the key
+
+            if let Some(array) = value.as_array() {
+                for (index, value) in array.iter().enumerate() {
+                    per_repo_config.push(PathRepoUpdatesPerRepoConfig::from_config_value(
+                        value,
+                        &error_handler.with_key("per_repo_config").with_index(index),
+                        None,
+                    ));
+                }
+            } else if let Some(table) = value.as_table() {
+                for (key, value) in table {
+                    per_repo_config.push(PathRepoUpdatesPerRepoConfig::from_config_value(
                         &value,
-                        &error_handler.with_key("per_repo_config").with_key(key),
-                    ),
-                );
+                        &error_handler.with_key("per_repo_config").with_key(&key),
+                        Some(key.to_string()),
+                    ));
+                }
+            } else {
+                error_handler
+                    .with_key("per_repo_config")
+                    .with_expected(vec!["array", "table"])
+                    .with_actual(value)
+                    .error(ConfigErrorKind::InvalidValueType);
             }
         };
 
@@ -150,21 +165,10 @@ impl PathRepoUpdatesConfig {
             Self::DEFAULT_REF_TYPE.to_string()
         };
 
-        let ref_match = if let Some(value) = config_value.get("ref_match") {
-            if let Some(value) = value.as_str() {
-                Some(value.to_string())
-            } else {
-                error_handler
-                    .with_key("ref_match")
-                    .with_expected("string")
-                    .with_actual(value)
-                    .error(ConfigErrorKind::InvalidValueType);
-
-                None
-            }
-        } else {
-            None
-        };
+        let ref_match = StringFilter::from_config_value(
+            config_value.get("ref_match"),
+            &error_handler.with_key("ref_match"),
+        );
 
         Self {
             enabled: config_value.get_as_bool_or_default(
@@ -191,27 +195,6 @@ impl PathRepoUpdatesConfig {
             ref_match,
             per_repo_config,
         }
-    }
-
-    pub fn update_config(&self, repo_id: &str) -> (bool, String, Option<String>) {
-        match self.per_repo_config.get(repo_id) {
-            Some(value) => (
-                value.enabled,
-                value.ref_type.clone(),
-                value.ref_match.clone(),
-            ),
-            None => (self.enabled, self.ref_type.clone(), self.ref_match.clone()),
-        }
-    }
-
-    pub fn update(&self, repo_id: &str) -> bool {
-        let (enabled, ref_type, ref_match) = self.update_config(repo_id);
-
-        if !enabled {
-            return false;
-        }
-
-        update_git_repo(repo_id, ref_type, ref_match, None, None).unwrap_or(false)
     }
 }
 
@@ -330,17 +313,29 @@ impl PathRepoUpdatesOnCommandNotFoundEnum {
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct PathRepoUpdatesPerRepoConfig {
+    pub workdir_id: StringFilter,
     pub enabled: bool,
     pub ref_type: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub ref_match: Option<String>,
+    #[serde(skip_serializing_if = "StringFilter::is_default")]
+    pub ref_match: StringFilter,
 }
 
 impl PathRepoUpdatesPerRepoConfig {
     pub(super) fn from_config_value(
         config_value: &ConfigValue,
         error_handler: &ConfigErrorHandler,
+        workdir_id: Option<String>,
     ) -> Self {
+        let workdir_id = if let Some(wdid) = workdir_id {
+            // If the workdir id is provided in the function call, use it as exact match
+            StringFilter::Exact(wdid)
+        } else {
+            StringFilter::from_config_value(
+                config_value.get("workdir_id"),
+                &error_handler.with_key("workdir_id"),
+            )
+        };
+
         let enabled = config_value.get_as_bool_or_default(
             "enabled",
             true,
@@ -353,10 +348,13 @@ impl PathRepoUpdatesPerRepoConfig {
             &error_handler.with_key("ref_type"),
         );
 
-        let ref_match =
-            config_value.get_as_str_or_none("ref_match", &error_handler.with_key("ref_match"));
+        let ref_match = StringFilter::from_config_value(
+            config_value.get("ref_match"),
+            &error_handler.with_key("ref_match"),
+        );
 
         Self {
+            workdir_id,
             enabled,
             ref_type,
             ref_match,
