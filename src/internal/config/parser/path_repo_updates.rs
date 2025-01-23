@@ -7,7 +7,6 @@ use crate::internal::config::parser::StringFilter;
 use crate::internal::config::utils::parse_duration_or_default;
 use crate::internal::config::ConfigValue;
 use crate::internal::env::shell_is_interactive;
-use crate::internal::git::GitRepoUpdater;
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct PathRepoUpdatesConfig {
@@ -195,13 +194,6 @@ impl PathRepoUpdatesConfig {
             ref_type,
             ref_match,
             per_repo_config,
-        }
-    }
-
-    pub fn update(&self, path: &str) -> bool {
-        match GitRepoUpdater::from_path(path) {
-            Some(updater) => updater.update(None).unwrap_or(false),
-            None => false,
         }
     }
 }

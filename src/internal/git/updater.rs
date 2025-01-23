@@ -757,7 +757,17 @@ impl GitRepoUpdater {
     }
 
     pub fn update(&self, progress_handler: Option<&dyn ProgressHandler>) -> Result<bool, String> {
-        let desc = format!("Updating {}:", self.repo_id.italic().light_cyan()).light_blue();
+        let desc = format!(
+            "Updating {} {}:",
+            if PathEntryConfig::from_path(&self.path).is_package() {
+                "📦"
+            } else {
+                "🌳"
+            },
+            self.repo_id.italic().light_cyan()
+        )
+        .light_blue();
+
         let spinner;
         let printer;
 
@@ -826,6 +836,7 @@ fn update_git_branch(
         // since we are the ones managing the repository
 
         // Get the remote name we are tracking
+        progress_handler.progress("fetching remote".to_string());
         let mut remote_name_cmd = StdCommand::new("git");
         remote_name_cmd.arg("config");
         remote_name_cmd.arg("--get");
@@ -853,6 +864,7 @@ fn update_git_branch(
         }
 
         // Get the remote branch we are tracking
+        progress_handler.progress("fetching remote branch".to_string());
         let mut remote_branch_cmd = StdCommand::new("git");
         remote_branch_cmd.arg("rev-parse");
         remote_branch_cmd.arg("--abbrev-ref");
@@ -886,6 +898,7 @@ fn update_git_branch(
         let remote_branch_full = format!("{}/{}", remote_name, remote_branch);
 
         // Fetch the updates for the remote branch
+        progress_handler.progress(format!("fetching updates for {}", remote_branch_full));
         let mut git_fetch_cmd = TokioCommand::new("git");
         git_fetch_cmd.arg("fetch");
         git_fetch_cmd.arg(remote_name);
@@ -925,6 +938,7 @@ fn update_git_branch(
 
         // If there was new contents fetched, we need to reset to the local branch
         // to the remote branch
+        progress_handler.progress("resetting local branch".to_string());
         let mut git_reset_cmd = StdCommand::new("git");
         git_reset_cmd.arg("reset");
         git_reset_cmd.arg("--hard");

@@ -52,6 +52,7 @@ use crate::internal::git::format_path_with_template;
 use crate::internal::git::package_path_from_git_url;
 use crate::internal::git::path_entry_config;
 use crate::internal::git::safe_git_url_parse;
+use crate::internal::git::GitRepoUpdater;
 use crate::internal::git::ORG_LOADER;
 use crate::internal::git_env;
 use crate::internal::git_env_fresh;
@@ -1084,8 +1085,12 @@ impl UpCommand {
             return true;
         }
 
-        let config = global_config();
-        let updated = config.path_repo_updates.update(".");
+        let updater = match GitRepoUpdater::from_path(".") {
+            Some(updater) => updater,
+            None => return false,
+        };
+
+        let updated = updater.update(None).unwrap_or(false);
 
         if updated {
             flush_config(".");
