@@ -14,6 +14,7 @@ use serde::Serialize;
 use serde_yaml::Value as YamlValue;
 use walkdir::WalkDir;
 
+use crate::internal::commands::base::CommandAutocompletion;
 use crate::internal::commands::path::omnipath;
 use crate::internal::commands::utils::str_to_bool;
 use crate::internal::commands::utils::SplitOnSeparators;
@@ -285,17 +286,25 @@ impl PathCommand {
         panic!("Something went wrong: {:?}", err);
     }
 
-    pub fn autocompletion(&self) -> bool {
+    pub fn autocompletion(&self) -> CommandAutocompletion {
         self.file_details()
             .map(|details| details.autocompletion)
-            .unwrap_or(false)
+            .unwrap_or(CommandAutocompletion::Null)
     }
 
-    pub fn autocomplete(&self, comp_cword: usize, argv: Vec<String>) -> Result<(), ()> {
+    pub fn autocomplete(
+        &self,
+        comp_cword: usize,
+        argv: Vec<String>,
+        parameter: Option<String>,
+    ) -> Result<(), ()> {
         let mut command = ProcessCommand::new(self.source.clone());
         command.arg("--complete");
         command.args(argv);
         command.env("COMP_CWORD", comp_cword.to_string());
+        if let Some(parameter) = parameter {
+            command.env("OMNI_COMP_VALUE_OF", parameter);
+        }
 
         match command.output() {
             Ok(output) => {
@@ -331,7 +340,7 @@ impl PathCommand {
 pub struct PathCommandFileDetails {
     category: Option<Vec<String>>,
     help: Option<String>,
-    autocompletion: bool,
+    autocompletion: CommandAutocompletion,
     syntax: Option<CommandSyntax>,
     tags: BTreeMap<String, String>,
     sync_update: bool,
@@ -358,21 +367,27 @@ impl<'de> PathCommandFileDetails {
         let mut value = YamlValue::deserialize(deserializer)?;
 
         if let YamlValue::Mapping(ref mut map) = value {
-            // Deserialize the booleans
-            let autocompletion = map
+            // Deserialize the autocompletion field, which can be either a
+            // boolean or a string representing a boolean or 'partial'
+            // The result is stored as a CommandAutocompletion enum
+            // where 'true' is Full, 'partial' is Partial, and 'false' is Null
+            let autocompletion: CommandAutocompletion = map
                 .remove(YamlValue::String("autocompletion".to_string()))
-                .is_some_and(|v| match bool::deserialize(v.clone()) {
-                    Ok(b) => b,
-                    Err(_err) => {
+                .map_or(CommandAutocompletion::Null, |v| match v {
+                    YamlValue::Bool(b) => CommandAutocompletion::from(b),
+                    YamlValue::String(s) => CommandAutocompletion::from(s),
+                    _ => {
                         error_handler
                             .with_key("autocompletion")
-                            .with_expected("boolean")
+                            .with_expected(vec!["boolean", "string"])
                             .with_actual(v.to_owned())
                             .error(ConfigErrorKind::InvalidValueType);
 
-                        false
+                        CommandAutocompletion::Null
                     }
                 });
+
+            // Deserialize the booleans
             let sync_update = map
                 .remove(YamlValue::String("sync_update".to_string()))
                 .is_some_and(|v| match bool::deserialize(v.clone()) {
@@ -867,7 +882,7 @@ impl PathCommandFileDetails {
         reader: &mut R,
         error_handler: &ConfigErrorHandler,
     ) -> Option<Self> {
-        let mut autocompletion = false;
+        let mut autocompletion = CommandAutocompletion::Null;
         let mut sync_update = false;
         let mut argparser = false;
         let mut category: Option<Vec<String>> = None;
@@ -962,7 +977,8 @@ impl PathCommandFileDetails {
                 ("autocompletion", None, value) => {
                     key_tracker.handle_seen_key(&key, lineno, false, error_handler);
                     autocompletion = match str_to_bool(&value) {
-                        Some(b) => b,
+                        Some(b) => CommandAutocompletion::from(b),
+                        None if value.to_lowercase() == "partial" => CommandAutocompletion::Partial,
                         None => {
                             error_handler
                                 .with_lineno(lineno)
@@ -971,7 +987,7 @@ impl PathCommandFileDetails {
                                 .with_expected("boolean")
                                 .error(ConfigErrorKind::MetadataHeaderInvalidValueType);
 
-                            false
+                            CommandAutocompletion::Null
                         }
                     };
                 }
@@ -1218,7 +1234,10 @@ mod tests {
             let details = details.unwrap();
             assert_eq!(details.category, None);
             assert_eq!(details.help, None);
-            assert!(!details.autocompletion);
+            assert!(matches!(
+                details.autocompletion,
+                CommandAutocompletion::Null
+            ));
             assert_eq!(details.syntax, None);
             assert!(!details.sync_update);
         }
@@ -1365,7 +1384,27 @@ mod tests {
             assert!(details.is_some());
             let details = details.unwrap();
 
-            assert!(details.autocompletion);
+            assert!(matches!(
+                details.autocompletion,
+                CommandAutocompletion::Full
+            ));
+        }
+
+        #[test]
+        fn autocompletion_partial() {
+            let mut reader = BufReader::new("# autocompletion: partial\n".as_bytes());
+            let details = PathCommandFileDetails::from_source_file_header(
+                &mut reader,
+                &ConfigErrorHandler::noop(),
+            );
+
+            assert!(details.is_some());
+            let details = details.unwrap();
+
+            assert!(matches!(
+                details.autocompletion,
+                CommandAutocompletion::Partial
+            ));
         }
 
         #[test]
@@ -1379,7 +1418,10 @@ mod tests {
             assert!(details.is_some());
             let details = details.unwrap();
 
-            assert!(!details.autocompletion);
+            assert!(matches!(
+                details.autocompletion,
+                CommandAutocompletion::Null
+            ));
         }
 
         #[test]
@@ -2678,7 +2720,10 @@ mod tests {
                 Some(vec!["test cat".to_string(), "more cat".to_string()])
             );
             assert_eq!(details.help, Some("test help\nmore help".to_string()));
-            assert!(details.autocompletion);
+            assert!(matches!(
+                details.autocompletion,
+                CommandAutocompletion::Full
+            ));
             assert!(details.argparser);
             assert!(!details.sync_update);
             assert!(details.syntax.is_some(), "Syntax is not present");

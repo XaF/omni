@@ -1,14 +1,20 @@
 use std::collections::BTreeMap;
 use std::process::exit;
 
+use itertools::Itertools;
+
 use crate::internal::commands::fromconfig::ConfigCommand;
 use crate::internal::commands::frommakefile::MakefileCommand;
 use crate::internal::commands::frompath::PathCommand;
 use crate::internal::commands::utils::abs_or_rel_path;
+use crate::internal::commands::utils::path_auto_complete;
 use crate::internal::commands::void::VoidCommand;
 use crate::internal::config::parser::ParseArgsErrorKind;
 use crate::internal::config::parser::ParseArgsValue;
 use crate::internal::config::CommandSyntax;
+use crate::internal::config::SyntaxGroup;
+use crate::internal::config::SyntaxOptArg;
+use crate::internal::config::SyntaxOptArgType;
 use crate::internal::dynenv::update_dynamic_env_for_command;
 use crate::internal::user_interface::colors::strip_colors;
 use crate::internal::user_interface::colors::strip_colors_if_needed;
@@ -37,8 +43,13 @@ pub trait BuiltinCommand: std::fmt::Debug + Send + Sync {
     fn syntax(&self) -> Option<CommandSyntax>;
     fn category(&self) -> Option<Vec<String>>;
     fn exec(&self, argv: Vec<String>);
-    fn autocompletion(&self) -> bool;
-    fn autocomplete(&self, comp_cword: usize, argv: Vec<String>) -> Result<(), ()>;
+    fn autocompletion(&self) -> CommandAutocompletion;
+    fn autocomplete(
+        &self,
+        comp_cword: usize,
+        argv: Vec<String>,
+        parameter: Option<String>,
+    ) -> Result<(), ()>;
 }
 
 #[derive(Debug)]
@@ -337,13 +348,7 @@ impl Command {
         argv: Vec<String>,
         called_as: Vec<String>,
     ) -> Option<BTreeMap<String, String>> {
-        let should_parse_args = match self {
-            Command::FromConfig(command) => command.argparser(),
-            Command::FromPath(command) => command.argparser(),
-            _ => false,
-        };
-
-        if !should_parse_args {
+        if !self.argparser() {
             return None;
         }
 
@@ -380,6 +385,10 @@ impl Command {
             Ok(parsed_args) => parsed_args,
             Err(ParseArgsErrorKind::ParserBuildError(err)) => {
                 omni_print!(format!("{} {}", "error building parser:".red(), err));
+                exit(1);
+            }
+            Err(ParseArgsErrorKind::InvalidValue(err)) => {
+                omni_print!(format!("{} {}", "error parsing arguments:".red(), err));
                 exit(1);
             }
             Err(ParseArgsErrorKind::ArgumentParsingError(err)) => {
@@ -478,46 +487,365 @@ impl Command {
         panic!("Command::exec() not implemented");
     }
 
-    pub fn autocompletion(&self) -> bool {
+    pub fn argparser(&self) -> bool {
         match self {
-            Command::Builtin(command) => command.autocompletion(),
-            Command::FromPath(command) => command.autocompletion(),
-            Command::FromConfig(_command) => false,
-            Command::FromMakefile(_command) => false,
-            Command::Void(_) => false,
+            Command::FromConfig(command) => command.argparser(),
+            Command::FromPath(command) => command.argparser(),
+            _ => false,
         }
     }
 
-    pub fn autocomplete(&self, comp_cword: usize, argv: Vec<String>) -> Result<(), ()> {
-        match self {
+    pub fn autocompletion(&self) -> CommandAutocompletion {
+        let completion = match self {
+            Command::Builtin(command) => command.autocompletion(),
+            Command::FromPath(command) => command.autocompletion(),
+            Command::FromConfig(_command) => CommandAutocompletion::Null,
+            Command::FromMakefile(_command) => CommandAutocompletion::Null,
+            Command::Void(_) => CommandAutocompletion::Null,
+        };
+
+        let trusted = match self {
             Command::FromPath(_) | Command::FromConfig(_) | Command::FromMakefile(_) => {
                 // Check if the workdir where the command is located is trusted
-                if !is_trusted(self.source_dir()) {
-                    return Err(());
-                }
+                is_trusted(self.source_dir())
             }
-            _ => {}
+            _ => true,
+        };
+
+        let argparser = self.argparser() || matches!(self, Command::Builtin(_));
+
+        match (completion, trusted, argparser) {
+            (CommandAutocompletion::Full, true, _) => CommandAutocompletion::Full,
+            (CommandAutocompletion::Partial, true, true) => CommandAutocompletion::Partial,
+            (CommandAutocompletion::Partial, true, false) => CommandAutocompletion::Null,
+            (CommandAutocompletion::Null, _, true) => CommandAutocompletion::Argparser,
+            (CommandAutocompletion::Null, _, false) => CommandAutocompletion::Null,
+            (_, false, true) => CommandAutocompletion::Argparser,
+            (_, false, false) => CommandAutocompletion::Null,
+            _ => CommandAutocompletion::Null,
+        }
+    }
+
+    /// Handle the autocompletion for the command
+    ///
+    /// This function is called when the command is being autocompleted. It handles
+    /// the autocompletion for the command and returns the result. If the command
+    /// has full autocompletion, this will be delegated directly to the command if
+    /// and only if that command is trusted. If that command has partial completion,
+    /// it will only be delegated to the command if and only if that command is
+    /// trusted _AND_ the argparser autocompletion did not provide any completion.
+    /// If the command has no autocompletion, then only the argparser autocompletion
+    /// will be used. If the command has neither autocompletion nor argparser,
+    /// then no autocompletion will be provided.
+    pub fn autocomplete(&self, comp_cword: usize, argv: Vec<String>) -> Result<(), ()> {
+        let completion = self.autocompletion();
+
+        // If no autocompletion option is available, just return an error
+        if !completion.any() {
+            return Err(());
         }
 
-        match self {
-            Command::Builtin(command) => return command.autocomplete(comp_cword, argv),
-            Command::FromPath(command) => {
-                // Load the dynamic environment for that command
-                update_dynamic_env_for_command(self.source_dir());
-
-                let result = command.autocomplete(comp_cword, argv);
-
-                // Reset the dynamic environment
-                update_dynamic_env_for_command(".");
-
-                return result;
+        // Only try to autocomplete with the argparser if the completion is either
+        // disabled or partial, or if the command is not trusted
+        let mut parameter = None;
+        if completion.use_argparser() {
+            match self.autocomplete_with_argparser(comp_cword, &argv) {
+                Ok(None) => return Ok(()),
+                Ok(Some(param)) => {
+                    // Continue with the autocompletion if partial
+                    parameter = Some(param);
+                }
+                Err(()) => return Err(()),
             }
-            Command::FromConfig(_command) => {}
-            Command::FromMakefile(_command) => {}
-            Command::Void(_) => {}
+        }
+
+        // If we get here, try to do a completion with the command if
+        // it is trusted and has autocompletion
+        if completion.use_command() {
+            match self {
+                Command::Builtin(command) => {
+                    return command.autocomplete(comp_cword, argv, parameter)
+                }
+                Command::FromPath(command) => {
+                    // Load the dynamic environment for that command
+                    update_dynamic_env_for_command(self.source_dir());
+
+                    let result = command.autocomplete(comp_cword, argv, parameter);
+
+                    // Reset the dynamic environment
+                    update_dynamic_env_for_command(".");
+
+                    return result;
+                }
+                Command::FromConfig(_command) => {}
+                Command::FromMakefile(_command) => {}
+                Command::Void(_) => {}
+            }
         }
 
         Err(())
+    }
+
+    /// Handle the autocompletion for the command using the argparser
+    ///
+    /// This will automatically suggest completions based on the argparser
+    /// of the command. This function is called when the command is being
+    /// autocompleted and the command has an argparser, unless the command
+    /// handles the full autocompletion by itself.
+    ///
+    /// The argparser autocompletion will suggest flags and options, but
+    /// also can suggest values for certain specific parameter types (e.g.
+    /// if the parameter value is supposed to be a path, it will suggest
+    /// paths available in the filesystem).
+    fn autocomplete_with_argparser(
+        &self,
+        comp_cword: usize,
+        argv: &[String],
+    ) -> Result<Option<String>, ()> {
+        let syntax = match self.syntax() {
+            Some(syntax) => syntax,
+            None => return Err(()),
+        };
+
+        fn allow_value_check_hyphen(param: &SyntaxOptArg, value: &str) -> bool {
+            if let Some(value_without_hyphen) = value.strip_prefix('-') {
+                if !param.allow_hyphen_values {
+                    // All good if we allow for a parameter to start with `-`
+                    return false;
+                }
+
+                if !param.allow_negative_numbers || value_without_hyphen.parse::<f64>().is_err() {
+                    // All good if we allow for negative numbers
+                    return false;
+                }
+            }
+
+            true
+        }
+
+        let mut state = match (
+            syntax.parameters.iter().find(|param| param.is_positional()),
+            argv.get(comp_cword),
+        ) {
+            (Some(param), Some(value)) if allow_value_check_hyphen(param, value) => {
+                ArgparserAutocompleteState::ValueAndParameters(param.clone())
+            }
+            (Some(param), None) => ArgparserAutocompleteState::ValueAndParameters(param.clone()),
+            (_, _) => ArgparserAutocompleteState::Parameters,
+        };
+        let mut parameters = syntax.parameters.clone();
+        let last_parameter = syntax
+            .parameters
+            .iter()
+            .find(|param| param.is_last())
+            .cloned();
+
+        // Go over the arguments we've seen until `comp_cword` and
+        // try to resolve the parameter in the syntax and the number
+        // of values that have been passed (according to the configuration
+        // of the parameter); if a given argument does not have a value,
+        // consider it is a positional (if any).
+        let args = argv.iter().take(comp_cword).cloned().collect::<Vec<_>>();
+        let mut current_arg = args.first().cloned();
+        let mut current_idx = 0;
+
+        'loop_args: while let Some(arg) = current_arg {
+            current_arg = None;
+
+            let (parameter, mut next_arg) = if arg == "--" {
+                // If we have `--`, find the parameter with the 'last' flag, if any
+                match last_parameter {
+                    Some(ref parameter) => {
+                        state = ArgparserAutocompleteState::Value(parameter.clone());
+                    }
+                    None => {
+                        // We do not need to autocomplete anything if we are
+                        // after the `--` and there is no parameter with the
+                        // 'last' flag
+                        return Ok(None);
+                    }
+                }
+
+                // No need to keep reading parameters
+                break;
+            } else if arg == "-" {
+                // If we have `-` we just can't complete any parameter, let's just skip
+                (None, None)
+            } else if arg.starts_with("--") {
+                let parameter = syntax
+                    .parameters
+                    .iter()
+                    .find(|param| param.all_names().iter().any(|name| name == arg.as_str()));
+
+                (parameter, None)
+            } else if let Some(arg_name) = arg.strip_prefix('-') {
+                // Split the first char and the following ones, if any
+                // as they would become the next argument
+                let (arg, next_arg) = arg_name.split_at(1);
+                let arg = format!("-{}", arg);
+
+                let next_arg = if next_arg.is_empty() {
+                    None
+                } else {
+                    Some(next_arg.to_string())
+                };
+
+                let parameter = syntax
+                    .parameters
+                    .iter()
+                    .find(|param| param.all_names().iter().any(|name| name == arg.as_str()));
+
+                (parameter, next_arg)
+            } else {
+                // Get the parameters from the list of parameters left, since for positional
+                // we need to remove them from the list as we can't identify them by name alone
+                match syntax
+                    .parameters
+                    .iter()
+                    .find(|param| param.is_positional() && parameters.contains(param))
+                {
+                    Some(parameter) => {
+                        // We need to pass the parameter itself as "next_arg" since for a
+                        // positional, the parameter itself is the value
+                        (Some(parameter), Some(arg))
+                    }
+                    None => {
+                        // If we don't have any positional parameters left, then we can't
+                        // autocomplete this, just skip it
+                        (None, None)
+                    }
+                }
+            };
+
+            // If the parameter is not found, skip to the next
+            let parameter = match parameter {
+                Some(parameter) => parameter,
+                None => {
+                    current_idx += 1;
+                    current_arg = args.get(current_idx).cloned();
+                    continue;
+                }
+            };
+
+            // If the parameter is not repeatable, remove it from the list
+            // TODO: how does that work for positionals?
+            if !parameter.is_repeatable() {
+                parameters.retain(|param| param != parameter);
+            }
+
+            // Handle the conflicts between parameters
+            parameters.retain(|param| !check_parameter_conflicts(parameter, param, &syntax.groups));
+
+            // Consume values as needed
+            if parameter.takes_value() {
+                // How many values to consume at most?
+                let max_values = parameter.num_values.map_or(Some(1), |num| num.max());
+                let min_values = parameter.num_values.map_or(1, |num| num.min().unwrap_or(0));
+
+                let mut value_idx = 0;
+                loop {
+                    if let Some(max) = max_values {
+                        if value_idx >= max {
+                            // Stop here if we have the maximum number of values
+                            break;
+                        }
+                    }
+
+                    value_idx += 1;
+                    let value = if let Some(arg) = next_arg {
+                        next_arg = None;
+                        Some(arg)
+                    } else {
+                        current_idx += 1;
+                        args.get(current_idx).cloned()
+                    };
+
+                    if let Some(ref value) = value {
+                        if !allow_value_check_hyphen(parameter, value) {
+                            // If the value is not allowed, then consider it
+                            // is another argument, so exit this loop
+                            current_arg = Some(value.to_string());
+                            break;
+                        }
+                    }
+
+                    if current_idx == comp_cword || value.is_none() {
+                        state = if value_idx > min_values {
+                            ArgparserAutocompleteState::ValueAndParameters(parameter.clone())
+                        } else {
+                            ArgparserAutocompleteState::Value(parameter.clone())
+                        };
+                        break 'loop_args;
+                    }
+                }
+            } else if let Some(next_arg) = next_arg {
+                current_arg = Some(format!("-{}", next_arg));
+            }
+
+            if current_arg.is_none() {
+                current_idx += 1;
+                current_arg = args.get(current_idx).cloned();
+            }
+        }
+
+        // Grab the value to be completed, or default to the empty string
+        let comp_value = argv.get(comp_cword).cloned().unwrap_or_default();
+
+        if state.complete_parameters() {
+            // If we get here, go over the parameters still in the list, filter
+            // them using the value to be completed, and return their names
+            parameters
+                .iter()
+                .filter(|param| !param.is_positional())
+                .flat_map(|param| param.all_names())
+                .filter(|name| name.starts_with(&comp_value))
+                .sorted()
+                .for_each(|name| {
+                    println!("{}", name);
+                });
+
+            // Autocomplete '--' if there is a last parameter
+            if last_parameter.is_some() && "--".starts_with(&comp_value) {
+                println!("--");
+            }
+        }
+
+        if let Some(param) = state.parameter() {
+            let arg_type = param.arg_type().terminal_type().clone();
+
+            if let Some(possible_values) = arg_type.possible_values() {
+                possible_values
+                    .iter()
+                    .filter(|val| val.starts_with(&comp_value))
+                    .for_each(|val| {
+                        println!("{}", val);
+                    });
+
+                // We've done the whole completion for that parameter, no
+                // need to delegate to the underlying command
+                return Ok(None);
+            }
+
+            if matches!(
+                arg_type,
+                SyntaxOptArgType::DirPath | SyntaxOptArgType::FilePath | SyntaxOptArgType::RepoPath
+            ) {
+                let include_repositories = matches!(arg_type, SyntaxOptArgType::RepoPath);
+                let include_files = matches!(arg_type, SyntaxOptArgType::FilePath);
+
+                path_auto_complete(&comp_value, include_repositories, include_files)
+                    .iter()
+                    .for_each(|s| println!("{}", s));
+
+                // We offered path autocompletions, no need to delegate
+                // to the underlying command
+                return Ok(None);
+            }
+
+            Ok(Some(param.name()))
+        } else {
+            Ok(None)
+        }
     }
 
     fn command_type_sort_order(&self) -> usize {
@@ -543,6 +871,196 @@ impl Command {
         match self {
             Command::FromPath(command) => command.requires_sync_update(),
             _ => false,
+        }
+    }
+}
+
+#[inline]
+fn check_parameter_conflicts(
+    param1: &SyntaxOptArg,
+    param2: &SyntaxOptArg,
+    groups: &[SyntaxGroup],
+) -> bool {
+    // Get the groups for param1
+    let param1_groups = groups
+        .iter()
+        .filter(|group| {
+            group.parameters.iter().any(|name| {
+                param1
+                    .all_names()
+                    .iter()
+                    .any(|n| n.as_str() == name.as_str())
+            })
+        })
+        .collect::<Vec<_>>();
+    let param1_all = param1
+        .all_names()
+        .into_iter()
+        .chain(param1_groups.iter().map(|group| group.name.to_string()))
+        .collect::<Vec<_>>();
+
+    // Get the groups for param2
+    let param2_groups = groups
+        .iter()
+        .filter(|group| {
+            group.parameters.iter().any(|name| {
+                param2
+                    .all_names()
+                    .iter()
+                    .any(|n| n.as_str() == name.as_str())
+            })
+        })
+        .collect::<Vec<_>>();
+    let param2_all = param2
+        .all_names()
+        .into_iter()
+        .chain(param2_groups.iter().map(|group| group.name.to_string()))
+        .collect::<Vec<_>>();
+
+    // If param1 defines conflicts with param2 or any of its groups, return true
+    if param1
+        .conflicts_with
+        .iter()
+        .any(|name| param2_all.iter().any(|n| n == name))
+    {
+        return true;
+    }
+
+    // If param2 defines conflicts with param1 or any of its groups, return true
+    if param2
+        .conflicts_with
+        .iter()
+        .any(|name| param1_all.iter().any(|n| n == name))
+    {
+        return true;
+    }
+
+    // If param1 and param2 are in the same group, and that group does
+    // not allow multiple, return true
+    let common_groups = param1_groups
+        .iter()
+        .filter(|group| param2_groups.contains(group))
+        .collect::<Vec<_>>();
+    if common_groups.iter().any(|group| !group.multiple) {
+        return true;
+    }
+
+    // Check if any of the param1 groups conflicts with param2
+    if param1_groups.iter().any(|group| {
+        group
+            .conflicts_with
+            .iter()
+            .any(|name| param2_all.iter().any(|n| n == name))
+    }) {
+        return true;
+    }
+
+    // Check if any of the param2 groups conflicts with param1
+    if param2_groups.iter().any(|group| {
+        group
+            .conflicts_with
+            .iter()
+            .any(|name| param1_all.iter().any(|n| n == name))
+    }) {
+        return true;
+    }
+
+    // If we get here, there is no conflict
+    false
+}
+
+#[derive(Debug)]
+enum ArgparserAutocompleteState {
+    Parameters,
+    ValueAndParameters(SyntaxOptArg),
+    Value(SyntaxOptArg),
+}
+
+impl ArgparserAutocompleteState {
+    fn complete_parameters(&self) -> bool {
+        matches!(self, Self::Parameters | Self::ValueAndParameters(_))
+    }
+
+    fn parameter(&self) -> Option<SyntaxOptArg> {
+        match self {
+            Self::Value(param) | Self::ValueAndParameters(param) => Some(param.clone()),
+            _ => None,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum CommandAutocompletion {
+    #[default]
+    Null,
+    Partial,
+    Full,
+    Argparser,
+}
+
+impl CommandAutocompletion {
+    fn any(&self) -> bool {
+        !matches!(self, Self::Null)
+    }
+
+    fn use_argparser(&self) -> bool {
+        matches!(self, Self::Argparser | Self::Partial)
+    }
+
+    fn use_command(&self) -> bool {
+        matches!(self, Self::Full | Self::Partial)
+    }
+}
+
+impl serde::Serialize for CommandAutocompletion {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        match self {
+            Self::Null => serializer.serialize_bool(false),
+            Self::Partial => serializer.serialize_str("partial"),
+            Self::Full => serializer.serialize_bool(true),
+            Self::Argparser => {
+                unreachable!("Argparser autocompletion is not serializable")
+            }
+        }
+    }
+}
+
+impl From<CommandAutocompletion> for bool {
+    fn from(value: CommandAutocompletion) -> Self {
+        match value {
+            CommandAutocompletion::Full
+            | CommandAutocompletion::Partial
+            | CommandAutocompletion::Argparser => true,
+            CommandAutocompletion::Null => false,
+        }
+    }
+}
+
+impl From<bool> for CommandAutocompletion {
+    fn from(value: bool) -> Self {
+        if value {
+            Self::Full
+        } else {
+            Self::Null
+        }
+    }
+}
+
+impl From<String> for CommandAutocompletion {
+    fn from(value: String) -> Self {
+        Self::from(value.as_str())
+    }
+}
+
+impl From<&str> for CommandAutocompletion {
+    fn from(value: &str) -> Self {
+        match value.to_lowercase().as_str() {
+            "full" | "true" | "1" | "on" | "enable" | "enabled" => Self::Full,
+            "partial" => Self::Partial,
+            _ => Self::Null,
         }
     }
 }

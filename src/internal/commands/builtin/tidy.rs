@@ -11,6 +11,8 @@ use indicatif::ProgressStyle;
 use walkdir::WalkDir;
 
 use crate::internal::commands::base::BuiltinCommand;
+use crate::internal::commands::base::CommandAutocompletion;
+use crate::internal::commands::builtin::UpCommand;
 use crate::internal::commands::path::global_omnipath_entries;
 use crate::internal::commands::utils::abs_path;
 use crate::internal::commands::Command;
@@ -248,7 +250,7 @@ impl BuiltinCommand for TidyCommand {
                         )
                         .to_string(),
                     ),
-                    arg_type: SyntaxOptArgType::Array(Box::new(SyntaxOptArgType::String)),
+                    arg_type: SyntaxOptArgType::Array(Box::new(SyntaxOptArgType::DirPath)),
                     ..Default::default()
                 },
                 SyntaxOptArg {
@@ -503,19 +505,30 @@ impl BuiltinCommand for TidyCommand {
         exit(0);
     }
 
-    fn autocompletion(&self) -> bool {
-        true
+    fn autocompletion(&self) -> CommandAutocompletion {
+        CommandAutocompletion::Partial
     }
 
-    fn autocomplete(&self, _comp_cword: usize, _argv: Vec<String>) -> Result<(), ()> {
-        // TODO: if the last parameter before completion is `search-path`,
-        // TODO: we should autocomplete with the file system paths
-        println!("--search-path");
-        println!("-y");
-        println!("--yes");
-        println!("--up-all");
-        println!("-h");
-        println!("--help");
+    fn autocomplete(
+        &self,
+        comp_cword: usize,
+        argv: Vec<String>,
+        parameter: Option<String>,
+    ) -> Result<(), ()> {
+        if parameter.unwrap_or_default() == "up args" {
+            // Get the position of the `--` argument
+            let up_args_start = match argv.iter().position(|arg| arg == "--") {
+                Some(pos) => pos + 1,
+                None => return Ok(()),
+            };
+
+            // Compute the new comp_cword for the up command
+            let comp_cword = comp_cword - up_args_start;
+
+            // Let's use the autocompletion of the up command
+            let up_command = UpCommand::new_command();
+            return up_command.autocomplete(comp_cword, argv[up_args_start..].to_vec());
+        }
 
         Ok(())
     }

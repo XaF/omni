@@ -1,16 +1,18 @@
+use std::collections::BTreeSet;
 use std::fs::OpenOptions;
 use std::io;
 use std::io::Write;
 use std::path::Path;
 use std::path::PathBuf;
 
-use normalize_path::NormalizePath;
 use path_clean::PathClean;
 use requestty::question::completions;
 use requestty::question::Completions;
 
 use crate::internal::env::omni_cmd_file;
 use crate::internal::env::user_home;
+use crate::internal::env::Shell;
+use crate::internal::ORG_LOADER;
 
 pub fn split_name(string: &str, split_on: &str) -> Vec<String> {
     string.split(split_on).map(|s| s.to_string()).collect()
@@ -18,7 +20,7 @@ pub fn split_name(string: &str, split_on: &str) -> Vec<String> {
 
 pub fn abs_or_rel_path(path: &str) -> String {
     let current_dir = std::env::current_dir().unwrap();
-    let path = std::path::PathBuf::from(&path).normalize();
+    let path = std::path::PathBuf::from(&path).clean();
     let path = if path.is_absolute() {
         path
     } else {
@@ -53,7 +55,7 @@ pub fn abs_path_from_path<T>(path: T, frompath: Option<T>) -> PathBuf
 where
     T: AsRef<Path>,
 {
-    let path = path.as_ref().normalize();
+    let path = path.as_ref();
 
     let absolute_path = if path.is_absolute() {
         path.to_path_buf()
@@ -165,6 +167,84 @@ pub fn file_auto_complete(p: String) -> Completions<String> {
     }
 
     files
+}
+
+pub fn path_auto_complete(
+    value: &str,
+    include_repositories: bool,
+    include_files: bool,
+) -> BTreeSet<String> {
+    // Figure out if this is a path, so we can avoid the
+    // expensive repository search
+    let path_only = value.starts_with('/')
+        || value.starts_with('.')
+        || value.starts_with("~/")
+        || value == "~"
+        || value == "-";
+
+    // To store the completions we find
+    let mut completions = BTreeSet::new();
+
+    // Print all the completion related to path completion
+    let (list_dir, strip_path_prefix, replace_home_prefix) = if value == "~" {
+        (user_home(), false, true)
+    } else if let Some(value) = value.strip_prefix("~/") {
+        if let Some(slash) = value.rfind('/') {
+            let abspath = format!("{}/{}", user_home(), &value[..(slash + 1)]);
+            (abspath, false, true)
+        } else {
+            (user_home(), false, true)
+        }
+    } else if let Some(slash) = value.rfind('/') {
+        (value[..(slash + 1)].to_string(), false, false)
+    } else {
+        (".".to_string(), true, false)
+    };
+
+    if let Ok(files) = std::fs::read_dir(&list_dir) {
+        for path in files.flatten() {
+            let is_dir = path.path().is_dir();
+            if !is_dir && !include_files {
+                continue;
+            }
+
+            let path_buf;
+            let path_obj = path.path();
+            let path = if strip_path_prefix {
+                path_obj.strip_prefix(&list_dir).unwrap()
+            } else if replace_home_prefix {
+                if let Ok(path_obj) = path_obj.strip_prefix(user_home()) {
+                    path_buf = PathBuf::from("~").join(path_obj);
+                    path_buf.as_path()
+                } else {
+                    path_obj.as_path()
+                }
+            } else {
+                path_obj.as_path()
+            };
+
+            let path_str = path.to_string_lossy().to_string();
+            if !path_str.starts_with(value) {
+                continue;
+            }
+
+            completions.insert(if is_dir {
+                format!("{}/", path_str)
+            } else {
+                path_str
+            });
+        }
+    }
+
+    // Get all the repositories per org that match the value
+    if include_repositories && !path_only {
+        let add_space = if Shell::current().is_fish() { " " } else { "" };
+        for match_value in ORG_LOADER.complete(value) {
+            completions.insert(format!("{}{}", match_value, add_space));
+        }
+    }
+
+    completions
 }
 
 pub fn str_to_bool(value: &str) -> Option<bool> {

@@ -252,7 +252,7 @@ impl CommandLoader {
                 .into_iter()
                 .find(|x| x.match_level == match_pos as f32 && x.match_name.len() == match_pos)
             {
-                if parent_command.command.autocompletion() {
+                if parent_command.command.autocompletion().into() {
                     // Set the environment variables that we need to pass to the
                     // subcommand
                     let new_comp_cword = comp_cword - parent_command.match_level as usize;
@@ -299,7 +299,7 @@ impl CommandLoader {
                 }
             }
 
-            if matched_command.command.autocompletion() {
+            if matched_command.command.autocompletion().into() {
                 // Set the environment variables that we need to pass to the
                 // subcommand
                 let new_comp_cword = comp_cword - matched_command.match_level as usize;

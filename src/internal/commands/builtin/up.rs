@@ -21,6 +21,7 @@ use crate::internal::cache::utils::Empty;
 use crate::internal::cache::PromptsCache;
 use crate::internal::cache::WorkdirsCache;
 use crate::internal::commands::base::BuiltinCommand;
+use crate::internal::commands::base::CommandAutocompletion;
 use crate::internal::commands::Command;
 use crate::internal::config::config;
 use crate::internal::config::flush_config;
@@ -1658,23 +1659,17 @@ impl BuiltinCommand for UpCommand {
         );
     }
 
-    fn autocompletion(&self) -> bool {
-        true
+    fn autocompletion(&self) -> CommandAutocompletion {
+        CommandAutocompletion::Null
     }
 
-    fn autocomplete(&self, _comp_cword: usize, _argv: Vec<String>) -> Result<(), ()> {
-        println!("--bootstrap");
-        println!("--clone-suggested");
-        println!("--fail-on-upgrade");
-        println!("--no-cache");
-        println!("--prompt");
-        println!("--prompt-all");
-        println!("--trust");
-        println!("--update-repository");
-        println!("--update-user-config");
-        println!("--upgrade");
-
-        Ok(())
+    fn autocomplete(
+        &self,
+        _comp_cword: usize,
+        _argv: Vec<String>,
+        _parameter: Option<String>,
+    ) -> Result<(), ()> {
+        Err(())
     }
 }
 

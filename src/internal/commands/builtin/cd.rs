@@ -1,11 +1,12 @@
 use std::collections::BTreeMap;
-use std::path::PathBuf;
 use std::process::exit;
 
 use shell_escape::escape;
 
 use crate::internal::commands::base::BuiltinCommand;
+use crate::internal::commands::base::CommandAutocompletion;
 use crate::internal::commands::utils::omni_cmd;
+use crate::internal::commands::utils::path_auto_complete;
 use crate::internal::commands::Command;
 use crate::internal::config::config;
 use crate::internal::config::parser::ParseArgsValue;
@@ -13,8 +14,6 @@ use crate::internal::config::CommandSyntax;
 use crate::internal::config::SyntaxOptArg;
 use crate::internal::config::SyntaxOptArgType;
 use crate::internal::env::omni_cmd_file;
-use crate::internal::env::user_home;
-use crate::internal::env::Shell;
 use crate::internal::git::ORG_LOADER;
 use crate::internal::user_interface::StringColor;
 use crate::internal::workdir;
@@ -213,6 +212,7 @@ impl BuiltinCommand for CdCommand {
                         .to_string()
                     ),
                     arg_type: SyntaxOptArgType::Flag,
+                    conflicts_with: vec!["--no-include-packages".to_string()],
                     ..Default::default()
                 },
                 SyntaxOptArg {
@@ -271,77 +271,23 @@ impl BuiltinCommand for CdCommand {
         exit(0);
     }
 
-    fn autocompletion(&self) -> bool {
-        true
+    fn autocompletion(&self) -> CommandAutocompletion {
+        CommandAutocompletion::Partial
     }
 
-    fn autocomplete(&self, comp_cword: usize, argv: Vec<String>) -> Result<(), ()> {
-        if comp_cword > 0 {
-            return Ok(());
-        }
+    fn autocomplete(
+        &self,
+        comp_cword: usize,
+        argv: Vec<String>,
+        parameter: Option<String>,
+    ) -> Result<(), ()> {
+        // We only have the work directory to autocomplete
+        if parameter.unwrap_or_default() == "workdir" {
+            let repo = argv.get(comp_cword).map_or("", String::as_str);
 
-        let repo = if !argv.is_empty() {
-            argv[0].clone()
-        } else {
-            "".to_string()
-        };
-
-        // Figure out if this is a path, so we can avoid the expensive repository search
-        let path_only = repo.starts_with('/')
-            || repo.starts_with('.')
-            || repo.starts_with("~/")
-            || repo == "~"
-            || repo == "-";
-
-        // Print all the completion related to path completion
-        let (list_dir, strip_path_prefix, replace_home_prefix) = if repo == "~" {
-            (user_home(), false, true)
-        } else if let Some(repo) = repo.strip_prefix("~/") {
-            if let Some(slash) = repo.rfind('/') {
-                let abspath = format!("{}/{}", user_home(), &repo[..(slash + 1)]);
-                (abspath, false, true)
-            } else {
-                (user_home(), false, true)
-            }
-        } else if let Some(slash) = repo.rfind('/') {
-            (repo[..(slash + 1)].to_string(), false, false)
-        } else {
-            (".".to_string(), true, false)
-        };
-        if let Ok(files) = std::fs::read_dir(&list_dir) {
-            for path in files.flatten() {
-                if path.path().is_dir() {
-                    let path_buf;
-                    let path_obj = path.path();
-                    let path = if strip_path_prefix {
-                        path_obj.strip_prefix(&list_dir).unwrap()
-                    } else if replace_home_prefix {
-                        if let Ok(path_obj) = path_obj.strip_prefix(user_home()) {
-                            path_buf = PathBuf::from("~").join(path_obj);
-                            path_buf.as_path()
-                        } else {
-                            path_obj.as_path()
-                        }
-                    } else {
-                        path_obj.as_path()
-                    };
-                    let path_str = path.to_str().unwrap();
-
-                    if !path_str.starts_with(repo.as_str()) {
-                        continue;
-                    }
-
-                    println!("{}/", path.display());
-                }
-            }
-        }
-
-        // Get all the repositories per org
-        if !path_only {
-            let add_space = if Shell::current().is_fish() { " " } else { "" };
-            for match_repo in ORG_LOADER.complete(&repo) {
-                println!("{}{}", match_repo, add_space);
-            }
+            path_auto_complete(repo, true, false)
+                .iter()
+                .for_each(|s| println!("{}", s));
         }
 
         Ok(())

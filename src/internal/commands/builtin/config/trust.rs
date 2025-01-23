@@ -1,9 +1,9 @@
 use std::collections::BTreeMap;
-use std::path::PathBuf;
 use std::process::exit;
 
 use crate::internal::cache::WorkdirsCache;
 use crate::internal::commands::base::BuiltinCommand;
+use crate::internal::commands::base::CommandAutocompletion;
 use crate::internal::commands::Command;
 use crate::internal::config::parser::ParseArgsValue;
 use crate::internal::config::CommandSyntax;
@@ -14,7 +14,6 @@ use crate::internal::workdir;
 use crate::internal::workdir::add_trust;
 use crate::internal::workdir::is_trusted;
 use crate::internal::workdir::remove_trust;
-use crate::internal::ORG_LOADER;
 use crate::omni_error;
 use crate::omni_info;
 
@@ -116,6 +115,7 @@ impl BuiltinCommand for ConfigTrustCommand {
                         )
                         .to_string(),
                     ),
+                    arg_type: SyntaxOptArgType::RepoPath,
                     ..Default::default()
                 },
             ],
@@ -135,20 +135,8 @@ impl BuiltinCommand for ConfigTrustCommand {
                 .expect("should have args to parse"),
         );
 
-        let path = if let Some(repo) = &args.workdir {
-            if let Some(repo_path) = ORG_LOADER.find_repo(repo, true, false, false) {
-                repo_path
-            } else {
-                omni_error!(format!("repository not found: {}", repo));
-                exit(1);
-            }
-        } else {
-            PathBuf::from(".")
-        };
-
-        let path_str = path.display().to_string();
-
-        let wd = workdir(path_str.as_str());
+        let path_str = args.workdir.as_deref().unwrap_or(".");
+        let wd = workdir(path_str);
         let wd_id = match wd.id() {
             Some(id) => id,
             None => {
@@ -160,7 +148,7 @@ impl BuiltinCommand for ConfigTrustCommand {
             }
         };
 
-        let is_trusted = is_trusted(path_str.as_str());
+        let is_trusted = is_trusted(path_str);
 
         if args.check_status {
             if is_trusted {
@@ -185,7 +173,7 @@ impl BuiltinCommand for ConfigTrustCommand {
                 exit(0);
             }
 
-            if add_trust(path_str.as_str()) {
+            if add_trust(path_str) {
                 omni_info!(
                     format!("work directory is now {}", "trusted".light_green()),
                     wd_id
@@ -212,7 +200,7 @@ impl BuiltinCommand for ConfigTrustCommand {
                 exit(1);
             }
 
-            if remove_trust(path_str.as_str()) {
+            if remove_trust(path_str) {
                 omni_info!(
                     format!("work directory is now {}", "untrusted".light_red()),
                     wd_id
@@ -224,12 +212,16 @@ impl BuiltinCommand for ConfigTrustCommand {
         }
     }
 
-    fn autocompletion(&self) -> bool {
-        false
+    fn autocompletion(&self) -> CommandAutocompletion {
+        CommandAutocompletion::Null
     }
 
-    fn autocomplete(&self, _comp_cword: usize, _argv: Vec<String>) -> Result<(), ()> {
-        // TODO: autocomplete repositories if first argument
-        Err(())
+    fn autocomplete(
+        &self,
+        _comp_cword: usize,
+        _argv: Vec<String>,
+        _parameter: Option<String>,
+    ) -> Result<(), ()> {
+        Ok(())
     }
 }

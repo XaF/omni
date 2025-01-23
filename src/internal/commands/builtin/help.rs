@@ -6,6 +6,7 @@ use serde::Serialize;
 
 use crate::internal::cache::utils as cache_utils;
 use crate::internal::commands::base::BuiltinCommand;
+use crate::internal::commands::base::CommandAutocompletion;
 use crate::internal::commands::command_loader;
 use crate::internal::commands::void::VoidCommand;
 use crate::internal::commands::Command;
@@ -198,11 +199,17 @@ impl BuiltinCommand for HelpCommand {
         self.exec_with_exit_code(argv, 0);
     }
 
-    fn autocompletion(&self) -> bool {
-        true
+    fn autocompletion(&self) -> CommandAutocompletion {
+        // TODO: convert to partial so the autocompletion works for options too
+        CommandAutocompletion::Full
     }
 
-    fn autocomplete(&self, comp_cword: usize, argv: Vec<String>) -> Result<(), ()> {
+    fn autocomplete(
+        &self,
+        comp_cword: usize,
+        argv: Vec<String>,
+        _parameter: Option<String>,
+    ) -> Result<(), ()> {
         command_loader(".").complete(comp_cword, argv, false)
     }
 }
