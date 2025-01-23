@@ -1084,17 +1084,8 @@ impl UpCommand {
             return true;
         }
 
-        let git_env = git_env(".");
-        let repo_id = match git_env.id() {
-            Some(repo_id) => repo_id,
-            None => {
-                omni_error!("Unable to get repository id");
-                exit(1);
-            }
-        };
-
-        let config = config(".");
-        let updated = config.path_repo_updates.update(&repo_id);
+        let config = global_config();
+        let updated = config.path_repo_updates.update(".");
 
         if updated {
             flush_config(".");

@@ -45,6 +45,7 @@ pub(crate) use errors::ParseArgsErrorKind;
 mod github;
 pub(crate) use github::GithubAuthConfig;
 pub(crate) use github::GithubConfig;
+pub(crate) use github::StringFilter;
 
 mod makefile_commands;
 pub(crate) use makefile_commands::MakefileCommandsConfig;

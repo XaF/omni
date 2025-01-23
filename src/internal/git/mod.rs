@@ -21,4 +21,4 @@ pub(crate) use updater::auto_update_on_command_not_found;
 pub(crate) use updater::exec_update;
 pub(crate) use updater::exec_update_and_log_on_error;
 pub(crate) use updater::report_update_error;
-pub(crate) use updater::update_git_repo;
+pub(crate) use updater::GitRepoUpdater;
