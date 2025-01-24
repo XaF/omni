@@ -208,7 +208,7 @@ impl BuiltinCommand for HelpCommand {
         &self,
         comp_cword: usize,
         argv: Vec<String>,
-        _parameter: Option<String>,
+        _parameter: Option<(String, usize)>,
     ) -> Result<(), ()> {
         command_loader(".").complete(comp_cword, argv, false)
     }

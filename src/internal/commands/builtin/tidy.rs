@@ -513,21 +513,17 @@ impl BuiltinCommand for TidyCommand {
         &self,
         comp_cword: usize,
         argv: Vec<String>,
-        parameter: Option<String>,
+        parameter: Option<(String, usize)>,
     ) -> Result<(), ()> {
-        if parameter.unwrap_or_default() == "up args" {
-            // Get the position of the `--` argument
-            let up_args_start = match argv.iter().position(|arg| arg == "--") {
-                Some(pos) => pos + 1,
-                None => return Ok(()),
-            };
+        if let Some((param_name, param_idx)) = parameter {
+            if param_name == "up args" {
+                // Compute the new comp_cword for the up command
+                let comp_cword = comp_cword - param_idx - 1;
 
-            // Compute the new comp_cword for the up command
-            let comp_cword = comp_cword - up_args_start;
-
-            // Let's use the autocompletion of the up command
-            let up_command = UpCommand::new_command();
-            return up_command.autocomplete(comp_cword, argv[up_args_start..].to_vec());
+                // Let's use the autocompletion of the up command
+                let up_command = UpCommand::new_command();
+                return up_command.autocomplete(comp_cword, argv[param_idx + 1..].to_vec());
+            }
         }
 
         Ok(())

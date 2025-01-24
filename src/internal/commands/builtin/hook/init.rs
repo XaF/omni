@@ -7,7 +7,6 @@ use tera::Context;
 use tera::Tera;
 
 use crate::internal::commands::base::BuiltinCommand;
-use crate::internal::commands::base::CommandAutocompletion;
 use crate::internal::commands::Command;
 use crate::internal::config::global_config;
 use crate::internal::config::parser::ParseArgsValue;
@@ -303,19 +302,6 @@ impl BuiltinCommand for HookInitCommand {
             }
         }
         exit(0);
-    }
-
-    fn autocompletion(&self) -> CommandAutocompletion {
-        CommandAutocompletion::Null
-    }
-
-    fn autocomplete(
-        &self,
-        _comp_cword: usize,
-        _argv: Vec<String>,
-        _parameter: Option<String>,
-    ) -> Result<(), ()> {
-        Ok(())
     }
 }
 

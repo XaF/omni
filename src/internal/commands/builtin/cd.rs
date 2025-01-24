@@ -279,15 +279,17 @@ impl BuiltinCommand for CdCommand {
         &self,
         comp_cword: usize,
         argv: Vec<String>,
-        parameter: Option<String>,
+        parameter: Option<(String, usize)>,
     ) -> Result<(), ()> {
         // We only have the work directory to autocomplete
-        if parameter.unwrap_or_default() == "workdir" {
-            let repo = argv.get(comp_cword).map_or("", String::as_str);
+        if let Some((param_name, _param_idx)) = parameter {
+            if param_name == "workdir" {
+                let repo = argv.get(comp_cword).map_or("", String::as_str);
 
-            path_auto_complete(repo, true, false)
-                .iter()
-                .for_each(|s| println!("{}", s));
+                path_auto_complete(repo, true, false)
+                    .iter()
+                    .for_each(|s| println!("{}", s));
+            }
         }
 
         Ok(())

@@ -246,7 +246,7 @@ impl BuiltinCommand for ScopeCommand {
         &self,
         comp_cword: usize,
         argv: Vec<String>,
-        _parameter: Option<String>,
+        _parameter: Option<(String, usize)>,
     ) -> Result<(), ()> {
         match comp_cword.cmp(&0) {
             std::cmp::Ordering::Equal => {

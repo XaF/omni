@@ -3,7 +3,6 @@ use std::process::exit;
 use uuid::Uuid;
 
 use crate::internal::commands::base::BuiltinCommand;
-use crate::internal::commands::base::CommandAutocompletion;
 use crate::internal::config::CommandSyntax;
 
 #[derive(Debug, Clone)]
@@ -53,18 +52,5 @@ impl BuiltinCommand for HookUuidCommand {
         let uuid = Uuid::new_v4();
         println!("{}", uuid);
         exit(0);
-    }
-
-    fn autocompletion(&self) -> CommandAutocompletion {
-        CommandAutocompletion::Null
-    }
-
-    fn autocomplete(
-        &self,
-        _comp_cword: usize,
-        _argv: Vec<String>,
-        _parameter: Option<String>,
-    ) -> Result<(), ()> {
-        Ok(())
     }
 }

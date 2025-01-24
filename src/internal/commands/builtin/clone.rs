@@ -11,7 +11,6 @@ use shell_words::join as shell_join;
 use tokio::process::Command as TokioCommand;
 
 use crate::internal::commands::base::BuiltinCommand;
-use crate::internal::commands::base::CommandAutocompletion;
 use crate::internal::commands::builtin::UpCommand;
 use crate::internal::commands::utils::omni_cmd;
 use crate::internal::commands::Command;
@@ -489,16 +488,5 @@ impl BuiltinCommand for CloneCommand {
         exit(0);
     }
 
-    fn autocompletion(&self) -> CommandAutocompletion {
-        CommandAutocompletion::Null
-    }
-
-    fn autocomplete(
-        &self,
-        _comp_cword: usize,
-        _argv: Vec<String>,
-        _parameter: Option<String>,
-    ) -> Result<(), ()> {
-        Ok(())
-    }
+    // TODO: add autocompletion for supported git clone options?
 }
