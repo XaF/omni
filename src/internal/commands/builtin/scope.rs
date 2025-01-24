@@ -239,7 +239,6 @@ impl BuiltinCommand for ScopeCommand {
     }
 
     fn autocompletion(&self) -> CommandAutocompletion {
-        // TODO: convert to partial so the autocompletion work for options too
         CommandAutocompletion::Partial
     }
 
@@ -290,46 +289,5 @@ impl BuiltinCommand for ScopeCommand {
         }
 
         Err(())
-
-        // match comp_cword.cmp(&0) {
-        // std::cmp::Ordering::Equal => {
-        // let repo = argv.first().map_or("", String::as_str);
-        // path_auto_complete(repo, true, false)
-        // .iter()
-        // .for_each(|s| println!("{}", s));
-        // Ok(())
-        // }
-        // std::cmp::Ordering::Greater => {
-        // if argv.is_empty() {
-        // // Unsure why we would get here, but if we try to complete
-        // // a command but a repository is not provided, we can't, so
-        // // let's simply skip it
-        // return Ok(());
-        // }
-
-        // // We want to switch context to the repository, so we can offer
-        // // completion of the commands for that specific repository
-        // let mut argv = argv.clone();
-        // let repo = argv.remove(0);
-
-        // let curdir = current_dir();
-        // // TODO: use the previous arguments to know if we should include packages or not
-        // if self.switch_scope(&repo, true, true).is_err() {
-        // return Err(());
-        // }
-
-        // // Finally, we can try completing the command
-        // let command_loader = command_loader(".");
-        // let result = command_loader.complete(comp_cword - 1, argv.to_vec(), true);
-
-        // // Restore current scope
-        // if std::env::set_current_dir(curdir).is_err() {
-        // return Err(());
-        // }
-
-        // result
-        // }
-        // std::cmp::Ordering::Less => Err(()),
-        // }
     }
 }
