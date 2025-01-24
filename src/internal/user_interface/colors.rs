@@ -67,12 +67,14 @@ pub fn strip_colors<T: ToString>(input: T) -> String {
 
 // http://bixense.com/clicolors/
 fn enable_colors() -> bool {
-    if std::env::var_os("NO_COLOR").is_some() {
-        return false;
-    }
-    if std::env::var_os("CLICOLOR_FORCE").is_some() {
-        return true;
-    }
+    match std::env::var_os("NO_COLOR") {
+        Some(value) if !value.is_empty() => return false,
+        _ => {}
+    };
+    match std::env::var_os("CLICOLOR_FORCE") {
+        Some(value) if !value.is_empty() => return true,
+        _ => {}
+    };
     // TODO: find an approach to not depend on the stderr check for the
     //       PS1 colorization
     std::io::stdout().is_terminal() || std::io::stderr().is_terminal()
