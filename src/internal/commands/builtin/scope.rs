@@ -258,20 +258,31 @@ impl BuiltinCommand for ScopeCommand {
 
                 return Ok(());
             } else if param_name == "command" {
+                // TODO: this function should receive the "seen params" with their value
+                //       so we can know if the user has passed --include-packages or not,
+                //       and read the repo name from the correct position without guessing
+
                 // Get the repository, return an error if we can't
                 // Since all is positional, the repository should be the positional
                 // right before the command
-                // TODO: this function should receive the "seen params" with their value
-                let repo = argv.get(param_idx - 1).ok_or(())?;
+                let repo = argv
+                    .iter()
+                    .take(param_idx)
+                    .rev()
+                    .find(|v| !v.starts_with("-"))
+                    .ok_or(())?;
 
                 // Get the command parameters that will require autocompletion
                 let command_argv = argv[param_idx..].to_vec();
                 let command_comp_cword = comp_cword - param_idx;
 
                 // Switch to the scope of the repository
-                // TODO: use the previous arguments to know if we should include packages or not
                 let curdir = current_dir();
-                if self.switch_scope(&repo, true, true).is_err() {
+                let include_packages = !argv
+                    .iter()
+                    .take(param_idx)
+                    .any(|v| v == "--no-include-packages");
+                if self.switch_scope(&repo, include_packages, true).is_err() {
                     return Err(());
                 }
 
