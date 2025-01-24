@@ -200,17 +200,30 @@ impl BuiltinCommand for HelpCommand {
     }
 
     fn autocompletion(&self) -> CommandAutocompletion {
-        // TODO: convert to partial so the autocompletion works for options too
-        CommandAutocompletion::Full
+        CommandAutocompletion::Partial
     }
 
     fn autocomplete(
         &self,
         comp_cword: usize,
         argv: Vec<String>,
-        _parameter: Option<(String, usize)>,
+        parameter: Option<(String, usize)>,
     ) -> Result<(), ()> {
-        command_loader(".").complete(comp_cword, argv, false)
+        if let Some((param_name, param_idx)) = parameter {
+            if param_name == "command" {
+                // Get the command parameters that will require autocompletion
+                let command_argv = argv[param_idx..].to_vec();
+                let command_comp_cword = comp_cword - param_idx;
+
+                // We can try completing the command
+                let command_loader = command_loader(".");
+                let result = command_loader.complete(command_comp_cword, command_argv, false);
+
+                return result;
+            }
+        }
+
+        Err(())
     }
 }
 
