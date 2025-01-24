@@ -100,7 +100,7 @@ else
 			{{ OMNI_BIN }} --complete ${words[@]})
 
 		while read -r opt; do
-			if [[ "${opt}" != "${cur}"* ]]; then
+			if [[ -z "${opt}" ]] || [[ "${opt}" != "${cur}"* ]]; then
 				continue
 			fi
 
