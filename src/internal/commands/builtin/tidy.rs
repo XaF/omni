@@ -518,11 +518,13 @@ impl BuiltinCommand for TidyCommand {
         if let Some((param_name, param_idx)) = parameter {
             if param_name == "up args" {
                 // Compute the new comp_cword for the up command
-                let comp_cword = comp_cword - param_idx - 1;
+                let comp_cword = comp_cword - param_idx;
+
+                // TODO: review -1 / +1
 
                 // Let's use the autocompletion of the up command
                 let up_command = UpCommand::new_command();
-                return up_command.autocomplete(comp_cword, argv[param_idx + 1..].to_vec());
+                return up_command.autocomplete(comp_cword, argv[param_idx..].to_vec());
             }
         }
 

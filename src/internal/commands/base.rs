@@ -627,22 +627,7 @@ impl Command {
             true
         }
 
-        let mut state = match (
-            syntax.parameters.iter().find(|param| param.is_positional()),
-            argv.get(comp_cword),
-        ) {
-            (Some(param), Some(value)) if allow_value_check_hyphen(param, value) => {
-                ArgparserAutocompleteState::ValueAndParameters {
-                    param: param.clone(),
-                    param_idx: 0,
-                }
-            }
-            (Some(param), None) => ArgparserAutocompleteState::ValueAndParameters {
-                param: param.clone(),
-                param_idx: 0,
-            },
-            (_, _) => ArgparserAutocompleteState::Parameters,
-        };
+        let mut state = None;
         let mut parameters = syntax.parameters.clone();
         let last_parameter = syntax
             .parameters
@@ -666,10 +651,10 @@ impl Command {
                 // If we have `--`, find the parameter with the 'last' flag, if any
                 match last_parameter {
                     Some(ref parameter) => {
-                        state = ArgparserAutocompleteState::Value {
+                        state = Some(ArgparserAutocompleteState::Value {
                             param: parameter.clone(),
                             param_idx: current_idx + 1,
-                        };
+                        });
                     }
                     None => {
                         // We do not need to autocomplete anything if we are
@@ -712,11 +697,9 @@ impl Command {
             } else {
                 // Get the parameters from the list of parameters left, since for positional
                 // we need to remove them from the list as we can't identify them by name alone
-                match syntax
-                    .parameters
-                    .iter()
-                    .find(|param| param.is_positional() && parameters.contains(param))
-                {
+                match syntax.parameters.iter().find(|param| {
+                    param.is_positional() && !param.is_last() && parameters.contains(param)
+                }) {
                     Some(parameter) => {
                         // We need to pass the parameter itself as "next_arg" since for a
                         // positional, the parameter itself is the value
@@ -752,7 +735,11 @@ impl Command {
             // Consume values as needed
             if parameter.takes_value() {
                 // How many values to consume at most?
-                let max_values = parameter.num_values.map_or(Some(1), |num| num.max());
+                let max_values: Option<usize> = parameter
+                    .num_values
+                    .map_or(if parameter.leftovers { None } else { Some(1) }, |num| {
+                        num.max()
+                    });
                 let min_values = parameter.num_values.map_or(1, |num| num.min().unwrap_or(0));
 
                 let param_start_idx = current_idx + if parameter.is_positional() { 0 } else { 1 };
@@ -784,7 +771,7 @@ impl Command {
                     }
 
                     if current_idx == comp_cword || value.is_none() {
-                        state = if value_idx > min_values {
+                        state = Some(if value_idx > min_values && !parameter.leftovers {
                             ArgparserAutocompleteState::ValueAndParameters {
                                 param: parameter.clone(),
                                 param_idx: param_start_idx,
@@ -794,7 +781,7 @@ impl Command {
                                 param: parameter.clone(),
                                 param_idx: param_start_idx,
                             }
-                        };
+                        });
                         break 'loop_args;
                     }
                 }
@@ -807,6 +794,27 @@ impl Command {
                 current_arg = args.get(current_idx).cloned();
             }
         }
+
+        let state = state.unwrap_or(
+            match (
+                parameters
+                    .iter()
+                    .find(|param| param.is_positional() && !param.is_last()),
+                argv.get(comp_cword),
+            ) {
+                (Some(param), Some(value)) if allow_value_check_hyphen(param, value) => {
+                    ArgparserAutocompleteState::ValueAndParameters {
+                        param: param.clone(),
+                        param_idx: current_idx,
+                    }
+                }
+                (Some(param), None) => ArgparserAutocompleteState::ValueAndParameters {
+                    param: param.clone(),
+                    param_idx: current_idx,
+                },
+                (_, _) => ArgparserAutocompleteState::Parameters,
+            },
+        );
 
         // Grab the value to be completed, or default to the empty string
         let comp_value = argv.get(comp_cword).cloned().unwrap_or_default();
