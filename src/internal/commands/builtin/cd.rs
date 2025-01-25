@@ -3,6 +3,7 @@ use std::process::exit;
 
 use shell_escape::escape;
 
+use crate::internal::commands::base::AutocompleteParameter;
 use crate::internal::commands::base::BuiltinCommand;
 use crate::internal::commands::base::CommandAutocompletion;
 use crate::internal::commands::utils::omni_cmd;
@@ -279,11 +280,11 @@ impl BuiltinCommand for CdCommand {
         &self,
         comp_cword: usize,
         argv: Vec<String>,
-        parameter: Option<(String, usize)>,
+        parameter: Option<AutocompleteParameter>,
     ) -> Result<(), ()> {
         // We only have the work directory to autocomplete
-        if let Some((param_name, _param_idx)) = parameter {
-            if param_name == "workdir" {
+        if let Some(param) = parameter {
+            if param.name == "workdir" {
                 let repo = argv.get(comp_cword).map_or("", String::as_str);
 
                 path_auto_complete(repo, true, false)

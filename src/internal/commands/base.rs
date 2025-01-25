@@ -50,10 +50,18 @@ pub trait BuiltinCommand: std::fmt::Debug + Send + Sync {
         &self,
         _comp_cword: usize,
         _argv: Vec<String>,
-        _parameter: Option<(String, usize)>, // parameter name, start index
+        _parameter: Option<AutocompleteParameter>,
     ) -> Result<(), ()> {
         Err(())
     }
+}
+
+/// Provides the information about a parameter that is being autocompleted
+/// so that an underlying command can provide the autocompletion data
+pub struct AutocompleteParameter {
+    pub name: String,
+    pub index: usize,
+    pub seen: Vec<(String, Vec<String>)>,
 }
 
 #[derive(Debug)]
@@ -555,9 +563,9 @@ impl Command {
         if completion.use_argparser() {
             match self.autocomplete_with_argparser(comp_cword, &argv) {
                 Ok(None) => return Ok(()),
-                Ok(Some((param_name, param_idx))) => {
+                Ok(Some(param)) => {
                     // Continue with the autocompletion if partial
-                    parameter = Some((param_name, param_idx));
+                    parameter = Some(param);
                 }
                 Err(()) => return Err(()),
             }
@@ -605,7 +613,7 @@ impl Command {
         &self,
         comp_cword: usize,
         argv: &[String],
-    ) -> Result<Option<(String, usize)>, ()> {
+    ) -> Result<Option<AutocompleteParameter>, ()> {
         let syntax = match self.syntax() {
             Some(syntax) => syntax,
             None => return Err(()),
@@ -634,6 +642,10 @@ impl Command {
             .iter()
             .find(|param| param.is_last())
             .cloned();
+
+        // Keep track of what we are seeing, so we can pass it to the
+        // underlying functions when trying to complete a value
+        let mut seen_parameters = Vec::new();
 
         // Go over the arguments we've seen until `comp_cword` and
         // try to resolve the parameter in the syntax and the number
@@ -743,6 +755,7 @@ impl Command {
                 let min_values = parameter.num_values.map_or(1, |num| num.min().unwrap_or(0));
 
                 let param_start_idx = current_idx + if parameter.is_positional() { 0 } else { 1 };
+                let mut current_values = vec![];
                 let mut value_idx = 0;
                 loop {
                     if let Some(max) = max_values {
@@ -768,6 +781,8 @@ impl Command {
                             current_arg = Some(value.to_string());
                             break;
                         }
+
+                        current_values.push(value.clone());
                     }
 
                     if current_idx == comp_cword || value.is_none() {
@@ -785,8 +800,16 @@ impl Command {
                         break 'loop_args;
                     }
                 }
-            } else if let Some(next_arg) = next_arg {
-                current_arg = Some(format!("-{}", next_arg));
+
+                // Add the parameter in the seen list, with values
+                seen_parameters.push((parameter.name(), current_values));
+            } else {
+                // Add the parameter in the seen list, without values
+                seen_parameters.push((parameter.name(), vec![]));
+
+                if let Some(next_arg) = next_arg {
+                    current_arg = Some(format!("-{}", next_arg));
+                }
             }
 
             if current_arg.is_none() {
@@ -870,7 +893,11 @@ impl Command {
                 return Ok(None);
             }
 
-            Ok(Some((param.name(), param_idx.to_owned())))
+            Ok(Some(AutocompleteParameter {
+                name: param.name(),
+                index: param_idx,
+                seen: seen_parameters,
+            }))
         } else {
             Ok(None)
         }

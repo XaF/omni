@@ -5,6 +5,7 @@ use std::process::exit;
 use serde::Serialize;
 
 use crate::internal::cache::utils as cache_utils;
+use crate::internal::commands::base::AutocompleteParameter;
 use crate::internal::commands::base::BuiltinCommand;
 use crate::internal::commands::base::CommandAutocompletion;
 use crate::internal::commands::command_loader;
@@ -207,13 +208,13 @@ impl BuiltinCommand for HelpCommand {
         &self,
         comp_cword: usize,
         argv: Vec<String>,
-        parameter: Option<(String, usize)>,
+        parameter: Option<AutocompleteParameter>,
     ) -> Result<(), ()> {
-        if let Some((param_name, param_idx)) = parameter {
-            if param_name == "command" {
+        if let Some(param) = parameter {
+            if param.name == "command" {
                 // Get the command parameters that will require autocompletion
-                let command_argv = argv[param_idx..].to_vec();
-                let command_comp_cword = comp_cword - param_idx;
+                let command_argv = argv[param.index..].to_vec();
+                let command_comp_cword = comp_cword - param.index;
 
                 // We can try completing the command
                 let command_loader = command_loader(".");

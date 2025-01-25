@@ -14,6 +14,7 @@ use serde::Serialize;
 use serde_yaml::Value as YamlValue;
 use walkdir::WalkDir;
 
+use crate::internal::commands::base::AutocompleteParameter;
 use crate::internal::commands::base::CommandAutocompletion;
 use crate::internal::commands::path::omnipath;
 use crate::internal::commands::utils::str_to_bool;
@@ -296,15 +297,15 @@ impl PathCommand {
         &self,
         comp_cword: usize,
         argv: Vec<String>,
-        parameter: Option<(String, usize)>,
+        parameter: Option<AutocompleteParameter>,
     ) -> Result<(), ()> {
         let mut command = ProcessCommand::new(self.source.clone());
         command.arg("--complete");
         command.args(argv);
         command.env("COMP_CWORD", comp_cword.to_string());
-        if let Some((param_name, param_idx)) = parameter {
-            command.env("OMNI_COMP_VALUE_OF", param_name);
-            command.env("OMNI_COMP_VALUE_START_INDEX", param_idx.to_string());
+        if let Some(param) = parameter {
+            command.env("OMNI_COMP_VALUE_OF", param.name);
+            command.env("OMNI_COMP_VALUE_START_INDEX", param.index.to_string());
         }
 
         match command.output() {

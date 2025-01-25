@@ -10,6 +10,7 @@ use indicatif::ProgressBar;
 use indicatif::ProgressStyle;
 use walkdir::WalkDir;
 
+use crate::internal::commands::base::AutocompleteParameter;
 use crate::internal::commands::base::BuiltinCommand;
 use crate::internal::commands::base::CommandAutocompletion;
 use crate::internal::commands::builtin::UpCommand;
@@ -513,18 +514,16 @@ impl BuiltinCommand for TidyCommand {
         &self,
         comp_cword: usize,
         argv: Vec<String>,
-        parameter: Option<(String, usize)>,
+        parameter: Option<AutocompleteParameter>,
     ) -> Result<(), ()> {
-        if let Some((param_name, param_idx)) = parameter {
-            if param_name == "up args" {
+        if let Some(param) = parameter {
+            if param.name == "up args" {
                 // Compute the new comp_cword for the up command
-                let comp_cword = comp_cword - param_idx;
-
-                // TODO: review -1 / +1
+                let comp_cword = comp_cword - param.index;
 
                 // Let's use the autocompletion of the up command
                 let up_command = UpCommand::new_command();
-                return up_command.autocomplete(comp_cword, argv[param_idx..].to_vec());
+                return up_command.autocomplete(comp_cword, argv[param.index..].to_vec());
             }
         }
 

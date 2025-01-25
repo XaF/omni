@@ -1,6 +1,7 @@
 use std::collections::BTreeMap;
 use std::process::exit;
 
+use crate::internal::commands::base::AutocompleteParameter;
 use crate::internal::commands::base::BuiltinCommand;
 use crate::internal::commands::base::CommandAutocompletion;
 use crate::internal::commands::command_loader;
@@ -246,10 +247,10 @@ impl BuiltinCommand for ScopeCommand {
         &self,
         comp_cword: usize,
         argv: Vec<String>,
-        parameter: Option<(String, usize)>,
+        parameter: Option<AutocompleteParameter>,
     ) -> Result<(), ()> {
-        if let Some((param_name, param_idx)) = parameter {
-            if param_name == "scope" {
+        if let Some(param) = parameter {
+            if param.name == "scope" {
                 let repo = argv.get(comp_cword).map_or("", String::as_str);
 
                 path_auto_complete(repo, true, false)
@@ -257,32 +258,25 @@ impl BuiltinCommand for ScopeCommand {
                     .for_each(|s| println!("{}", s));
 
                 return Ok(());
-            } else if param_name == "command" {
-                // TODO: this function should receive the "seen params" with their value
-                //       so we can know if the user has passed --include-packages or not,
-                //       and read the repo name from the correct position without guessing
-
-                // Get the repository, return an error if we can't
-                // Since all is positional, the repository should be the positional
-                // right before the command
-                let repo = argv
+            } else if param.name == "command" {
+                // Get the scope, return an error if we can't
+                let scope = param
+                    .seen
                     .iter()
-                    .take(param_idx)
-                    .rev()
-                    .find(|v| !v.starts_with("-"))
+                    .find(|(k, _)| k == "scope")
+                    .map(|(_, v)| v.first())
+                    .flatten()
                     .ok_or(())?;
 
                 // Get the command parameters that will require autocompletion
-                let command_argv = argv[param_idx..].to_vec();
-                let command_comp_cword = comp_cword - param_idx;
+                let command_argv = argv[param.index..].to_vec();
+                let command_comp_cword = comp_cword - param.index;
 
                 // Switch to the scope of the repository
                 let curdir = current_dir();
-                let include_packages = !argv
-                    .iter()
-                    .take(param_idx)
-                    .any(|v| v == "--no-include-packages");
-                if self.switch_scope(&repo, include_packages, true).is_err() {
+                let include_packages =
+                    !param.seen.iter().any(|(k, _)| k == "--no-include-packages");
+                if self.switch_scope(&scope, include_packages, true).is_err() {
                     return Err(());
                 }
 
