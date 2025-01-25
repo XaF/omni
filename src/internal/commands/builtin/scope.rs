@@ -264,8 +264,7 @@ impl BuiltinCommand for ScopeCommand {
                     .seen
                     .iter()
                     .find(|(k, _)| k == "scope")
-                    .map(|(_, v)| v.first())
-                    .flatten()
+                    .and_then(|(_, v)| v.first())
                     .ok_or(())?;
 
                 // Get the command parameters that will require autocompletion
@@ -276,7 +275,7 @@ impl BuiltinCommand for ScopeCommand {
                 let curdir = current_dir();
                 let include_packages =
                     !param.seen.iter().any(|(k, _)| k == "--no-include-packages");
-                if self.switch_scope(&scope, include_packages, true).is_err() {
+                if self.switch_scope(scope, include_packages, true).is_err() {
                     return Err(());
                 }
 
