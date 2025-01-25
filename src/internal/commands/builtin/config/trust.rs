@@ -3,7 +3,6 @@ use std::process::exit;
 
 use crate::internal::cache::WorkdirsCache;
 use crate::internal::commands::base::BuiltinCommand;
-use crate::internal::commands::base::CommandAutocompletion;
 use crate::internal::commands::Command;
 use crate::internal::config::parser::ParseArgsValue;
 use crate::internal::config::CommandSyntax;
@@ -210,18 +209,5 @@ impl BuiltinCommand for ConfigTrustCommand {
                 exit(1);
             }
         }
-    }
-
-    fn autocompletion(&self) -> CommandAutocompletion {
-        CommandAutocompletion::Null
-    }
-
-    fn autocomplete(
-        &self,
-        _comp_cword: usize,
-        _argv: Vec<String>,
-        _parameter: Option<String>,
-    ) -> Result<(), ()> {
-        Ok(())
     }
 }

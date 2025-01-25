@@ -6,7 +6,6 @@ use std::process::exit;
 use itertools::Itertools;
 
 use crate::internal::commands::base::BuiltinCommand;
-use crate::internal::commands::base::CommandAutocompletion;
 use crate::internal::commands::frompath::PathCommand;
 use crate::internal::commands::Command;
 use crate::internal::config::config;
@@ -304,19 +303,6 @@ impl BuiltinCommand for ConfigCheckCommand {
         self.aggregate_config_errors(&error_handler, &args);
         self.aggregate_path_errors(&error_handler, &args);
         self.filter_and_print_errors(&error_handler, &args);
-    }
-
-    fn autocompletion(&self) -> CommandAutocompletion {
-        CommandAutocompletion::Null
-    }
-
-    fn autocomplete(
-        &self,
-        _comp_cword: usize,
-        _argv: Vec<String>,
-        _parameter: Option<String>,
-    ) -> Result<(), ()> {
-        Ok(())
     }
 }
 

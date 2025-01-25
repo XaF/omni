@@ -5,6 +5,7 @@ use std::process::exit;
 use serde::Serialize;
 
 use crate::internal::cache::utils as cache_utils;
+use crate::internal::commands::base::AutocompleteParameter;
 use crate::internal::commands::base::BuiltinCommand;
 use crate::internal::commands::base::CommandAutocompletion;
 use crate::internal::commands::command_loader;
@@ -200,17 +201,30 @@ impl BuiltinCommand for HelpCommand {
     }
 
     fn autocompletion(&self) -> CommandAutocompletion {
-        // TODO: convert to partial so the autocompletion works for options too
-        CommandAutocompletion::Full
+        CommandAutocompletion::Partial
     }
 
     fn autocomplete(
         &self,
         comp_cword: usize,
         argv: Vec<String>,
-        _parameter: Option<String>,
+        parameter: Option<AutocompleteParameter>,
     ) -> Result<(), ()> {
-        command_loader(".").complete(comp_cword, argv, false)
+        if let Some(param) = parameter {
+            if param.name == "command" {
+                // Get the command parameters that will require autocompletion
+                let command_argv = argv[param.index..].to_vec();
+                let command_comp_cword = comp_cword - param.index;
+
+                // We can try completing the command
+                let command_loader = command_loader(".");
+                let result = command_loader.complete(command_comp_cword, command_argv, false);
+
+                return result;
+            }
+        }
+
+        Err(())
     }
 }
 

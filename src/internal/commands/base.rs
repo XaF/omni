@@ -43,13 +43,25 @@ pub trait BuiltinCommand: std::fmt::Debug + Send + Sync {
     fn syntax(&self) -> Option<CommandSyntax>;
     fn category(&self) -> Option<Vec<String>>;
     fn exec(&self, argv: Vec<String>);
-    fn autocompletion(&self) -> CommandAutocompletion;
+    fn autocompletion(&self) -> CommandAutocompletion {
+        CommandAutocompletion::Null
+    }
     fn autocomplete(
         &self,
-        comp_cword: usize,
-        argv: Vec<String>,
-        parameter: Option<String>,
-    ) -> Result<(), ()>;
+        _comp_cword: usize,
+        _argv: Vec<String>,
+        _parameter: Option<AutocompleteParameter>,
+    ) -> Result<(), ()> {
+        Err(())
+    }
+}
+
+/// Provides the information about a parameter that is being autocompleted
+/// so that an underlying command can provide the autocompletion data
+pub struct AutocompleteParameter {
+    pub name: String,
+    pub index: usize,
+    pub seen: Vec<(String, Vec<String>)>,
 }
 
 #[derive(Debug)]
@@ -601,7 +613,7 @@ impl Command {
         &self,
         comp_cword: usize,
         argv: &[String],
-    ) -> Result<Option<String>, ()> {
+    ) -> Result<Option<AutocompleteParameter>, ()> {
         let syntax = match self.syntax() {
             Some(syntax) => syntax,
             None => return Err(()),
@@ -623,22 +635,17 @@ impl Command {
             true
         }
 
-        let mut state = match (
-            syntax.parameters.iter().find(|param| param.is_positional()),
-            argv.get(comp_cword),
-        ) {
-            (Some(param), Some(value)) if allow_value_check_hyphen(param, value) => {
-                ArgparserAutocompleteState::ValueAndParameters(param.clone())
-            }
-            (Some(param), None) => ArgparserAutocompleteState::ValueAndParameters(param.clone()),
-            (_, _) => ArgparserAutocompleteState::Parameters,
-        };
+        let mut state = None;
         let mut parameters = syntax.parameters.clone();
         let last_parameter = syntax
             .parameters
             .iter()
             .find(|param| param.is_last())
             .cloned();
+
+        // Keep track of what we are seeing, so we can pass it to the
+        // underlying functions when trying to complete a value
+        let mut seen_parameters = Vec::new();
 
         // Go over the arguments we've seen until `comp_cword` and
         // try to resolve the parameter in the syntax and the number
@@ -656,7 +663,10 @@ impl Command {
                 // If we have `--`, find the parameter with the 'last' flag, if any
                 match last_parameter {
                     Some(ref parameter) => {
-                        state = ArgparserAutocompleteState::Value(parameter.clone());
+                        state = Some(ArgparserAutocompleteState::Value {
+                            param: parameter.clone(),
+                            param_idx: current_idx + 1,
+                        });
                     }
                     None => {
                         // We do not need to autocomplete anything if we are
@@ -699,11 +709,9 @@ impl Command {
             } else {
                 // Get the parameters from the list of parameters left, since for positional
                 // we need to remove them from the list as we can't identify them by name alone
-                match syntax
-                    .parameters
-                    .iter()
-                    .find(|param| param.is_positional() && parameters.contains(param))
-                {
+                match syntax.parameters.iter().find(|param| {
+                    param.is_positional() && !param.is_last() && parameters.contains(param)
+                }) {
                     Some(parameter) => {
                         // We need to pass the parameter itself as "next_arg" since for a
                         // positional, the parameter itself is the value
@@ -739,9 +747,15 @@ impl Command {
             // Consume values as needed
             if parameter.takes_value() {
                 // How many values to consume at most?
-                let max_values = parameter.num_values.map_or(Some(1), |num| num.max());
+                let max_values: Option<usize> = parameter
+                    .num_values
+                    .map_or(if parameter.leftovers { None } else { Some(1) }, |num| {
+                        num.max()
+                    });
                 let min_values = parameter.num_values.map_or(1, |num| num.min().unwrap_or(0));
 
+                let param_start_idx = current_idx + if parameter.is_positional() { 0 } else { 1 };
+                let mut current_values = vec![];
                 let mut value_idx = 0;
                 loop {
                     if let Some(max) = max_values {
@@ -767,19 +781,35 @@ impl Command {
                             current_arg = Some(value.to_string());
                             break;
                         }
+
+                        current_values.push(value.clone());
                     }
 
                     if current_idx == comp_cword || value.is_none() {
-                        state = if value_idx > min_values {
-                            ArgparserAutocompleteState::ValueAndParameters(parameter.clone())
+                        state = Some(if value_idx > min_values && !parameter.leftovers {
+                            ArgparserAutocompleteState::ValueAndParameters {
+                                param: parameter.clone(),
+                                param_idx: param_start_idx,
+                            }
                         } else {
-                            ArgparserAutocompleteState::Value(parameter.clone())
-                        };
+                            ArgparserAutocompleteState::Value {
+                                param: parameter.clone(),
+                                param_idx: param_start_idx,
+                            }
+                        });
                         break 'loop_args;
                     }
                 }
-            } else if let Some(next_arg) = next_arg {
-                current_arg = Some(format!("-{}", next_arg));
+
+                // Add the parameter in the seen list, with values
+                seen_parameters.push((parameter.name(), current_values));
+            } else {
+                // Add the parameter in the seen list, without values
+                seen_parameters.push((parameter.name(), vec![]));
+
+                if let Some(next_arg) = next_arg {
+                    current_arg = Some(format!("-{}", next_arg));
+                }
             }
 
             if current_arg.is_none() {
@@ -787,6 +817,27 @@ impl Command {
                 current_arg = args.get(current_idx).cloned();
             }
         }
+
+        let state = state.unwrap_or(
+            match (
+                parameters
+                    .iter()
+                    .find(|param| param.is_positional() && !param.is_last()),
+                argv.get(comp_cword),
+            ) {
+                (Some(param), Some(value)) if allow_value_check_hyphen(param, value) => {
+                    ArgparserAutocompleteState::ValueAndParameters {
+                        param: param.clone(),
+                        param_idx: current_idx,
+                    }
+                }
+                (Some(param), None) => ArgparserAutocompleteState::ValueAndParameters {
+                    param: param.clone(),
+                    param_idx: current_idx,
+                },
+                (_, _) => ArgparserAutocompleteState::Parameters,
+            },
+        );
 
         // Grab the value to be completed, or default to the empty string
         let comp_value = argv.get(comp_cword).cloned().unwrap_or_default();
@@ -810,7 +861,7 @@ impl Command {
             }
         }
 
-        if let Some(param) = state.parameter() {
+        if let Some((param, param_idx)) = state.parameter() {
             let arg_type = param.arg_type().terminal_type().clone();
 
             if let Some(possible_values) = arg_type.possible_values() {
@@ -842,7 +893,11 @@ impl Command {
                 return Ok(None);
             }
 
-            Ok(Some(param.name()))
+            Ok(Some(AutocompleteParameter {
+                name: param.name(),
+                index: param_idx,
+                seen: seen_parameters,
+            }))
         } else {
             Ok(None)
         }
@@ -972,18 +1027,26 @@ fn check_parameter_conflicts(
 #[derive(Debug)]
 enum ArgparserAutocompleteState {
     Parameters,
-    ValueAndParameters(SyntaxOptArg),
-    Value(SyntaxOptArg),
+    ValueAndParameters {
+        param: SyntaxOptArg,
+        param_idx: usize,
+    },
+    Value {
+        param: SyntaxOptArg,
+        param_idx: usize,
+    },
 }
 
 impl ArgparserAutocompleteState {
     fn complete_parameters(&self) -> bool {
-        matches!(self, Self::Parameters | Self::ValueAndParameters(_))
+        matches!(self, Self::Parameters | Self::ValueAndParameters { .. })
     }
 
-    fn parameter(&self) -> Option<SyntaxOptArg> {
+    fn parameter(&self) -> Option<(SyntaxOptArg, usize)> {
         match self {
-            Self::Value(param) | Self::ValueAndParameters(param) => Some(param.clone()),
+            Self::Value { param, param_idx } | Self::ValueAndParameters { param, param_idx } => {
+                Some((param.clone(), *param_idx))
+            }
             _ => None,
         }
     }

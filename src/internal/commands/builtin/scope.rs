@@ -1,6 +1,7 @@
 use std::collections::BTreeMap;
 use std::process::exit;
 
+use crate::internal::commands::base::AutocompleteParameter;
 use crate::internal::commands::base::BuiltinCommand;
 use crate::internal::commands::base::CommandAutocompletion;
 use crate::internal::commands::command_loader;
@@ -149,6 +150,7 @@ impl BuiltinCommand for ScopeCommand {
                         .to_string()
                     ),
                     arg_type: SyntaxOptArgType::Flag,
+                    conflicts_with: vec!["--no-include-packages".to_string()],
                     ..Default::default()
                 },
                 SyntaxOptArg {
@@ -238,55 +240,58 @@ impl BuiltinCommand for ScopeCommand {
     }
 
     fn autocompletion(&self) -> CommandAutocompletion {
-        // TODO: convert to partial so the autocompletion work for options too
-        CommandAutocompletion::Full
+        CommandAutocompletion::Partial
     }
 
     fn autocomplete(
         &self,
         comp_cword: usize,
         argv: Vec<String>,
-        _parameter: Option<String>,
+        parameter: Option<AutocompleteParameter>,
     ) -> Result<(), ()> {
-        match comp_cword.cmp(&0) {
-            std::cmp::Ordering::Equal => {
-                let repo = argv.first().map_or("", String::as_str);
+        if let Some(param) = parameter {
+            if param.name == "scope" {
+                let repo = argv.get(comp_cword).map_or("", String::as_str);
+
                 path_auto_complete(repo, true, false)
                     .iter()
                     .for_each(|s| println!("{}", s));
-                Ok(())
-            }
-            std::cmp::Ordering::Greater => {
-                if argv.is_empty() {
-                    // Unsure why we would get here, but if we try to complete
-                    // a command but a repository is not provided, we can't, so
-                    // let's simply skip it
-                    return Ok(());
-                }
 
-                // We want to switch context to the repository, so we can offer
-                // completion of the commands for that specific repository
-                let mut argv = argv.clone();
-                let repo = argv.remove(0);
+                return Ok(());
+            } else if param.name == "command" {
+                // Get the scope, return an error if we can't
+                let scope = param
+                    .seen
+                    .iter()
+                    .find(|(k, _)| k == "scope")
+                    .and_then(|(_, v)| v.first())
+                    .ok_or(())?;
 
+                // Get the command parameters that will require autocompletion
+                let command_argv = argv[param.index..].to_vec();
+                let command_comp_cword = comp_cword - param.index;
+
+                // Switch to the scope of the repository
                 let curdir = current_dir();
-                // TODO: use the previous arguments to know if we should include packages or not
-                if self.switch_scope(&repo, true, true).is_err() {
+                let include_packages =
+                    !param.seen.iter().any(|(k, _)| k == "--no-include-packages");
+                if self.switch_scope(scope, include_packages, true).is_err() {
                     return Err(());
                 }
 
                 // Finally, we can try completing the command
                 let command_loader = command_loader(".");
-                let result = command_loader.complete(comp_cword - 1, argv.to_vec(), true);
+                let result = command_loader.complete(command_comp_cword, command_argv, true);
 
                 // Restore current scope
                 if std::env::set_current_dir(curdir).is_err() {
                     return Err(());
                 }
 
-                result
+                return result;
             }
-            std::cmp::Ordering::Less => Err(()),
         }
+
+        Err(())
     }
 }

@@ -1,7 +1,6 @@
 use std::process::exit;
 
 use crate::internal::commands::base::BuiltinCommand;
-use crate::internal::commands::base::CommandAutocompletion;
 use crate::internal::commands::Command;
 use crate::internal::config::up::utils::reshim;
 use crate::internal::config::up::utils::PrintProgressHandler;
@@ -78,18 +77,5 @@ impl BuiltinCommand for ConfigReshimCommand {
         }
 
         exit(0);
-    }
-
-    fn autocompletion(&self) -> CommandAutocompletion {
-        CommandAutocompletion::Null
-    }
-
-    fn autocomplete(
-        &self,
-        _comp_cword: usize,
-        _argv: Vec<String>,
-        _parameter: Option<String>,
-    ) -> Result<(), ()> {
-        Ok(())
     }
 }
