@@ -7,14 +7,14 @@ use std::process::Command as StdCommand;
 #[inline]
 pub fn detect_libc() -> bool {
     // First try filesystem check as it's faster
-    if Path::new("/lib/ld-musl-x86_64.so.1").exists() {
-        return false;
-    }
-
     if Path::new("/lib64/ld-linux-x86-64.so.2").exists()
         || Path::new("/lib32/ld-linux.so.2").exists()
     {
         return true;
+    }
+
+    if Path::new("/lib/ld-musl-x86_64.so.1").exists() {
+        return false;
     }
 
     // Fallback to ldd check
