@@ -41,7 +41,7 @@ glob = "0.3.1"
 globset = "0.4.14"
 humantime = "2.1.0"
 imara-diff = "0.1.6"
-indicatif = "0.17.9"
+indicatif = "0.17.11"
 itertools = "0.14.0"
 lazy_static = "1.4.0"
 libz-sys = { version = "1.1.21", features = ["static"] }  # So we can force static linking
