@@ -453,11 +453,11 @@ impl Command {
         std::env::set_var("OMNI_VERSION", env!("CARGO_PKG_VERSION"));
 
         // Clear all `OMNI_ARG_` environment variables
-        for (key, _) in std::env::vars() {
-            if key.starts_with("OMNI_ARG_") {
+        std::env::vars()
+            .filter(|(key, _)| key.starts_with("OMNI_ARG_"))
+            .for_each(|(key, _)| {
                 std::env::remove_var(&key);
-            }
-        }
+            });
 
         // Set environment variables for the parsed arguments, if we are parsing any
         if let Some(args) = self.exec_parse_args(argv.clone(), called_as.clone()) {
