@@ -16,17 +16,20 @@ use walkdir::WalkDir;
 
 use crate::internal::commands::base::AutocompleteParameter;
 use crate::internal::commands::base::CommandAutocompletion;
+use crate::internal::commands::fromconfig::ConfigCommand;
 use crate::internal::commands::path::omnipath;
 use crate::internal::commands::utils::str_to_bool;
 use crate::internal::commands::utils::SplitOnSeparators;
 use crate::internal::config;
 use crate::internal::config::config_loader;
+use crate::internal::config::loader::WORKDIR_CONFIG_FILES;
 use crate::internal::config::parser::parse_arg_name;
 use crate::internal::config::parser::ConfigErrorHandler;
 use crate::internal::config::parser::ConfigErrorKind;
 use crate::internal::config::utils::is_executable;
 use crate::internal::config::CommandSyntax;
 use crate::internal::config::ConfigExtendOptions;
+use crate::internal::config::ConfigScope;
 use crate::internal::config::OmniConfig;
 use crate::internal::config::SyntaxGroup;
 use crate::internal::config::SyntaxOptArg;
@@ -34,6 +37,8 @@ use crate::internal::config::SyntaxOptArgNumValues;
 use crate::internal::config::SyntaxOptArgType;
 use crate::internal::git::package_path_from_handle;
 use crate::internal::workdir;
+use crate::internal::ConfigLoader;
+use crate::omni_error;
 
 #[derive(Debug, Clone)]
 pub struct PathCommand {
@@ -132,6 +137,31 @@ impl PathCommand {
         let mut known_sources: HashMap<String, usize> = HashMap::new();
 
         for path in paths {
+            // TODO: we need to figure out how to make it work well
+            // If this is a file
+            let pathobj = Path::new(path);
+            if pathobj.is_file() {
+                // Check if this is an omni configuration file
+                if WORKDIR_CONFIG_FILES.iter().any(|f| path.ends_with(f)) {
+                    // TODO: validate the file is in a repository so we can define the scope properly
+                    let loader = ConfigLoader::new_from_file(&path, ConfigScope::Workdir);
+                    let file_config = OmniConfig::from_config_value(
+                        &loader.raw_config,
+                        &error_handler.with_file(path.clone()),
+                    );
+
+                    let config_commands =
+                        ConfigCommand::all_commands(file_config.commands.clone(), vec![]);
+
+                    eprintln!(
+                        "DEBUG: HANDLE THE CONFIG COMMANDS IN THE PATH: {:?}",
+                        config_commands
+                    );
+                }
+
+                continue;
+            }
+
             // Aggregate all the files first, since WalkDir does not sort the list
             let mut files_to_process = Vec::new();
             for entry in WalkDir::new(path).follow_links(true).into_iter().flatten() {
