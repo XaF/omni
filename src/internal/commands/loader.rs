@@ -354,8 +354,7 @@ impl CommandLoader {
                         .iter()
                         .cloned()
                         .chain(name.iter().cloned())
-                        .collect::<Vec<_>>()
-                        .join(" ");
+                        .collect::<Vec<_>>();
                     sub_names.push(full_name);
                     sub_commands.push(command.clone());
                 }
@@ -369,7 +368,7 @@ impl CommandLoader {
                             "omni:".light_cyan(),
                             "Did you mean?".yellow()
                         ))
-                        .choices(sub_names.iter())
+                        .choices(sub_names.iter().map(|sub_name| sub_name.join(" ")))
                         .should_loop(false)
                         .page_size(page_size)
                         .build()
@@ -382,7 +381,7 @@ impl CommandLoader {
                             "omni:".light_cyan(),
                             "Did you mean?".yellow(),
                             "·".light_black(),
-                            sub_names[0].normal(),
+                            sub_names[0].join(" ").normal(),
                         ))
                         .default(true)
                         .build()
@@ -393,13 +392,17 @@ impl CommandLoader {
                         requestty::Answer::ListItem(listitem) => {
                             return Some((
                                 sub_commands[listitem.index].clone(),
-                                argv.to_vec(),
+                                sub_names[listitem.index].clone(),
                                 vec![],
                             ));
                         }
                         requestty::Answer::Bool(confirmed) => {
                             if confirmed {
-                                return Some((sub_commands[0].clone(), argv.to_vec(), vec![]));
+                                return Some((
+                                    sub_commands[0].clone(),
+                                    sub_names[0].clone(),
+                                    vec![],
+                                ));
                             }
                         }
                         _ => {}
@@ -423,6 +426,7 @@ impl CommandLoader {
                 // Take the base score
                 let mut max_score: f64 = 0.0;
                 let mut match_level: usize = 0;
+                let mut match_name = vec![];
 
                 for command_name in command.all_names() {
                     for i in 0..argv.len() {
@@ -435,6 +439,7 @@ impl CommandLoader {
                         if score > max_score {
                             max_score = score;
                             match_level = argv.len();
+                            match_name = command_name.clone();
                         }
                     }
                 }
@@ -442,6 +447,7 @@ impl CommandLoader {
                 CommandScore {
                     score: max_score,
                     command: command.clone(),
+                    match_name,
                     match_level,
                 }
             })
@@ -525,13 +531,14 @@ impl CommandLoader {
 struct CommandScore {
     score: f64,
     command: Command,
+    match_name: Vec<String>,
     match_level: usize,
 }
 
 impl CommandScore {
     fn to_return(&self, argv: &[String]) -> Option<(Command, Vec<String>, Vec<String>)> {
         let cmd = self.command.clone();
-        let called_as = argv[..self.match_level].to_vec();
+        let called_as = self.match_name.clone();
         let argv = argv[self.match_level..].to_vec();
         Some((cmd, called_as, argv))
     }
