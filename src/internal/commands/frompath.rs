@@ -3,10 +3,10 @@ use std::collections::HashMap;
 use std::fs::File;
 use std::io::BufRead;
 use std::io::BufReader;
-use std::os::unix::process::CommandExt;
 use std::path::Path;
 use std::path::PathBuf;
-use std::process::Command as ProcessCommand;
+use std::process::exit;
+use std::process::Command as StdCommand;
 
 use once_cell::sync::OnceCell;
 use serde::Deserialize;
@@ -33,7 +33,9 @@ use crate::internal::config::SyntaxOptArg;
 use crate::internal::config::SyntaxOptArgNumValues;
 use crate::internal::config::SyntaxOptArgType;
 use crate::internal::git::package_path_from_handle;
+use crate::internal::user_interface::colors::StringColor;
 use crate::internal::workdir;
+use crate::omni_error;
 
 #[derive(Debug, Clone)]
 pub struct PathCommand {
@@ -282,9 +284,21 @@ impl PathCommand {
         });
 
         // Execute the command
-        let err = ProcessCommand::new(source).args(argv).exec();
-
-        panic!("Something went wrong: {:?}", err);
+        match StdCommand::new(source).args(argv).status() {
+            Ok(status) if status.success() => {
+                // TODO: handle metrics about the success
+                exit(0);
+            }
+            Ok(status) => {
+                // TODO: handle metrics about the error
+                exit(status.code().unwrap_or(1));
+            }
+            Err(err) => {
+                // TODO: handle metrics about the error
+                omni_error!("failed to execute command: {}", err.to_string());
+                exit(1);
+            }
+        }
     }
 
     pub fn autocompletion(&self) -> CommandAutocompletion {
@@ -299,7 +313,7 @@ impl PathCommand {
         argv: Vec<String>,
         parameter: Option<AutocompleteParameter>,
     ) -> Result<(), ()> {
-        let mut command = ProcessCommand::new(self.source.clone());
+        let mut command = StdCommand::new(self.source.clone());
         command.arg("--complete");
         command.args(argv);
         command.env("COMP_CWORD", comp_cword.to_string());

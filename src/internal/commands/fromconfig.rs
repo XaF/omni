@@ -1,10 +1,9 @@
 use std::collections::BTreeMap;
 use std::collections::HashMap;
-use std::os::unix::process::CommandExt;
 use std::path::Path;
 use std::path::PathBuf;
 use std::process::exit;
-use std::process::Command as ProcessCommand;
+use std::process::Command as StdCommand;
 
 use crate::internal::commands::utils::abs_or_rel_path;
 use crate::internal::commands::utils::abs_path;
@@ -207,33 +206,43 @@ impl ConfigCommand {
 
     pub fn exec(&self, argv: Vec<String>) {
         // Get the current directory so we can store it in a variable
-        let current_dir = std::env::current_dir().expect("Failed to get current directory");
-        std::env::set_var("OMNI_CWD", current_dir.display().to_string());
+        let current_dir = std::env::current_dir()
+            .expect("Failed to get current directory")
+            .to_string_lossy()
+            .to_string();
 
         // Raise error if the resulting directory is not in the config directory
-        match self.exec_dir() {
-            Ok(exec_dir) => {
-                if std::env::set_current_dir(exec_dir.clone()).is_err() {
-                    omni_error!(format!(
-                        "failed to change directory to {}",
-                        exec_dir.display()
-                    ));
-                    exit(1);
-                }
-            }
+        let exec_dir = match self.exec_dir() {
+            Ok(exec_dir) => exec_dir,
             Err(err) => {
                 omni_error!(err.to_string());
                 exit(1);
             }
-        }
+        };
 
-        let err = ProcessCommand::new("bash")
+        // Execute the command
+        match StdCommand::new("bash")
             .arg("-c")
             .arg(self.details.run.clone())
             .arg(self.source())
             .args(argv)
-            .exec();
-
-        panic!("Something went wrong: {:?}", err);
+            .env("OMNI_CWD", current_dir)
+            .current_dir(exec_dir)
+            .status()
+        {
+            Ok(status) if status.success() => {
+                // TODO: handle metrics about the success
+                exit(0);
+            }
+            Ok(status) => {
+                // TODO: handle metrics about the error
+                exit(status.code().unwrap_or(1));
+            }
+            Err(err) => {
+                // TODO: handle metrics about the error
+                omni_error!("failed to execute command: {}", err.to_string());
+                exit(1);
+            }
+        }
     }
 }

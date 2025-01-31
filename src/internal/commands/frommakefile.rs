@@ -2,9 +2,9 @@ use std::fs;
 use std::fs::File;
 use std::io::BufRead;
 use std::io::BufReader;
-use std::os::unix::process::CommandExt;
 use std::path::Path;
-use std::process::Command as ProcessCommand;
+use std::process::exit;
+use std::process::Command as StdCommand;
 
 use regex::Regex;
 
@@ -12,7 +12,9 @@ use crate::internal::commands::utils::abs_or_rel_path;
 use crate::internal::commands::utils::split_name;
 use crate::internal::config::config;
 use crate::internal::config::CommandSyntax;
+use crate::internal::user_interface::colors::StringColor;
 use crate::internal::workdir;
+use crate::omni_error;
 
 #[derive(Debug, Clone)]
 pub struct MakefileCommand {
@@ -198,21 +200,42 @@ impl MakefileCommand {
 
     pub fn exec(&self, argv: Vec<String>) {
         // Get the current directory so we can store it in a variable
-        let current_dir = std::env::current_dir().expect("Failed to get current directory");
-        std::env::set_var("OMNI_CWD", current_dir.display().to_string());
+        let current_dir = std::env::current_dir()
+            .expect("Failed to get current directory")
+            .to_string_lossy()
+            .to_string();
 
-        let makefile_dir = Path::new(&self.source).parent().unwrap();
-        if std::env::set_current_dir(makefile_dir).is_err() {
-            println!("Failed to change directory to {}", makefile_dir.display());
-        }
+        let makefile_dir = match Path::new(&self.source).parent() {
+            Some(p) => p,
+            None => {
+                omni_error!("failed to get parent directory of {}", self.source);
+                exit(1);
+            }
+        };
 
-        let err = ProcessCommand::new("make")
+        // Execute the command
+        match StdCommand::new("make")
             .arg("-f")
             .arg(self.source())
             .arg(self.target.clone())
             .args(argv)
-            .exec();
-
-        panic!("Something went wrong: {:?}", err);
+            .env("OMNI_CWD", current_dir)
+            .current_dir(makefile_dir)
+            .status()
+        {
+            Ok(status) if status.success() => {
+                // TODO: handle metrics about the success
+                exit(0);
+            }
+            Ok(status) => {
+                // TODO: handle metrics about the error
+                exit(status.code().unwrap_or(1));
+            }
+            Err(err) => {
+                // TODO: handle metrics about the error
+                omni_error!("failed to execute make command: {}", err.to_string());
+                exit(1);
+            }
+        }
     }
 }
