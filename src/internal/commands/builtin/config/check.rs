@@ -472,6 +472,11 @@ impl ConfigCheckCommand {
 
             let path_error_handler = error_handler.with_file(&entry);
             for command in PathCommand::aggregate_with_errors(&[entry.clone()], &path_error_handler)
+                .into_iter()
+                .filter_map(|c| match c {
+                    Command::FromPath(c) => Some(c),
+                    _ => None,
+                })
             {
                 command.check_errors(&path_error_handler);
 

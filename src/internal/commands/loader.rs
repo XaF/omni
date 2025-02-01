@@ -126,7 +126,7 @@ impl CommandLoader {
 
         // Look for all commands in the configuration
         for command in ConfigCommand::all() {
-            add_fn(Command::FromConfig(Box::new(command)));
+            add_fn(command.into());
         }
 
         // Look for all commands in the path that would be
@@ -134,17 +134,17 @@ impl CommandLoader {
         // local commands first
         if lookup_local_first() {
             for command in PathCommand::local() {
-                add_fn(Command::FromPath(command));
+                add_fn(command);
             }
         }
 
         // Look for all commands in the path
         for command in PathCommand::all() {
-            add_fn(Command::FromPath(command));
+            add_fn(command);
         }
 
         for command in MakefileCommand::all_from_path(path) {
-            add_fn(Command::FromMakefile(command));
+            add_fn(command.into());
         }
 
         Self { commands }
