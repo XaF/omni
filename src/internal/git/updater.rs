@@ -836,7 +836,7 @@ fn update_git_branch(
         // since we are the ones managing the repository
 
         // Get the remote name we are tracking
-        progress_handler.progress("fetching remote".to_string());
+        progress_handler.progress("identifying remote".to_string());
         let mut remote_name_cmd = StdCommand::new("git");
         remote_name_cmd.arg("config");
         remote_name_cmd.arg("--get");
@@ -864,7 +864,7 @@ fn update_git_branch(
         }
 
         // Get the remote branch we are tracking
-        progress_handler.progress("fetching remote branch".to_string());
+        progress_handler.progress("identifying remote branch".to_string());
         let mut remote_branch_cmd = StdCommand::new("git");
         remote_branch_cmd.arg("rev-parse");
         remote_branch_cmd.arg("--abbrev-ref");
@@ -923,15 +923,54 @@ fn update_git_branch(
             return Err(msg);
         }
 
-        // Check if there was any new contents fetched
-        let fetched_err = String::from_utf8_lossy(&output.stderr);
+        // Use git rev-list to check if the branch is up to date
+        progress_handler.progress(format!("checking if {} is up to date", local_branch));
+        let mut git_rev_parse_cmd = StdCommand::new("git");
+        git_rev_parse_cmd.arg("rev-list");
+        git_rev_parse_cmd.arg("--left-right");
+        git_rev_parse_cmd.arg("--count");
+        git_rev_parse_cmd.arg(format!("{}...{}", remote_branch_full, local_branch));
+        git_rev_parse_cmd.current_dir(repo_path);
+        git_rev_parse_cmd.stdout(std::process::Stdio::piped());
+        git_rev_parse_cmd.stderr(std::process::Stdio::piped());
 
-        // Check if there is a line containing `-> <remote-branch>` in the error output
-        let remote_branch_updated = fetched_err
-            .lines()
-            .any(|line| line.contains(&format!("-> {}", remote_branch_full)));
+        let output = git_rev_parse_cmd.output().map_err(|err| {
+            let msg = format!("git rev-list failed: {}", err);
+            progress_handler.error_with_message(msg.clone());
+            msg
+        })?;
+        if !output.status.success() {
+            let msg = format!(
+                "failed to check if branch is up to date: {}",
+                String::from_utf8_lossy(&output.stderr)
+            );
+            progress_handler.error_with_message(msg.clone());
+            return Err(msg);
+        }
 
-        if !remote_branch_updated {
+        let rev_list_output = String::from_utf8_lossy(&output.stdout);
+
+        // Split the two digits no matter how many spaces/tabs are between them;
+        // we need to validate we do have two digits in the output, or error out
+        let values = rev_list_output.split_whitespace().collect::<Vec<&str>>();
+        if values.len() != 2 {
+            let msg = format!("failed to parse rev-list output: {}", rev_list_output);
+            progress_handler.error_with_message(msg.clone());
+            return Err(msg);
+        }
+
+        let values = values
+            .iter()
+            .map(|value| value.parse::<u32>())
+            .collect::<Result<Vec<u32>, _>>()
+            .map_err(|err| {
+                let msg = format!("failed to parse rev-list output: {}", err);
+                progress_handler.error_with_message(msg.clone());
+                msg
+            })?;
+
+        // If all values are zero, we are up to date
+        if values.iter().all(|value| *value == 0) {
             progress_handler.success_with_message("already up to date".light_black());
             return Ok(false);
         }
