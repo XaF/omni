@@ -317,7 +317,7 @@ impl StringFilter {
                 Err(_) => false,
             },
             StringFilter::Glob(pattern) => match globset::Glob::new(&pattern.to_lowercase()) {
-                Ok(glob) => glob.compile_matcher().is_match(&value.to_lowercase()),
+                Ok(glob) => glob.compile_matcher().is_match(value.to_lowercase()),
                 Err(_) => false,
             },
             StringFilter::Exact(pattern) => value.to_lowercase() == pattern.to_lowercase(),
