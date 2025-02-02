@@ -137,9 +137,9 @@ impl PathCommand {
         let mut known_sources: HashMap<String, usize> = HashMap::new();
 
         for path in paths {
-            // TODO: we need to figure out how to make it work well given we're returning a
-            // list of PathCommand but we will get a list of ConfigCommand here
-            // If this is a file
+            // If this is a file, we either need to load configuration commands
+            // from an omni configuration file, or we can just skip to the next
+            // entry in the path list
             let pathobj = Path::new(path);
             if pathobj.is_file() {
                 // Check if this is an omni configuration file
@@ -151,10 +151,12 @@ impl PathCommand {
                         &error_handler.with_file(path.clone()),
                     );
 
-                    let config_commands =
-                        ConfigCommand::all_commands(file_config.commands.clone(), vec![]);
-
-                    all_commands.extend(config_commands.into_iter().map(|cmd| cmd.into()));
+                    all_commands.extend(
+                        ConfigCommand::all_commands(file_config.commands.clone(), vec![])
+                            .into_iter()
+                            .filter(|cmd| cmd.export())
+                            .map(|cmd| cmd.into()),
+                    );
                 }
 
                 continue;

@@ -179,6 +179,10 @@ impl ConfigCommand {
         &self.details.tags
     }
 
+    pub fn export(&self) -> bool {
+        self.details.export
+    }
+
     pub fn exec_dir(&self) -> Result<PathBuf, String> {
         let config_file = self.source();
         let config_dir = abs_path(

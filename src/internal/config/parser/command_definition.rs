@@ -23,23 +23,25 @@ use crate::internal::ORG_LOADER;
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct CommandDefinition {
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub desc: Option<String>,
     pub run: String,
-    #[serde(skip_serializing_if = "Vec::is_empty")]
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub aliases: Vec<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub syntax: Option<CommandSyntax>,
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub category: Option<Vec<String>>,
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub dir: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub subcommands: Option<HashMap<String, CommandDefinition>>,
-    #[serde(skip_serializing_if = "cache_utils::is_false")]
+    #[serde(default, skip_serializing_if = "cache_utils::is_false")]
     pub argparser: bool,
-    #[serde(skip_serializing_if = "BTreeMap::is_empty")]
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub tags: BTreeMap<String, String>,
+    #[serde(default, skip_serializing_if = "cache_utils::is_false")]
+    pub export: bool,
     #[serde(skip)]
     pub source: ConfigSource,
     #[serde(skip)]
@@ -140,6 +142,12 @@ impl CommandDefinition {
             &error_handler.with_key("argparser"),
         );
 
+        let export = config_value.get_as_bool_or_default(
+            "export",
+            false, // Do not export by default
+            &error_handler.with_key("export"),
+        );
+
         Self {
             desc,
             run,
@@ -150,6 +158,7 @@ impl CommandDefinition {
             subcommands,
             argparser,
             tags,
+            export,
             source: config_value.get_source().clone(),
             scope: config_value.current_scope().clone(),
         }
