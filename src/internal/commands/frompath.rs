@@ -144,8 +144,13 @@ impl PathCommand {
             if pathobj.is_file() {
                 // Check if this is an omni configuration file
                 if WORKDIR_CONFIG_FILES.iter().any(|f| path.ends_with(f)) {
-                    // TODO: validate the file is in a repository so we can define the scope properly
-                    let loader = ConfigLoader::new_from_file(path, ConfigScope::Workdir);
+                    let loader = ConfigLoader::new_from_file(
+                        path,
+                        // We just consider it's workdir scope, but shouldn't be
+                        // important as we do not do anything specific with that
+                        // configuration besides reading the commands
+                        ConfigScope::Workdir,
+                    );
                     let file_config = OmniConfig::from_config_value(
                         &loader.raw_config,
                         &error_handler.with_file(path.clone()),
