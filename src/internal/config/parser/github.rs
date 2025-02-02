@@ -316,8 +316,8 @@ impl StringFilter {
                 Ok(regex) => regex.is_match(value),
                 Err(_) => false,
             },
-            StringFilter::Glob(pattern) => match glob::Pattern::new(&pattern.to_lowercase()) {
-                Ok(glob) => glob.matches(&value.to_lowercase()),
+            StringFilter::Glob(pattern) => match globset::Glob::new(&pattern.to_lowercase()) {
+                Ok(glob) => glob.compile_matcher().is_match(&value.to_lowercase()),
                 Err(_) => false,
             },
             StringFilter::Exact(pattern) => value.to_lowercase() == pattern.to_lowercase(),
