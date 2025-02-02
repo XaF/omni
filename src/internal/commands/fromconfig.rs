@@ -29,7 +29,7 @@ impl ConfigCommand {
         Self::all_commands(config(".").commands.clone(), vec![])
     }
 
-    fn all_commands(
+    pub fn all_commands(
         command_definitions: HashMap<String, CommandDefinition>,
         parent_aliases: Vec<String>,
     ) -> Vec<Self> {
@@ -177,6 +177,10 @@ impl ConfigCommand {
 
     pub fn tags(&self) -> &BTreeMap<String, String> {
         &self.details.tags
+    }
+
+    pub fn export(&self) -> bool {
+        self.details.export
     }
 
     pub fn exec_dir(&self) -> Result<PathBuf, String> {

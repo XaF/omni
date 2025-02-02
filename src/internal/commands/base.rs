@@ -86,6 +86,30 @@ impl Clone for Command {
     }
 }
 
+impl From<ConfigCommand> for Command {
+    fn from(command: ConfigCommand) -> Self {
+        Command::FromConfig(Box::new(command))
+    }
+}
+
+impl From<MakefileCommand> for Command {
+    fn from(command: MakefileCommand) -> Self {
+        Command::FromMakefile(command)
+    }
+}
+
+impl From<PathCommand> for Command {
+    fn from(command: PathCommand) -> Self {
+        Command::FromPath(command)
+    }
+}
+
+impl From<VoidCommand> for Command {
+    fn from(command: VoidCommand) -> Self {
+        Command::Void(command)
+    }
+}
+
 impl Command {
     pub fn name(&self) -> Vec<String> {
         match self {

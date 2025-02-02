@@ -16,17 +16,21 @@ use walkdir::WalkDir;
 
 use crate::internal::commands::base::AutocompleteParameter;
 use crate::internal::commands::base::CommandAutocompletion;
+use crate::internal::commands::fromconfig::ConfigCommand;
 use crate::internal::commands::path::omnipath;
 use crate::internal::commands::utils::str_to_bool;
 use crate::internal::commands::utils::SplitOnSeparators;
+use crate::internal::commands::Command;
 use crate::internal::config;
 use crate::internal::config::config_loader;
+use crate::internal::config::loader::WORKDIR_CONFIG_FILES;
 use crate::internal::config::parser::parse_arg_name;
 use crate::internal::config::parser::ConfigErrorHandler;
 use crate::internal::config::parser::ConfigErrorKind;
 use crate::internal::config::utils::is_executable;
 use crate::internal::config::CommandSyntax;
 use crate::internal::config::ConfigExtendOptions;
+use crate::internal::config::ConfigScope;
 use crate::internal::config::OmniConfig;
 use crate::internal::config::SyntaxGroup;
 use crate::internal::config::SyntaxOptArg;
@@ -34,6 +38,7 @@ use crate::internal::config::SyntaxOptArgNumValues;
 use crate::internal::config::SyntaxOptArgType;
 use crate::internal::git::package_path_from_handle;
 use crate::internal::workdir;
+use crate::internal::ConfigLoader;
 
 #[derive(Debug, Clone)]
 pub struct PathCommand {
@@ -44,18 +49,18 @@ pub struct PathCommand {
 }
 
 impl PathCommand {
-    pub fn all() -> Vec<Self> {
+    pub fn all() -> Vec<Command> {
         Self::aggregate_commands_from_path(&omnipath(), &ConfigErrorHandler::noop())
     }
 
     pub fn aggregate_with_errors(
         paths: &[String],
         error_handler: &ConfigErrorHandler,
-    ) -> Vec<Self> {
+    ) -> Vec<Command> {
         Self::aggregate_commands_from_path(paths, error_handler)
     }
 
-    pub fn local() -> Vec<Self> {
+    pub fn local() -> Vec<Command> {
         // Check if we are in a work directory
         let workdir = workdir(".");
         let (wd_id, wd_root) = match (workdir.id(), workdir.root()) {
@@ -127,11 +132,41 @@ impl PathCommand {
     fn aggregate_commands_from_path(
         paths: &[String],
         error_handler: &ConfigErrorHandler,
-    ) -> Vec<Self> {
-        let mut all_commands: Vec<PathCommand> = Vec::new();
+    ) -> Vec<Command> {
+        let mut all_commands: Vec<Command> = Vec::new();
         let mut known_sources: HashMap<String, usize> = HashMap::new();
 
         for path in paths {
+            // If this is a file, we either need to load configuration commands
+            // from an omni configuration file, or we can just skip to the next
+            // entry in the path list
+            let pathobj = Path::new(path);
+            if pathobj.is_file() {
+                // Check if this is an omni configuration file
+                if WORKDIR_CONFIG_FILES.iter().any(|f| path.ends_with(f)) {
+                    let loader = ConfigLoader::new_from_file(
+                        path,
+                        // We just consider it's workdir scope, but shouldn't be
+                        // important as we do not do anything specific with that
+                        // configuration besides reading the commands
+                        ConfigScope::Workdir,
+                    );
+                    let file_config = OmniConfig::from_config_value(
+                        &loader.raw_config,
+                        &error_handler.with_file(path.clone()),
+                    );
+
+                    all_commands.extend(
+                        ConfigCommand::all_commands(file_config.commands.clone(), vec![])
+                            .into_iter()
+                            .filter(|cmd| cmd.export())
+                            .map(|cmd| cmd.into()),
+                    );
+                }
+
+                continue;
+            }
+
             // Aggregate all the files first, since WalkDir does not sort the list
             let mut files_to_process = Vec::new();
             for entry in WalkDir::new(path).follow_links(true).into_iter().flatten() {
@@ -192,11 +227,16 @@ impl PathCommand {
                 if let Some(idx) = known_sources.get_mut(&new_command.real_source()) {
                     // Add this command's name to the command's aliases
                     let cmd: &mut _ = &mut all_commands[*idx];
-                    cmd.add_alias(new_command.name(), Some(new_command.source()));
+                    match cmd {
+                        Command::FromPath(cmd) => {
+                            cmd.add_alias(new_command.name(), Some(new_command.source()))
+                        }
+                        _ => unreachable!(),
+                    }
                 } else {
                     // Add the new command
-                    all_commands.push(new_command.clone());
-                    known_sources.insert(new_command.real_source(), all_commands.len() - 1);
+                    known_sources.insert(new_command.real_source(), all_commands.len());
+                    all_commands.push(new_command.into());
                 }
             }
         }
