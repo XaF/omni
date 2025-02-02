@@ -5,6 +5,7 @@ mod internal;
 use internal::command_loader;
 use internal::commands::base::BuiltinCommand;
 use internal::commands::loader::set_lookup_local_first;
+use internal::commands::HelpCommand;
 use internal::commands::HookEnvCommand;
 use internal::commands::HookInitCommand;
 use internal::commands::HookUuidCommand;
@@ -252,6 +253,26 @@ fn run_omni_subcommand(parsed: &MainArgs) {
 
     if parsed.only_check_exists {
         exit(1);
+    }
+
+    // Handle `-h` and `--help` as special cases if they are used directly
+    // for the prefix of an existing subcommand, as we can trigger the help
+    // command directly to show all the available subcommands
+    if parsed
+        .args
+        .last()
+        .map(|arg| arg == "-h" || arg == "--help")
+        .unwrap_or(false)
+    {
+        // The args without that last `-h` or `--help` argument
+        let argv = parsed.args[..parsed.args.len() - 1].to_vec();
+
+        // Find if there is _any_ command with that prefix
+        if command_loader.has_subcommand_of(&argv) {
+            // Just call `omni help <argv>` directly
+            HelpCommand::new().exec_with_exit_code(argv, 0);
+            unreachable!("help command should have exited");
+        }
     }
 
     // We didn't find the command, so let's try to update synchronously

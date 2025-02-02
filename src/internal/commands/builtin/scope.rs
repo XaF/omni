@@ -7,6 +7,7 @@ use crate::internal::commands::base::CommandAutocompletion;
 use crate::internal::commands::command_loader;
 use crate::internal::commands::utils::path_auto_complete;
 use crate::internal::commands::Command;
+use crate::internal::commands::HelpCommand;
 use crate::internal::config::parser::ParseArgsValue;
 use crate::internal::config::CommandSyntax;
 use crate::internal::config::SyntaxOptArg;
@@ -222,6 +223,25 @@ impl BuiltinCommand for ScopeCommand {
         if let Some((omni_cmd, called_as, argv)) = command_loader.to_serve(&argv) {
             omni_cmd.exec(argv, Some(called_as));
             panic!("exec returned");
+        }
+
+        // Handle `-h` and `--help` as special cases if they are used directly
+        // for the prefix of an existing subcommand, as we can trigger the help
+        // command directly to show all the available subcommands
+        if argv
+            .last()
+            .map(|arg| arg == "-h" || arg == "--help")
+            .unwrap_or(false)
+        {
+            // The args without that last `-h` or `--help` argument
+            let argv = argv[..argv.len() - 1].to_vec();
+
+            // Find if there is _any_ command with that prefix
+            if command_loader.has_subcommand_of(&argv) {
+                // Just call `omni help <argv>` directly
+                HelpCommand::new().exec_with_exit_code(argv, 0);
+                unreachable!("help command should have exited");
+            }
         }
 
         eprintln!(

@@ -326,7 +326,7 @@ impl CommandLoader {
     }
 
     pub fn find_command(&self, argv: &[String]) -> Option<(Command, Vec<String>, Vec<String>)> {
-        let page_size = 7;
+        const PAGE_SIZE: usize = 7;
 
         // This preempt the score search if we are in interactive mode and the arguments
         // are prefix of an existing subcommand
@@ -370,7 +370,7 @@ impl CommandLoader {
                         ))
                         .choices(sub_names.iter().map(|sub_name| sub_name.join(" ")))
                         .should_loop(false)
-                        .page_size(page_size)
+                        .page_size(PAGE_SIZE)
                         .build()
                 } else {
                     requestty::Question::confirm("did_you_mean_command")
@@ -408,7 +408,7 @@ impl CommandLoader {
                         _ => {}
                     },
                     Err(err) => {
-                        if page_size < sub_names.len() {
+                        if PAGE_SIZE < sub_names.len() {
                             print!("\x1B[1A\x1B[2K"); // This clears the line, so there's no artifact left
                         }
                         println!("{}", format!("[✘] {:?}", err).red());
@@ -419,6 +419,8 @@ impl CommandLoader {
             }
         }
 
+        // Otherwise, we can try to find the command with the highest score
+        // and ask the user if they meant that command
         let mut with_score = self
             .commands
             .iter()
@@ -482,7 +484,7 @@ impl CommandLoader {
                     ))
                     .choices(with_score.iter().map(|found| found.command.flat_name()))
                     .should_loop(false)
-                    .page_size(page_size)
+                    .page_size(PAGE_SIZE)
                     .build()
             } else {
                 requestty::Question::confirm("did_you_mean_command")
@@ -515,7 +517,7 @@ impl CommandLoader {
                     }
                 }
                 Err(err) => {
-                    if page_size < with_score.len() {
+                    if PAGE_SIZE < with_score.len() {
                         print!("\x1B[1A\x1B[2K"); // This clears the line, so there's no artifact left
                     }
                     println!("{}", format!("[✘] {:?}", err).red());
