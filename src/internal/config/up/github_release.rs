@@ -2120,7 +2120,7 @@ impl AssetNameMatcher {
                 return None;
             };
 
-            let mut disabled = true;
+            let mut disabled = false;
 
             // If 'os' is set, we can ignore this filter if the current OS
             // does not match the given OS
@@ -2178,7 +2178,7 @@ impl AssetNameMatcher {
     pub fn matches(&self, asset_name: &str) -> bool {
         if self.disabled {
             // We do not need to check the os/arch matching since
-            // the 'skip_match' flag is set when those don't match
+            // the 'disabled' flag is set when those don't match
             return false;
         }
 
