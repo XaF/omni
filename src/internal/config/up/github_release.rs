@@ -39,8 +39,11 @@ use crate::internal::config::up::utils::VersionMatcher;
 use crate::internal::config::up::utils::VersionParser;
 use crate::internal::config::up::UpError;
 use crate::internal::config::up::UpOptions;
+use crate::internal::config::utils::check_allowed;
 use crate::internal::config::ConfigValue;
 use crate::internal::env::data_home;
+use crate::internal::self_updater::current_arch;
+use crate::internal::self_updater::current_os;
 use crate::internal::user_interface::StringColor;
 
 const GITHUB_API_URL: &str = "https://api.github.com";
@@ -509,8 +512,8 @@ pub struct UpConfigGithubRelease {
     /// and architecture will be downloaded. It can take glob
     /// patterns, e.g. `*.tar.gz` or `special-asset-*`. If not
     /// set, will be similar as being set to `*`.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub asset_name: Option<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub asset_name: Vec<AssetNameMatcher>,
 
     /// Whether to skip the OS matching when downloading the
     /// release. This is useful when the release is not
@@ -581,7 +584,7 @@ impl Default for UpConfigGithubRelease {
             prerelease: false,
             build: false,
             binary: true,
-            asset_name: None,
+            asset_name: vec![],
             skip_os_matching: false,
             skip_arch_matching: false,
             prefer_dist: false,
@@ -737,8 +740,10 @@ impl UpConfigGithubRelease {
             config_value.get_as_bool_or_default("build", false, &error_handler.with_key("build"));
         let binary =
             config_value.get_as_bool_or_default("binary", true, &error_handler.with_key("binary"));
-        let asset_name =
-            config_value.get_as_str_or_none("asset_name", &error_handler.with_key("asset_name"));
+        let asset_name = AssetNameMatcher::from_config_value_multi(
+            table.get("asset_name"),
+            &error_handler.with_key("asset_name"),
+        );
         let skip_os_matching = config_value.get_as_bool_or_default(
             "skip_os_matching",
             false,
@@ -1349,13 +1354,13 @@ impl UpConfigGithubRelease {
                     .prerelease(self.prerelease)
                     .build(self.build)
                     .binary(self.binary)
-                    .asset_name(self.asset_name.clone())
+                    .asset_name_matchers(self.asset_name.clone())
                     .skip_os_matching(self.skip_os_matching)
                     .skip_arch_matching(self.skip_arch_matching)
                     .prefer_dist(self.prefer_dist)
                     .checksum_lookup(self.checksum.is_enabled())
                     .checksum_algorithm(self.checksum.algorithm.clone().map(|a| a.to_string()))
-                    .checksum_asset_name(self.checksum.asset_name.clone()),
+                    .checksum_asset_name_matchers(self.checksum.asset_name.clone()),
             )
             .ok_or_else(|| {
                 let errmsg = format!(
@@ -1855,8 +1860,8 @@ pub struct GithubReleaseChecksumConfig {
 
     /// The name of the asset containing the checksum value to
     /// compare against the downloaded release assets.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    asset_name: Option<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    asset_name: Vec<AssetNameMatcher>,
 }
 
 impl GithubReleaseChecksumConfig {
@@ -1865,7 +1870,7 @@ impl GithubReleaseChecksumConfig {
             && self.required.is_none()
             && self.algorithm.is_none()
             && self.value.is_none()
-            && self.asset_name.is_none()
+            && self.asset_name.is_empty()
     }
 
     pub fn from_config_value(
@@ -1909,8 +1914,10 @@ impl GithubReleaseChecksumConfig {
             .map(|v| GithubReleaseChecksumAlgorithm::from_str(&v))
             .unwrap_or(None);
         let value = config_value.get_as_str_or_none("value", &error_handler.with_key("value"));
-        let asset_name =
-            config_value.get_as_str_or_none("asset_name", &error_handler.with_key("asset_name"));
+        let asset_name = AssetNameMatcher::from_config_value_multi(
+            config_value.get("asset_name").as_ref(),
+            &error_handler.with_key("asset_name"),
+        );
 
         GithubReleaseChecksumConfig {
             enabled,
@@ -1927,7 +1934,9 @@ impl GithubReleaseChecksumConfig {
 
     fn is_required(&self) -> bool {
         self.required.unwrap_or(
-            self.algorithm.is_some() || self.value.is_some() || self.asset_name.is_some(),
+            self.algorithm.is_some()
+                || self.value.is_some()
+                || self.asset_name.iter().any(|matcher| matcher.enabled()),
         )
     }
 }
@@ -2018,6 +2027,162 @@ impl GithubReleaseChecksumAlgorithm {
                 Ok(format!("{:x}", hasher.finalize()))
             }
         }
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone, Default)]
+pub struct AssetNameMatcher {
+    /// This matcher will only match if the current OS matches the given OS.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    os: Option<String>,
+    /// This matcher will only match if the current architecture matches the given architecture.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    arch: Option<String>,
+    /// This matcher will only match if the asset name matches the given value.
+    patterns: Vec<String>,
+    /// This is set programmatically to indicate this matcher did not match the os or architecture
+    #[serde(skip)]
+    disabled: bool,
+}
+
+impl AssetNameMatcher {
+    fn from_config_value_multi(
+        config_value: Option<&ConfigValue>,
+        error_handler: &ConfigErrorHandler,
+    ) -> Vec<Self> {
+        let config_value = match config_value {
+            Some(config_value) => config_value,
+            None => return vec![],
+        };
+
+        if let Some(string) = config_value.as_str() {
+            vec![Self {
+                patterns: Self::patterns_from_string(&string),
+                ..Self::default()
+            }]
+        } else if let Some(array) = config_value.as_array() {
+            array
+                .iter()
+                .enumerate()
+                .filter_map(|(idx, value)| {
+                    Self::from_config_value_unit(Some(value), &error_handler.with_index(idx))
+                })
+                .collect()
+        } else {
+            error_handler
+                .with_expected(vec!["string", "array"])
+                .with_actual(config_value)
+                .error(ConfigErrorKind::InvalidValueType);
+
+            vec![]
+        }
+    }
+
+    fn from_config_value_unit(
+        config_value: Option<&ConfigValue>,
+        error_handler: &ConfigErrorHandler,
+    ) -> Option<Self> {
+        let config_value = config_value?;
+
+        if let Some(string) = config_value.as_str() {
+            Some(Self {
+                patterns: Self::patterns_from_string(&string),
+                ..Self::default()
+            })
+        } else if let Some(array) = config_value.as_array() {
+            Some(Self {
+                patterns: Self::patterns_from_array(&array),
+                ..Self::default()
+            })
+        } else if config_value.is_table() {
+            let os = config_value.get_as_str_or_none("os", &error_handler.with_key("os"));
+            let arch = config_value.get_as_str_or_none("arch", &error_handler.with_key("arch"));
+
+            let patterns = if let Some(patterns) = config_value.get("patterns") {
+                if let Some(string) = patterns.as_str_forced() {
+                    Self::patterns_from_string(&string)
+                } else if let Some(array) = patterns.as_array() {
+                    Self::patterns_from_array(&array)
+                } else {
+                    error_handler
+                        .with_key("patterns")
+                        .with_expected(vec!["string", "array"])
+                        .with_actual(patterns)
+                        .error(ConfigErrorKind::InvalidValueType);
+
+                    return None;
+                }
+            } else {
+                error_handler
+                    .with_key("patterns")
+                    .error(ConfigErrorKind::MissingKey);
+
+                return None;
+            };
+
+            let mut disabled = false;
+
+            // If 'os' is set, we can ignore this filter if the current OS
+            // does not match the given OS
+            if let Some(ref os) = os {
+                if os.to_lowercase() != current_os().to_lowercase() {
+                    disabled = true;
+                }
+            }
+
+            // If 'arch' is set, we can ignore this filter if the current
+            // architecture does not match the given architecture
+            if let Some(ref arch) = arch {
+                if arch.to_lowercase() != current_arch().to_lowercase() {
+                    disabled = true;
+                }
+            }
+
+            Some(Self {
+                os,
+                arch,
+                patterns,
+                disabled,
+            })
+        } else {
+            error_handler
+                .with_expected(vec!["string", "array", "table"])
+                .with_actual(config_value)
+                .error(ConfigErrorKind::InvalidValueType);
+
+            None
+        }
+    }
+
+    fn patterns_from_array(array: &[ConfigValue]) -> Vec<String> {
+        array
+            .iter()
+            .filter_map(|value| value.as_str())
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty())
+            .collect()
+    }
+
+    fn patterns_from_string(string: &str) -> Vec<String> {
+        string
+            .split('\n')
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty())
+            .collect()
+    }
+
+    pub fn enabled(&self) -> bool {
+        !self.disabled
+    }
+
+    pub fn matches(&self, asset_name: &str) -> bool {
+        if self.disabled {
+            // We do not need to check the os/arch matching since
+            // the 'disabled' flag is set when those don't match
+            return false;
+        }
+
+        check_allowed(asset_name, &self.patterns)
     }
 }
 
