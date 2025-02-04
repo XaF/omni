@@ -24,6 +24,7 @@ use crate::internal::config::up::utils::RunConfig;
 use crate::internal::config::up::utils::SpinnerProgressHandler;
 use crate::internal::env::current_exe;
 use crate::internal::env::homebrew_prefix;
+use crate::internal::env::homebrew_repository;
 use crate::internal::env::shell_is_interactive;
 use crate::internal::user_interface::colors::StringColor;
 use crate::internal::ConfigLoader;
@@ -477,8 +478,8 @@ impl OmniRelease {
         let mut git_pull = TokioCommand::new("git");
         git_pull.arg("pull");
         git_pull.current_dir(
-            Path::new(&homebrew_prefix().ok_or_else(|| {
-                io::Error::new(io::ErrorKind::Other, "failed to get homebrew prefix")
+            Path::new(&homebrew_repository().ok_or_else(|| {
+                io::Error::new(io::ErrorKind::Other, "failed to get homebrew repository")
             })?)
             .join("Library")
             .join("Taps")
