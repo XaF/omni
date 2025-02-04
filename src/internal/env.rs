@@ -70,30 +70,10 @@ lazy_static! {
     };
 
     #[derive(Debug)]
-    static ref HOMEBREW_PREFIX: Option<String> = {
-        // Get the homebrew prefix, either through the HOMEBREW_PREFIX env var
-        // if available, or by calling `brew --prefix`; if both fail, we're not
-        // installed with homebrew since... probably no homebrew.
-        if let Ok(prefix) = std::env::var("HOMEBREW_PREFIX") {
-            if !prefix.is_empty() {
-                return Some(prefix);
-            }
-        }
-        let output = std::process::Command::new("brew")
-            .arg("--prefix")
-            .output();
-        if let Ok(output) = output {
-            if output.status.success() {
-                if let Ok(prefix) = String::from_utf8(output.stdout) {
-                    let prefix = prefix.trim();
-                    if !prefix.is_empty() {
-                        return Some(prefix.to_string());
-                    }
-                }
-            }
-        }
-        None
-    };
+    static ref HOMEBREW_PREFIX: Option<String> = resolve_homebrew_prefix();
+
+    #[derive(Debug)]
+    static ref HOMEBREW_REPOSITORY: Option<String> = resolve_homebrew_repository();
 
     #[derive(Debug)]
     static ref TMPDIR_CLEANUP_PREFIX: String = {
@@ -639,8 +619,66 @@ pub fn current_dir() -> PathBuf {
     std::env::current_dir().expect("failed to get current dir")
 }
 
+/// Get the homebrew prefix, if available.
+#[inline]
+fn resolve_homebrew_prefix() -> Option<String> {
+    // Get the homebrew prefix, either through the HOMEBREW_PREFIX env var
+    // if available, or by calling `brew --prefix`; if both fail, we're not
+    // installed with homebrew since... probably no homebrew.
+    if let Ok(prefix) = std::env::var("HOMEBREW_PREFIX") {
+        if !prefix.is_empty() {
+            return Some(prefix);
+        }
+    }
+    let output = std::process::Command::new("brew").arg("--prefix").output();
+    if let Ok(output) = output {
+        if output.status.success() {
+            if let Ok(prefix) = String::from_utf8(output.stdout) {
+                let prefix = prefix.trim();
+                if !prefix.is_empty() {
+                    return Some(prefix.to_string());
+                }
+            }
+        }
+    }
+    None
+}
+
+/// Returns the homebrew prefix, if available.
 pub fn homebrew_prefix() -> Option<String> {
     (*HOMEBREW_PREFIX).clone()
+}
+
+/// Get the homebrew repository, if available.
+#[inline]
+fn resolve_homebrew_repository() -> Option<String> {
+    // Get the homebrew repository, either through the HOMEBREW_REPOSITORY env var
+    // if available, or by calling `brew --repository`; if both fail, we're not
+    // installed with homebrew since... probably no homebrew.
+    if let Ok(repository) = std::env::var("HOMEBREW_REPOSITORY") {
+        if !repository.is_empty() {
+            return Some(repository);
+        }
+    }
+    let output = std::process::Command::new("brew")
+        .arg("--repository")
+        .output();
+    if let Ok(output) = output {
+        if output.status.success() {
+            if let Ok(repository) = String::from_utf8(output.stdout) {
+                let repository = repository.trim();
+                if !repository.is_empty() {
+                    return Some(repository.to_string());
+                }
+            }
+        }
+    }
+    None
+}
+
+/// Returns the homebrew repository, if available.
+pub fn homebrew_repository() -> Option<String> {
+    (*HOMEBREW_REPOSITORY).clone()
 }
 
 #[derive(Debug, Clone)]
