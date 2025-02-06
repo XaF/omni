@@ -794,10 +794,10 @@ impl UpConfigGithubRelease {
         environment: &mut UpEnvironment,
         progress_handler: &dyn ProgressHandler,
     ) {
-        let version = match self.actual_version.get() {
-            Some(version) => version,
-            None => {
-                progress_handler.error_with_message("version not set".to_string());
+        let version = match self.version() {
+            Ok(version) => self.version_with_config(&version),
+            Err(err) => {
+                progress_handler.error_with_message(err.message());
                 return;
             }
         };
@@ -805,13 +805,13 @@ impl UpConfigGithubRelease {
         progress_handler.progress("updating cache".to_string());
 
         if let Err(err) =
-            GithubReleaseOperationCache::get().add_installed(&self.repository, version)
+            GithubReleaseOperationCache::get().add_installed(&self.repository, &version)
         {
             progress_handler.progress(format!("failed to update github release cache: {}", err));
             return;
         }
 
-        let release_version_path = self.release_version_path(version);
+        let release_version_path = self.release_version_path(&version);
         environment.add_path(release_version_path);
 
         progress_handler.progress("updated cache".to_string());
@@ -889,14 +889,11 @@ impl UpConfigGithubRelease {
     }
 
     pub fn install_path(&self) -> Result<PathBuf, UpError> {
-        let version = self.version()?;
-        Ok(github_releases_bin_path()
-            .join(&self.repository)
-            .join(&version))
+        Ok(self.release_version_path(&self.version_with_config(&self.version()?)))
     }
 
     pub fn commit(&self, _options: &UpOptions, env_version_id: &str) -> Result<(), UpError> {
-        let version = self.version()?;
+        let version = self.version_with_config(&self.version()?);
         if let Err(err) = GithubReleaseOperationCache::get().add_required_by(
             env_version_id,
             &self.repository,
@@ -1433,10 +1430,63 @@ impl UpConfigGithubRelease {
         Ok(version.to_string())
     }
 
+    /// Returns a hash that represents the configuration that could
+    /// influence the assets being installed from the release. This
+    /// hash is used to differentiate between two identical releases
+    /// at the same version that had different configurations leading
+    /// to different assets being installed for it.
+    fn release_config_hash(&self) -> Option<String> {
+        // If there is none of the configuration that could influence
+        // the assets being installed from the release, we should not
+        // generate a hash for it
+        if self.asset_name.iter().all(|name| !name.any_filter())
+            && self.binary
+            && !self.skip_os_matching
+            && !self.skip_arch_matching
+        {
+            return None;
+        }
+
+        let mut hasher = Sha256::new();
+
+        for asset_name in self.asset_name.iter().filter(|name| name.any_filter()) {
+            hasher.update(asset_name.hash_filter());
+        }
+
+        if !self.binary {
+            hasher.update(b"disabled_binary");
+        }
+
+        if self.skip_os_matching {
+            hasher.update(b"skip_os_matching");
+        }
+
+        if self.skip_arch_matching {
+            hasher.update(b"skip_arch_matching");
+        }
+
+        if self.prefer_dist {
+            hasher.update(b"prefer_dist");
+        }
+
+        let hash = format!("{:x}", hasher.finalize());
+        let short_hash = &hash[0..8];
+        Some(short_hash.to_string())
+    }
+
+    fn version_with_config(&self, version: &str) -> String {
+        match self.release_config_hash() {
+            Some(hash) => format!("{}~{}", version, hash),
+            None => version.to_string(),
+        }
+    }
+
+    fn release_path(&self) -> PathBuf {
+        github_releases_bin_path().join(&self.repository)
+    }
+
     fn release_version_path(&self, version: &str) -> PathBuf {
-        github_releases_bin_path()
-            .join(&self.repository)
-            .join(version)
+        self.release_path().join(version)
     }
 
     fn download_asset(
@@ -1624,7 +1674,7 @@ impl UpConfigGithubRelease {
         progress_handler: &dyn ProgressHandler,
     ) -> Result<bool, UpError> {
         let version = release.version();
-        let install_path = self.release_version_path(&version);
+        let install_path = self.release_version_path(&self.version_with_config(&version));
 
         if options.read_cache && install_path.exists() && install_path.is_dir() {
             progress_handler.progress(
@@ -2173,6 +2223,18 @@ impl AssetNameMatcher {
 
     pub fn enabled(&self) -> bool {
         !self.disabled
+    }
+
+    fn any_filter(&self) -> bool {
+        !self.disabled && !self.patterns.is_empty()
+    }
+
+    fn hash_filter(&self) -> Vec<u8> {
+        let mut hasher = Sha256::new();
+        for pattern in &self.patterns {
+            hasher.update(pattern.as_bytes());
+        }
+        hasher.finalize().to_vec()
     }
 
     pub fn matches(&self, asset_name: &str) -> bool {
