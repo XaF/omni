@@ -925,6 +925,10 @@ impl UpConfigGithubRelease {
         let mut download_release = Err(UpError::Exec("did not even try".to_string()));
         let mut releases = None;
 
+        if let Some(hash) = self.release_config_hash() {
+            progress_handler.progress(format!("using configuration hash {}", hash.light_yellow()));
+        }
+
         // If the options do not include upgrade, then we can try using
         // an already-installed version if any matches the requirements
         if !self.upgrade_release(options) {
@@ -1380,7 +1384,7 @@ impl UpConfigGithubRelease {
             return Ok(vec![]);
         }
 
-        let installed_versions = std::fs::read_dir(&release_path)
+        let installed_versions: Vec<_> = std::fs::read_dir(&release_path)
             .map_err(|err| {
                 let errmsg = format!("failed to read directory: {}", err);
                 UpError::Exec(errmsg)
@@ -1395,6 +1399,47 @@ impl UpConfigGithubRelease {
                 })
             })
             .collect();
+
+        // If we have a config hash, we should filter out the versions that
+        // do not match it as they won't be the same as the expected version;
+        // if we DO NOT have a config hash, we should filter out the versions
+        // that DO have a config hash as they won't be the same as the expected
+        // version
+        let installed_versions: Vec<_> = if let Some(hash) = self.release_config_hash() {
+            let ends_with = format!("~{}", hash);
+            installed_versions
+                .into_iter()
+                .filter_map(|version| Some(version.strip_suffix(&ends_with)?.to_string()))
+                .collect()
+        } else {
+            // We want to remove all versions that end with ~ followed
+            // by a sha256 hash of 8 characters, as this will indicate
+            // that the version was installed with a specific configuration
+            // that could influence the assets being installed
+
+            installed_versions
+                .into_iter()
+                .filter(|version| {
+                    // If the version has less characters than the hash
+                    // length, we should keep it as it is not a hash
+                    let len = version.len();
+                    if len < 9 {
+                        return true;
+                    }
+
+                    // Check for the `~` character, which should be 9 characters
+                    // from the end of the string
+                    let tilde = &version[len - 9..len - 8];
+                    if tilde != "~" {
+                        return true;
+                    }
+
+                    // Now check all characters after the tilde are hex digits
+                    let hash = &version[len - 8..];
+                    !hash.chars().all(|c| c.is_ascii_hexdigit())
+                })
+                .collect()
+        };
 
         Ok(installed_versions)
     }
