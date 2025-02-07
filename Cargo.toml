@@ -48,7 +48,7 @@ libz-sys = { version = "1.1.21", features = ["static"] }  # So we can force stat
 machine-uid = "0.5.2"
 md-5 = "0.10.6"
 nix = "0.29.0"
-node-semver = "2.1.0"
+node-semver = "2.2.0"
 normalize-path = "0.2.1"
 num-bigint = "0.4.6"
 num-integer = "0.1.46"
