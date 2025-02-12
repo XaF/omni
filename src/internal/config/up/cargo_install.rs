@@ -35,6 +35,7 @@ use crate::internal::config::ConfigValue;
 use crate::internal::env::data_home;
 use crate::internal::env::tmpdir_cleanup_prefix;
 use crate::internal::user_interface::StringColor;
+use crate::internal::utils::safe_rename;
 
 cfg_if::cfg_if! {
     if #[cfg(test)] {
@@ -1274,7 +1275,7 @@ impl UpConfigCargoInstall {
         })?;
 
         // Move the tmp_bin_crate_name to the install_crate_name/<bin> directory
-        std::fs::rename(&tmp_bin_path, target_bin_dir).map_err(|err| {
+        safe_rename(&tmp_bin_path, target_bin_dir).map_err(|err| {
             let msg = format!("failed to move bin directory: {}", err);
             progress_handler.error_with_message(msg.clone());
             UpError::Exec(msg)

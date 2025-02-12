@@ -34,6 +34,7 @@ use crate::internal::git::path_entry_config;
 use crate::internal::git::safe_git_url_parse;
 use crate::internal::git_env;
 use crate::internal::user_interface::StringColor;
+use crate::internal::utils::safe_rename;
 use crate::internal::ConfigLoader;
 use crate::internal::ORG_LOADER;
 use crate::omni_error;
@@ -719,7 +720,7 @@ impl TidyGitRepo {
         }
 
         // Move the repository to the expected path
-        if let Err(_err) = std::fs::rename(&self.current_path, &self.expected_path) {
+        if let Err(_err) = safe_rename(&self.current_path, &self.expected_path) {
             return false;
         }
 
