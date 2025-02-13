@@ -26,6 +26,7 @@ use crate::internal::config::CommandSyntax;
 use crate::internal::config::ConfigSource;
 use crate::internal::config::SyntaxOptArg;
 use crate::internal::config::SyntaxOptArgType;
+use crate::internal::config::up::utils::directory::safe_rename;
 use crate::internal::env::shell_is_interactive;
 use crate::internal::git::format_path_with_template;
 use crate::internal::git::package_path_from_handle;
@@ -719,7 +720,7 @@ impl TidyGitRepo {
         }
 
         // Move the repository to the expected path
-        if let Err(_err) = std::fs::rename(&self.current_path, &self.expected_path) {
+        if let Err(_err) = safe_rename(&self.current_path, &self.expected_path) {
             return false;
         }
 

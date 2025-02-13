@@ -20,7 +20,7 @@ use crate::internal::config::parser::ConfigErrorKind;
 use crate::internal::config::up::mise::mise_path;
 use crate::internal::config::up::mise_tool_path;
 use crate::internal::config::up::utils::cleanup_path;
-use crate::internal::config::up::utils::directory::force_remove_all;
+use crate::internal::config::up::utils::directory::{force_remove_all, safe_rename};
 use crate::internal::config::up::utils::progress_handler::ProgressHandler;
 use crate::internal::config::up::utils::run_progress;
 use crate::internal::config::up::utils::RunConfig;
@@ -1274,7 +1274,7 @@ impl UpConfigCargoInstall {
         })?;
 
         // Move the tmp_bin_crate_name to the install_crate_name/<bin> directory
-        std::fs::rename(&tmp_bin_path, target_bin_dir).map_err(|err| {
+        safe_rename(&tmp_bin_path, target_bin_dir).map_err(|err| {
             let msg = format!("failed to move bin directory: {}", err);
             progress_handler.error_with_message(msg.clone());
             UpError::Exec(msg)

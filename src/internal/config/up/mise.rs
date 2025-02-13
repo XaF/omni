@@ -41,6 +41,7 @@ use crate::internal::config::up::UpError;
 use crate::internal::config::up::UpOptions;
 use crate::internal::config::utils::is_executable;
 use crate::internal::config::ConfigValue;
+use crate::internal::config::up::utils::directory::safe_rename;
 use crate::internal::dynenv::update_dynamic_env_for_command_from_env;
 use crate::internal::env::cache_home;
 use crate::internal::env::current_dir;
@@ -287,7 +288,7 @@ fn migrate_asdf_to_mise() -> Result<(), UpError> {
     // First, move the asdf installs to mise
     let asdf_installs = asdf_path.join("installs");
     let mise_installs = mise_path.join("installs");
-    if let Err(err) = std::fs::rename(&asdf_installs, &mise_installs) {
+    if let Err(err) = safe_rename(&asdf_installs, &mise_installs) {
         return Err(UpError::Exec(format!(
             "failed to move asdf installs to mise: {}",
             err
@@ -303,7 +304,7 @@ fn migrate_asdf_to_mise() -> Result<(), UpError> {
     // Move the go installs to the correct location
     let go_asdf_path = mise_installs.join("golang");
     let go_mise_path = mise_installs.join("go");
-    if let Err(err) = std::fs::rename(&go_asdf_path, &go_mise_path) {
+    if let Err(err) = safe_rename(&go_asdf_path, &go_mise_path) {
         return Err(UpError::Exec(format!(
             "failed to rename 'golang' to 'go': {}",
             err
@@ -318,7 +319,7 @@ fn migrate_asdf_to_mise() -> Result<(), UpError> {
             let inner_go = entry.join("go");
 
             // Move the inner 'go' directory
-            if let Err(err) = std::fs::rename(&inner_go, &tmpdir) {
+            if let Err(err) = safe_rename(&inner_go, &tmpdir) {
                 return Err(UpError::Exec(format!(
                     "failed to move 'go' directory: {}",
                     err
@@ -334,7 +335,7 @@ fn migrate_asdf_to_mise() -> Result<(), UpError> {
             }
 
             // Move the inner 'go' directory back, but as the outer directory
-            if let Err(err) = std::fs::rename(&tmpdir, &entry) {
+            if let Err(err) = safe_rename(&tmpdir, &entry) {
                 return Err(UpError::Exec(format!(
                     "failed to move 'go' directory back: {}",
                     err
@@ -351,7 +352,7 @@ fn migrate_asdf_to_mise() -> Result<(), UpError> {
     // Move the node installs to the correct location
     let node_asdf_path = mise_installs.join("nodejs");
     let node_mise_path = mise_installs.join("node");
-    if let Err(err) = std::fs::rename(&node_asdf_path, &node_mise_path) {
+    if let Err(err) = safe_rename(&node_asdf_path, &node_mise_path) {
         return Err(UpError::Exec(format!(
             "failed to rename 'nodejs' to 'node': {}",
             err

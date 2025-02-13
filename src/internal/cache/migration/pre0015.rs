@@ -8,6 +8,7 @@ use serde::Deserialize;
 use serde::Serialize;
 
 use crate::internal::config::global_config;
+use crate::internal::config::up::utils::directory::safe_rename;
 
 // Read the content of the cache file and parse it as structured JSON;
 // we will want to deprecate and remove that at some point, but it will
@@ -103,10 +104,10 @@ pub fn convert_cache_pre_0_0_15() -> io::Result<()> {
 
     // Rename the current cache file to a backup file, just in case
     let backup_file_path = cache_path.with_extension("json.pre0015");
-    std::fs::rename(&cache_path, backup_file_path)?;
+    safe_rename(&cache_path, backup_file_path)?;
 
     // Move the temporary directory to the cache path
-    std::fs::rename(&tmp_dir_path, &cache_path)?;
+    safe_rename(&tmp_dir_path, &cache_path)?;
 
     Ok(())
 }

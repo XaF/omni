@@ -41,6 +41,7 @@ use crate::internal::config::up::UpError;
 use crate::internal::config::up::UpOptions;
 use crate::internal::config::utils::check_allowed;
 use crate::internal::config::ConfigValue;
+use crate::internal::config::up::utils::directory::safe_rename;
 use crate::internal::env::data_home;
 use crate::internal::self_updater::current_arch;
 use crate::internal::self_updater::current_os;
@@ -1793,7 +1794,7 @@ impl UpConfigGithubRelease {
                 // Rename the file to get rid of the os, architecture
                 // and version information
                 let new_path = tmp_dir.path().join(asset.clean_name(&version));
-                std::fs::rename(&asset_path, &new_path).map_err(|err| {
+                safe_rename(&asset_path, &new_path).map_err(|err| {
                     let errmsg = format!("failed to rename {}: {}", asset_name, err);
                     progress_handler.error_with_message(errmsg.clone());
                     UpError::Exec(errmsg)

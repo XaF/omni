@@ -1,4 +1,5 @@
 use std::collections::BTreeMap;
+use std::{fs, io};
 use std::os::unix::fs::PermissionsExt;
 use std::path::Path;
 use std::path::PathBuf;
@@ -240,4 +241,35 @@ pub fn cleanup_path(
 
     let num_removed = removed_paths.len();
     Ok((false, num_removed, removed_paths))
+}
+
+/// Rename/move a file from one path to another. Handles the case where the paths may not be on
+/// the same device, with [fs::rename] will fail on.
+pub(crate) fn safe_rename<P: AsRef<Path>, Q: AsRef<Path>>(from: P, to: Q) -> io::Result<()> {
+    if fs::rename(from.as_ref(), to.as_ref()).is_ok() {
+        return Ok(());
+    }
+    // Fall back to copy-and-delete
+    if from.as_ref().is_dir() {
+        copy_dir_all(from.as_ref(), to.as_ref())?;
+        fs::remove_dir_all(from)?;
+    } else {
+        fs::copy(from.as_ref(), to)?;
+        fs::remove_file(from)?;
+    }
+    Ok(())
+}
+
+fn copy_dir_all(src: impl AsRef<Path>, dst: impl AsRef<Path>) -> io::Result<()> {
+    fs::create_dir_all(&dst)?;
+    for entry in fs::read_dir(src)? {
+        let entry = entry?;
+        let ty = entry.file_type()?;
+        if ty.is_dir() {
+            copy_dir_all(entry.path(), dst.as_ref().join(entry.file_name()))?;
+        } else {
+            fs::copy(entry.path(), dst.as_ref().join(entry.file_name()))?;
+        }
+    }
+    Ok(())
 }

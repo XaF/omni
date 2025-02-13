@@ -14,9 +14,9 @@ use crate::internal::cache::offsetdatetime_hashmap;
 use crate::internal::cache::utils;
 use crate::internal::config::global_config;
 use crate::internal::config::parser::EnvOperationEnum;
+use crate::internal::config::up::utils::directory::safe_rename;
 use crate::internal::git_env_fresh;
 use crate::internal::ORG_LOADER;
-
 // In 0.0.29, we are changing the format of the up environments cache to handle
 // versioned environments. This means that instead of having a list of workdir
 // environments, that list will target a specific version of the environment,
@@ -610,8 +610,8 @@ pub fn convert_cache_pre_0_0_29() -> io::Result<()> {
     // the new files to the original location
     for file in modified_files {
         let original_file = cache_path.join(file.file_name().unwrap());
-        std::fs::rename(&original_file, original_file.with_extension("json.pre0029"))?;
-        std::fs::rename(file, original_file)?;
+        safe_rename(&original_file, original_file.with_extension("json.pre0029"))?;
+        safe_rename(file, original_file)?;
     }
 
     // And remove the temporary directory
