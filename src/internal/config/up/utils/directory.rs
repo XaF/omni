@@ -1,5 +1,6 @@
 use std::collections::BTreeMap;
-use std::{fs, io};
+use std::fs;
+use std::io;
 use std::os::unix::fs::PermissionsExt;
 use std::path::Path;
 use std::path::PathBuf;
