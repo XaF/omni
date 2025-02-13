@@ -626,7 +626,7 @@ impl DynamicEnv {
                         envsetter.unset_value("PYTHONHOME");
                         envsetter.prepend_to_list("PATH", &format!("{}{}", tool_prefix, bin_path));
                     }
-                    "nodejs" => {
+                    "node" => {
                         envsetter.set_value("NODE_VERSION", &version);
                         envsetter.prepend_to_list("PATH", &format!("{}{}", tool_prefix, bin_path));
 
