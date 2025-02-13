@@ -8,7 +8,7 @@ use serde::Deserialize;
 use serde::Serialize;
 
 use crate::internal::config::global_config;
-use crate::internal::utils::safe_rename;
+use crate::internal::config::up::utils::directory::safe_rename;
 
 // Read the content of the cache file and parse it as structured JSON;
 // we will want to deprecate and remove that at some point, but it will

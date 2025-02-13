@@ -14,8 +14,8 @@ use crate::internal::cache::offsetdatetime_hashmap;
 use crate::internal::cache::utils;
 use crate::internal::config::global_config;
 use crate::internal::config::parser::EnvOperationEnum;
+use crate::internal::config::up::utils::directory::safe_rename;
 use crate::internal::git_env_fresh;
-use crate::internal::utils::safe_rename;
 use crate::internal::ORG_LOADER;
 // In 0.0.29, we are changing the format of the up environments cache to handle
 // versioned environments. This means that instead of having a list of workdir

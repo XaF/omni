@@ -20,7 +20,7 @@ use crate::internal::config::parser::ConfigErrorKind;
 use crate::internal::config::up::mise::mise_path;
 use crate::internal::config::up::mise_tool_path;
 use crate::internal::config::up::utils::cleanup_path;
-use crate::internal::config::up::utils::directory::force_remove_all;
+use crate::internal::config::up::utils::directory::{force_remove_all, safe_rename};
 use crate::internal::config::up::utils::progress_handler::ProgressHandler;
 use crate::internal::config::up::utils::run_progress;
 use crate::internal::config::up::utils::RunConfig;
@@ -35,7 +35,6 @@ use crate::internal::config::ConfigValue;
 use crate::internal::env::data_home;
 use crate::internal::env::tmpdir_cleanup_prefix;
 use crate::internal::user_interface::StringColor;
-use crate::internal::utils::safe_rename;
 
 cfg_if::cfg_if! {
     if #[cfg(test)] {

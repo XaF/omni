@@ -41,6 +41,7 @@ use crate::internal::config::up::UpError;
 use crate::internal::config::up::UpOptions;
 use crate::internal::config::utils::is_executable;
 use crate::internal::config::ConfigValue;
+use crate::internal::config::up::utils::directory::safe_rename;
 use crate::internal::dynenv::update_dynamic_env_for_command_from_env;
 use crate::internal::env::cache_home;
 use crate::internal::env::current_dir;
@@ -49,7 +50,6 @@ use crate::internal::env::state_home;
 use crate::internal::git::is_path_gitignored;
 use crate::internal::git_env;
 use crate::internal::user_interface::StringColor;
-use crate::internal::utils::safe_rename;
 use crate::internal::workdir;
 use crate::omni_warning;
 

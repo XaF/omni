@@ -41,11 +41,11 @@ use crate::internal::config::up::UpError;
 use crate::internal::config::up::UpOptions;
 use crate::internal::config::utils::check_allowed;
 use crate::internal::config::ConfigValue;
+use crate::internal::config::up::utils::directory::safe_rename;
 use crate::internal::env::data_home;
 use crate::internal::self_updater::current_arch;
 use crate::internal::self_updater::current_os;
 use crate::internal::user_interface::StringColor;
-use crate::internal::utils::safe_rename;
 
 const GITHUB_API_URL: &str = "https://api.github.com";
 
