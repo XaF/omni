@@ -1218,8 +1218,9 @@ impl UpConfigCargoInstall {
         cargo_install_cmd.arg("--bins");
         cargo_install_cmd.arg("--force");
 
-        // Override GO environment variables to ensure that the
-        // installation is done in the temporary directory
+        // Override CARGO environment variables to ensure that the
+        // installation is done in the temporary directory, even though
+        // --root is set and should be taking precedence
         cargo_install_cmd.env("CARGO_INSTALL_ROOT", tmp_dir.path());
 
         cargo_install_cmd.stdout(std::process::Stdio::piped());

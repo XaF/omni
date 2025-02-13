@@ -25,6 +25,7 @@ use crate::internal::config::global_config;
 use crate::internal::config::parser::ConfigErrorHandler;
 use crate::internal::config::up::homebrew::HomebrewInstall;
 use crate::internal::config::up::utils::data_path_dir_hash;
+use crate::internal::config::up::utils::directory::safe_rename;
 use crate::internal::config::up::utils::force_remove_dir_all;
 use crate::internal::config::up::utils::run_progress;
 use crate::internal::config::up::utils::CommandExt;
@@ -41,7 +42,6 @@ use crate::internal::config::up::UpError;
 use crate::internal::config::up::UpOptions;
 use crate::internal::config::utils::is_executable;
 use crate::internal::config::ConfigValue;
-use crate::internal::config::up::utils::directory::safe_rename;
 use crate::internal::dynenv::update_dynamic_env_for_command_from_env;
 use crate::internal::env::cache_home;
 use crate::internal::env::current_dir;
@@ -1783,7 +1783,7 @@ impl UpConfigMise {
 
         // Add data paths for specific tools that depend on it but don't
         // have their own wrapper file
-        if matches!(fqtn.tool(), "helm") {
+        if matches!(fqtn.tool(), "helm" | "ruby" | "rust") {
             // Get the data path for the work directory
             let workdir = workdir(".");
 

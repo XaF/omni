@@ -553,32 +553,40 @@ impl DynamicEnv {
 
                             values_to_remove
                         });
-                        envsetter.set_value(
-                            "GEM_HOME",
-                            &format!("{}/lib/ruby/gems/{}.0", tool_prefix, version_minor),
-                        );
-                        envsetter.set_value(
-                            "GEM_ROOT",
-                            &format!("{}/lib/ruby/gems/{}.0", tool_prefix, version_minor),
-                        );
+
+                        let gems_dir = format!("{}/lib/ruby/gems", tool_prefix);
+                        let gem_home = format!("{}/{}.0", gems_dir, version_minor);
+
+                        envsetter.set_value("GEM_HOME", &gem_home);
+                        envsetter.set_value("GEM_ROOT", &gem_home);
                         envsetter.set_value("RUBY_ENGINE", "ruby");
                         envsetter.set_value("RUBY_ROOT", &tool_prefix);
                         envsetter.set_value("RUBY_VERSION", &version);
-                        envsetter.prepend_to_list(
-                            "GEM_PATH",
-                            &format!("{}/lib/ruby/gems/{}.0", tool_prefix, version_minor),
-                        );
+                        envsetter.prepend_to_list("GEM_PATH", &gem_home);
                         envsetter.prepend_to_list(
                             "PATH",
-                            &format!("{}/lib/ruby/gems/{}/bin", tool_prefix, version_minor),
+                            &format!("{}/{}/bin", gems_dir, version_minor),
                         );
                         envsetter.prepend_to_list("PATH", &format!("{}/bin", tool_prefix));
+
+                        // Handle the isolated GEM_HOME
+                        if let Some(data_path) = &toolversion.data_path {
+                            envsetter.set_value("GEM_HOME", data_path);
+                            envsetter.prepend_to_list("GEM_PATH", data_path);
+                            envsetter.prepend_to_list("PATH", &format!("{}/bin", data_path));
+                        }
                     }
                     "rust" => {
                         envsetter.set_value("RUSTUP_HOME", &format!("{}/rustup", mise_path()));
                         envsetter.set_value("CARGO_HOME", &format!("{}/cargo", mise_path()));
                         envsetter.set_value("RUSTUP_TOOLCHAIN", &version);
                         envsetter.prepend_to_list("PATH", &tool_prefix);
+
+                        // Handle the isolated CARGO_INSTALL_PATH
+                        if let Some(data_path) = &toolversion.data_path {
+                            envsetter.set_value("CARGO_INSTALL_ROOT", data_path);
+                            envsetter.prepend_to_list("PATH", &format!("{}/bin", data_path));
+                        }
                     }
                     "go" => {
                         if let Some(goroot) = std::env::var_os("GOROOT") {
