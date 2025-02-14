@@ -1752,6 +1752,27 @@ impl UpConfigMise {
             return Err(UpError::Exec("no versions to post-install".to_string()));
         };
 
+        // If ruby, remove the rubygems_plugin.rb file
+        if matches!(fqtn.tool(), "ruby") {
+            for version in versions.keys() {
+                let normalized_name = fqtn.normalized_plugin_name()?;
+                let version_path = mise_tool_path(&normalized_name, version);
+
+                let rubygems_plugin = Path::new(&version_path)
+                    .join("lib")
+                    .join("ruby")
+                    .join("site_ruby")
+                    .join("rubygems_plugin.rb");
+
+                if rubygems_plugin.exists() {
+                    if let Err(err) = std::fs::remove_file(&rubygems_plugin) {
+                        progress_handler
+                            .progress(format!("failed to remove rubygems_plugin.rb: {}", err));
+                    }
+                }
+            }
+        }
+
         if !self.post_install_funcs.is_empty() {
             let post_install_versions: Vec<MiseToolUpVersion> = versions
                 .iter()
