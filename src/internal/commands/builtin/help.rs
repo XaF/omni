@@ -310,24 +310,42 @@ impl HelpCommandPrinter for HelpCommandPlainPrinter {
         });
 
         if let Some(syntax) = command.syntax() {
-            if !syntax.parameters.is_empty() {
-                let (arguments, options): (Vec<_>, Vec<_>) = syntax
-                    .parameters
-                    .iter()
-                    .partition(|arg| arg.is_positional());
+            // If the command has the argparser enabled, add the `-h` and `--help`
+            // options to the list of options
+            let help_option;
+            let parameters_iter: Box<dyn Iterator<Item = &SyntaxOptArg>> =
+                if command.internal_argparser() {
+                    help_option = SyntaxOptArg {
+                        names: vec!["-h".to_string(), "--help".to_string()],
+                        desc: Some("Show this help message and exit".to_string()),
+                        arg_type: SyntaxOptArgType::Flag,
+                        ..Default::default()
+                    };
 
-                if !arguments.is_empty() {
-                    eprintln!("\n{}", "Arguments:".bold().underline());
-                    if let Err(err) = self.print_syntax_column_help(&arguments) {
-                        omni_error!(err);
-                    }
+                    Box::new(
+                        syntax
+                            .parameters
+                            .iter()
+                            .chain(std::iter::once(&help_option)),
+                    )
+                } else {
+                    Box::new(syntax.parameters.iter())
+                };
+
+            let (arguments, options): (Vec<_>, Vec<_>) =
+                parameters_iter.partition(|arg| arg.is_positional());
+
+            if !arguments.is_empty() {
+                eprintln!("\n{}", "Arguments:".bold().underline());
+                if let Err(err) = self.print_syntax_column_help(&arguments) {
+                    omni_error!(err);
                 }
+            }
 
-                if !options.is_empty() {
-                    eprintln!("\n{}", "Options:".bold().underline());
-                    if let Err(err) = self.print_syntax_column_help(&options) {
-                        omni_error!(err);
-                    }
+            if !options.is_empty() {
+                eprintln!("\n{}", "Options:".bold().underline());
+                if let Err(err) = self.print_syntax_column_help(&options) {
+                    omni_error!(err);
                 }
             }
         }

@@ -6,4 +6,7 @@ omni and create a shim for them in the shim directory.
 
 Usage: omni config reshim
 
+Options:
+  -h, --help     Show this help message and exit
+
 Source: builtin

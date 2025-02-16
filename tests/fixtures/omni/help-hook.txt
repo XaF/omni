@@ -7,6 +7,9 @@ Arguments:
   <HOOK>         Which hook to call
   [OPTIONS]...   Any options to pass to the hook.
 
+Options:
+  -h, --help     Show this help message and exit
+
 General
   env            Hook used to update the dynamic environment
   init           Hook used to initialize the shell

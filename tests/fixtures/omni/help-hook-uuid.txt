@@ -6,4 +6,7 @@ can work without extra dependencies..
 
 Usage: omni hook uuid
 
+Options:
+  -h, --help     Show this help message and exit
+
 Source: builtin

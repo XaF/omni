@@ -39,5 +39,6 @@ Options:
                                        already installed version for another repository
                                        matches version contraints, we will avoid downloading
                                        and building a more recent version
+  -h, --help                           Show this help message and exit
 
 Source: builtin

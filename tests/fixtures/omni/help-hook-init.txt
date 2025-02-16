@@ -31,5 +31,6 @@ Options:
                                         environment.
   --print-shims-path                    Print the path to the shims directory and exit. This
                                         should not be used to eval in a shell environment.
+  -h, --help                            Show this help message and exit
 
 Source: builtin

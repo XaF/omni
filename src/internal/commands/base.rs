@@ -531,6 +531,10 @@ impl Command {
         }
     }
 
+    pub fn internal_argparser(&self) -> bool {
+        self.argparser() || matches!(self, Command::Builtin(_))
+    }
+
     pub fn autocompletion(&self) -> CommandAutocompletion {
         let completion = match self {
             Command::Builtin(command) => command.autocompletion(),
@@ -548,9 +552,7 @@ impl Command {
             _ => true,
         };
 
-        let argparser = self.argparser() || matches!(self, Command::Builtin(_));
-
-        match (completion, trusted, argparser) {
+        match (completion, trusted, self.internal_argparser()) {
             (CommandAutocompletion::Full, true, _) => CommandAutocompletion::Full,
             (CommandAutocompletion::Partial, true, true) => CommandAutocompletion::Partial,
             (CommandAutocompletion::Partial, true, false) => CommandAutocompletion::Null,

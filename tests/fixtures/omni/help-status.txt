@@ -15,5 +15,6 @@ Options:
   --worktree           Show the default worktree.
   --orgs               Show the organizations.
   --path               Show the current omnipath.
+  -h, --help           Show this help message and exit
 
 Source: builtin
