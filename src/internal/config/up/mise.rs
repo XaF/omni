@@ -1752,59 +1752,53 @@ impl UpConfigMise {
             return Err(UpError::Exec("no versions to post-install".to_string()));
         };
 
-        // If ruby, remove the rubygems_plugin.rb file
-        if matches!(fqtn.tool(), "ruby") {
-            for version in versions.keys() {
-                let normalized_name = fqtn.normalized_plugin_name()?;
-                let version_path = mise_tool_path(&normalized_name, version);
+        // Get the special configuration for the tool
+        let tool_config = PerToolConfig::new(fqtn.tool());
 
-                let rubygems_plugin = Path::new(&version_path)
-                    .join("lib")
-                    .join("ruby")
-                    .join("site_ruby")
-                    .join("rubygems_plugin.rb");
+        // Handle post-installation operations if any defined either
+        // at the tool configuration level or as provided post-install
+        // functions by a wrapper
+        let post_install_versions: Vec<MiseToolUpVersion> = versions
+            .iter()
+            .map(|(version, dirs)| MiseToolUpVersion {
+                version: version.clone(),
+                dirs: dirs.clone(),
+            })
+            .collect();
 
-                if rubygems_plugin.exists() {
-                    if let Err(err) = std::fs::remove_file(&rubygems_plugin) {
-                        progress_handler
-                            .progress(format!("failed to remove rubygems_plugin.rb: {}", err));
-                    }
-                }
-            }
+        let post_install_func_args = PostInstallFuncArgs {
+            config_value: self.config_value.clone(),
+            fqtn,
+            requested_version: self.version.clone(),
+            versions: post_install_versions,
+        };
+
+        if let Err(err) = tool_config.post_install(
+            options,
+            environment,
+            progress_handler,
+            &post_install_func_args,
+        ) {
+            progress_handler.error_with_message(format!("error: {}", err));
+            return Err(err);
         }
 
-        if !self.post_install_funcs.is_empty() {
-            let post_install_versions: Vec<MiseToolUpVersion> = versions
-                .iter()
-                .map(|(version, dirs)| MiseToolUpVersion {
-                    version: version.clone(),
-                    dirs: dirs.clone(),
-                })
-                .collect();
-
-            let post_install_func_args = PostInstallFuncArgs {
-                config_value: self.config_value.clone(),
-                fqtn,
-                requested_version: self.version.clone(),
-                versions: post_install_versions,
-            };
-
-            for func in self.post_install_funcs.iter() {
-                if let Err(err) = func(
-                    options,
-                    environment,
-                    progress_handler,
-                    &post_install_func_args,
-                ) {
-                    progress_handler.error_with_message(format!("error: {}", err));
-                    return Err(err);
-                }
+        for func in self.post_install_funcs.iter() {
+            if let Err(err) = func(
+                options,
+                environment,
+                progress_handler,
+                &post_install_func_args,
+            ) {
+                progress_handler.error_with_message(format!("error: {}", err));
+                return Err(err);
             }
         }
 
         // Add data paths for specific tools that depend on it but don't
-        // have their own wrapper file
-        if matches!(fqtn.tool(), "helm" | "ruby" | "rust") {
+        // have their own wrapper file or don't need to do anything special
+        // in the directory initially
+        if tool_config.setup_data_paths() {
             // Get the data path for the work directory
             let workdir = workdir(".");
 
@@ -2461,6 +2455,8 @@ fn parse_mise_name(name: &str) -> (String, Option<String>, Option<String>) {
     (tool.to_string(), backend, version)
 }
 
+/// Detect the version of a tool from the `.tool-versions` file
+/// in the provided path.
 fn detect_version_from_asdf_version_file(tool_name: String, path: PathBuf) -> Option<String> {
     let version_file_path = path.join(".tool-versions");
     if !version_file_path.exists() || version_file_path.is_dir() {
@@ -2505,6 +2501,7 @@ fn detect_version_from_asdf_version_file(tool_name: String, path: PathBuf) -> Op
     None
 }
 
+/// Detect the version of a tool from a file named `.<tool>-version` in the provided path.
 fn detect_version_from_tool_version_file(tool_name: String, path: PathBuf) -> Option<String> {
     let tool_name = tool_name.to_lowercase();
     let version_file_prefixes = match tool_name.as_str() {
@@ -2539,4 +2536,70 @@ fn detect_version_from_tool_version_file(tool_name: String, path: PathBuf) -> Op
 pub struct MiseToolUpVersion {
     pub version: String,
     pub dirs: BTreeSet<String>,
+}
+
+enum PerToolConfig {
+    Go,
+    Nodejs,
+    Ruby,
+    Helm,
+    Rust,
+    Other,
+}
+
+impl PerToolConfig {
+    fn new(tool_name: &str) -> Self {
+        match tool_name {
+            "go" => Self::Go,
+            "node" => Self::Nodejs,
+            "ruby" => Self::Ruby,
+            "helm" => Self::Helm,
+            "rust" => Self::Rust,
+            _ => Self::Other,
+        }
+    }
+
+    fn setup_data_paths(&self) -> bool {
+        matches!(self, Self::Helm | Self::Ruby | Self::Rust)
+    }
+
+    fn post_install(
+        &self,
+        options: &UpOptions,
+        environment: &mut UpEnvironment,
+        progress_handler: &UpProgressHandler,
+        args: &PostInstallFuncArgs,
+    ) -> Result<(), UpError> {
+        match self {
+            Self::Ruby => post_install_ruby(options, environment, progress_handler, args),
+            _ => Ok(()),
+        }
+    }
+}
+
+fn post_install_ruby(
+    _options: &UpOptions,
+    _environment: &mut UpEnvironment,
+    progress_handler: &UpProgressHandler,
+    args: &PostInstallFuncArgs,
+) -> Result<(), UpError> {
+    let normalized_name = args.fqtn.normalized_plugin_name()?;
+
+    for version in args.versions.iter() {
+        let version_path = mise_tool_path(&normalized_name, &version.version);
+
+        let rubygems_plugin = Path::new(&version_path)
+            .join("lib")
+            .join("ruby")
+            .join("site_ruby")
+            .join("rubygems_plugin.rb");
+
+        if rubygems_plugin.exists() {
+            if let Err(err) = std::fs::remove_file(&rubygems_plugin) {
+                progress_handler.progress(format!("failed to remove rubygems_plugin.rb: {}", err));
+            }
+        }
+    }
+
+    Ok(())
 }
