@@ -2504,11 +2504,7 @@ fn detect_version_from_asdf_version_file(tool_name: String, path: PathBuf) -> Op
 /// Detect the version of a tool from a file named `.<tool>-version` in the provided path.
 fn detect_version_from_tool_version_file(tool_name: String, path: PathBuf) -> Option<String> {
     let tool_name = tool_name.to_lowercase();
-    let version_file_prefixes = match tool_name.as_str() {
-        "go" => vec!["go", "golang"],
-        "node" => vec!["node", "nodejs"],
-        _ => vec![tool_name.as_str()],
-    };
+    let version_file_prefixes = PerToolConfig::version_file_prefixes(&tool_name);
 
     for version_file_prefix in version_file_prefixes {
         let version_file_path = path.join(format!(".{}-version", version_file_prefix));
@@ -2538,6 +2534,13 @@ pub struct MiseToolUpVersion {
     pub dirs: BTreeSet<String>,
 }
 
+/// PerToolConfig represents the special configuration for a tool
+/// allowing to perform specific operations after the installation
+/// including the setting up of data paths and potential cleanup tasks.
+///
+/// This is mostly useful if the tool does not have a wrapper file to
+/// take care of tasks, or if there are special configurations to take
+/// care of.
 enum PerToolConfig {
     Go,
     Nodejs,
@@ -2559,10 +2562,14 @@ impl PerToolConfig {
         }
     }
 
+    /// setup_data_paths returns whether the tool requires setting up data paths;
+    /// these can be used to isolate installation paths for tools that allow the
+    /// installation of binaries (e.g. `gem install`, `cargo install`, etc.)
     fn setup_data_paths(&self) -> bool {
         matches!(self, Self::Helm | Self::Ruby | Self::Rust)
     }
 
+    /// post_install performs post-installation operations for the tool
     fn post_install(
         &self,
         options: &UpOptions,
@@ -2573,6 +2580,15 @@ impl PerToolConfig {
         match self {
             Self::Ruby => post_install_ruby(options, environment, progress_handler, args),
             _ => Ok(()),
+        }
+    }
+
+    fn version_file_prefixes(tool_name: &str) -> Vec<&str> {
+        let tool_config = Self::new(tool_name);
+        match tool_config {
+            Self::Go => vec!["go", "golang"],
+            Self::Nodejs => vec!["node", "nodejs"],
+            _ => vec![tool_name],
         }
     }
 }
