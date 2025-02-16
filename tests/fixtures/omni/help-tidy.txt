@@ -19,5 +19,6 @@ Options:
                                    configuration; any argument passed to the tidy command
                                    after -- will be passed to omni up (e.g. omni tidy --up-all
                                    -- --update-repository)
+  -h, --help                       Show this help message and exit
 
 Source: builtin

@@ -24,5 +24,6 @@ Options:
   --no-include-packages   If provided, will NOT include packages when running the command;
                           this defaults to including packages when using --locate, and not
                           including packages otherwise.
+  -h, --help              Show this help message and exit
 
 Source: builtin

@@ -16,5 +16,6 @@ Options:
                  environment update.
   --keep-shims   Keep the shims directory in the PATH. This is useful for instance if you are
                  used to launch your IDE from the terminal.
+  -h, --help     Show this help message and exit
 
 Source: builtin

@@ -18,5 +18,6 @@ Options:
                           defaults to including packages.
   --no-include-packages   If provided, will NOT include packages when running the command;
                           this defaults to including packages.
+  -h, --help              Show this help message and exit
 
 Source: builtin

@@ -12,5 +12,6 @@ Options:
   --repo-path-format  Bootstrap the repository path format
   --organizations     Bootstrap the organizations
   --shell             Bootstrap the shell integration
+  -h, --help          Show this help message and exit
 
 Source: builtin

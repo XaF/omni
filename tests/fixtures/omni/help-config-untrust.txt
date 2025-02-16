@@ -11,5 +11,6 @@ Arguments:
 
 Options:
   --check        Check the trust status of the repository instead of changing it
+  -h, --help     Show this help message and exit
 
 Source: builtin

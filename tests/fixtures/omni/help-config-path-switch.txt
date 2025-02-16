@@ -22,5 +22,6 @@ Options:
   -w, --worktree  Switch the source to use the worktree in the omnipath; this will clone the
                   repository if it does not exist. This defaults to toggling  between the two
                   sources if not specified.
+  -h, --help      Show this help message and exit
 
 Source: builtin

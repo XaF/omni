@@ -15,5 +15,6 @@ Arguments:
 
 Options:
   -p, --package  Clone the repository as a package (default: no)
+  -h, --help     Show this help message and exit
 
 Source: builtin

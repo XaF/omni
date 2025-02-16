@@ -11,5 +11,6 @@ Arguments:
 Options:
   --unfold               Show all subcommands
   -o, --output <OUTPUT>  Output format [default: plain] [possible values: json, plain]
+  -h, --help             Show this help message and exit
 
 Source: builtin
