@@ -99,7 +99,7 @@ pub fn check_allowed(value: &str, patterns: &[String]) -> bool {
     }
 
     // Get the last pattern's deny status (if any) for the default case
-    let default = patterns.last().map_or(true, |p| p.starts_with('!'));
+    let default = patterns.last().is_none_or(|p| p.starts_with('!'));
     default
 }
 
